@@ -8,6 +8,14 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[profile.release]
+opt-level = "z"            # optimize for size
+lto = true                 # link-time optimizations
+codegen-units = 1          # single codegen unit for better inlining
+panic = "abort"            # no unwind tables
+debug = false              # drop debug info
+strip = "symbols"          # remove symbol table (cargo ≥1.62)
+
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
@@ -16,7 +24,7 @@ name = "openvcs_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2", default-features = false, features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
