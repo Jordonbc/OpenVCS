@@ -1,0 +1,17 @@
+{
+  "name": "openvcs",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://git.bbgames.dev/jordon/OpenVCS.git"
+  },
+  "private": true,
+  "dependencies": {
+    "@tauri-apps/api": "^2.6.0"
+  }
+}

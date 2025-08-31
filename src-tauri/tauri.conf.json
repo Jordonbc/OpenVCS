@@ -13,7 +13,28 @@
         "title": "openvcs",
         "width": 800,
         "height": 600
+      },
+      {
+        "label": "add-prompt",
+        "url": "prompt.html?mode=add",
+        "title": "Add Project",
+        "width": 400,
+        "height": 180,
+        "resizable": false,
+        "decorations": true,
+        "create": false
+      },
+      {
+        "label": "clone-prompt",
+        "url": "prompt.html?mode=clone",
+        "title": "Clone Repository",
+        "width": 400,
+        "height": 180,
+        "resizable": false,
+        "decorations": true,
+        "create": false
       }
+
     ],
     "security": {
       "csp": null

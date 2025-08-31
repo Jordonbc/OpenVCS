@@ -1,39 +1,52 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="stylesheet" href="styles.css" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri App</title>
-    <script type="module" src="/main.js" defer></script>
-  </head>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenVCS</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script type="module" src="main.js" defer></script>
+</head>
+<body>
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <button class="hamburger" id="hamburger" title="Toggle sidebar">☰</button>
+    <nav class="nav">
+      <button class="nav-item active" data-section="projects" title="Projects">📁 <span class="label">Projects</span></button>
+      <button class="nav-item" data-section="settings" title="Settings">⚙️ <span class="label">Settings</span></button>
+      <button class="nav-item" data-section="about" title="About">ℹ️ <span class="label">About</span></button>
+    </nav>
+  </aside>
 
-  <body>
-    <main class="container">
-      <h1>Welcome to Tauri</h1>
-
-      <div class="row">
-        <a href="https://tauri.app" target="_blank">
-          <img src="/assets/tauri.svg" class="logo tauri" alt="Tauri logo" />
-        </a>
-        <a
-          href="https://developer.mozilla.org/en-US/docs/Web/JavaScript"
-          target="_blank"
-        >
-          <img
-            src="/assets/javascript.svg"
-            class="logo vanilla"
-            alt="JavaScript logo"
-          />
-        </a>
+  <!-- MAIN -->
+  <main class="main" id="main">
+    <!-- Toolbar -->
+    <div class="toolbar" id="toolbar">
+      <h2 id="section-title">Projects</h2>
+      <div class="toolbar-actions">
+        <button class="tb-btn" id="clone-btn">Clone</button>
+        <button class="tb-btn" id="add-btn">Add</button>
+        <button class="icon-btn" id="search-btn" title="Search">🔍</button>
       </div>
-      <p>Click on the Tauri logo to learn more about the framework</p>
+    </div>
 
-      <form class="row" id="greet-form">
-        <input id="greet-input" placeholder="Enter a name..." />
-        <button type="submit">Greet</button>
-      </form>
-      <p id="greet-msg"></p>
-    </main>
-  </body>
+    <!-- Projects section -->
+    <section class="section" id="section-projects">
+      <ul class="project-list" id="project-list"></ul>
+    </section>
+
+    <!-- Settings section -->
+    <section class="section hidden" id="section-settings">
+      <h3>Settings</h3>
+    </section>
+
+    <!-- About section -->
+    <section class="section hidden" id="section-about">
+      <h3>About OpenVCS</h3>
+      <p>Version 0.1.0 — built with Rust &amp; Tauri</p>
+    </section>
+  </main>
+</div>
+</body>
 </html>
