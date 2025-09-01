@@ -11,30 +11,12 @@
     "windows": [
       {
         "title": "openvcs",
-        "width": 800,
-        "height": 600
-      },
-      {
-        "label": "add-prompt",
-        "url": "prompt.html?mode=add",
-        "title": "Add Project",
-        "width": 400,
-        "height": 180,
-        "resizable": false,
-        "decorations": true,
-        "create": false
-      },
-      {
-        "label": "clone-prompt",
-        "url": "prompt.html?mode=clone",
-        "title": "Clone Repository",
-        "width": 400,
-        "height": 180,
-        "resizable": false,
-        "decorations": true,
-        "create": false
+        "width": 1100,
+        "height": 600,
+        "resizable": true,
+        "minWidth": 1100,
+        "minHeight": 600
       }
-
     ],
     "security": {
       "csp": null
@@ -46,7 +28,8 @@
       "rpm",
       "app",
       "deb",
-      "msi"
+      "msi",
+      "appimage"
     ],
     "icon": [
       "icons/32x32.png",
@@ -54,6 +37,28 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "licenseFile": "../LICENSE",
+    "publisher": "Jordon Brooks",
+    "shortDescription": "A simple, cross-platform GUI for Git.",
+    "longDescription": "OpenVCS is a simple, cross-platform GUI for Git.",
+    "homepage": "https://bbgames.dev",
+    "category": "Development",
+    
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false,
+        "files": {}
+      },
+      "deb": {
+        "files": {}
+      },
+      "rpm": {
+        "epoch": 0,
+        "files": {},
+        "release": "1"
+      }
+    },
+    "createUpdaterArtifacts": true
   }
 }
