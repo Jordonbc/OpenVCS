@@ -1,52 +1,164 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OpenVCS</title>
   <link rel="stylesheet" href="styles.css" />
   <script type="module" src="main.js" defer></script>
 </head>
 <body>
-<div class="app">
-  <!-- SIDEBAR -->
-  <aside class="sidebar" id="sidebar">
-    <button class="hamburger" id="hamburger" title="Toggle sidebar">☰</button>
-    <nav class="nav">
-      <button class="nav-item active" data-section="projects" title="Projects">📁 <span class="label">Projects</span></button>
-      <button class="nav-item" data-section="settings" title="Settings">⚙️ <span class="label">Settings</span></button>
-      <button class="nav-item" data-section="about" title="About">ℹ️ <span class="label">About</span></button>
-    </nav>
-  </aside>
-
-  <!-- MAIN -->
-  <main class="main" id="main">
-    <!-- Toolbar -->
-    <div class="toolbar" id="toolbar">
-      <h2 id="section-title">Projects</h2>
-      <div class="toolbar-actions">
-        <button class="tb-btn" id="clone-btn">Clone</button>
-        <button class="tb-btn" id="add-btn">Add</button>
-        <button class="icon-btn" id="search-btn" title="Search">🔍</button>
+  <div class="app" id="app">
+    <!-- Titlebar -->
+    <header class="titlebar" role="banner">
+      <div class="repo-switch" id="repo-switch" title="Switch repository (Ctrl+R)" role="button" tabindex="0" aria-haspopup="dialog">
+        <div class="repo-meta">
+          <div class="repo-title" id="repo-title">OpenVCS</div>
+          <div class="repo-branch" id="repo-branch">main · 0 ahead, 0 behind</div>
+        </div>
+        <span class="chev" aria-hidden="true">▾</span>
       </div>
+      <div class="title-actions">
+        <button class="btn" id="fetch-btn" title="Fetch/Pull (F5)">Fetch</button>
+        <button class="btn" id="push-btn" title="Push">Push</button>
+        <button class="btn icon" id="theme-btn" title="Toggle theme" aria-label="Toggle theme">🌓</button>
+        <button class="btn primary" id="clone-btn" title="Clone or Add">Clone or Add</button>
+      </div>
+    </header>
+
+    <!-- Tabs -->
+    <nav class="tabs" role="tablist" aria-label="Primary views">
+      <button class="tab active" data-tab="changes" role="tab" aria-selected="true" id="tab-changes">Changes</button>
+      <button class="tab" data-tab="history" role="tab" aria-selected="false" id="tab-history">History</button>
+    </nav>
+
+    <!-- Work area -->
+    <section class="work" aria-label="Workspace">
+      <!-- Left column -->
+      <aside class="panel left" id="left" aria-label="List panel">
+        <div class="left-head">
+          <div class="filter">
+            <span class="filter-icon" aria-hidden="true">🔎</span>
+            <input id="filter" type="search" placeholder="Filter files… (Ctrl+F)" aria-label="Filter files or commits" />
+          </div>
+          <span class="badge" id="changes-count">0 items</span>
+        </div>
+        <ul class="list" id="file-list" role="listbox" aria-label="Items"></ul>
+      </aside>
+
+      <!-- Resizer -->
+      <div class="resizer" id="resizer" title="Resize panel" aria-hidden="true"></div>
+
+      <!-- Right column -->
+      <main class="panel right" id="right" role="main">
+        <div class="diff-head">
+          <div class="path" id="diff-path">Select an item</div>
+          <div class="meta" id="diff-meta" aria-label="Diff settings">
+            <span>LF</span><span>UTF-8</span><span>Unified</span>
+          </div>
+        </div>
+
+        <div class="diff" id="diff" aria-live="polite" aria-label="Diff view"></div>
+
+        <!-- Commit panel (hidden on History tab via JS) -->
+        <section class="commit" id="commit" aria-label="Commit changes">
+          <div class="inputs">
+            <input id="commit-summary" placeholder="Summary (required)" aria-label="Commit summary" />
+            <textarea id="commit-desc" placeholder="Description (optional)" aria-label="Commit description"></textarea>
+          </div>
+          <div class="actions">
+            <span class="kbd">Ctrl+Enter</span>
+            <button class="btn primary" id="commit-btn">
+              Commit to <span id="commit-branch">main</span>
+            </button>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer" role="contentinfo">
+      <div class="hints">
+        Shortcuts: <span class="kbd">Ctrl+R</span> repo ·
+        <span class="kbd">Ctrl+F</span> filter ·
+        <span class="kbd">Ctrl+Enter</span> commit ·
+        <span class="kbd">F5</span> fetch
+      </div>
+      <div id="status" aria-live="polite">Ready</div>
+    </footer>
+  </div>
+
+  <!-- Command Sheet (Clone / Add / Switch) -->
+  <div class="modal" id="modal" aria-hidden="true">
+    <div class="backdrop" data-close></div>
+    <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <div class="sheet-head">
+        <div class="seg" role="tablist" aria-label="Repository actions">
+          <button class="seg-btn active" data-sheet="clone" role="tab" aria-selected="true" id="sheet-tab-clone">Clone</button>
+          <button class="seg-btn" data-sheet="add" role="tab" aria-selected="false" id="sheet-tab-add">Add Existing</button>
+          <button class="seg-btn" data-sheet="switch" role="tab" aria-selected="false" id="sheet-tab-switch">Switch</button>
+        </div>
+        <button class="icon close" data-close aria-label="Close">✕</button>
+      </div>
+
+      <!-- Clone -->
+      <section class="sheet-body" id="sheet-clone" role="tabpanel" aria-labelledby="sheet-tab-clone">
+        <h3 id="sheet-title">Clone repository</h3>
+        <div class="group">
+          <label for="clone-url">Source</label>
+          <div class="input-row">
+            <div class="seg small">
+              <button class="seg-btn small active" data-proto="https" type="button">HTTPS</button>
+              <button class="seg-btn small" data-proto="ssh" type="button">SSH</button>
+            </div>
+            <input id="clone-url" placeholder="https://github.com/user/repo.git or git@github.com:user/repo.git" />
+          </div>
+          <div class="hint" id="clone-url-hint">Enter a valid Git URL.</div>
+        </div>
+        <div class="group">
+          <label for="clone-path">Destination</label>
+          <div class="input-row">
+            <input id="clone-path" placeholder="/home/jordon/Projects" />
+            <button class="pick" id="browse-clone" type="button">Browse…</button>
+          </div>
+          <div class="hint">A new folder will be created inside the destination.</div>
+        </div>
+        <div class="sheet-actions">
+          <button class="tbtn" data-close type="button">Cancel</button>
+          <button class="tbtn primary big" id="do-clone" type="button" disabled>Clone</button>
+        </div>
+      </section>
+
+      <!-- Add Existing -->
+      <section class="sheet-body hidden" id="sheet-add" role="tabpanel" aria-labelledby="sheet-tab-add">
+        <h3>Add existing repository</h3>
+        <div class="group">
+          <label for="add-path">Repository folder</label>
+          <div class="input-row">
+            <input id="add-path" placeholder="/path/to/repo (must contain .git)" />
+            <button class="pick" id="browse-add" type="button">Browse…</button>
+          </div>
+          <div class="hint" id="add-path-hint">Select a folder that already contains a Git repo.</div>
+        </div>
+        <div class="sheet-actions">
+          <button class="tbtn" data-close type="button">Cancel</button>
+          <button class="tbtn primary big" id="do-add" type="button" disabled>Add</button>
+        </div>
+      </section>
+
+      <!-- SWITCH -->
+      <section class="sheet-body hidden" id="sheet-switch" role="tabpanel" aria-labelledby="sheet-tab-switch">
+        <h3>Switch repository</h3>
+        <div class="group">
+          <label>Recent</label>
+          <ul class="recent" id="recent-list"></ul>
+        </div>
+        <div class="sheet-actions">
+          <button class="tbtn" data-close type="button">Cancel</button>
+          <button class="tbtn primary big" id="do-switch" type="button" disabled>Open</button>
+        </div>
+      </section>
     </div>
-
-    <!-- Projects section -->
-    <section class="section" id="section-projects">
-      <ul class="project-list" id="project-list"></ul>
-    </section>
-
-    <!-- Settings section -->
-    <section class="section hidden" id="section-settings">
-      <h3>Settings</h3>
-    </section>
-
-    <!-- About section -->
-    <section class="section hidden" id="section-about">
-      <h3>About OpenVCS</h3>
-      <p>Version 0.1.0 — built with Rust &amp; Tauri</p>
-    </section>
-  </main>
-</div>
+  </div>
 </body>
 </html>

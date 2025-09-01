@@ -1,110 +1,415 @@
-// src/main.js — OpenVCS frontend using Rust commands to open prompt windows
+/* =========================
+   Tauri bridges (guarded)
+   ========================= */
+const TAURI = (function () {
+  const has = typeof window !== "undefined" && window.__TAURI__ && window.__TAURI__.core;
+  const invoke = has ? window.__TAURI__.core.invoke : async () => {};
+  const listen = has && window.__TAURI__.event ? window.__TAURI__.event.listen : async () => ({ unlisten(){} });
+  return { has, invoke, listen };
+})();
 
-const { invoke } = window.__TAURI__.core;
+/* =========================
+   DOM references
+   ========================= */
+const qs  = (s, r = document) => r.querySelector(s);
+const qsa = (s, r = document) => Array.from(r.querySelectorAll(s));
 
-/*────────────────── DOM REFERENCES ──────────────────*/
-const sidebar      = document.getElementById('sidebar');
-const hamburger    = document.getElementById('hamburger');
-const navItems     = document.querySelectorAll('.nav-item');
-const sectionTitle = document.getElementById('section-title');
+const statusEl     = qs('#status');
 
-const sections = {
-  projects: document.getElementById('section-projects'),
-  settings: document.getElementById('section-settings'),
-  about:    document.getElementById('section-about')
+const repoSwitch   = qs('#repo-switch');
+const fetchBtn     = qs('#fetch-btn');
+const pushBtn      = qs('#push-btn');
+const themeBtn     = qs('#theme-btn');
+const cloneBtn     = qs('#clone-btn');
+
+const tabs         = qsa('.tab');
+const workGrid     = qs('.work');
+const leftPanel    = qs('#left');
+const resizer      = qs('#resizer');
+const filterInput  = qs('#filter');
+const listEl       = qs('#file-list');
+const countEl      = qs('#changes-count');
+
+const diffHeadPath = qs('#diff-path');
+const diffEl       = qs('#diff');
+
+const commitBox    = qs('#commit');
+const commitSummary= qs('#commit-summary');
+const commitDesc   = qs('#commit-desc');
+const commitBtn    = qs('#commit-btn');
+const commitBranch = qs('#commit-branch');
+
+/* ----- Command Sheet (modal) ----- */
+const modal        = qs('#modal');
+const sheetTabs    = qsa('.seg-btn[data-sheet]');
+const sheetPanels  = {
+  clone:  qs('#sheet-clone'),
+  add:    qs('#sheet-add'),
+  switch: qs('#sheet-switch'),
 };
+const cloneUrl     = qs('#clone-url');
+const clonePath    = qs('#clone-path');
+const doClone      = qs('#do-clone');
+const addPath      = qs('#add-path');
+const doAdd        = qs('#do-add');
+const recentList   = qs('#recent-list');
 
-const projectList = document.getElementById('project-list');
-const addBtn      = document.getElementById('add-btn');
-const cloneBtn    = document.getElementById('clone-btn');
-const searchBtn   = document.getElementById('search-btn');
+qsa('[data-close], .backdrop', modal).forEach(el => el.addEventListener('click', closeSheet));
+qsa('[data-proto]').forEach(b => b.addEventListener('click', () => {
+  qsa('[data-proto]').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+}));
 
-/*────────────────── APP STATE ──────────────────*/
-let currentSection = 'projects';
-let projects       = []; // { name, path }
+/* =========================
+   App state (persisted)
+   ========================= */
+const STORE_KEY = 'ovcs.desktop.v1';
+const initial = {
+  theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+  leftW: 0,       // pixels; 0 means compute from container
+  tab: 'changes',
+  branch: 'main',
+  demo: {
+    ahead: 2, behind: 0,
+    files: [
+      { path: 'src/main.rs', status: 'M', hunks: [['@@ 1,6 1,6 @@', '-fn main() {', '+fn main() {', '    println!("Running OpenVCS...");', '}']] },
+      { path: 'src/ui/panel.rs', status: 'A', hunks: [['@@ 0,0 1,12 @@', '+pub struct Panel {', '+  pub title: String,', '+}']] },
+      { path: 'README.md', status: 'D', hunks: [['@@ 1,3 0,0 @@', '-# OpenVCS', '-CLI + Tauri prototype', '-Work in progress']] },
+      { path: 'tauri.conf.json', status: 'M', hunks: [['@@ 10,14 10,14 @@', '  "tauri": {', '-    "bundle": {', '+    "bundle": { "active": true,', '      "identifier": "app.openvcs"', '    }', '  }']] },
+    ],
+  },
+};
+let state = Object.assign({}, initial, safeParse(localStorage.getItem(STORE_KEY)));
+function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function safeParse(s) { try { return JSON.parse(s || '{}'); } catch { return {}; } }
 
-/*──────────────── SIDEBAR & NAV ─────────────────*/
-function toggleSidebar() {
-  sidebar.classList.toggle('collapsed');
+/* =========================
+   Utilities
+   ========================= */
+function notify(text) {
+  if (!statusEl) return;
+  statusEl.textContent = text;
+  setTimeout(() => { if (statusEl.textContent === text) statusEl.textContent = 'Ready'; }, 2200);
+}
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  state.theme = theme; save();
+}
+function toggleTheme() { setTheme(state.theme === 'dark' ? 'light' : 'dark'); }
+function statusLabel(s) { return s === 'A' ? 'Added' : s === 'M' ? 'Modified' : s === 'D' ? 'Deleted' : 'Changed'; }
+function statusClass(s) { return s === 'A' ? 'add' : s === 'M' ? 'mod' : s === 'D' ? 'del' : 'mod'; }
+
+/* =========================
+   Boot
+   ========================= */
+applyInitial();
+function applyInitial() {
+  setTheme(state.theme);
+  commitBranch.textContent = state.branch;
+  setTab(state.tab);
+  initResizer();      // sets initial grid track & handlers
+  renderList();       // populate left list
 }
 
-function setSection(section) {
-  if (section === currentSection) return;
-  navItems.forEach(btn =>
-      btn.classList.toggle('active', btn.dataset.section === section)
-  );
-  Object.entries(sections).forEach(([key, el]) =>
-      el.classList.toggle('hidden', key !== section)
-  );
-  currentSection = section;
-  sectionTitle.textContent = section.charAt(0).toUpperCase() + section.slice(1);
+/* =========================
+   Tabs (Changes / History)
+   ========================= */
+tabs.forEach(btn => btn.addEventListener('click', () => setTab(btn.dataset.tab)));
+function setTab(tab) {
+  state.tab = tab; save();
+  tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  commitBox.style.display = tab === 'history' ? 'none' : 'grid';
+  diffHeadPath.textContent = tab === 'history' ? 'Commit details' : 'Select a file to view changes';
+  diffEl.innerHTML = '';
+  renderList();
 }
 
-document.querySelectorAll('.nav-item').forEach(btn =>
-    btn.addEventListener('click', () => setSection(btn.dataset.section))
-);
+/* =========================
+   Left panel: resizer + filter + rendering
+   ========================= */
+function initResizer() {
+  const MIN_LEFT  = 220;   // keep list usable
+  const MIN_RIGHT = 360;   // keep diff usable
+  const GUTTER    = 6;
 
-/*────────── PROJECT LIST RENDERING ──────────*/
-function renderProjects() {
-  projectList.innerHTML = '';
-  if (!projects.length) {
-    projectList.innerHTML = '<p>No projects yet. Click <strong>Add</strong>.</p>';
-    return;
+  function clampLeft(px, cw) {
+    const max = Math.max(MIN_LEFT, cw - MIN_RIGHT - GUTTER);
+    return Math.max(MIN_LEFT, Math.min(max, px));
   }
-  projects.forEach((p, idx) => {
-    const li = document.createElement('li');
-    li.className = 'project-card';
-    li.innerHTML = `
-      <span class="project-title">${p.name}</span>
-      <span class="project-path">${p.path}</span>
-    `;
-    li.onclick = () => selectProject(idx);
-    projectList.appendChild(li);
+  function currentContainerWidth() {
+    return workGrid.getBoundingClientRect().width || window.innerWidth;
+  }
+  function initialLeftPx() {
+    const cw = currentContainerWidth();
+    const px = state.leftW && state.leftW > 0 ? state.leftW : Math.round(cw * 0.32);
+    return clampLeft(px, cw);
+  }
+  function applyColumns(px) {
+    workGrid.style.gridTemplateColumns = `${px}px ${GUTTER}px 1fr`;
+  }
+
+  // boot
+  let leftPx = initialLeftPx();
+  applyColumns(leftPx);
+
+  // drag handlers
+  let dragging = false, x0 = 0, left0 = 0;
+  resizer.addEventListener('mousedown', (e) => {
+    dragging = true; x0 = e.clientX; left0 = leftPx;
+    document.body.style.cursor = 'col-resize';
   });
-}
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const cw = currentContainerWidth();
+    leftPx = clampLeft(left0 + (e.clientX - x0), cw);
+    applyColumns(leftPx);
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor = '';
+    state.leftW = leftPx; save();
+  });
 
-function selectProject(idx) {
-  [...projectList.children].forEach((el, i) =>
-      el.classList.toggle('selected', i === idx)
-  );
-  // TODO: navigate to repo details
-}
-
-/*───────── OPEN PROMPT WINDOWS via Rust commands ─────────*/
-async function openPromptWindow(mode) {
-  if (mode === 'add') {
-    await invoke('open_add_prompt');
-  } else {
-    await invoke('open_clone_prompt');
+  // keep sane on window resize and at the stacked breakpoint
+  function onResize() {
+    const stacked = window.matchMedia('(max-width: 980px)').matches;
+    if (stacked) {
+      workGrid.style.gridTemplateColumns = ''; // let CSS 1-column layout take over
+      return;
+    }
+    const cw = currentContainerWidth();
+    leftPx = clampLeft(leftPx, cw);
+    applyColumns(leftPx);
   }
+  window.addEventListener('resize', onResize);
 }
 
-addBtn  .addEventListener('click', () => openPromptWindow('add'));
-cloneBtn.addEventListener('click', () => openPromptWindow('clone'));
-searchBtn.addEventListener('click', () => alert('Search coming soon'));
-
-/*───────── HANDLE PROMPT RESULTS via events ─────────*/
-window.__TAURI__.event.listen('prompt-submitted', event => {
-  const { mode, value } = event.payload;
-  if (!value) return;
-  if (mode === 'add') addProject(value);
-  else cloneProject(value);
+filterInput.addEventListener('input', renderList);
+window.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); filterInput.focus(); }
+  if (e.ctrlKey && e.key.toLowerCase() === 'r') { e.preventDefault(); openSheet('switch'); }
+  if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); commitBtn.click(); }
+  if (e.key === 'Escape' && modal.classList.contains('show')) { closeSheet(); }
 });
 
-/*───────── PROJECT ACTIONS ─────────*/
-function addProject(name) {
-  const path = `/projects/${name}`;
-  projects.push({ name, path });
-  renderProjects();
+function renderList() {
+  listEl.innerHTML = '';
+  const isHistory = state.tab === 'history';
+  const q = filterInput.value.trim().toLowerCase();
+
+  if (isHistory) {
+    const commits = [
+      { id: 'b2c4a1e', msg: 'UI: introduce modern desktop layout', meta: 'You · 2m ago' },
+      { id: '9a77df0', msg: 'feat(core): add repo indexer',        meta: 'You · 2h ago' },
+      { id: 'ce22bb1', msg: 'chore: cargo update',                  meta: 'bot · yesterday' },
+    ].filter(c => !q || c.msg.toLowerCase().includes(q) || c.id.includes(q));
+
+    countEl.textContent = `${commits.length} commits`;
+    commits.forEach((c, i) => {
+      const li = document.createElement('li');
+      li.className = 'row';
+      li.innerHTML = `<span class="badge">${c.id.slice(0,7)}</span>
+                      <div class="file" title="${c.msg}">${c.msg}</div>
+                      <span class="badge">${c.meta}</span>`;
+      li.addEventListener('click', () => selectHistory(c, i));
+      listEl.appendChild(li);
+    });
+    if (commits[0]) selectHistory(commits[0], 0);
+    return;
+  }
+
+  const files = (state.demo.files || []).filter(f =>
+    !q || f.path.toLowerCase().includes(q)
+  );
+  countEl.textContent = `${files.length} files`;
+
+  files.forEach((f, i) => {
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.setAttribute('role', 'option');
+    li.innerHTML = `
+      <span class="status ${statusClass(f.status)}">${f.status}</span>
+      <div class="file" title="${f.path}">${f.path}</div>
+      <span class="badge">${statusLabel(f.status)}</span>`;
+    li.addEventListener('click', () => selectFile(f, i));
+    listEl.appendChild(li);
+  });
+
+  if (files.length) selectFile(files[0], 0);
 }
 
-function cloneProject(url) {
-  const name = url.split('/').pop().replace(/\.git$/, '');
-  const path = `/projects/${name}`;
-  projects.push({ name, path });
-  renderProjects();
+function highlightRow(index) {
+  qsa('.row', listEl).forEach((el, i) => el.classList.toggle('active', i === index));
+}
+function selectFile(file, index) {
+  highlightRow(index);
+  diffHeadPath.textContent = file.path;
+  diffEl.innerHTML = file.hunks.map(renderHunk).join('');
+}
+function selectHistory(commit, index) {
+  highlightRow(index);
+  diffHeadPath.textContent = `Commit ${commit.id.slice(0,7)}`;
+  diffEl.innerHTML = `
+    <div class="hunk">
+      <div class="hline"><div class="gutter">commit</div><div class="code">${commit.id}</div></div>
+      <div class="hline"><div class="gutter">Author</div><div class="code">You &lt;you@example.com&gt;</div></div>
+      <div class="hline"><div class="gutter">Message</div><div class="code">${commit.msg}</div></div>
+    </div>`;
+}
+function renderHunk(hunk) {
+  return `<div class="hunk">${
+    hunk.map((ln, i) => {
+      const t = ln.startsWith('+') ? 'add' : ln.startsWith('-') ? 'del' : '';
+      const safe = ln.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      return `<div class="hline ${t}"><div class="gutter">${i+1}</div><div class="code">${safe}</div></div>`;
+    }).join('')
+  }</div>`;
 }
 
-/*───────── INITIALIZE ─────────*/
-hamburger.addEventListener('click', toggleSidebar);
-renderProjects();
+/* =========================
+   Commit action (mock + hook)
+   ========================= */
+commitBtn.addEventListener('click', async () => {
+  const summary = commitSummary.value.trim();
+  if (!summary) { commitSummary.focus(); notify('Summary is required'); return; }
+  try {
+    if (TAURI.has) await TAURI.invoke('commit_changes', {
+      summary, description: commitDesc.value || ''
+    });
+    notify(`Committed to ${state.branch}: ${summary}`);
+    commitSummary.value = ''; commitDesc.value = '';
+  } catch (e) {
+    console.error(e); notify('Commit failed');
+  }
+});
+
+/* =========================
+   Title actions: fetch/push/theme/clone
+   ========================= */
+themeBtn?.addEventListener('click', toggleTheme);
+
+fetchBtn?.addEventListener('click', async () => {
+  try { if (TAURI.has) await TAURI.invoke('git_fetch', {}); notify('Fetched'); }
+  catch (e) { console.error(e); notify('Fetch failed'); }
+});
+
+pushBtn?.addEventListener('click', async () => {
+  try { if (TAURI.has) await TAURI.invoke('git_push', {}); notify('Pushed'); }
+  catch (e) { console.error(e); notify('Push failed'); }
+});
+
+cloneBtn?.addEventListener('click', () => openSheet('clone'));
+repoSwitch?.addEventListener('click', () => openSheet('switch'));
+
+/* =========================
+   Command Sheet (Clone / Add / Switch)
+   ========================= */
+function openSheet(which = 'clone') {
+  modal.classList.add('show');
+  setSheet(which);
+  const focusId = which === 'clone' ? 'clone-url' : which === 'add' ? 'add-path' : null;
+  if (focusId) setTimeout(() => qs('#' + focusId)?.focus(), 0);
+}
+function closeSheet() { modal.classList.remove('show'); }
+
+sheetTabs.forEach(btn => btn.addEventListener('click', () => setSheet(btn.dataset.sheet)));
+function setSheet(which) {
+  sheetTabs.forEach(b => {
+    const on = b.dataset.sheet === which;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  Object.entries(sheetPanels).forEach(([k, el]) => el.classList.toggle('hidden', k !== which));
+}
+
+/* Validation (simple heuristics; Rust side should re-validate) */
+function isLikelyGitUrl(v) { return /\.git(\s|$)/i.test(v) && (v.startsWith('http') || v.includes('@')); }
+function isLikelyPath(v)   { return v.startsWith('/') || v.startsWith('~'); }
+function setDisabled(id, on) { const el = qs('#' + id); if (el) el.disabled = on; }
+function validateClone()  { setDisabled('do-clone', !(isLikelyGitUrl(cloneUrl.value.trim()) && isLikelyPath(clonePath.value.trim()))); }
+function validateAdd()    { setDisabled('do-add', !isLikelyPath(addPath.value.trim())); }
+
+cloneUrl?.addEventListener('input', validateClone);
+clonePath?.addEventListener('input', validateClone);
+addPath  ?.addEventListener('input', validateAdd);
+
+/* Browse buttons — delegate to Rust (open native dir chooser) */
+qs('#browse-clone')?.addEventListener('click', async () => {
+  try {
+    if (TAURI.has) {
+      const dir = await TAURI.invoke('browse_directory', { purpose: 'clone_dest' });
+      if (dir) { clonePath.value = dir; validateClone(); }
+    }
+  } catch (e) { console.error(e); }
+});
+qs('#browse-add')?.addEventListener('click', async () => {
+  try {
+    if (TAURI.has) {
+      const dir = await TAURI.invoke('browse_directory', { purpose: 'add_repo' });
+      if (dir) { addPath.value = dir; validateAdd(); }
+    }
+  } catch (e) { console.error(e); }
+});
+
+/* Primary actions (hooked to Rust) */
+doClone?.addEventListener('click', async () => {
+  const url  = cloneUrl.value.trim();
+  const dest = clonePath.value.trim();
+  if (!url || !dest) return;
+
+  try {
+    if (TAURI.has) await TAURI.invoke('clone_repo', { url, dest });
+    notify(`Cloned ${url} → ${dest}`);
+    closeSheet();
+  } catch (e) { console.error(e); notify('Clone failed'); }
+});
+doAdd?.addEventListener('click', async () => {
+  const path = addPath.value.trim();
+  if (!path) return;
+
+  try {
+    if (TAURI.has) await TAURI.invoke('add_repo', { path });
+    notify(`Added ${path}`);
+    closeSheet();
+  } catch (e) { console.error(e); notify('Add failed'); }
+});
+
+/* Populate recents and wire per-item Open buttons */
+(async function loadRecents() {
+  try {
+    let recents = [
+      { name: 'OpenVCS',    path: '~/Projects/OpenVCS' },
+      { name: 'Lunaris',    path: '~/Projects/Lunaris' },
+      { name: 'HarmonyLink',path: '~/Projects/HarmonyLink' },
+    ];
+    if (TAURI.has) {
+      const fromRust = await TAURI.invoke('list_recent_repos').catch(() => null);
+      if (Array.isArray(fromRust) && fromRust.length) recents = fromRust;
+    }
+    recentList.innerHTML = recents.map(r =>
+      `<li data-path="${r.path}">
+         <div><strong>${escapeHtml(r.name || r.path.split('/').pop())}</strong>
+         <div class="path">${escapeHtml(r.path)}</div></div>
+         <button class="tbtn" type="button" data-open>Open</button>
+       </li>`
+    ).join('');
+    recentList.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-open]'); if (!btn) return;
+      const li = e.target.closest('li'); if (!li) return;
+      const path = li.dataset.path;
+      try {
+        if (TAURI.has) await TAURI.invoke('open_repo', { path });
+        notify(`Opened ${path}`); closeSheet();
+      } catch (err) { console.error(err); notify('Open failed'); }
+    });
+  } catch (e) { console.error(e); }
+})();
+
+/* Optional: listen for backend events (e.g., progress) */
+TAURI.listen?.('git-progress', ({ payload }) => {
+  statusEl.textContent = payload?.message || 'Working…';
+});
+
+/* Helpers */
+function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
