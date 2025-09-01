@@ -39,6 +39,13 @@ const commitDesc   = qs('#commit-desc');
 const commitBtn    = qs('#commit-btn');
 const commitBranch = qs('#commit-branch');
 
+/* ---- Branch UI ---- */
+const branchBtn    = qs('#branch-switch');
+const branchName   = qs('#branch-name');
+const branchPop    = qs('#branch-pop');
+const branchFilter = qs('#branch-filter');
+const branchList   = qs('#branch-list');
+
 /* ----- Command Sheet (modal) ----- */
 const modal        = qs('#modal');
 const sheetTabs    = qsa('.seg-btn[data-sheet]');
@@ -69,6 +76,11 @@ const initial = {
   leftW: 0,       // pixels; 0 means compute from container
   tab: 'changes',
   branch: 'main',
+  branches: [
+    { name: 'main', current: true },
+    { name: 'develop', current: false },
+    { name: 'feature/ui-refresh', current: false },
+  ],
   demo: {
     ahead: 2, behind: 0,
     files: [
@@ -98,6 +110,7 @@ function setTheme(theme) {
 function toggleTheme() { setTheme(state.theme === 'dark' ? 'light' : 'dark'); }
 function statusLabel(s) { return s === 'A' ? 'Added' : s === 'M' ? 'Modified' : s === 'D' ? 'Deleted' : 'Changed'; }
 function statusClass(s) { return s === 'A' ? 'add' : s === 'M' ? 'mod' : s === 'D' ? 'del' : 'mod'; }
+function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 
 /* =========================
    Boot
@@ -105,10 +118,14 @@ function statusClass(s) { return s === 'A' ? 'add' : s === 'M' ? 'mod' : s === '
 applyInitial();
 function applyInitial() {
   setTheme(state.theme);
-  commitBranch.textContent = state.branch;
+  const curBranch = (state.branches.find(b => b.current) || {name: state.branch}).name;
+  state.branch = curBranch;
+  commitBranch.textContent = curBranch;
+  if (branchName) branchName.textContent = curBranch;
   setTab(state.tab);
   initResizer();      // sets initial grid track & handlers
   renderList();       // populate left list
+  hydrateBranches();  // try to load from backend if available
 }
 
 /* =========================
@@ -303,6 +320,33 @@ cloneBtn?.addEventListener('click', () => openSheet('clone'));
 repoSwitch?.addEventListener('click', () => openSheet('switch'));
 
 /* =========================
+   Native Menu (Tauri v2): route ids -> UI commands
+   ========================= */
+TAURI.listen?.('menu', ({ payload: id }) => {
+  switch (id) {
+    case 'clone_repo': openSheet('clone'); break;
+    case 'add_repo':   openSheet('add');   break;
+    case 'open_repo':  openSheet('switch');break;
+    case 'toggle_theme': themeBtn?.click(); break;
+    case 'toggle_left':  /* basic toggle for wide layout */
+      {
+        const stacked = window.matchMedia('(max-width: 980px)').matches;
+        if (!stacked) {
+          const isHidden = leftPanel.style.display === 'none';
+          leftPanel.style.display = isHidden ? '' : 'none';
+          workGrid.style.gridTemplateColumns = isHidden ? '' : `0px 6px 1fr`;
+        }
+      }
+      break;
+    case 'fetch': fetchBtn?.click(); break;
+    case 'push':  pushBtn?.click();  break;
+    case 'commit': commitBtn?.click(); break;
+    case 'docs': notify('Open docs…'); break;
+    case 'about': notify('Open About…'); break;
+  }
+});
+
+/* =========================
    Command Sheet (Clone / Add / Switch)
    ========================= */
 function openSheet(which = 'clone') {
@@ -406,10 +450,107 @@ doAdd?.addEventListener('click', async () => {
   } catch (e) { console.error(e); }
 })();
 
-/* Optional: listen for backend events (e.g., progress) */
+/* =========================
+   Branch popover + actions
+   ========================= */
+function openBranchPopover() {
+  renderBranches();
+  const r = branchBtn.getBoundingClientRect();
+  branchPop.style.left = `${r.left}px`;
+  branchPop.style.top  = `${r.bottom + 6}px`;
+  branchPop.hidden = false;
+  branchBtn.setAttribute('aria-expanded', 'true');
+  setTimeout(() => branchFilter.focus(), 0);
+}
+function closeBranchPopover() {
+  branchPop.hidden = true;
+  branchBtn.setAttribute('aria-expanded', 'false');
+  branchFilter.value = '';
+}
+function renderBranches() {
+  const q = branchFilter.value.trim().toLowerCase();
+  const items = (state.branches || []).filter(b => !q || b.name.toLowerCase().includes(q));
+  branchList.innerHTML = items.map(b => `
+    <li role="option" data-branch="${b.name}" aria-selected="${b.current ? 'true' : 'false'}">
+      <span class="label">
+        <span class="branch-dot" aria-hidden="true" style="box-shadow:none;${b.current?'':'opacity:.5'}"></span>
+        <span class="name" title="${b.name}">${b.name}</span>
+      </span>
+      ${b.current ? '<span class="badge">Current</span>' : ''}
+    </li>
+  `).join('');
+}
+
+branchBtn?.addEventListener('click', (e) => {
+  if (branchPop.hidden) openBranchPopover(); else closeBranchPopover();
+  e.stopPropagation();
+});
+document.addEventListener('click', (e) => {
+  if (!branchPop.hidden && !branchPop.contains(e.target) && e.target !== branchBtn) {
+    closeBranchPopover();
+  }
+});
+window.addEventListener('resize', closeBranchPopover);
+branchFilter?.addEventListener('input', renderBranches);
+
+branchList?.addEventListener('click', async (e) => {
+  const li = e.target.closest('li[data-branch]');
+  if (!li) return;
+  const name = li.dataset.branch;
+
+  try {
+    if (TAURI.has) await TAURI.invoke('git_checkout_branch', { name });
+    // update UI state
+    state.branches.forEach(b => b.current = (b.name === name));
+    state.branch = name;
+    branchName.textContent = name;
+    commitBranch.textContent = name;
+    save();
+    renderBranches();
+    closeBranchPopover();
+    notify(`Switched to ${name}`);
+  } catch (err) {
+    console.error(err); notify('Checkout failed');
+  }
+});
+
+qs('#branch-new')?.addEventListener('click', async () => {
+  const base = (state.branches.find(b => b.current) || {}).name || 'main';
+  const name = prompt(`New branch name (from ${base})`);
+  if (!name) return;
+  try {
+    if (TAURI.has) await TAURI.invoke('git_create_branch', { name, from: base, checkout: true });
+    state.branches.forEach(b => b.current = false);
+    state.branches.unshift({ name, current: true });
+    state.branch = name;
+    branchName.textContent = name;
+    commitBranch.textContent = name;
+    save();
+    renderBranches();
+    closeBranchPopover();
+    notify(`Created branch ${name}`);
+  } catch (e) { console.error(e); notify('Create branch failed'); }
+});
+
+/* Load branches from backend if available */
+async function hydrateBranches() {
+  try {
+    if (!TAURI.has) return;
+    const list = await TAURI.invoke('list_branches'); // expect [{name, current}]
+    if (Array.isArray(list) && list.length) {
+      state.branches = list;
+      const cur = list.find(b => b.current)?.name || state.branch || 'main';
+      state.branch = cur;
+      branchName.textContent = cur;
+      commitBranch.textContent = cur;
+      save();
+    }
+  } catch (e) { /* silent if not implemented */ }
+}
+
+/* =========================
+   Backend events
+   ========================= */
 TAURI.listen?.('git-progress', ({ payload }) => {
   statusEl.textContent = payload?.message || 'Working…';
 });
-
-/* Helpers */
-function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }

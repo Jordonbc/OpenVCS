@@ -313,3 +313,71 @@ body { margin: 0; font-family: var(--font); }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* Branch switcher (compact, next to repo switcher) */
+.branch-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  margin-left: .4rem;
+  padding: .35rem .6rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+.branch-switch:hover { border-color: var(--accent); }
+.branch-switch .chev { opacity: .8; }
+
+.branch-dot {
+  width: 8px; height: 8px; border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(53,132,228,.18);
+}
+
+/* Popover container */
+.popover[hidden] { display: none !important; }
+.popover {
+  position: absolute;
+  z-index: 70;
+  min-width: 280px;
+  max-height: 60vh;
+  overflow: auto;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+}
+
+/* Popover header */
+.pop-head {
+  display: flex; gap: .5rem; align-items: center;
+  padding: .5rem; border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+#branch-filter {
+  flex: 1; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text);
+  border-radius: var(--r-sm); padding: .5rem .6rem;
+}
+
+/* Popover list */
+.pop-list { list-style: none; margin: 0; padding: .35rem; display: grid; gap: .25rem; }
+.pop-list li {
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  padding: .5rem .6rem; border-radius: var(--r-sm); cursor: pointer;
+}
+.pop-list li:hover { background: rgba(255,255,255,.04); }
+.pop-list li[aria-selected="true"] {
+  background: rgba(53,132,228,.12);
+  outline: 1px solid rgba(53,132,228,.35);
+}
+.pop-list .label {
+  display: inline-flex; align-items: center; gap:.45rem; min-width: 0;
+}
+.pop-list .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pop-list .badge { border-radius: 999px; font-size: .75rem; }
+

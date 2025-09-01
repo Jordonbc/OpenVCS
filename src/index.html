@@ -18,6 +18,13 @@
         </div>
         <span class="chev" aria-hidden="true">▾</span>
       </div>
+
+      <button class="branch-switch" id="branch-switch" title="Switch branch" aria-haspopup="listbox" aria-expanded="false">
+        <span class="branch-dot" aria-hidden="true"></span>
+        <span id="branch-name">main</span>
+        <span class="chev" aria-hidden="true">▾</span>
+      </button>
+
       <div class="title-actions">
         <button class="btn" id="fetch-btn" title="Fetch/Pull (F5)">Fetch</button>
         <button class="btn" id="push-btn" title="Push">Push</button>
@@ -159,6 +166,15 @@
         </div>
       </section>
     </div>
+  </div>
+  
+  <!-- Branch popover -->
+  <div class="popover" id="branch-pop" role="dialog" aria-modal="false" aria-label="Branches" hidden>
+    <div class="pop-head">
+      <input id="branch-filter" type="search" placeholder="Find or create branch…" aria-label="Filter branches">
+      <button class="pick" id="branch-new" type="button">New…</button>
+    </div>
+    <ul class="pop-list" id="branch-list" role="listbox" aria-label="Branch list"></ul>
   </div>
 </body>
 </html>
