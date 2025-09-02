@@ -67,6 +67,19 @@ qsa('[data-proto]').forEach(b => b.addEventListener('click', () => {
   b.classList.add('active');
 }));
 
+/* ----- About modal ----- */
+const aboutModal    = qs('#about-modal');
+const aboutVersion  = qs('#about-version');
+const aboutBuild    = qs('#about-build');
+const aboutHome     = qs('#about-home');
+const aboutRepo     = qs('#about-repo');
+const aboutLicenses = qs('#about-licenses');
+if (aboutModal) {
+  qsa('[data-close], .backdrop', aboutModal).forEach(el =>
+    el.addEventListener('click', () => aboutModal.classList.remove('show'))
+  );
+}
+
 /* =========================
    App state (persisted)
    ========================= */
@@ -198,7 +211,10 @@ window.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.key.toLowerCase() === 'f') { e.preventDefault(); filterInput.focus(); }
   if (e.ctrlKey && e.key.toLowerCase() === 'r') { e.preventDefault(); openSheet('switch'); }
   if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); commitBtn.click(); }
-  if (e.key === 'Escape' && modal.classList.contains('show')) { closeSheet(); }
+  if (e.key === 'Escape') {
+    if (modal?.classList.contains('show')) closeSheet();
+    if (aboutModal?.classList.contains('show')) aboutModal.classList.remove('show');
+  }
 });
 
 function renderList() {
@@ -280,7 +296,6 @@ function selectHistory(commit, index) {
     </div>`;
 }
 function renderHunks(hunks) {
-  // hunks: array of arrays-of-lines
   return hunks.map(renderHunk).join('');
 }
 function renderHunk(hunk) {
@@ -306,7 +321,6 @@ commitBtn.addEventListener('click', async () => {
     });
     notify(`Committed to ${state.branch}: ${summary}`);
     commitSummary.value = ''; commitDesc.value = '';
-    // After commit, refresh status/history
     hydrateStatus();
     hydrateCommits();
   } catch (e) {
@@ -361,7 +375,7 @@ TAURI.listen?.('menu', ({ payload: id }) => {
     case 'push':  pushBtn?.click();  break;
     case 'commit': commitBtn?.click(); break;
     case 'docs': notify('Open docs…'); break;
-    case 'about': notify('Open About…'); break;
+    case 'about': openAbout(); break;
   }
 });
 
@@ -425,7 +439,7 @@ doClone?.addEventListener('click', async () => {
     if (TAURI.has) await TAURI.invoke('clone_repo', { url, dest });
     notify(`Cloned ${url} → ${dest}`);
     closeSheet();
-    hydrateStatus();  // refresh UI after clone
+    hydrateStatus();
     hydrateCommits();
     hydrateBranches();
   } catch (e) { console.error(e); notify('Clone failed'); }
@@ -584,12 +598,12 @@ async function hydrateStatus() {
       state.files = result.files;
       renderList();
     }
-    // Optional: update ahead/behind in title (if you expose an element)
+    // Optionally update ahead/behind text if you want:
     // qs('#repo-branch')?.textContent = `${state.branch} · ${result.ahead||0} ahead, ${result.behind||0} behind`;
   } catch (e) { /* silent */ }
 }
 
-/* Load commit history (no demo fallback) */
+/* Load commit history */
 async function hydrateCommits() {
   try {
     if (!TAURI.has) return;
@@ -600,6 +614,42 @@ async function hydrateCommits() {
     }
   } catch (e) { /* silent */ }
 }
+
+/* =========================
+   About dialog
+   ========================= */
+async function openAbout() {
+  try {
+    let info = null;
+    if (TAURI.has) {
+      // Implement this command in Rust to return { version, build, homepage, repository }
+      info = await TAURI.invoke('about_info').catch(() => null);
+    }
+    const version = info?.version ? `v${info.version}` : '';
+    const build   = info?.build   ? info.build        : '';
+    const home    = info?.homepage || '';
+    const repo    = info?.repository || '';
+
+    if (aboutVersion) aboutVersion.textContent = version;
+    if (aboutBuild)   aboutBuild.textContent   = build;
+    if (aboutHome)  { aboutHome.href = home || '#'; aboutHome.toggleAttribute('disabled', !home); }
+    if (aboutRepo)  { aboutRepo.href = repo || '#'; aboutRepo.toggleAttribute('disabled', !repo); }
+
+    aboutModal?.classList.add('show');
+  } catch (e) {
+    console.error(e);
+    notify('Unable to load About');
+  }
+}
+
+aboutLicenses?.addEventListener('click', async () => {
+  try {
+    if (TAURI.has) {
+      // Optional: implement this on Rust side to show a licenses window or open a file.
+      await TAURI.invoke('show_licenses');
+    }
+  } catch (e) { console.error(e); notify('Unable to show licenses'); }
+});
 
 /* =========================
    Backend events

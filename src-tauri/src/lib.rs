@@ -1,4 +1,5 @@
 mod vcs;
+mod utilities;
 mod tauri_commands;
 use tauri::{menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder}, Emitter, Manager};
 
@@ -87,7 +88,11 @@ pub fn run() {
             let _ = app.app_handle().emit("menu", id);
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![tauri_commands::greet])
+        .invoke_handler(tauri::generate_handler![
+            tauri_commands::greet,
+            tauri_commands::about_info,
+            tauri_commands::show_licenses
+            ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -3,6 +3,8 @@ name = "openvcs"
 version = "0.1.0"
 description = "OpenVCS: a lightweight, highly customizable Git GUI built on Rust & Tauri"
 authors = ["Jordon Brooks"]
+homepage = "https://bbgames.dev"
+repository = "https://github.com/Jordonbc/OpenVCS"
 license = "GPL-3.0-or-later"
 edition = "2021"
 

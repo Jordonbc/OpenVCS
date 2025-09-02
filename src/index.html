@@ -29,7 +29,6 @@
         <button class="btn" id="fetch-btn" title="Fetch/Pull (F5)">Fetch</button>
         <button class="btn" id="push-btn" title="Push">Push</button>
         <button class="btn icon" id="theme-btn" title="Toggle theme" aria-label="Toggle theme">🌓</button>
-        <button class="btn primary" id="clone-btn" title="Clone or Add">Clone or Add</button>
       </div>
     </header>
 
@@ -175,6 +174,38 @@
       <button class="pick" id="branch-new" type="button">New…</button>
     </div>
     <ul class="pop-list" id="branch-list" role="listbox" aria-label="Branch list"></ul>
+  </div>
+
+  <!-- About modal -->
+  <div class="modal" id="about-modal" aria-hidden="true">
+    <div class="backdrop" data-close></div>
+    <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="about-title">
+      <div class="sheet-head">
+        <h3 id="about-title" style="margin:0">About OpenVCS</h3>
+        <button class="icon close" data-close aria-label="Close">✕</button>
+      </div>
+      <section class="sheet-body" style="display:grid; gap:.8rem;">
+        <div style="display:flex; align-items:center; gap:.8rem;">
+          <div style="width:40px; height:40px; border-radius:8px; background:var(--surface-2); display:flex; align-items:center; justify-content:center; font-weight:700;">
+            OV
+          </div>
+          <div>
+            <div style="font-weight:700;">OpenVCS <span id="about-version" style="font-weight:400; color:var(--muted)"></span></div>
+            <div id="about-build" style="font-size:.85rem; color:var(--muted)"></div>
+          </div>
+        </div>
+
+        <div style="font-size:.95rem;">
+          A fast, cross-platform Git client built with Rust &amp; Tauri.
+        </div>
+
+        <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+          <a id="about-home" class="tbtn" href="#" target="_blank" rel="noreferrer">Homepage</a>
+          <a id="about-repo" class="tbtn" href="#" target="_blank" rel="noreferrer">Repository</a>
+          <button class="tbtn" id="about-licenses" type="button">Licenses</button>
+        </div>
+      </section>
+    </div>
   </div>
 </body>
 </html>
