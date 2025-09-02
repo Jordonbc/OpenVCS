@@ -2,6 +2,7 @@ mod vcs;
 mod utilities;
 mod tauri_commands;
 use tauri::{menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder}, Emitter, Manager};
+use tauri_plugin_opener::OpenerExt;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -83,13 +84,20 @@ pub fn run() {
         })
         // forward native menu selections to the webview (your JS listens for "menu")
         .on_menu_event(|app, event| {
-            let id = event.id().0.to_string();
-            // Broadcast to all windows (v2)
+        let id = event.id().0.to_string();
+        match id.as_str() {
+            "docs" => {
+            let _ = app
+                .opener()
+                .open_url("https://github.com/jordonbc/OpenVCS/wiki", None::<&str>);
+            }
+            _ => {
             let _ = app.app_handle().emit("menu", id);
+            }
+        }
         })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            tauri_commands::greet,
             tauri_commands::about_info,
             tauri_commands::show_licenses
             ])
