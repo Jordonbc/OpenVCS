@@ -81,21 +81,27 @@ if (aboutModal) {
 }
 
 /* =========================
-   App state (persisted)
+   Preferences (persisted) vs Runtime state
    ========================= */
-const STORE_KEY = 'ovcs.desktop.v1';
-const initial = {
-  theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
-  leftW: 0,           // pixels; 0 means compute from container
-  tab: 'changes',
-  branch: 'main',
-  branches: [ { name: 'main', current: true } ],
-  files: [],          // from backend: [{ path, status, hunks: [lines…] }]
-  commits: [],        // from backend: [{ id, msg, meta }]
-};
-let state = Object.assign({}, initial, safeParse(localStorage.getItem(STORE_KEY)));
-function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+const PREFS_KEY = 'ovcs.prefs.v1';
 function safeParse(s) { try { return JSON.parse(s || '{}'); } catch { return {}; } }
+
+// Persisted UI preferences
+const defaultPrefs = {
+  theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+  leftW: 0,            // px; 0 = compute from container
+  tab: 'changes',
+};
+let prefs = Object.assign({}, defaultPrefs, safeParse(localStorage.getItem(PREFS_KEY)));
+function savePrefs() { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); }
+
+// Non-persisted runtime state (always hydrated from backend)
+let state = {
+  branch:   'main',
+  branches: [ { name: 'main', current: true } ],
+  files:    [],     // [{ path, status, hunks: [...] }]
+  commits:  [],     // [{ id, msg, meta, author }]
+};
 
 /* =========================
    Utilities
@@ -107,9 +113,9 @@ function notify(text) {
 }
 function setTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
-  state.theme = theme; save();
+  prefs.theme = theme; savePrefs();
 }
-function toggleTheme() { setTheme(state.theme === 'dark' ? 'light' : 'dark'); }
+function toggleTheme() { setTheme(prefs.theme === 'dark' ? 'light' : 'dark'); }
 function statusLabel(s) { return s === 'A' ? 'Added' : s === 'M' ? 'Modified' : s === 'D' ? 'Deleted' : 'Changed'; }
 function statusClass(s) { return s === 'A' ? 'add' : s === 'M' ? 'mod' : s === 'D' ? 'del' : 'mod'; }
 function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
@@ -119,17 +125,19 @@ function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&l
    ========================= */
 applyInitial();
 function applyInitial() {
-  setTheme(state.theme);
+  setTheme(prefs.theme);
+
   const curBranch = (state.branches.find(b => b.current) || {name: state.branch}).name;
   state.branch = curBranch;
   commitBranch.textContent = curBranch;
   if (branchName) branchName.textContent = curBranch;
-  setTab(state.tab);
-  initResizer();      // sets initial grid track & handlers
-  renderList();       // populate with current (empty) state
-  hydrateBranches();  // load from backend if available
-  hydrateStatus();    // load files and counts
-  hydrateCommits();   // load history
+
+  setTab(prefs.tab);
+  initResizer();
+  renderList();
+  hydrateBranches();
+  hydrateStatus();
+  hydrateCommits();
 }
 
 /* =========================
@@ -137,7 +145,7 @@ function applyInitial() {
    ========================= */
 tabs.forEach(btn => btn.addEventListener('click', () => setTab(btn.dataset.tab)));
 function setTab(tab) {
-  state.tab = tab; save();
+  prefs.tab = tab; savePrefs();
   tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   commitBox.style.display = tab === 'history' ? 'none' : 'grid';
   diffHeadPath.textContent = tab === 'history' ? 'Commit details' : 'Select a file to view changes';
@@ -162,7 +170,7 @@ function initResizer() {
   }
   function initialLeftPx() {
     const cw = currentContainerWidth();
-    const px = state.leftW && state.leftW > 0 ? state.leftW : Math.round(cw * 0.32);
+    const px = prefs.leftW && prefs.leftW > 0 ? prefs.leftW : Math.round(cw * 0.32);
     return clampLeft(px, cw);
   }
   function applyColumns(px) {
@@ -189,7 +197,7 @@ function initResizer() {
     if (!dragging) return;
     dragging = false;
     document.body.style.cursor = '';
-    state.leftW = leftPx; save();
+    prefs.leftW = leftPx; savePrefs();
   });
 
   // keep sane on window resize and at the stacked breakpoint
@@ -219,7 +227,7 @@ window.addEventListener('keydown', (e) => {
 
 function renderList() {
   listEl.innerHTML = '';
-  const isHistory = state.tab === 'history';
+  const isHistory = prefs.tab === 'history';
   const q = filterInput.value.trim().toLowerCase();
 
   if (isHistory) {
@@ -542,7 +550,6 @@ branchList?.addEventListener('click', async (e) => {
     state.branch = name;
     branchName.textContent = name;
     commitBranch.textContent = name;
-    save();
     renderBranches();
     closeBranchPopover();
     notify(`Switched to ${name}`);
@@ -564,7 +571,6 @@ qs('#branch-new')?.addEventListener('click', async () => {
     state.branch = name;
     branchName.textContent = name;
     commitBranch.textContent = name;
-    save();
     renderBranches();
     closeBranchPopover();
     notify(`Created branch ${name}`);
@@ -584,7 +590,6 @@ async function hydrateBranches() {
       state.branch = cur;
       branchName.textContent = cur;
       commitBranch.textContent = cur;
-      save();
     }
   } catch (e) { /* silent if not implemented */ }
 }
@@ -610,7 +615,7 @@ async function hydrateCommits() {
     const list = await TAURI.invoke('git_log', { limit: 100 }); // expect [{id,msg,meta,author}]
     if (Array.isArray(list)) {
       state.commits = list;
-      if (state.tab === 'history') renderList();
+      if (prefs.tab === 'history') renderList();
     }
   } catch (e) { /* silent */ }
 }
