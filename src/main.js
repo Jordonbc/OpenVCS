@@ -73,23 +73,12 @@ qsa('[data-proto]').forEach(b => b.addEventListener('click', () => {
 const STORE_KEY = 'ovcs.desktop.v1';
 const initial = {
   theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
-  leftW: 0,       // pixels; 0 means compute from container
+  leftW: 0,           // pixels; 0 means compute from container
   tab: 'changes',
   branch: 'main',
-  branches: [
-    { name: 'main', current: true },
-    { name: 'develop', current: false },
-    { name: 'feature/ui-refresh', current: false },
-  ],
-  demo: {
-    ahead: 2, behind: 0,
-    files: [
-      { path: 'src/main.rs', status: 'M', hunks: [['@@ 1,6 1,6 @@', '-fn main() {', '+fn main() {', '    println!("Running OpenVCS...");', '}']] },
-      { path: 'src/ui/panel.rs', status: 'A', hunks: [['@@ 0,0 1,12 @@', '+pub struct Panel {', '+  pub title: String,', '+}']] },
-      { path: 'README.md', status: 'D', hunks: [['@@ 1,3 0,0 @@', '-# OpenVCS', '-CLI + Tauri prototype', '-Work in progress']] },
-      { path: 'tauri.conf.json', status: 'M', hunks: [['@@ 10,14 10,14 @@', '  "tauri": {', '-    "bundle": {', '+    "bundle": { "active": true,', '      "identifier": "app.openvcs"', '    }', '  }']] },
-    ],
-  },
+  branches: [ { name: 'main', current: true } ],
+  files: [],          // from backend: [{ path, status, hunks: [lines…] }]
+  commits: [],        // from backend: [{ id, msg, meta }]
 };
 let state = Object.assign({}, initial, safeParse(localStorage.getItem(STORE_KEY)));
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
@@ -124,8 +113,10 @@ function applyInitial() {
   if (branchName) branchName.textContent = curBranch;
   setTab(state.tab);
   initResizer();      // sets initial grid track & handlers
-  renderList();       // populate left list
-  hydrateBranches();  // try to load from backend if available
+  renderList();       // populate with current (empty) state
+  hydrateBranches();  // load from backend if available
+  hydrateStatus();    // load files and counts
+  hydrateCommits();   // load history
 }
 
 /* =========================
@@ -216,44 +207,57 @@ function renderList() {
   const q = filterInput.value.trim().toLowerCase();
 
   if (isHistory) {
-    const commits = [
-      { id: 'b2c4a1e', msg: 'UI: introduce modern desktop layout', meta: 'You · 2m ago' },
-      { id: '9a77df0', msg: 'feat(core): add repo indexer',        meta: 'You · 2h ago' },
-      { id: 'ce22bb1', msg: 'chore: cargo update',                  meta: 'bot · yesterday' },
-    ].filter(c => !q || c.msg.toLowerCase().includes(q) || c.id.includes(q));
+    const commits = (state.commits || []).filter(c =>
+      !q || c.msg?.toLowerCase().includes(q) || c.id?.includes(q)
+    );
 
-    countEl.textContent = `${commits.length} commits`;
+    countEl.textContent = `${commits.length} commit${commits.length === 1 ? '' : 's'}`;
+
+    if (!commits.length) {
+      listEl.innerHTML = `<li class="row" aria-disabled="true"><div class="file">No commits loaded.</div></li>`;
+      diffHeadPath.textContent = 'Commit details';
+      diffEl.innerHTML = '';
+      return;
+    }
+
     commits.forEach((c, i) => {
       const li = document.createElement('li');
       li.className = 'row';
-      li.innerHTML = `<span class="badge">${c.id.slice(0,7)}</span>
-                      <div class="file" title="${c.msg}">${c.msg}</div>
-                      <span class="badge">${c.meta}</span>`;
+      li.innerHTML = `<span class="badge">${(c.id || '').slice(0,7)}</span>
+                      <div class="file" title="${escapeHtml(c.msg || '')}">${escapeHtml(c.msg || '(no message)')}</div>
+                      <span class="badge">${escapeHtml(c.meta || '')}</span>`;
       li.addEventListener('click', () => selectHistory(c, i));
       listEl.appendChild(li);
     });
-    if (commits[0]) selectHistory(commits[0], 0);
+    selectHistory(commits[0], 0);
     return;
   }
 
-  const files = (state.demo.files || []).filter(f =>
-    !q || f.path.toLowerCase().includes(q)
+  const files = (state.files || []).filter(f =>
+    !q || (f.path || '').toLowerCase().includes(q)
   );
-  countEl.textContent = `${files.length} files`;
+  countEl.textContent = `${files.length} file${files.length === 1 ? '' : 's'}`;
+
+  if (!files.length) {
+    listEl.innerHTML = `<li class="row" aria-disabled="true"><div class="file">No changes. Clone or add a repository to get started.</div></li>`;
+    diffHeadPath.textContent = 'Select a file to view changes';
+    diffEl.innerHTML = '';
+    return;
+  }
 
   files.forEach((f, i) => {
     const li = document.createElement('li');
     li.className = 'row';
     li.setAttribute('role', 'option');
     li.innerHTML = `
-      <span class="status ${statusClass(f.status)}">${f.status}</span>
-      <div class="file" title="${f.path}">${f.path}</div>
+      <span class="status ${statusClass(f.status)}">${escapeHtml(f.status || '')}</span>
+      <div class="file" title="${escapeHtml(f.path || '')}">${escapeHtml(f.path || '')}</div>
       <span class="badge">${statusLabel(f.status)}</span>`;
     li.addEventListener('click', () => selectFile(f, i));
     listEl.appendChild(li);
   });
 
-  if (files.length) selectFile(files[0], 0);
+  selectFile(files[0], 0);
 }
 
 function highlightRow(index) {
@@ -261,31 +265,37 @@ function highlightRow(index) {
 }
 function selectFile(file, index) {
   highlightRow(index);
-  diffHeadPath.textContent = file.path;
-  diffEl.innerHTML = file.hunks.map(renderHunk).join('');
+  diffHeadPath.textContent = file.path || '(unknown file)';
+  diffEl.innerHTML = renderHunks(file.hunks || []);
 }
 function selectHistory(commit, index) {
   highlightRow(index);
-  diffHeadPath.textContent = `Commit ${commit.id.slice(0,7)}`;
+  const id = (commit.id || '').slice(0,7);
+  diffHeadPath.textContent = `Commit ${id || '(unknown)'}`;
   diffEl.innerHTML = `
     <div class="hunk">
-      <div class="hline"><div class="gutter">commit</div><div class="code">${commit.id}</div></div>
-      <div class="hline"><div class="gutter">Author</div><div class="code">You &lt;you@example.com&gt;</div></div>
-      <div class="hline"><div class="gutter">Message</div><div class="code">${commit.msg}</div></div>
+      <div class="hline"><div class="gutter">commit</div><div class="code">${escapeHtml(commit.id || '')}</div></div>
+      <div class="hline"><div class="gutter">Author</div><div class="code">${escapeHtml(commit.author || 'You <you@example.com>')}</div></div>
+      <div class="hline"><div class="gutter">Message</div><div class="code">${escapeHtml(commit.msg || '')}</div></div>
     </div>`;
+}
+function renderHunks(hunks) {
+  // hunks: array of arrays-of-lines
+  return hunks.map(renderHunk).join('');
 }
 function renderHunk(hunk) {
   return `<div class="hunk">${
-    hunk.map((ln, i) => {
-      const t = ln.startsWith('+') ? 'add' : ln.startsWith('-') ? 'del' : '';
-      const safe = ln.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    (hunk || []).map((ln, i) => {
+      const t = typeof ln === 'string' && ln.startsWith('+') ? 'add'
+            : typeof ln === 'string' && ln.startsWith('-') ? 'del' : '';
+      const safe = escapeHtml(String(ln));
       return `<div class="hline ${t}"><div class="gutter">${i+1}</div><div class="code">${safe}</div></div>`;
     }).join('')
   }</div>`;
 }
 
 /* =========================
-   Commit action (mock + hook)
+   Commit action (hook)
    ========================= */
 commitBtn.addEventListener('click', async () => {
   const summary = commitSummary.value.trim();
@@ -296,6 +306,9 @@ commitBtn.addEventListener('click', async () => {
     });
     notify(`Committed to ${state.branch}: ${summary}`);
     commitSummary.value = ''; commitDesc.value = '';
+    // After commit, refresh status/history
+    hydrateStatus();
+    hydrateCommits();
   } catch (e) {
     console.error(e); notify('Commit failed');
   }
@@ -307,13 +320,19 @@ commitBtn.addEventListener('click', async () => {
 themeBtn?.addEventListener('click', toggleTheme);
 
 fetchBtn?.addEventListener('click', async () => {
-  try { if (TAURI.has) await TAURI.invoke('git_fetch', {}); notify('Fetched'); }
-  catch (e) { console.error(e); notify('Fetch failed'); }
+  try {
+    if (TAURI.has) await TAURI.invoke('git_fetch', {});
+    notify('Fetched');
+    hydrateStatus();
+    hydrateCommits();
+  } catch (e) { console.error(e); notify('Fetch failed'); }
 });
 
 pushBtn?.addEventListener('click', async () => {
-  try { if (TAURI.has) await TAURI.invoke('git_push', {}); notify('Pushed'); }
-  catch (e) { console.error(e); notify('Push failed'); }
+  try {
+    if (TAURI.has) await TAURI.invoke('git_push', {});
+    notify('Pushed');
+  } catch (e) { console.error(e); notify('Push failed'); }
 });
 
 cloneBtn?.addEventListener('click', () => openSheet('clone'));
@@ -328,7 +347,7 @@ TAURI.listen?.('menu', ({ payload: id }) => {
     case 'add_repo':   openSheet('add');   break;
     case 'open_repo':  openSheet('switch');break;
     case 'toggle_theme': themeBtn?.click(); break;
-    case 'toggle_left':  /* basic toggle for wide layout */
+    case 'toggle_left':
       {
         const stacked = window.matchMedia('(max-width: 980px)').matches;
         if (!stacked) {
@@ -406,6 +425,9 @@ doClone?.addEventListener('click', async () => {
     if (TAURI.has) await TAURI.invoke('clone_repo', { url, dest });
     notify(`Cloned ${url} → ${dest}`);
     closeSheet();
+    hydrateStatus();  // refresh UI after clone
+    hydrateCommits();
+    hydrateBranches();
   } catch (e) { console.error(e); notify('Clone failed'); }
 });
 doAdd?.addEventListener('click', async () => {
@@ -416,25 +438,24 @@ doAdd?.addEventListener('click', async () => {
     if (TAURI.has) await TAURI.invoke('add_repo', { path });
     notify(`Added ${path}`);
     closeSheet();
+    hydrateStatus();
+    hydrateCommits();
+    hydrateBranches();
   } catch (e) { console.error(e); notify('Add failed'); }
 });
 
-/* Populate recents and wire per-item Open buttons */
+/* Populate recents (no mock fallback) */
 (async function loadRecents() {
   try {
-    let recents = [
-      { name: 'OpenVCS',    path: '~/Projects/OpenVCS' },
-      { name: 'Lunaris',    path: '~/Projects/Lunaris' },
-      { name: 'HarmonyLink',path: '~/Projects/HarmonyLink' },
-    ];
+    let recents = [];
     if (TAURI.has) {
       const fromRust = await TAURI.invoke('list_recent_repos').catch(() => null);
-      if (Array.isArray(fromRust) && fromRust.length) recents = fromRust;
+      if (Array.isArray(fromRust)) recents = fromRust;
     }
-    recentList.innerHTML = recents.map(r =>
+    recentList.innerHTML = (recents || []).map(r =>
       `<li data-path="${r.path}">
-         <div><strong>${escapeHtml(r.name || r.path.split('/').pop())}</strong>
-         <div class="path">${escapeHtml(r.path)}</div></div>
+         <div><strong>${escapeHtml(r.name || (r.path || '').split('/').pop() || '')}</strong>
+         <div class="path">${escapeHtml(r.path || '')}</div></div>
          <button class="tbtn" type="button" data-open>Open</button>
        </li>`
     ).join('');
@@ -445,6 +466,9 @@ doAdd?.addEventListener('click', async () => {
       try {
         if (TAURI.has) await TAURI.invoke('open_repo', { path });
         notify(`Opened ${path}`); closeSheet();
+        hydrateStatus();
+        hydrateCommits();
+        hydrateBranches();
       } catch (err) { console.error(err); notify('Open failed'); }
     });
   } catch (e) { console.error(e); }
@@ -500,7 +524,6 @@ branchList?.addEventListener('click', async (e) => {
 
   try {
     if (TAURI.has) await TAURI.invoke('git_checkout_branch', { name });
-    // update UI state
     state.branches.forEach(b => b.current = (b.name === name));
     state.branch = name;
     branchName.textContent = name;
@@ -509,6 +532,8 @@ branchList?.addEventListener('click', async (e) => {
     renderBranches();
     closeBranchPopover();
     notify(`Switched to ${name}`);
+    hydrateStatus();
+    hydrateCommits();
   } catch (err) {
     console.error(err); notify('Checkout failed');
   }
@@ -529,6 +554,8 @@ qs('#branch-new')?.addEventListener('click', async () => {
     renderBranches();
     closeBranchPopover();
     notify(`Created branch ${name}`);
+    hydrateStatus();
+    hydrateCommits();
   } catch (e) { console.error(e); notify('Create branch failed'); }
 });
 
@@ -546,6 +573,32 @@ async function hydrateBranches() {
       save();
     }
   } catch (e) { /* silent if not implemented */ }
+}
+
+/* Load working tree status */
+async function hydrateStatus() {
+  try {
+    if (!TAURI.has) return;
+    const result = await TAURI.invoke('git_status'); // expect { files: [{path,status,hunks:[...]}], ahead, behind }
+    if (result && Array.isArray(result.files)) {
+      state.files = result.files;
+      renderList();
+    }
+    // Optional: update ahead/behind in title (if you expose an element)
+    // qs('#repo-branch')?.textContent = `${state.branch} · ${result.ahead||0} ahead, ${result.behind||0} behind`;
+  } catch (e) { /* silent */ }
+}
+
+/* Load commit history (no demo fallback) */
+async function hydrateCommits() {
+  try {
+    if (!TAURI.has) return;
+    const list = await TAURI.invoke('git_log', { limit: 100 }); // expect [{id,msg,meta,author}]
+    if (Array.isArray(list)) {
+      state.commits = list;
+      if (state.tab === 'history') renderList();
+    }
+  } catch (e) { /* silent */ }
 }
 
 /* =========================
