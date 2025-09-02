@@ -13,15 +13,15 @@
     <header class="titlebar" role="banner">
       <div class="repo-switch" id="repo-switch" title="Switch repository (Ctrl+R)" role="button" tabindex="0" aria-haspopup="dialog">
         <div class="repo-meta">
-          <div class="repo-title" id="repo-title">OpenVCS</div>
-          <div class="repo-branch" id="repo-branch">main · 0 ahead, 0 behind</div>
+          <div class="repo-title" id="repo-title">Click to open Repo</div>
+          <div class="repo-branch" id="repo-branch">No repo open</div>
         </div>
         <span class="chev" aria-hidden="true">▾</span>
       </div>
 
       <button class="branch-switch" id="branch-switch" title="Switch branch" aria-haspopup="listbox" aria-expanded="false">
         <span class="branch-dot" aria-hidden="true"></span>
-        <span id="branch-name">main</span>
+        <span id="branch-name">No repo open</span>
         <span class="chev" aria-hidden="true">▾</span>
       </button>
 
@@ -74,9 +74,7 @@
           </div>
           <div class="actions">
             <span class="kbd">Ctrl+Enter</span>
-            <button class="btn primary" id="commit-btn">
-              Commit to <span id="commit-branch">main</span>
-            </button>
+            <button class="btn primary" id="commit-btn">Commit</button>
           </div>
         </section>
       </main>

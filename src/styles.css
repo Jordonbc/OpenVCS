@@ -113,6 +113,26 @@ body { margin: 0; font-family: var(--font); }
 .tbtn.primary.big { padding: .55rem .9rem; border-radius: var(--r-lg); }
 .btn.icon { padding: .32rem .5rem; border-radius: var(--r-sm); }
 
+/* Make ALL disabled buttons actually look & behave disabled */
+button:disabled,
+.btn:disabled,
+.btn.primary:disabled,
+.tbtn:disabled,
+.pick:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;           /* stop hover/click */
+  transform: none !important;     /* stop press animation */
+}
+
+/* For primary buttons, mute the background when disabled */
+.btn.primary:disabled,
+.tbtn.primary:disabled {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--muted);
+}
+
 /* Tabs */
 .tabs {
   display: flex; align-items: center; gap: .25rem;

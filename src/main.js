@@ -37,7 +37,6 @@ const commitBox    = qs('#commit');
 const commitSummary= qs('#commit-summary');
 const commitDesc   = qs('#commit-desc');
 const commitBtn    = qs('#commit-btn');
-const commitBranch = qs('#commit-branch');
 
 /* ---- Branch UI ---- */
 const branchBtn    = qs('#branch-switch');
@@ -97,11 +96,15 @@ function savePrefs() { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); }
 
 // Non-persisted runtime state (always hydrated from backend)
 let state = {
-  branch:   'main',
-  branches: [ { name: 'main', current: true } ],
+  hasRepo: false,
+  branch:   '',
+  branches: [ { name: '', current: true } ],
   files:    [],     // [{ path, status, hunks: [...] }]
   commits:  [],     // [{ id, msg, meta, author }]
 };
+
+function hasRepo()    { return !!state.hasRepo && !!state.branch; }
+function hasChanges() { return Array.isArray(state.files) && state.files.length > 0; }
 
 /* =========================
    Utilities
@@ -129,12 +132,12 @@ function applyInitial() {
 
   const curBranch = (state.branches.find(b => b.current) || {name: state.branch}).name;
   state.branch = curBranch;
-  commitBranch.textContent = curBranch;
   if (branchName) branchName.textContent = curBranch;
 
   setTab(prefs.tab);
   initResizer();
   renderList();
+  refreshRepoActions();
   hydrateBranches();
   hydrateStatus();
   hydrateCommits();
@@ -224,6 +227,28 @@ window.addEventListener('keydown', (e) => {
     if (aboutModal?.classList.contains('show')) aboutModal.classList.remove('show');
   }
 });
+
+function refreshRepoActions() {
+  const repo = hasRepo();
+
+  // Titlebar items
+  fetchBtn && (fetchBtn.disabled  = !repo);
+  pushBtn  && (pushBtn.disabled   = !repo);
+  branchBtn&& (branchBtn.disabled = !repo);
+
+  // Commit panel
+  const summaryFilled = !!commitSummary?.value.trim();
+  if (commitSummary) commitSummary.disabled = !repo || !hasChanges();
+  if (commitDesc)    commitDesc.disabled    = !repo;
+  if (commitBtn)     commitBtn.disabled     = !repo || !hasChanges() || !summaryFilled;
+
+  // Optional: visually mute the whole commit box when inactive
+  if (commitBox) commitBox.classList.toggle('disabled', !repo || !hasChanges());
+}
+
+// keep button state live while typing summary
+commitSummary?.addEventListener('input', refreshRepoActions);
+
 
 function renderList() {
   listEl.innerHTML = '';
@@ -549,7 +574,6 @@ branchList?.addEventListener('click', async (e) => {
     state.branches.forEach(b => b.current = (b.name === name));
     state.branch = name;
     branchName.textContent = name;
-    commitBranch.textContent = name;
     renderBranches();
     closeBranchPopover();
     notify(`Switched to ${name}`);
@@ -561,7 +585,7 @@ branchList?.addEventListener('click', async (e) => {
 });
 
 qs('#branch-new')?.addEventListener('click', async () => {
-  const base = (state.branches.find(b => b.current) || {}).name || 'main';
+  const base = (state.branches.find(b => b.current) || {}).name || '';
   const name = prompt(`New branch name (from ${base})`);
   if (!name) return;
   try {
@@ -570,7 +594,6 @@ qs('#branch-new')?.addEventListener('click', async () => {
     state.branches.unshift({ name, current: true });
     state.branch = name;
     branchName.textContent = name;
-    commitBranch.textContent = name;
     renderBranches();
     closeBranchPopover();
     notify(`Created branch ${name}`);
@@ -584,40 +607,62 @@ async function hydrateBranches() {
   try {
     if (!TAURI.has) return;
     const list = await TAURI.invoke('list_branches'); // expect [{name, current}]
-    if (Array.isArray(list) && list.length) {
+    state.hasRepo = Array.isArray(list) && list.length > 0;
+    if (state.hasRepo) {
       state.branches = list;
       const cur = list.find(b => b.current)?.name || state.branch || 'main';
       state.branch = cur;
       branchName.textContent = cur;
-      commitBranch.textContent = cur;
+    } else {
+      state.branch = '';
+      branchName.textContent = '';
+      state.branches = [ { name: '', current: true } ];
+      state.files = [];
+      state.commits = [];
+      renderList();
     }
-  } catch (e) { /* silent if not implemented */ }
+    refreshRepoActions();
+  } catch (_) { /* silent */ }
 }
 
 /* Load working tree status */
 async function hydrateStatus() {
   try {
     if (!TAURI.has) return;
-    const result = await TAURI.invoke('git_status'); // expect { files: [{path,status,hunks:[...]}], ahead, behind }
+    const result = await TAURI.invoke('git_status'); // { files, ahead, behind }
+    // If this returns, we consider a repo selected (backend should error if not)
+    state.hasRepo = true;
     if (result && Array.isArray(result.files)) {
       state.files = result.files;
       renderList();
     }
-    // Optionally update ahead/behind text if you want:
-    // qs('#repo-branch')?.textContent = `${state.branch} · ${result.ahead||0} ahead, ${result.behind||0} behind`;
-  } catch (e) { /* silent */ }
+  } catch (_) {
+    // If status fails, we probably don't have a repo
+    state.hasRepo = false;
+    state.files = [];
+    renderList();
+  } finally {
+    refreshRepoActions();
+  }
 }
 
 /* Load commit history */
 async function hydrateCommits() {
   try {
     if (!TAURI.has) return;
-    const list = await TAURI.invoke('git_log', { limit: 100 }); // expect [{id,msg,meta,author}]
+    const list = await TAURI.invoke('git_log', { limit: 100 });
+    // If this succeeds, we have a repo
+    state.hasRepo = true;
     if (Array.isArray(list)) {
       state.commits = list;
       if (prefs.tab === 'history') renderList();
     }
-  } catch (e) { /* silent */ }
+  } catch (_) {
+    state.hasRepo = false;
+    state.commits = [];
+  } finally {
+    refreshRepoActions();
+  }
 }
 
 /* =========================
