@@ -5,7 +5,7 @@ on:
     branches: [ Dev ]
 
 jobs:
-  publish-tauri:
+  compile:
     permissions:
       contents: write
     strategy:
