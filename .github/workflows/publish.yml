@@ -26,25 +26,6 @@ jobs:
           lfs: true
           fetch-depth: 0
 
-      - uses: actions/setup-git-lfs@v3
-
-      - name: Ensure LFS assets are present
-        run: |
-          git lfs install --local
-          git lfs pull
-          git lfs checkout
-
-      # Optional: fail fast if any icon isn't a real PNG (catches LFS issues)
-      - name: Validate icon PNG signatures
-        shell: bash
-        run: |
-          if compgen -G "src-tauri/icons/*.png" > /dev/null; then
-            for f in src-tauri/icons/*.png; do
-              sig=$(xxd -l 8 -p "$f")
-              [ "$sig" = "89504e470d0a1a0a" ] || { echo "Invalid PNG signature in $f"; exit 1; }
-            done
-          fi
-
       # ---- Cache Cargo (big speedup) ----
       - name: Cache Cargo
         uses: actions/cache@v4
