@@ -1,4 +1,4 @@
-mod vcs;
+mod git;
 mod utilities;
 mod tauri_commands;
 mod menus;
