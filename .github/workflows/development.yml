@@ -3,7 +3,6 @@ name: development
 on:
   push:
     branches: [ Dev ]
-  workflow_dispatch:
 
 jobs:
   publish-tauri:
