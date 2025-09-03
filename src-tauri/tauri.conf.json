@@ -59,6 +59,6 @@
         "release": "1"
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": false
   }
 }

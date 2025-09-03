@@ -30,6 +30,6 @@ pub fn apply_linux_nvidia_workaround() {
 
 #[cfg(not(target_os = "linux"))]
 #[inline]
-fn apply_linux_nvidia_workaround() {
+pub fn apply_linux_nvidia_workaround() {
     // no-op on non-Linux
 }
