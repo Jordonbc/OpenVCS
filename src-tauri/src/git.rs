@@ -243,11 +243,12 @@ impl Git {
 
     pub fn push_refspec(&self, remote: &str, refspec: &str) -> Result<()> {
         let cb = make_remote_callbacks();
+
         let mut opts = PushOptions::new();
-        opts.remote_callbacks(cb);
+        opts.remote_callbacks(cb); // attach creds here
 
         let mut r = self.repo.find_remote(remote)?;
-        r.connect(Direction::Push)?;
+        // Do NOT call r.connect(...) first; let push() establish the connection with callbacks.
         r.push(&[refspec], Some(&mut opts))?;
         Ok(())
     }
