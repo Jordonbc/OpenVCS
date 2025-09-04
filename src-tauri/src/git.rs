@@ -346,7 +346,7 @@ where
     let on = Arc::new(on);
     let mut cb = git2::RemoteCallbacks::new();
 
-    // -------- CREDENTIALS --------
+    // ---- credentials: single attempt, then abort with Auth error ----
     let attempts = Arc::new(AtomicUsize::new(0));
     {
         let on = Arc::clone(&on);
@@ -354,48 +354,37 @@ where
 
         cb.credentials(move |url, username_from_url, allowed| {
             let n = attempts.fetch_add(1, Ordering::SeqCst) + 1;
-            (on)(format!(
-                "auth: attempt #{n}, allowed={:?}, url={url}, user_hint={:?}, SSH_AUTH_SOCK={:?}",
-                allowed,
-                username_from_url,
-                env::var("SSH_AUTH_SOCK").ok()
-            ));
-
-            // We’re on SSH (your URL is `git@github.com:...`), so try SSH-only flow:
             let user = username_from_url.unwrap_or("git");
 
+            (on)(format!(
+                "auth: attempt #{n}, allowed={:?}, url={url}, user_hint={:?}",
+                allowed, username_from_url
+            ));
+
             if allowed.contains(git2::CredentialType::SSH_KEY) {
-                (on)(format!("auth: trying SSH agent for user `{user}`"));
-                match git2::Cred::ssh_key_from_agent(user) {
-                    Ok(cred) => return Ok(cred),
-                    Err(e) => (on)(format!("auth: SSH agent error: {e}")),
-                }
-
-                // Fallback: try explicit key files
-                let home = env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("~"));
-                for name in ["id_ed25519", "id_rsa"] {
-                    let privkey = home.join(".ssh").join(name);
-                    if privkey.exists() {
-                        let pass = env::var("SSH_KEY_PASSPHRASE").ok(); // optional
-                        (on)(format!("auth: trying key file {}", privkey.display()));
-                        match git2::Cred::ssh_key(user, None, &privkey, pass.as_deref()) {
-                            Ok(cred) => return Ok(cred),
-                            Err(e) => (on)(format!("auth: key {} rejected: {e}", privkey.display())),
-                        }
-                    }
+                if n == 1 {
+                    (on)(format!("auth: trying SSH agent for user `{user}`"));
+                    return git2::Cred::ssh_key_from_agent(user);
+                } else {
+                    // Abort further retries – tell libgit2 this is an auth failure.
+                    return Err(git2::Error::new(
+                        git2::ErrorCode::Auth,
+                        git2::ErrorClass::Ssh,
+                        "auth: agent key rejected; aborting",
+                    ));
                 }
             }
 
-            // Prevent endless retry loops; fail clearly after a few tries.
-            if n >= 3 {
-                return Err(git2::Error::from_str("auth: exceeded attempts (no usable SSH credential)"));
-            }
-
-           Err(git2::Error::from_str("auth: no SSH agent and no key files found"))
+            // No supported credential type – abort auth.
+            Err(git2::Error::new(
+                git2::ErrorCode::Auth,
+                git2::ErrorClass::Ssh,
+                "auth: no usable SSH credential",
+            ))
         });
     }
 
-    // -------- SIDE BAND (remote messages) --------
+    // --- sideband messages ---
     {
         let on = Arc::clone(&on);
         cb.sideband_progress(move |data| {
@@ -406,7 +395,7 @@ where
         });
     }
 
-    // -------- TRANSFER / PUSH PROGRESS --------
+    // --- push progress ---
     {
         let on = Arc::clone(&on);
         cb.transfer_progress(move |p| {
@@ -421,7 +410,7 @@ where
         });
     }
 
-    // -------- PER-REF PUSH STATUS (server-side rejection reason) --------
+    // --- per-ref push status ---
     {
         let on = Arc::clone(&on);
         cb.push_update_reference(move |refname, status| {
@@ -436,9 +425,6 @@ where
 
     cb
 }
-
-
-
 
 /// Turn absolute path into repo-relative for index operations.
 fn rel_to_workdir(workdir: &Path, p: &Path) -> Result<PathBuf> {
