@@ -5,7 +5,7 @@ use tauri::{Emitter, Manager, Runtime, State, Window};
 use crate::state::AppState;
 use crate::utilities::utilities;
 use crate::validate;
-use crate::git::{BranchItem, CommitItem, FileEntry, Git, StatusPayload};
+use crate::git::{git_identity, BranchItem, CommitItem, FileEntry, Git, GitError, StatusPayload};
 
 #[tauri::command]
 pub fn about_info() -> utilities::AboutInfo {
@@ -255,4 +255,33 @@ pub fn git_diff_file(state: tauri::State<'_, AppState>, path: String) -> Result<
     }).map_err(|e| e.to_string())?;
 
     Ok(lines)
+}
+
+#[tauri::command]
+pub fn commit_changes(
+    state: State<'_, AppState>,
+    summary: String,
+    description: Option<String>,
+) -> Result<(), String> {
+    // Build final message (summary + optional blank line + body)
+    let message = match description.as_deref().map(str::trim) {
+        Some(d) if !d.is_empty() => format!("{summary}\n\n{d}"),
+        _ => summary,
+    };
+
+    // Open repo via your Git wrapper
+    let root = get_repo_root(&state)?; // or your local helper
+    let git  = Git::open(&root).map_err(|e| e.to_string())?;
+
+    // Identity from repo config (falls back if missing)
+    let (name, email) = git_identity(&git)
+        .unwrap_or_else(|| ("You".to_string(), "you@example.com".to_string()));
+
+    // Stage (handled inside Git::commit when paths is empty) + commit
+    // This calls your Git::commit(message, name, email, paths)
+    match git.commit(&message, &name, &email, &[]) {
+        Ok(_oid) => Ok(()),
+        Err(GitError::NothingToCommit) => Err("Nothing to commit".to_string()),
+        Err(e) => Err(e.to_string()),
+    }
 }

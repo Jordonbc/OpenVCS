@@ -45,6 +45,9 @@ const branchPop    = qs('#branch-pop');
 const branchFilter = qs('#branch-filter');
 const branchList   = qs('#branch-list');
 
+const repoTitleEl  = qs('#repo-title');
+const repoBranchEl = qs('#repo-branch');
+
 /* ----- Command Sheet (modal) ----- */
 const modal        = qs('#modal');
 const sheetTabs    = qsa('.seg-btn[data-sheet]');
@@ -641,13 +644,15 @@ qs('#branch-new')?.addEventListener('click', async () => {
 async function hydrateBranches() {
   try {
     if (!TAURI.has) return;
-    const list = await TAURI.invoke('list_branches'); // expect [{name, current}]
+    const list = await TAURI.invoke('list_branches');
     state.hasRepo = Array.isArray(list) && list.length > 0;
     if (state.hasRepo) {
       state.branches = list;
       const cur = list.find(b => b.current)?.name || state.branch || 'main';
       state.branch = cur;
       branchName.textContent = cur;
+      // keep header’s branch label in sync
+      if (repoBranchEl) repoBranchEl.textContent = cur;
     } else {
       state.branch = '';
       branchName.textContent = '';
@@ -655,6 +660,7 @@ async function hydrateBranches() {
       state.files = [];
       state.commits = [];
       renderList();
+      resetRepoHeader(); // show “Click to open Repo / No repo open”
     }
     refreshRepoActions();
   } catch (_) { /* silent */ }
@@ -766,3 +772,24 @@ TAURI.listen?.('git-progress', ({ payload }) => {
   });
 })();
 
+function setRepoHeader(pathMaybe) {
+  if (repoTitleEl && pathMaybe) {
+    const base = String(pathMaybe).replace(/[\\/]+$/, '').split(/[/\\]/).pop() || pathMaybe;
+    repoTitleEl.textContent = base;
+  }
+  if (repoBranchEl) {
+    repoBranchEl.textContent = state.branch || 'No repo open';
+  }
+}
+function resetRepoHeader() {
+  if (repoTitleEl)  repoTitleEl.textContent  = 'Click to open Repo';
+  if (repoBranchEl) repoBranchEl.textContent = 'No repo open';
+}
+
+TAURI.listen?.('repo:selected', async ({ payload: path }) => {
+  setRepoHeader(path);           // set name from selected path right away
+  closeSheet?.();
+  await hydrateBranches();       // updates state.branch
+  setRepoHeader(path);           // refresh branch label now that state.branch is known
+  await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+});

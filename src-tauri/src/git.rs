@@ -372,3 +372,12 @@ pub struct CommitItem {
     pub meta: String,     // commit date or short info
     pub author: String,
 }
+
+/* Helper: read identity via your Git::inner() */
+pub fn git_identity(git: &Git) -> Option<(String, String)> {
+    let cfg = git.inner().config().ok()?;
+    let name  = cfg.get_string("user.name").ok()?;
+    let email = cfg.get_string("user.email").ok()?;
+    if name.trim().is_empty() || email.trim().is_empty() { return None; }
+    Some((name, email))
+}
