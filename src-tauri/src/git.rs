@@ -1,4 +1,4 @@
-use std::{path::{Path, PathBuf}, sync::Arc};
+use std::{env, path::{Path, PathBuf}, sync::{atomic::{AtomicUsize, Ordering}, Arc}};
 
 use git2::{
     self as g,
@@ -259,13 +259,14 @@ impl Git {
     where
         F: Fn(String) + Send + Sync + 'static,
     {
-        println!("Pushing {refspec} to {remote} (with progress)...");
+        println!("Attempting to push {refspec} to {remote}...");
         let cb = make_remote_callbacks_with_progress(on);
         let mut opts = PushOptions::new();
         opts.remote_callbacks(cb);
 
+        println!("Finding remote {remote}...");
         let mut r = self.repo.find_remote(remote)?;
-        // Let `push()` establish connection so callbacks are used for auth
+        println!("Remote found, starting push...");
         r.push(&[refspec], Some(&mut opts))?;
         println!("Push completed.");
         Ok(())
@@ -345,24 +346,56 @@ where
     let on = Arc::new(on);
     let mut cb = git2::RemoteCallbacks::new();
 
-    // --- credentials (same as before) ---
-    cb.credentials(|_url, username_from_url, allowed| {
-        if allowed.contains(git2::CredentialType::SSH_KEY) {
-            let user = username_from_url.unwrap_or("git");
-            return git2::Cred::ssh_key_from_agent(user);
-        }
-        if allowed.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
-            if let Ok(token) = std::env::var("GIT_TOKEN")
-                .or_else(|_| std::env::var("GITHUB_TOKEN"))
-            {
-                let user = username_from_url.unwrap_or("git");
-                return git2::Cred::userpass_plaintext(user, &token);
-            }
-        }
-        git2::Cred::default()
-    });
+    // -------- CREDENTIALS --------
+    let attempts = Arc::new(AtomicUsize::new(0));
+    {
+        let on = Arc::clone(&on);
+        let attempts = Arc::clone(&attempts);
 
-    // --- sideband (remote messages) ---
+        cb.credentials(move |url, username_from_url, allowed| {
+            let n = attempts.fetch_add(1, Ordering::SeqCst) + 1;
+            (on)(format!(
+                "auth: attempt #{n}, allowed={:?}, url={url}, user_hint={:?}, SSH_AUTH_SOCK={:?}",
+                allowed,
+                username_from_url,
+                env::var("SSH_AUTH_SOCK").ok()
+            ));
+
+            // We’re on SSH (your URL is `git@github.com:...`), so try SSH-only flow:
+            let user = username_from_url.unwrap_or("git");
+
+            if allowed.contains(git2::CredentialType::SSH_KEY) {
+                (on)(format!("auth: trying SSH agent for user `{user}`"));
+                match git2::Cred::ssh_key_from_agent(user) {
+                    Ok(cred) => return Ok(cred),
+                    Err(e) => (on)(format!("auth: SSH agent error: {e}")),
+                }
+
+                // Fallback: try explicit key files
+                let home = env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("~"));
+                for name in ["id_ed25519", "id_rsa"] {
+                    let privkey = home.join(".ssh").join(name);
+                    if privkey.exists() {
+                        let pass = env::var("SSH_KEY_PASSPHRASE").ok(); // optional
+                        (on)(format!("auth: trying key file {}", privkey.display()));
+                        match git2::Cred::ssh_key(user, None, &privkey, pass.as_deref()) {
+                            Ok(cred) => return Ok(cred),
+                            Err(e) => (on)(format!("auth: key {} rejected: {e}", privkey.display())),
+                        }
+                    }
+                }
+            }
+
+            // Prevent endless retry loops; fail clearly after a few tries.
+            if n >= 3 {
+                return Err(git2::Error::from_str("auth: exceeded attempts (no usable SSH credential)"));
+            }
+
+           Err(git2::Error::from_str("auth: no SSH agent and no key files found"))
+        });
+    }
+
+    // -------- SIDE BAND (remote messages) --------
     {
         let on = Arc::clone(&on);
         cb.sideband_progress(move |data| {
@@ -373,7 +406,7 @@ where
         });
     }
 
-    // --- transfer progress ---
+    // -------- TRANSFER / PUSH PROGRESS --------
     {
         let on = Arc::clone(&on);
         cb.transfer_progress(move |p| {
@@ -388,8 +421,23 @@ where
         });
     }
 
+    // -------- PER-REF PUSH STATUS (server-side rejection reason) --------
+    {
+        let on = Arc::clone(&on);
+        cb.push_update_reference(move |refname, status| {
+            if let Some(s) = status {
+                (on)(format!("push status: {refname} → {s}"));
+            } else {
+                (on)(format!("push status: {refname} ok"));
+            }
+            Ok(())
+        });
+    }
+
     cb
 }
+
+
 
 
 /// Turn absolute path into repo-relative for index operations.

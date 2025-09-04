@@ -1,3 +1,4 @@
+use std::clone;
 use std::path::{Path, PathBuf};
 
 use chrono::DateTime;
@@ -359,24 +360,41 @@ pub async fn git_push<R: tauri::Runtime>(
     let root = get_repo_root(&state)?;
 
     // Detach a cloneable, 'static handle before spawning
-    let app_handle = window.app_handle();
+    let app_handle     = window.app_handle();
     let app_for_worker = app_handle.clone();
     let app_for_final  = app_handle.clone();
-    drop(window);
+    drop(window); // ensure we don't capture `window`
 
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-        let git = Git::open(&root).map_err(|e| e.to_string())?;
+        let git = Git::open(&root).map_err(|e| {
+            let msg = format!("Failed to open repo: {e}");
+            eprintln!("{msg}");
+            msg
+        })?;
+
+        // NOTE: `move` is required so the closure owns `app_for_worker` (`'static`).
         git.push_current_with_progress("origin", move |m| {
+            // Emit to UI and also log to console
             let _ = app_for_worker.emit(
                 "git-progress",
-                ProgressPayload { message: m }
+                ProgressPayload { message: m.clone() }
             );
+            println!("Push progress: {m}");
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            let msg = format!("Push failed: {e}");
+            eprintln!("{msg}");
+            msg
+        })?;
+
         Ok(())
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| {
+        let msg = format!("Join error in async task: {e}");
+        eprintln!("{msg}");
+        msg
+    })??;
 
     let _ = app_for_final.emit(
         "git-progress",
@@ -385,3 +403,4 @@ pub async fn git_push<R: tauri::Runtime>(
 
     Ok(())
 }
+
