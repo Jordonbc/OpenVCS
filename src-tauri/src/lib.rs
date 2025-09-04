@@ -3,6 +3,7 @@ mod utilities;
 mod tauri_commands;
 mod menus;
 mod workarounds;
+mod globals;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -17,6 +18,7 @@ pub fn run() {
         })
         .on_menu_event(menus::handle_menu_event::<_>)
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(build_invoke_handler::<_>())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -26,6 +28,7 @@ pub fn run() {
 fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         tauri_commands::about_info,
-        tauri_commands::show_licenses
+        tauri_commands::show_licenses,
+        tauri_commands::browse_directory
     ]
 }

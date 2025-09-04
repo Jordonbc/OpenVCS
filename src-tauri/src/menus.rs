@@ -1,6 +1,8 @@
-use tauri::{menu, Emitter};
+use tauri::{async_runtime, menu, Emitter};
 use tauri::menu::{Menu, MenuBuilder, MenuEvent, MenuItem};
 use tauri_plugin_opener::OpenerExt;
+
+use crate::utilities::utilities;
 
 const WIKI_URL: &str = "https://github.com/jordonbc/OpenVCS/wiki";
 
@@ -87,6 +89,19 @@ pub fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: Me
     match id.as_str() {
         "docs" => {
             let _ = app.opener().open_url(WIKI_URL, None::<&str>);
+        }
+        "add_repo" => {
+            let app_cloned = app.clone();
+            async_runtime::spawn(async move {
+                if let Some(path) = utilities::browse_directory_async(
+                    app_cloned.clone(),
+                    "Select an existing Git repository folder",
+                ).await {
+                    let _ = app_cloned.emit("repo:add_existing:selected", path);
+                } else {
+                    let _ = app_cloned.emit("repo:add_existing:cancelled", ());
+                }
+            });
         }
         _ => {
             // Forward to frontend (listen with `window.__TAURI__.event.listen("menu", ...)`)

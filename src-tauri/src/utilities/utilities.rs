@@ -31,3 +31,19 @@ impl AboutInfo {
     Self { name, version, build, description, homepage, repository, authors, os, arch }
   }
 }
+
+pub async fn browse_directory_async<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    title: &str,
+) -> Option<String> {
+    let dialog = tauri_plugin_dialog::DialogExt::dialog(&app).clone(); // OWNED Dialog<R>
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<Option<String>>();
+    tauri_plugin_dialog::FileDialogBuilder::new(dialog)
+        .set_title(title)
+        .pick_folder(move |res| {
+            let _ = tx.send(res.map(|p| p.to_string()));
+        });
+
+    rx.await.unwrap_or(None)
+}
