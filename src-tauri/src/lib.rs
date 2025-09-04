@@ -1,12 +1,19 @@
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
-mod git;
 mod utilities;
 mod tauri_commands;
 mod menus;
 mod workarounds;
 mod state;
 mod validate;
+
+#[cfg(feature = "with-git")]
+#[allow(unused_imports)]
+use openvcs_git as _;
+
+#[cfg(feature = "with-git-libgit2")]
+#[allow(unused_imports)]
+use openvcs_git_libgit2 as _;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,6 +25,9 @@ pub fn run() {
         .manage(state::AppState::default())
         .setup(|app| {
             menus::build_and_attach_menu(app)?;
+
+            let state = app.state::<state::AppState>();
+            state.set_backend_id(openvcs_core::GIT_LIBGIT2_ID.to_string());
             Ok(())
         })
         .on_window_event(handle_window_event::<_>)

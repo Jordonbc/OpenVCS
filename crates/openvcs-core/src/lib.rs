@@ -1,7 +1,14 @@
+//! OpenVCS Core: VCS-agnostic traits, errors, events, DTOs, and a runtime backend registry.
+
 use std::{path::{Path, PathBuf}, sync::Arc};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum BackendId { GitSystem, GitLibGit2 /*, Mercurial, Fossil */ }
+/// Backend identifiers are stable, kebab-case strings registered by each backend crate.
+pub type BackendId = &'static str;
+
+/// Suggested well-known IDs (use these in your backend crates).
+pub const GIT_SYSTEM_ID: BackendId  = "git-system";
+pub const GIT_LIBGIT2_ID: BackendId = "git-libgit2";
+// Future: pub const HG_ID: BackendId = "mercurial"; pub const FOSSIL_ID: BackendId = "fossil";
 
 #[derive(Clone, Debug, Default)]
 pub struct Capabilities {
@@ -35,11 +42,11 @@ pub enum VcsError {
     NothingToCommit,
     #[error("non-fast-forward; merge or rebase required")]
     NonFastForward,
-    #[error("unsupported by backend {0:?}")]
+    #[error("unsupported backend: {0}")]
     Unsupported(BackendId),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
-    #[error("{backend:?}: {msg}")]
+    #[error("{backend}: {msg}")]
     Backend { backend: BackendId, msg: String },
 }
 pub type Result<T> = std::result::Result<T, VcsError>;
@@ -52,29 +59,38 @@ pub struct StatusSummary {
     pub conflicted: usize,
 }
 
+/// The single trait every backend implements. This API is intentionally small and VCS-agnostic.
 pub trait Vcs: Send + Sync {
     fn id(&self) -> BackendId;
     fn caps(&self) -> Capabilities;
 
+    // lifecycle
     fn open(path: &Path) -> Result<Self> where Self: Sized;
     fn clone(url: &str, dest: &Path, on: Option<OnEvent>) -> Result<Self> where Self: Sized;
 
+    // context
     fn workdir(&self) -> &Path;
 
+    // common ops
     fn current_branch(&self) -> Result<Option<String>>;
     fn local_branches(&self) -> Result<Vec<String>>;
     fn create_branch(&self, name: &str, checkout: bool) -> Result<()>;
     fn checkout_branch(&self, name: &str) -> Result<()>;
 
+    // network
     fn ensure_remote(&self, name: &str, url: &str) -> Result<()>;
     fn fetch(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()>;
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()>;
 
+    // content
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String>;
     fn status_summary(&self) -> Result<StatusSummary>;
+
+    // recovery
     fn hard_reset_head(&self) -> Result<()>;
 }
 
+/// A concrete repository handle that owns a chosen backend instance.
 pub struct Repo {
     inner: Arc<dyn Vcs>,
 }
@@ -83,4 +99,70 @@ impl Repo {
     pub fn id(&self) -> BackendId { self.inner.id() }
     pub fn caps(&self) -> Capabilities { self.inner.caps() }
     pub fn inner(&self) -> &dyn Vcs { &*self.inner }
+}
+
+/* ========================= Runtime backend registry =========================
+   Backends contribute a `BackendDescriptor` into the distributed slice below.
+   The app can enumerate and pick any registered backend at runtime.
+=============================================================================*/
+
+/// Factory & metadata for a backend implementation.
+pub struct BackendDescriptor {
+    pub id: BackendId,                      // e.g., "git-libgit2"
+    pub name: &'static str,                 // human-readable, e.g., "Git (libgit2)"
+    pub caps: fn() -> Capabilities,         // capabilities without opening a repo
+    pub open: fn(&Path) -> Result<Arc<dyn Vcs>>,
+    pub clone_repo: fn(&str, &Path, Option<OnEvent>) -> Result<Arc<dyn Vcs>>,
+}
+
+/// The global registry. Each backend crate declares exactly one `BackendDescriptor` here.
+#[linkme::distributed_slice]
+pub static BACKENDS: [BackendDescriptor] = [..];
+
+/// Enumerate all registered backends (order is link-order; do not rely on it).
+pub fn list_backends() -> impl Iterator<Item = &'static BackendDescriptor> {
+    BACKENDS.iter()
+}
+
+/// Lookup a backend descriptor by id.
+pub fn get_backend(id: &str) -> Option<&'static BackendDescriptor> {
+    BACKENDS.iter().find(|b| b.id == id)
+}
+
+/* ================================ DTOs ===================================== */
+
+pub mod models {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+    pub struct BranchItem {
+        pub name: String,
+        pub current: bool,
+    }
+
+    /// A single file’s status in the working tree / index.
+    /// `status` is backend-agnostic (e.g., "A" | "M" | "D" | "R?" etc).
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+    pub struct FileEntry {
+        pub path: String,
+        pub status: String,
+        pub hunks: Vec<String>,
+    }
+
+    /// Flat status summary plus file list, suitable for your UI.
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+    pub struct StatusPayload {
+        pub files: Vec<FileEntry>,
+        pub ahead: u32,
+        pub behind: u32,
+    }
+
+    /// Lightweight commit representation for lists.
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+    pub struct CommitItem {
+        pub id: String,   // revision/hash as string; backend decides encoding
+        pub msg: String,
+        pub meta: String, // e.g., date or short info
+        pub author: String,
+    }
 }
