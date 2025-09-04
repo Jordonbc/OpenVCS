@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "openvcs",
-  "version": "0.1.0",
+  "productName": "OpenVCS",
   "identifier": "dev.jordon.openvcs",
   "build": {
     "frontendDist": "../src"
@@ -10,7 +9,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "openvcs",
+        "title": "OpenVCS",
         "width": 1100,
         "height": 600,
         "resizable": true,
