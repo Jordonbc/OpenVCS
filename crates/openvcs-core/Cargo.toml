@@ -7,3 +7,4 @@ edition = "2024"
 serde = { version = "1", features = ["derive"] }
 thiserror = "2.0.16"
 linkme = "0.3"
+log = "0.4" 

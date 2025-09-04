@@ -114,6 +114,7 @@ fn get_repo_root(state: &State<'_, AppState>) -> Result<PathBuf, String> {
 /* ---------- list_branches ---------- */
 #[tauri::command]
 pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
+    println!("calling list_branches");
     let repo = get_open_repo(&state)?;
     let current = repo.inner().current_branch().map_err(|e| e.to_string())?;
     let locals  = repo.inner().local_branches().map_err(|e| e.to_string())?;
@@ -126,6 +127,7 @@ pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, Stri
 /* ---------- git_status ---------- */
 #[tauri::command]
 pub fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, String> {
+    println!("calling git_status");
     let repo = get_open_repo(&state)?;
     let _s = repo.inner().status_summary().map_err(|e| e.to_string())?;
     // TODO: once the Vcs trait exposes file lists + ahead/behind, populate them here.
@@ -135,6 +137,7 @@ pub fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, String> {
 /* ---------- git_log ---------- */
 #[tauri::command]
 pub fn git_log(_state: State<'_, AppState>, _limit: Option<usize>) -> Result<Vec<CommitItem>, String> {
+    println!("calling git_log");
     Err("git_log not implemented for the generic VCS yet".into())
 }
 
@@ -142,6 +145,7 @@ pub fn git_log(_state: State<'_, AppState>, _limit: Option<usize>) -> Result<Vec
 /* ---------- optional: branch ops used by your JS ---------- */
 #[tauri::command]
 pub fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    println!("calling git_checkout_branch");
     let repo = get_open_repo(&state)?;
     repo.inner().checkout_branch(&name).map_err(|e| e.to_string())
 }
@@ -153,6 +157,7 @@ pub fn git_create_branch(
     name: String,
     from: Option<String>,
     checkout: Option<bool>,) -> Result<(), String> {
+    println!("calling git_create_branch");
     let repo = get_open_repo(&state)?;
 
     // If a base branch is provided, check it out first.
@@ -169,6 +174,7 @@ pub fn git_create_branch(
 
 #[tauri::command]
 pub fn git_diff_file(_state: State<'_, AppState>, _path: String) -> Result<Vec<String>, String> {
+    println!("calling git_diff_file");
     Err("git_diff_file not implemented for the generic VCS yet".into())
 }
 
@@ -179,6 +185,8 @@ pub async fn commit_changes<R: Runtime>(
     summary: String,
     description: String,
 ) -> Result<String, String> {
+    println!("calling commit_changes");
+
     let app = window.app_handle().clone();
     let repo = get_open_repo(&state)?;
 
@@ -208,6 +216,7 @@ pub async fn commit_changes<R: Runtime>(
 
 #[tauri::command]
 pub fn git_fetch<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
+    println!("calling git_fetch");
     let repo = get_open_repo(&state)?;
     let app = window.app_handle().clone();
     let on = Some(progress_bridge(app));
@@ -227,6 +236,7 @@ pub async fn git_push<R: tauri::Runtime>(
     window: tauri::Window<R>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
+    println!("calling git_push");
     let repo = get_open_repo(&state)?;
     let app_for_worker = window.app_handle().clone();
 
@@ -246,11 +256,13 @@ pub async fn git_push<R: tauri::Runtime>(
 
 #[tauri::command]
 pub fn list_backends_cmd() -> Vec<(String, String)> {
+    println!("calling list_backends_cmd");
     list_backends().map(|b| (b.id.to_string(), b.name.to_string())).collect()
 }
 
 #[tauri::command]
 pub fn set_backend_cmd(state: State<'_, AppState>, backend_id: String) -> Result<(), String> {
+    println!("calling set_backend_cmd");
     if get_backend(&backend_id).is_none() {
         return Err(format!("Unknown backend: {backend_id}"));
     }

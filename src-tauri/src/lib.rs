@@ -17,6 +17,24 @@ use openvcs_git_libgit2 as _;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if std::env::var_os("RUST_LOG").is_none() {
+        // Show info globally; debug for your crates
+        std::env::set_var(
+            "RUST_LOG",
+            "info,openvcs_core=debug,openvcs_git=debug,openvcs_git_libgit2=debug"
+        );
+    }
+
+    // Pretty timestamps help
+    env_logger::Builder::from_default_env()
+        .format_timestamp_millis()
+        .init();
+
+    // (Optional) prove the registry is populated at startup
+    for b in openvcs_core::list_backends() {
+        log::info!("backend loaded: {} ({})", b.id, b.name);
+    }
+
     workarounds::apply_linux_nvidia_workaround();
 
     println!("Running OpenVCS...");
