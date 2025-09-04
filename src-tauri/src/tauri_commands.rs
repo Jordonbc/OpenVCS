@@ -285,3 +285,32 @@ pub fn commit_changes(
         Err(e) => Err(e.to_string()),
     }
 }
+
+#[tauri::command]
+pub fn git_fetch(state: State<'_, AppState>) -> Result<(), String> {
+    let root   = get_repo_root(&state)?;
+    let git    = Git::open(&root).map_err(|e| e.to_string())?;
+    let branch = git
+        .current_branch()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Detached HEAD; cannot determine upstream".to_string())?;
+
+    // This performs a fetch and fast-forwards if possible (per your git.rs)
+    match git.fast_forward(&format!("origin/{}", branch)) {
+        Ok(_) => Ok(()),
+        Err(GitError::NonFastForward) => {
+            // surface a friendly message; UI can decide what to do
+            Err("Non fast-forward — merge or rebase required".to_string())
+        }
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+pub fn git_push(state: State<'_, AppState>) -> Result<(), String> {
+    let root = get_repo_root(&state)?;
+    let git  = Git::open(&root).map_err(|e| e.to_string())?;
+
+    // Push current branch to origin per your wrapper
+    git.push_current("origin").map_err(|e| e.to_string())
+}

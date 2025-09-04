@@ -48,6 +48,8 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_create_branch,
         tauri_commands::git_diff_file,
         tauri_commands::commit_changes,
+        tauri_commands::git_fetch,
+        tauri_commands::git_push,
     ]
 }
 
