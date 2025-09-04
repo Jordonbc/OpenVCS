@@ -169,7 +169,7 @@ pub fn git_log(state: State<'_, AppState>, limit: Option<usize>) -> Result<Vec<C
 
     let mut revwalk = repo.revwalk().map_err(|e| e.to_string())?;
     revwalk.push_head().map_err(|e| e.to_string())?;
-    revwalk.set_sorting(git2::Sort::TIME | git2::Sort::REVERSE).ok();
+    revwalk.set_sorting(git2::Sort::TIME).ok();
 
     let cap = limit.unwrap_or(100);
     let mut out = Vec::with_capacity(cap);
@@ -182,7 +182,7 @@ pub fn git_log(state: State<'_, AppState>, limit: Option<usize>) -> Result<Vec<C
 
         let secs = c.time().seconds();
         let meta = DateTime::from_timestamp(secs, 0)
-            .map(|dt| dt.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string())
+            .map(|dt| dt.with_timezone(&chrono::Local).format("%H:%M - %d-%m-%Y").to_string())
             .unwrap_or_default();
 
         let author = {
