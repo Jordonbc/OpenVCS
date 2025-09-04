@@ -2525,8 +2525,10 @@ dependencies = [
 name = "openvcs"
 version = "0.0.0-alpha"
 dependencies = [
+ "dirs",
  "git2",
  "lazy_static",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

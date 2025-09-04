@@ -433,12 +433,34 @@ function setSheet(which) {
   Object.entries(sheetPanels).forEach(([k, el]) => el.classList.toggle('hidden', k !== which));
 }
 
-/* Validation (simple heuristics; Rust side should re-validate) */
-function isLikelyGitUrl(v) { return /\.git(\s|$)/i.test(v) && (v.startsWith('http') || v.includes('@')); }
-function isLikelyPath(v)   { return v.startsWith('/') || v.startsWith('~'); }
 function setDisabled(id, on) { const el = qs('#' + id); if (el) el.disabled = on; }
-function validateClone()  { setDisabled('do-clone', !(isLikelyGitUrl(cloneUrl.value.trim()) && isLikelyPath(clonePath.value.trim()))); }
-function validateAdd()    { setDisabled('do-add', !isLikelyPath(addPath.value.trim())); }
+
+async function validateClone() {
+  if (!TAURI.has) return;
+  const url  = cloneUrl.value.trim();
+  const dest = clonePath.value.trim();
+  try {
+    const res = await TAURI.invoke('validate_clone_input', { url, dest });
+    setDisabled('do-clone', !res?.ok);
+    if (!res?.ok && res?.reason) notify(res.reason);
+  } catch (e) {
+    console.error(e);
+    setDisabled('do-clone', true);
+  }
+}
+
+async function validateAdd() {
+  if (!TAURI.has) return;
+  const path = addPath.value.trim();
+  try {
+    const res = await TAURI.invoke('validate_add_path', { path });
+    setDisabled('do-add', !res?.ok);
+    if (!res?.ok && res?.reason) notify(res.reason);
+  } catch (e) {
+    console.error(e);
+    setDisabled('do-add', true);
+  }
+}
 
 cloneUrl?.addEventListener('input', validateClone);
 clonePath?.addEventListener('input', validateClone);

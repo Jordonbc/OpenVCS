@@ -3,7 +3,8 @@ mod utilities;
 mod tauri_commands;
 mod menus;
 mod workarounds;
-mod globals;
+mod state;
+mod validate;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,6 +13,7 @@ pub fn run() {
     println!("Running OpenVCS...");
 
     tauri::Builder::default()
+        .manage(state::AppState::default())
         .setup(|app| {
             menus::build_and_attach_menu(app)?;
             Ok(())
@@ -29,6 +31,12 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
     tauri::generate_handler![
         tauri_commands::about_info,
         tauri_commands::show_licenses,
-        tauri_commands::browse_directory
+        tauri_commands::browse_directory,
+        tauri_commands::add_repo,
+        tauri_commands::validate_git_url,
+        tauri_commands::validate_add_path,
+        tauri_commands::validate_clone_input,
+        tauri_commands::current_repo_path,
+        tauri_commands::list_recent_repos,
     ]
 }
