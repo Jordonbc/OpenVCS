@@ -1,3 +1,5 @@
+use tauri::Emitter;
+
 mod git;
 mod utilities;
 mod tauri_commands;
@@ -18,6 +20,7 @@ pub fn run() {
             menus::build_and_attach_menu(app)?;
             Ok(())
         })
+        .on_window_event(handle_window_event::<_>)
         .on_menu_event(menus::handle_menu_event::<_>)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -45,4 +48,14 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_create_branch,
         tauri_commands::git_diff_file,
     ]
+}
+
+fn handle_window_event<R: tauri::Runtime>(win: &tauri::Window<R>, event: &tauri::WindowEvent) {
+    match event {
+        tauri::WindowEvent::Focused(true) => {
+            // Fire a custom event to the frontend
+            let _ = win.emit("app:focus", ());
+        }
+        _ => {}
+    }
 }

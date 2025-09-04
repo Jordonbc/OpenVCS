@@ -742,3 +742,27 @@ aboutLicenses?.addEventListener('click', async () => {
 TAURI.listen?.('git-progress', ({ payload }) => {
   statusEl.textContent = payload?.message || 'Working…';
 });
+
+/* =========================
+   App focus -> refresh
+   ========================= */
+(function () {
+  // simple throttle so we don’t spam when multiple focus events fire quickly
+  let cooling = false;
+  const COOL_MS = 350;
+
+  async function refreshAll() {
+    statusEl.textContent = 'Refreshing…';
+    await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits()]);
+    statusEl.textContent = 'Ready';
+  }
+
+  TAURI.listen?.('app:focus', () => {
+    if (cooling) return;
+    cooling = true;
+    refreshAll().finally(() => {
+      setTimeout(() => (cooling = false), COOL_MS);
+    });
+  });
+})();
+
