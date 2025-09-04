@@ -25,10 +25,18 @@ strip = "symbols"          # remove symbol table (cargo ≥1.62)
 name = "openvcs_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+default = ["git-system", "git-libgit2"]
+git-system = ["openvcs-git"]
+git-libgit2 = ["openvcs-git-libgit2"]
+
 [build-dependencies]
 tauri-build = { version = "2.4", default-features = false, features = [] }
 
 [dependencies]
+openvcs-core = { path = "../crates/openvcs-core" }
+openvcs-git = { path = "../crates/openvcs-git", optional = true }
+openvcs-git-libgit2 = { path = "../crates/openvcs-git-libgit2", optional = true }
+
 tauri = { version = "2.8", features = [] }
 tauri-plugin-opener = "2.5"
 serde = { version = "1", features = ["derive"] }

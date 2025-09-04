@@ -1,0 +1,11 @@
+[workspace]
+members = [
+  "crates/openvcs-core",
+  "crates/openvcs-git",
+  "crates/openvcs-git-libgit2",
+  "src-tauri",
+]
+resolver = "2"
+
+# optional: set which members build when you run `cargo build` at the root
+default-members = ["src-tauri"]
