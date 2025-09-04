@@ -312,11 +312,24 @@ function renderList() {
 function highlightRow(index) {
   qsa('.row', listEl).forEach((el, i) => el.classList.toggle('active', i === index));
 }
-function selectFile(file, index) {
+
+async function selectFile(file, index) {
   highlightRow(index);
   diffHeadPath.textContent = file.path || '(unknown file)';
-  diffEl.innerHTML = renderHunks(file.hunks || []);
+  diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
+
+  try {
+    let lines = [];
+    if (TAURI.has && file.path) {
+      lines = await TAURI.invoke('git_diff_file', { path: file.path });
+    }
+    diffEl.innerHTML = renderHunk(lines || []); // one hunk from flat lines
+  } catch (e) {
+    console.error(e);
+    diffEl.innerHTML = `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load diff</div></div></div>`;
+  }
 }
+
 function selectHistory(commit, index) {
   highlightRow(index);
   const id = (commit.id || '').slice(0,7);
@@ -328,14 +341,15 @@ function selectHistory(commit, index) {
       <div class="hline"><div class="gutter">Message</div><div class="code">${escapeHtml(commit.msg || '')}</div></div>
     </div>`;
 }
-function renderHunks(hunks) {
-  return hunks.map(renderHunk).join('');
-}
+
+function renderHunks(hunks) { return hunks.map(renderHunk).join(''); }
+
+// Accepts an array of strings like ["+foo", "-bar", " baz"]
 function renderHunk(hunk) {
   return `<div class="hunk">${
     (hunk || []).map((ln, i) => {
-      const t = typeof ln === 'string' && ln.startsWith('+') ? 'add'
-            : typeof ln === 'string' && ln.startsWith('-') ? 'del' : '';
+      const first = (typeof ln === 'string' ? ln[0] : ' ') || ' ';
+      const t = first === '+' ? 'add' : first === '-' ? 'del' : '';
       const safe = escapeHtml(String(ln));
       return `<div class="hline ${t}"><div class="gutter">${i+1}</div><div class="code">${safe}</div></div>`;
     }).join('')

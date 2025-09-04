@@ -223,3 +223,36 @@ pub fn git_create_branch(state: State<'_, AppState>, name: String, from: Option<
     let git = Git::open(&root).map_err(|e| e.to_string())?;
     git.create_branch(&name, checkout.unwrap_or(false)).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn git_diff_file(state: tauri::State<'_, AppState>, path: String) -> Result<Vec<String>, String> {
+    let root = get_repo_root(&state)?;
+    let repo = git2::Repository::discover(&root).map_err(|e| e.to_string())?;
+
+    let mut opts = git2::DiffOptions::new();
+    opts.pathspec(&path)
+        .recurse_untracked_dirs(true)
+        .include_untracked(true)
+        .show_untracked_content(true);
+
+    let diff = repo
+        .diff_index_to_workdir(None, Some(&mut opts))
+        .map_err(|e| e.to_string())?;
+
+    let mut lines: Vec<String> = Vec::new();
+
+    diff.print(git2::DiffFormat::Patch, |_, _, l| {
+        match l.origin() {
+            '+' | '-' | ' ' => {
+                let mut s = String::from_utf8_lossy(l.content()).into_owned();
+                if s.ends_with('\n') { s.pop(); }              // trim trailing newline
+                lines.push(format!("{}{}", l.origin(), s));
+            }
+            // Skip headers and other metadata: 'F' (file), 'H' (hunk), 'B' (binary), etc.
+            _ => {}
+        }
+        true
+    }).map_err(|e| e.to_string())?;
+
+    Ok(lines)
+}
