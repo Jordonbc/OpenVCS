@@ -53,10 +53,8 @@ fn build_edit_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu
 /// ----- View -----
 fn build_view_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu::Submenu<R>> {
     let toggle_theme = MenuItem::with_id(app, "toggle_theme", "Toggle Theme", true, Some("Ctrl+J"))?;
-    let toggle_left  = MenuItem::with_id(app, "toggle_left",  "Toggle Left Panel", true, Some("Ctrl+B"))?;
     menu::SubmenuBuilder::new(app, "View")
         .item(&toggle_theme)
-        .item(&toggle_left)
         .build()
 }
 

@@ -408,16 +408,6 @@ TAURI.listen?.('menu', ({ payload: id }) => {
     case 'add_repo':   openSheet('add');   break;
     case 'open_repo':  openSheet('switch');break;
     case 'toggle_theme': themeBtn?.click(); break;
-    case 'toggle_left':
-      {
-        const stacked = window.matchMedia('(max-width: 980px)').matches;
-        if (!stacked) {
-          const isHidden = leftPanel.style.display === 'none';
-          leftPanel.style.display = isHidden ? '' : 'none';
-          workGrid.style.gridTemplateColumns = isHidden ? '' : `0px 6px 1fr`;
-        }
-      }
-      break;
     case 'fetch': fetchBtn?.click(); break;
     case 'push':  pushBtn?.click();  break;
     case 'commit': commitBtn?.click(); break;
