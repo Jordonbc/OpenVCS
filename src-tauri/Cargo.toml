@@ -40,4 +40,5 @@ lazy_static = "1.5.0"
 tokio = "1.47.1"
 dirs = "6.0.0"
 regex = "1.11.2"
+chrono = "0.4.41"
 

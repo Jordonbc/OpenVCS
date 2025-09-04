@@ -5,6 +5,7 @@ use git2::{
     AutotagOption, BranchType, Direction, FetchOptions, Oid, PushOptions,
     Repository, ResetType, Signature, Status, StatusOptions,
 };
+use serde::Serialize;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, GitError>;
@@ -344,3 +345,30 @@ fn rel_to_workdir(workdir: &Path, p: &Path) -> Result<PathBuf> {
     }
 }
 
+#[derive(Serialize)]
+pub struct BranchItem {
+    pub name: String,
+    pub current: bool,
+}
+
+#[derive(Serialize)]
+pub struct FileEntry {
+    pub path: String,
+    pub status: String,        // "A" | "M" | "D" | etc.
+    pub hunks: Vec<String>,    // your UI accepts an array; keep empty for now
+}
+
+#[derive(Serialize)]
+pub struct StatusPayload {
+    pub files: Vec<FileEntry>,
+    pub ahead: u32,
+    pub behind: u32,
+}
+
+#[derive(Serialize)]
+pub struct CommitItem {
+    pub id: String,       // full sha; UI slices to 7 chars
+    pub msg: String,
+    pub meta: String,     // commit date or short info
+    pub author: String,
+}

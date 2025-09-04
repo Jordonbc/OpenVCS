@@ -38,5 +38,10 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::validate_clone_input,
         tauri_commands::current_repo_path,
         tauri_commands::list_recent_repos,
+        tauri_commands::list_branches,
+        tauri_commands::git_status,
+        tauri_commands::git_log,
+        tauri_commands::git_checkout_branch,
+        tauri_commands::git_create_branch,
     ]
 }

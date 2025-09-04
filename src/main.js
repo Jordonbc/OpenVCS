@@ -412,6 +412,15 @@ TAURI.listen?.('menu', ({ payload: id }) => {
   }
 });
 
+TAURI.listen?.('repo:selected', ({ payload }) => {
+  notify(`Opened ${payload}`);
+  closeSheet?.();
+  hydrateBranches();
+  hydrateStatus();
+  hydrateCommits();
+});
+
+
 /* =========================
    Command Sheet (Clone / Add / Switch)
    ========================= */
