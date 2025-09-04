@@ -1,11 +1,17 @@
 use std::path::{Path, PathBuf};
 
 use chrono::DateTime;
-use tauri::{Emitter, Manager, Runtime, State, Window};
+use serde_json::json;
+use tauri::{async_runtime, Emitter, Manager, Runtime, State, Window};
 use crate::state::AppState;
 use crate::utilities::utilities;
 use crate::validate;
 use crate::git::{git_identity, BranchItem, CommitItem, FileEntry, Git, GitError, StatusPayload};
+
+#[derive(serde::Serialize, Clone)]
+struct ProgressPayload {
+    message: String
+}
 
 #[tauri::command]
 pub fn about_info() -> utilities::AboutInfo {
@@ -258,32 +264,71 @@ pub fn git_diff_file(state: tauri::State<'_, AppState>, path: String) -> Result<
 }
 
 #[tauri::command]
-pub fn commit_changes(
+pub async fn commit_changes<R: Runtime>(
+    window: Window<R>,
     state: State<'_, AppState>,
     summary: String,
-    description: Option<String>,
-) -> Result<(), String> {
-    // Build final message (summary + optional blank line + body)
-    let message = match description.as_deref().map(str::trim) {
-        Some(d) if !d.is_empty() => format!("{summary}\n\n{d}"),
-        _ => summary,
+    description: String,
+) -> Result<String, String> {
+    let app = window.app_handle().clone();
+    let root = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+
+    // Compose message once on the async side
+    let message = if description.trim().is_empty() {
+        summary.clone()
+    } else {
+        format!("{summary}\n\n{description}")
     };
 
-    // Open repo via your Git wrapper
-    let root = get_repo_root(&state)?; // or your local helper
-    let git  = Git::open(&root).map_err(|e| e.to_string())?;
+    async_runtime::spawn_blocking(move || {
+        let emit = |m: &str| {
+            let _ = app.emit("git-progress", json!({ "message": m }));
+        };
 
-    // Identity from repo config (falls back if missing)
-    let (name, email) = git_identity(&git)
-        .unwrap_or_else(|| ("You".to_string(), "you@example.com".to_string()));
+        emit("Staging changes…");
 
-    // Stage (handled inside Git::commit when paths is empty) + commit
-    // This calls your Git::commit(message, name, email, paths)
-    match git.commit(&message, &name, &email, &[]) {
-        Ok(_oid) => Ok(()),
-        Err(GitError::NothingToCommit) => Err("Nothing to commit".to_string()),
-        Err(e) => Err(e.to_string()),
-    }
+        let git = Git::open(&root).map_err(|e| e.to_string())?;
+
+        // Collect only changed paths (much faster than add_all("*"))
+        let mut sopts = git2::StatusOptions::new();
+        sopts.include_untracked(true)
+             .recurse_untracked_dirs(true)
+             .renames_head_to_index(true);
+
+        let statuses = git.inner()
+            .statuses(Some(&mut sopts))
+            .map_err(|e| e.to_string())?;
+
+        let mut paths: Vec<PathBuf> = Vec::new();
+        for e in statuses.iter() {
+            if let Some(p) = e.path() {
+                paths.push(root.join(p));
+            }
+        }
+        if paths.is_empty() {
+            return Err("Nothing to commit".to_string());
+        }
+
+        // Identity
+        let (name, email) = git_identity(&git).ok_or_else(|| {
+            "Missing Git identity.\n\
+             Set it with:\n  git config user.name \"Your Name\"\n  git config user.email \"you@example.com\""
+                .to_string()
+        })?;
+
+        emit("Writing commit…");
+
+        let oid = git
+            .commit(&message, &name, &email, &paths)
+            .map_err(|e| e.to_string())?;
+
+        emit("Commit created.");
+        Ok(oid.to_string())
+    })
+    .await
+    .map_err(|e| format!("commit task failed: {e}"))?
 }
 
 #[tauri::command]
@@ -307,10 +352,36 @@ pub fn git_fetch(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn git_push(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn git_push<R: tauri::Runtime>(
+    window: tauri::Window<R>,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
     let root = get_repo_root(&state)?;
-    let git  = Git::open(&root).map_err(|e| e.to_string())?;
 
-    // Push current branch to origin per your wrapper
-    git.push_current("origin").map_err(|e| e.to_string())
+    // Detach a cloneable, 'static handle before spawning
+    let app_handle = window.app_handle();
+    let app_for_worker = app_handle.clone();
+    let app_for_final  = app_handle.clone();
+    drop(window);
+
+    tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let git = Git::open(&root).map_err(|e| e.to_string())?;
+        git.push_current_with_progress("origin", move |m| {
+            let _ = app_for_worker.emit(
+                "git-progress",
+                ProgressPayload { message: m }
+            );
+        })
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let _ = app_for_final.emit(
+        "git-progress",
+        ProgressPayload { message: "Push complete".into() }
+    );
+
+    Ok(())
 }

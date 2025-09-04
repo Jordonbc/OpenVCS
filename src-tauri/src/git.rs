@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::{path::{Path, PathBuf}, sync::Arc};
 
 use git2::{
     self as g,
@@ -141,10 +141,11 @@ impl Git {
         Ok(())
     }
 
-    /// Fetch from a remote (default "origin"). Returns fetched tip OID of `refspec` if present.
-    pub fn fetch(&self, remote: &str, refspec: &str) -> Result<Option<Oid>> {
-        println!("Fetching {refspec} from {remote}...");
-        let cb = make_remote_callbacks();
+    pub fn fetch_with_progress<F>(&self, remote: &str, refspec: &str, on: F) -> Result<Option<Oid>>
+    where
+        F: Fn(String) + Send + Sync + 'static,
+    {
+        let cb = make_remote_callbacks_with_progress(on);
         let mut fo = FetchOptions::new();
         fo.remote_callbacks(cb);
         fo.download_tags(AutotagOption::All);
@@ -153,12 +154,12 @@ impl Git {
         r.fetch(&[refspec], Some(&mut fo), None)?;
 
         let fetch_head = self.repo.find_reference("FETCH_HEAD")?;
-        let target = fetch_head.target();
-        println!(
-            "Fetch completed. FETCH_HEAD is now at {}",
-            target.map_or("unknown".into(), |o| o.to_string())
-        );
-        Ok(target)
+        Ok(fetch_head.target())
+    }
+
+    // Keep existing API working by delegating with a no-op progress handler
+    pub fn fetch(&self, remote: &str, refspec: &str) -> Result<Option<Oid>> {
+        self.fetch_with_progress(remote, refspec, |_| {})
     }
 
     /// Fast-forward the current branch to `upstream` (e.g., "origin/main") if possible.
@@ -254,23 +255,17 @@ impl Git {
     }
 
     /// Push the current branch to `remote` (default "origin") with upstream set.
-    pub fn push_current(&self, remote: &str) -> Result<()> {
-        println!("Pushing current branch to {remote}...");
-        let current = self
-            .current_branch()?
-            .ok_or_else(|| GitError::LibGit2(g::Error::from_str("detached HEAD")))?;
-        self.push_refspec(remote, &format!("refs/heads/{0}:refs/heads/{0}", current))
-    }
-
-    pub fn push_refspec(&self, remote: &str, refspec: &str) -> Result<()> {
-        println!("Pushing {refspec} to {remote}...");
-        let cb = make_remote_callbacks();
-
+    pub fn push_refspec_with_progress<F>(&self, remote: &str, refspec: &str, on: F) -> Result<()>
+    where
+        F: Fn(String) + Send + Sync + 'static,
+    {
+        println!("Pushing {refspec} to {remote} (with progress)...");
+        let cb = make_remote_callbacks_with_progress(on);
         let mut opts = PushOptions::new();
-        opts.remote_callbacks(cb); // attach creds here
+        opts.remote_callbacks(cb);
 
         let mut r = self.repo.find_remote(remote)?;
-        // Do NOT call r.connect(...) first; let push() establish the connection with callbacks.
+        // Let `push()` establish connection so callbacks are used for auth
         r.push(&[refspec], Some(&mut opts))?;
         println!("Push completed.");
         Ok(())
@@ -316,6 +311,17 @@ impl Git {
     pub fn inner(&self) -> &Repository {
         &self.repo
     }
+
+    pub fn push_current_with_progress<F>(&self, remote: &str, on: F) -> Result<()>
+    where
+        F: Fn(String) + Send + Sync + 'static,
+    {
+        let current = self
+            .current_branch()?
+            .ok_or_else(|| git2::Error::from_str("detached HEAD"))?;
+        let refspec = format!("refs/heads/{0}:refs/heads/{0}", current);
+        self.push_refspec_with_progress(remote, &refspec, on)
+    }
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -329,17 +335,22 @@ pub struct StatusSummary {
 /* -------------------------- helpers -------------------------- */
 
 fn make_remote_callbacks() -> git2::RemoteCallbacks<'static> {
-    println!("Setting up Git remote callbacks...");
+    make_remote_callbacks_with_progress(|_| {})
+}
+
+pub fn make_remote_callbacks_with_progress<F>(on: F) -> git2::RemoteCallbacks<'static>
+where
+    F: Fn(String) + Send + Sync + 'static,
+{
+    let on = Arc::new(on);
     let mut cb = git2::RemoteCallbacks::new();
 
+    // --- credentials (same as before) ---
     cb.credentials(|_url, username_from_url, allowed| {
-        // 1) SSH agent
         if allowed.contains(git2::CredentialType::SSH_KEY) {
             let user = username_from_url.unwrap_or("git");
             return git2::Cred::ssh_key_from_agent(user);
         }
-
-        // 2) HTTPS token via env (PAT)
         if allowed.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
             if let Ok(token) = std::env::var("GIT_TOKEN")
                 .or_else(|_| std::env::var("GITHUB_TOKEN"))
@@ -348,11 +359,35 @@ fn make_remote_callbacks() -> git2::RemoteCallbacks<'static> {
                 return git2::Cred::userpass_plaintext(user, &token);
             }
         }
-
         git2::Cred::default()
     });
 
-    println!("Git remote callbacks set.");
+    // --- sideband (remote messages) ---
+    {
+        let on = Arc::clone(&on);
+        cb.sideband_progress(move |data| {
+            if let Ok(s) = std::str::from_utf8(data) {
+                (on)(format!("remote: {}", s.trim_end()));
+            }
+            true
+        });
+    }
+
+    // --- transfer progress ---
+    {
+        let on = Arc::clone(&on);
+        cb.transfer_progress(move |p| {
+            (on)(format!(
+                "pushing… {}/{} deltas, {}/{} objects",
+                p.indexed_deltas(),
+                p.total_deltas(),
+                p.indexed_objects(),
+                p.total_objects()
+            ));
+            true
+        });
+    }
+
     cb
 }
 
