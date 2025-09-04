@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use git2::{
     self as g,
-    AutotagOption, BranchType, Direction, FetchOptions, Oid, PushOptions,
+    AutotagOption, BranchType, FetchOptions, Oid, PushOptions,
     Repository, ResetType, Signature, Status, StatusOptions,
 };
 use serde::Serialize;
@@ -34,6 +34,7 @@ pub struct Git {
 impl Git {
     /// Open the repo at `path` (or its nearest ancestor containing `.git`).
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        println!("Opening repository at {}...", path.as_ref().display());
         let repo = Repository::discover(path)?;
         let workdir = repo
             .workdir()
@@ -44,6 +45,7 @@ impl Git {
 
     /// Clone a repository to `dest`. Honors SSH agent and common HTTPS tokens.
     pub fn clone(url: &str, dest: impl AsRef<Path>) -> Result<Self> {
+        println!("Cloning {url} to {}...", dest.as_ref().display());
         let cb = make_remote_callbacks();
         let mut fo = FetchOptions::new();
         fo.remote_callbacks(cb);
@@ -53,6 +55,8 @@ impl Git {
         builder.fetch_options(fo);
 
         let repo = builder.clone(url, dest.as_ref())?;
+
+        println!("Clone completed.");
         Ok(Self {
             workdir: repo.workdir().unwrap().to_path_buf(),
             repo,
@@ -61,6 +65,7 @@ impl Git {
 
     /// Current branch name (if HEAD is a branch).
     pub fn current_branch(&self) -> Result<Option<String>> {
+        println!("Getting current branch...");
         let head = match self.repo.head() {
             Ok(h) => h,
             Err(e) if e.code() == g::ErrorCode::UnbornBranch => return Ok(None),
@@ -76,6 +81,7 @@ impl Git {
 
     /// List local branch names.
     pub fn local_branches(&self) -> Result<Vec<String>> {
+        println!("Listing local branches...");
         let mut out = Vec::new();
         for b in self.repo.branches(Some(BranchType::Local))? {
             let (b, _) = b?;
@@ -83,11 +89,14 @@ impl Git {
                 out.push(name.to_string());
             }
         }
+
+        println!("Found {} local branches.", out.len());
         Ok(out)
     }
 
     /// Create a branch at the current HEAD and optionally checkout.
     pub fn create_branch(&self, name: &str, checkout: bool) -> Result<()> {
+        println!("Creating branch {name}...");
         let head = self.repo.head()?.peel_to_commit()?;
         self.repo.branch(name, &head, false)?;
         if checkout {
@@ -99,6 +108,7 @@ impl Git {
 
     /// Checkout an existing local branch.
     pub fn checkout_branch(&self, name: &str) -> Result<()> {
+        println!("Checking out branch {name}...");
         let (obj, reference) = self
             .repo
             .revparse_ext(&format!("refs/heads/{name}"))
@@ -110,11 +120,13 @@ impl Git {
             // Fallback: detached
             self.repo.set_head_detached(obj.id())?;
         }
+        println!("Checked out branch {name}.");
         Ok(())
     }
 
     /// Add a remote if missing, or return the existing one.
     pub fn ensure_remote(&self, name: &str, url: &str) -> Result<()> {
+        println!("Ensuring remote {name} at {url}...");
         match self.repo.find_remote(name) {
             Ok(r) => {
                 if r.url() != Some(url) {
@@ -131,6 +143,7 @@ impl Git {
 
     /// Fetch from a remote (default "origin"). Returns fetched tip OID of `refspec` if present.
     pub fn fetch(&self, remote: &str, refspec: &str) -> Result<Option<Oid>> {
+        println!("Fetching {refspec} from {remote}...");
         let cb = make_remote_callbacks();
         let mut fo = FetchOptions::new();
         fo.remote_callbacks(cb);
@@ -141,49 +154,54 @@ impl Git {
 
         let fetch_head = self.repo.find_reference("FETCH_HEAD")?;
         let target = fetch_head.target();
+        println!(
+            "Fetch completed. FETCH_HEAD is now at {}",
+            target.map_or("unknown".into(), |o| o.to_string())
+        );
         Ok(target)
     }
 
     /// Fast-forward the current branch to `upstream` (e.g., "origin/main") if possible.
     pub fn fast_forward(&self, upstream: &str) -> Result<()> {
-      // split "origin/main"
-      let (remote_name, remote_ref) = upstream
-          .split_once('/')
-          .ok_or_else(|| GitError::LibGit2(g::Error::from_str("expected remote/branch")))?;
+        println!("Fetching and fast-forwarding to {upstream}...");
+        // split "origin/main"
+        let (remote_name, remote_ref) = upstream
+            .split_once('/')
+            .ok_or_else(|| GitError::LibGit2(g::Error::from_str("expected remote/branch")))?;
 
-      // fetch
-      let cb = make_remote_callbacks();
-      let mut fo = git2::FetchOptions::new();
-      fo.remote_callbacks(cb);
-      let mut r = self.repo.find_remote(remote_name)?;
-      r.fetch(&[remote_ref], Some(&mut fo), None)?;
+        // fetch
+        let cb = make_remote_callbacks();
+        let mut fo = git2::FetchOptions::new();
+        fo.remote_callbacks(cb);
+        let mut r = self.repo.find_remote(remote_name)?;
+        r.fetch(&[remote_ref], Some(&mut fo), None)?;
 
-      // build annotated commit for refs/remotes/origin/main
-      let full = format!("refs/remotes/{upstream}");
-      let up_ref = self.repo.find_reference(&full)?;
-      let annotated = self.repo.reference_to_annotated_commit(&up_ref)?;
+        // build annotated commit for refs/remotes/origin/main
+        let full = format!("refs/remotes/{upstream}");
+        let up_ref = self.repo.find_reference(&full)?;
+        let annotated = self.repo.reference_to_annotated_commit(&up_ref)?;
 
-      // analyze
-      let (analysis, _pref) = self.repo.merge_analysis(&[&annotated])?;
-      if analysis.is_up_to_date() {
-          return Ok(());
-      }
-      if analysis.is_fast_forward() {
-          let head_name = self
-              .repo
-              .head()?
-              .name()
-              .ok_or_else(|| g::Error::from_str("HEAD name missing"))?
-              .to_string();
-          let target = up_ref.target().ok_or_else(|| g::Error::from_str("no target"))?;
-          let mut reference = self.repo.find_reference(&head_name)?;
-          reference.set_target(target, "fast-forward")?;
-          self.repo.set_head(&head_name)?;
-          self.repo.checkout_head(None)?;
-          Ok(())
-      } else {
-          Err(GitError::NonFastForward)
-      }
+        // analyze
+        let (analysis, _pref) = self.repo.merge_analysis(&[&annotated])?;
+        if analysis.is_up_to_date() {
+            return Ok(());
+        }
+        if analysis.is_fast_forward() {
+            let head_name = self
+                .repo
+                .head()?
+                .name()
+                .ok_or_else(|| g::Error::from_str("HEAD name missing"))?
+                .to_string();
+            let target = up_ref.target().ok_or_else(|| g::Error::from_str("no target"))?;
+            let mut reference = self.repo.find_reference(&head_name)?;
+            reference.set_target(target, "fast-forward")?;
+            self.repo.set_head(&head_name)?;
+            self.repo.checkout_head(None)?;
+            Ok(())
+        } else {
+            Err(GitError::NonFastForward)
+        }
   }
 
     /// Stage paths (globs allowed if you pass them expanded) and commit with author/committer.
@@ -194,6 +212,7 @@ impl Git {
         email: &str,
         paths: &[PathBuf],
     ) -> Result<Oid> {
+        println!("Committing changes...");
         let mut idx = self.repo.index()?;
         if paths.is_empty() {
             idx.add_all(["*"].iter(), g::IndexAddOption::DEFAULT, None)?;
@@ -230,11 +249,13 @@ impl Git {
             .repo
             .commit(head_ref.as_deref(), &sig, &sig, message, &tree, &parent_refs)?;
 
+        println!("Commit {} created.", oid);
         Ok(oid)
     }
 
     /// Push the current branch to `remote` (default "origin") with upstream set.
     pub fn push_current(&self, remote: &str) -> Result<()> {
+        println!("Pushing current branch to {remote}...");
         let current = self
             .current_branch()?
             .ok_or_else(|| GitError::LibGit2(g::Error::from_str("detached HEAD")))?;
@@ -242,6 +263,7 @@ impl Git {
     }
 
     pub fn push_refspec(&self, remote: &str, refspec: &str) -> Result<()> {
+        println!("Pushing {refspec} to {remote}...");
         let cb = make_remote_callbacks();
 
         let mut opts = PushOptions::new();
@@ -250,6 +272,7 @@ impl Git {
         let mut r = self.repo.find_remote(remote)?;
         // Do NOT call r.connect(...) first; let push() establish the connection with callbacks.
         r.push(&[refspec], Some(&mut opts))?;
+        println!("Push completed.");
         Ok(())
     }
 
@@ -282,8 +305,10 @@ impl Git {
 
     /// Reset working tree to HEAD (discard local changes).
     pub fn hard_reset_head(&self) -> Result<()> {
+        println!("Resetting working tree to HEAD...");
         let head = self.repo.head()?.peel_to_commit()?;
         self.repo.reset(head.as_object(), ResetType::Hard, None)?;
+        println!("Reset completed.");
         Ok(())
     }
 
@@ -304,6 +329,7 @@ pub struct StatusSummary {
 /* -------------------------- helpers -------------------------- */
 
 fn make_remote_callbacks() -> git2::RemoteCallbacks<'static> {
+    println!("Setting up Git remote callbacks...");
     let mut cb = git2::RemoteCallbacks::new();
 
     cb.credentials(|_url, username_from_url, allowed| {
@@ -323,10 +349,10 @@ fn make_remote_callbacks() -> git2::RemoteCallbacks<'static> {
             }
         }
 
-        // 3) Default (Keychain/manager on some platforms; otherwise anonymous)
         git2::Cred::default()
     });
 
+    println!("Git remote callbacks set.");
     cb
 }
 
@@ -376,9 +402,12 @@ pub struct CommitItem {
 
 /* Helper: read identity via your Git::inner() */
 pub fn git_identity(git: &Git) -> Option<(String, String)> {
+    println!("Reading Git identity from config...");
     let cfg = git.inner().config().ok()?;
     let name  = cfg.get_string("user.name").ok()?;
     let email = cfg.get_string("user.email").ok()?;
     if name.trim().is_empty() || email.trim().is_empty() { return None; }
+
+    println!("Git identity: {name} <{email}>");
     Some((name, email))
 }
