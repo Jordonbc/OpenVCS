@@ -5,7 +5,7 @@ use std::{
     process::{Command, Stdio},
     sync::Arc,
 };
-use openvcs_core::models::{BranchItem, BranchKind, CommitItem, FileEntry, LogQuery, StatusPayload};
+use openvcs_core::models::{BranchItem, BranchKind, CommitItem, FileEntry, LogQuery, StatusPayload, StatusSummary};
 /* ============================ registry wiring ============================ */
 
 pub const GIT_SYSTEM_ID: BackendId  = "git-system";

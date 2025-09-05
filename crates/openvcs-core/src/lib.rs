@@ -49,14 +49,6 @@ pub enum VcsError {
 
 pub type Result<T> = std::result::Result<T, VcsError>;
 
-#[derive(Default, Clone, Copy, Debug)]
-pub struct StatusSummary {
-    pub untracked: usize,
-    pub modified: usize,
-    pub staged: usize,
-    pub conflicted: usize,
-}
-
 /// The single trait every backend implements. This API is intentionally small and VCS-agnostic.
 pub trait Vcs: Send + Sync {
     fn id(&self) -> BackendId;
@@ -87,7 +79,7 @@ pub trait Vcs: Send + Sync {
 
     // content
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String>;
-    fn status_summary(&self) -> Result<StatusSummary>;
+    fn status_summary(&self) -> Result<models::StatusSummary>;
 
     /// Full working tree status for the UI (files + ahead/behind).
     fn status_payload(&self) -> Result<models::StatusPayload>;

@@ -8,6 +8,14 @@ pub enum BranchKind {
     Unknown,
 }
 
+#[derive(Default, Clone, Copy, Debug)]
+pub struct StatusSummary {
+    pub untracked: usize,
+    pub modified: usize,
+    pub staged: usize,
+    pub conflicted: usize,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct BranchItem {
     pub name: String,         // branch short name ("main", "feature/x")

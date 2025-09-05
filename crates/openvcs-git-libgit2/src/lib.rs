@@ -3,7 +3,7 @@ mod lowlevel;
 use std::{path::{Path, PathBuf}, sync::Arc};
 use log::{debug, error, info, trace, warn};
 use openvcs_core::*;
-use openvcs_core::models::BranchItem;
+use openvcs_core::models::{BranchItem, StatusSummary};
 
 pub const GIT_LIBGIT2_ID: BackendId = "git-libgit2";
 
