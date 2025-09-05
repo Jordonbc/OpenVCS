@@ -165,4 +165,7 @@ impl Vcs for GitLibGit2 {
         self.inner.status_payload().map_err(Self::map_err)
     }
 
+    fn diff_file(&self, path: &Path) -> Result<Vec<String>> {
+        self.inner.diff_file(path).map_err(Self::map_err)
+    }
 }

@@ -284,13 +284,17 @@ pub fn git_create_branch(
 }
 
 #[tauri::command]
-pub fn git_diff_file(state: State<'_, AppState>, _path: String) -> Result<Vec<String>, String> {
-    if !state.has_repo() {
-        return Err("No repository selected".to_string());
-    }
+pub fn git_diff_file(state: State<'_, AppState>, path: String) -> Result<Vec<String>, String> {
+    let core_repo = state
+        .current_repo_handle()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = core_repo.inner();
 
-    info!("git_diff_file: called but not implemented for the generic VCS backend");
-    Err("git_diff_file not implemented for the generic VCS yet".into())
+    // Allow either absolute or repo-relative; backend handles stripping
+    let lines = vcs.diff_file(&PathBuf::from(path))
+        .map_err(|e| e.to_string())?;
+
+    Ok(lines)
 }
 
 #[tauri::command]

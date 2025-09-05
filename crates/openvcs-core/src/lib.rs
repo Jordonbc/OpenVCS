@@ -87,6 +87,13 @@ pub trait Vcs: Send + Sync {
     /// History / log (VCS-agnostic). Returns a single page of commits.
     fn log_commits(&self, query: &models::LogQuery) -> Result<Vec<models::CommitItem>>;
 
+    // Unified diff for a single file, returned as lines (with diff prefixes).
+    /// Backends should:
+    /// 1) Prefer workdir vs index (unstaged)
+    /// 2) Fallback to index vs HEAD (staged)
+    /// 3) Include untracked as additions
+    fn diff_file(&self, path: &Path) -> Result<Vec<String>>;
+
     // recovery
     fn hard_reset_head(&self) -> Result<()>;
 }

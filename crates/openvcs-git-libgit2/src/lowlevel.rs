@@ -782,6 +782,54 @@ impl Git {
             Ok(StatusPayload { files, ahead, behind })
         })
     }
+
+    pub fn diff_file(&self, any_path: &Path) -> Result<Vec<String>> {
+        self.with_repo(|repo| -> Result<Vec<String>> {
+            // Repo-relative path
+            let rel = if any_path.is_absolute() {
+                any_path.strip_prefix(&self.workdir).unwrap_or(any_path)
+            } else {
+                any_path
+            };
+            let rel_str = rel.to_string_lossy();
+
+            // Common diff opts
+            let mut opts = g::DiffOptions::new();
+            opts.pathspec(rel_str.as_ref());
+            opts.context_lines(3);
+            opts.include_untracked(true)
+                .recurse_untracked_dirs(true);
+
+            // 1) Unstaged: index → workdir
+            let diff_unstaged = repo.diff_index_to_workdir(None, Some(&mut opts))?;
+            let mut lines = collect_patch_lines(&diff_unstaged)?;
+            if !lines.is_empty() {
+                return Ok(lines);
+            }
+
+            // 2) Staged: HEAD → index
+            let head_tree = match repo.head().ok().and_then(|h| h.peel_to_tree().ok()) {
+                Some(t) => t,
+                None => {
+                    // No HEAD (initial commit). Treat staged as additions vs empty tree.
+                    // libgit2 empty tree via Treebuilder
+                    let mut tb = repo.treebuilder(None)?;
+                    let empty = tb.write()?;
+                    repo.find_tree(empty)?
+                }
+            };
+
+            let mut opts2 = g::DiffOptions::new();
+            opts2.pathspec(rel_str.as_ref());
+            opts2.context_lines(3);
+
+            let index = repo.index()?;
+            let diff_staged = repo.diff_tree_to_index(Some(&head_tree), Some(&index), Some(&mut opts2))?;
+            lines = collect_patch_lines(&diff_staged)?;
+            Ok(lines)
+        })
+    }
+
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -1010,4 +1058,14 @@ pub fn git_identity(git: &Git) -> Option<(String, String)> {
         debug!("Git identity resolved: {name} <{email}>");
         Some((name, email))
     })
+}
+
+fn collect_patch_lines(diff: &g::Diff) -> Result<Vec<String>> {
+    let mut out = Vec::<String>::new();
+    diff.print(g::DiffFormat::Patch, |_d, _h, l| {
+        let s = std::str::from_utf8(l.content()).unwrap_or_default();
+        out.push(format!("{}{}", l.origin(), s.trim_end_matches('\n')));
+        true
+    })?;
+    Ok(out)
 }

@@ -333,4 +333,41 @@ impl Vcs for GitSystem {
     fn hard_reset_head(&self) -> Result<()> {
         Self::run_git(Some(&self.workdir), ["reset", "--hard", "HEAD"])
     }
+
+    fn diff_file(&self, path: &Path) -> Result<Vec<String>> {
+        let p = Self::path_str(path)?;
+        // Prefer *unstaged* first
+        let out = Self::run_git_capture(Some(&self.workdir), [
+            "diff", "--no-color", "--unified=3", "--", p
+        ])?;
+        let s = out.trim_end();
+        if !s.is_empty() {
+            return Ok(s.lines().map(|l| l.to_string()).collect());
+        }
+
+        // Then *staged*
+        let out_cached = Self::run_git_capture(Some(&self.workdir), [
+            "diff", "--no-color", "--unified=3", "--cached", "--", p
+        ])?;
+        let sc = out_cached.trim_end();
+        if !sc.is_empty() {
+            return Ok(sc.lines().map(|l| l.to_string()).collect());
+        }
+
+        // Fallback: untracked file → show as additions via no-index
+        // Only if the file exists, otherwise return empty
+        let abs = if path.is_absolute() { path.to_path_buf() } else { self.workdir.join(path) };
+        if abs.exists() {
+            let out_noindex = Self::run_git_capture(Some(&self.workdir), [
+                "diff", "--no-color", "--unified=3", "--no-index", "--",
+                "/dev/null", Self::path_str(&abs)?
+            ])?;
+            let sn = out_noindex.trim_end();
+            if !sn.is_empty() {
+                return Ok(sn.lines().map(|l| l.to_string()).collect());
+            }
+        }
+
+        Ok(Vec::new())
+    }
 }
