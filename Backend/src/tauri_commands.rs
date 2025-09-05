@@ -140,7 +140,10 @@ fn get_repo_root(state: &State<'_, AppState>) -> Result<PathBuf, String> {
 /* ---------- list_branches ---------- */
 #[tauri::command]
 pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
-    info!("list_branches: fetching branch list");
+    use openvcs_core::models::{BranchItem, BranchKind};
+    use std::collections::HashSet;
+
+    info!("list_branches: fetching unified branches via Vcs::branches()");
 
     let core_repo = state
         .current_repo_handle()
@@ -149,38 +152,90 @@ pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, Stri
 
     debug!("list_branches: workdir={}", vcs.workdir().display());
 
-    let current = vcs.current_branch()
-        .map_err(|e| { error!("list_branches: current_branch failed: {e}"); e.to_string() })?;
+    // Ask backend for unified branches and current branch name
+    let mut items = vcs.branches()
+        .map_err(|e| { error!("list_branches: branches() failed: {e:?}"); e.to_string() })?;
 
-    let locals = vcs.local_branches()
-        .map_err(|e| { error!("list_branches: local_branches failed: {e}"); e.to_string() })?;
+    let current_local = vcs.current_branch()
+        .map_err(|e| { error!("list_branches: current_branch failed: {e:?}"); e.to_string() })?;
 
-    // Trim, drop empties, dedup, and build items with full_ref populated
-    let mut seen = std::collections::HashSet::new();
-    let mut items: Vec<BranchItem> = Vec::new();
-
-    for raw in locals {
-        let name = raw.trim();
-        if name.is_empty() {
-            // Help track down the source if this ever happens again
-            warn!("list_branches: skipping empty branch name from backend");
-            continue;
+    // Helper: infer kind from full_ref if backend returned Unknown
+    fn infer_kind(full_ref: &str) -> BranchKind {
+        if let Some(rest) = full_ref.strip_prefix("refs/heads/") {
+            // Local
+            let _ = rest; // keep for clarity
+            BranchKind::Local
+        } else if let Some(rest) = full_ref.strip_prefix("refs/remotes/") {
+            // Remote: refs/remotes/<remote>/<name...>
+            if let Some((remote, _name)) = rest.split_once('/') {
+                return BranchKind::Remote { remote: remote.to_string() };
+            }
+            BranchKind::Remote { remote: String::from("unknown") }
+        } else {
+            BranchKind::Unknown
         }
-        if !seen.insert(name.to_string()) {
-            continue; // dedup
-        }
-        items.push(BranchItem {
-            current: current.as_deref() == Some(name),
-            name: name.to_string(),
-            full_ref: format!("refs/heads/{name}"),
-            kind: BranchKind::Local,
-        });
     }
 
-    debug!("list_branches: current={:?}, count={}", current, items.len());
-    Ok(items)
-}
+    // Sanitize, infer kind where Unknown, and enforce a single "current"
+    // Strategy: compute which short name is current (only applies to Local)
+    let current_name = current_local.as_deref();
 
+    // Deduplicate by full_ref (stable identity)
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out: Vec<BranchItem> = Vec::with_capacity(items.len());
+
+    for mut it in items.drain(..) {
+        // Trim + validate
+        it.name = it.name.trim().to_string();
+        it.full_ref = it.full_ref.trim().to_string();
+
+        if it.name.is_empty() || it.full_ref.is_empty() {
+            warn!("list_branches: dropping branch with empty name/full_ref: {:?}", it);
+            continue;
+        }
+
+        // Infer kind if Unknown (keeps backend’s explicit Local/Remote as-is)
+        if matches!(it.kind, BranchKind::Unknown) {
+            it.kind = infer_kind(&it.full_ref);
+        }
+
+        // Reconcile "current": prefer backend flag if consistent; otherwise decide from current_branch()
+        it.current = match (&it.kind, current_name) {
+            (BranchKind::Local, Some(curr)) => it.name == *curr,
+            _ => false, // only local branches can be "current"
+        };
+
+        // Dedup by full_ref (first wins)
+        if !seen.insert(it.full_ref.clone()) {
+            debug!("list_branches: dedup duplicate ref {}", it.full_ref);
+            continue;
+        }
+
+        out.push(it);
+    }
+
+    // Sort: current → local → remote → unknown, then by name
+    out.sort_by(|a, b| {
+        let bucket = |x: &BranchItem| {
+            if x.current { 0 } else {
+                match x.kind {
+                    BranchKind::Local => 1,
+                    BranchKind::Remote { .. } => 2,
+                    BranchKind::Unknown => 3,
+                }
+            }
+        };
+        bucket(a).cmp(&bucket(b)).then_with(|| a.name.cmp(&b.name))
+    });
+
+    debug!(
+        "list_branches: current_local={:?}, returned={}",
+        current_local,
+        out.len()
+    );
+
+    Ok(out)
+}
 
 /* ---------- git_status ---------- */
 #[tauri::command]
