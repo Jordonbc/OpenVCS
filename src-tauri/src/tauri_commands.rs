@@ -119,6 +119,10 @@ pub fn validate_clone_input(url: String, dest: String) -> validate::Validation {
 
 #[tauri::command]
 pub fn current_repo_path(state: State<'_, AppState>) -> Option<String> {
+    if !state.has_repo() {
+        return None;
+    }
+
     state.current_repo().map(|p| p.to_string_lossy().to_string())
 }
 
@@ -129,15 +133,21 @@ pub fn list_recent_repos(state: State<'_, AppState>) -> Vec<String> {
 
 /* ---------- helpers ---------- */
 fn get_repo_root(state: &State<'_, AppState>) -> Result<PathBuf, String> {
-    state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())
+    if !state.has_repo() {
+        return Err("No repository selected".to_string());
+    }
+
+    state.current_repo().ok_or_else(|| "No repository selected".to_string())
 }
 
 /* ---------- list_branches ---------- */
 #[tauri::command]
 pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
     info!("list_branches: fetching branch list");
+
+    if !state.has_repo() {
+        return Err("No repository selected".to_string());
+    }
 
     let repo = get_open_repo(&state)
         .map_err(|e| {
@@ -170,6 +180,10 @@ pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, Stri
 pub fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, String> {
     info!("git_status: fetching repo status");
 
+    if !state.has_repo() {
+        return Err("No repository selected".to_string());
+    }
+
     let repo = get_open_repo(&state)
         .map_err(|e| {
             error!("git_status: failed to open repo: {e}");
@@ -193,7 +207,11 @@ pub fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, String> {
 
 /* ---------- git_log ---------- */
 #[tauri::command]
-pub fn git_log(_state: State<'_, AppState>, _limit: Option<usize>) -> Result<Vec<CommitItem>, String> {
+pub fn git_log(state: State<'_, AppState>, _limit: Option<usize>) -> Result<Vec<CommitItem>, String> {
+    if !state.has_repo() {
+        return Err("No repository selected".to_string());
+    }
+
     info!("git_log: command called (not yet implemented)");
     warn!("git_log: returning placeholder error for now");
     Err("git_log not implemented for the generic VCS yet".into())
@@ -203,6 +221,10 @@ pub fn git_log(_state: State<'_, AppState>, _limit: Option<usize>) -> Result<Vec
 #[tauri::command]
 pub fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
     info!("git_checkout_branch: attempting to checkout branch '{}'", name);
+
+    if !state.has_repo() {
+        return Err("No repository selected".to_string());
+    }
 
     let repo = get_open_repo(&state)?;
     match repo.inner().checkout_branch(&name) {
@@ -225,6 +247,10 @@ pub fn git_create_branch(
     checkout: Option<bool>,
 ) -> Result<(), String> {
     info!("git_create_branch: requested branch '{}', from={:?}, checkout={:?}", name, from, checkout);
+
+    if !state.has_repo() {
+        return Err("No repository selected".to_string());
+    }
 
     let repo = get_open_repo(&state)?;
 
@@ -252,7 +278,11 @@ pub fn git_create_branch(
 }
 
 #[tauri::command]
-pub fn git_diff_file(_state: State<'_, AppState>, _path: String) -> Result<Vec<String>, String> {
+pub fn git_diff_file(state: State<'_, AppState>, _path: String) -> Result<Vec<String>, String> {
+    if !state.has_repo() {
+        return Err("No repository selected".to_string());
+    }
+
     info!("git_diff_file: called but not implemented for the generic VCS backend");
     Err("git_diff_file not implemented for the generic VCS yet".into())
 }
@@ -265,6 +295,10 @@ pub async fn commit_changes<R: Runtime>(
     description: String,
 ) -> Result<String, String> {
     info!("commit_changes called (summary: \"{}\")", summary);
+
+    if !state.has_repo() {
+        return Err("No repository selected".to_string());
+    }
 
     let app = window.app_handle().clone();
     let repo = get_open_repo(&state)?;
@@ -309,6 +343,10 @@ pub async fn commit_changes<R: Runtime>(
 pub fn git_fetch<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
     info!("git_fetch called");
 
+    if !state.has_repo() {
+        return Err("No repository selected".to_string());
+    }
+
     let repo = get_open_repo(&state)?;
     let app = window.app_handle().clone();
     let on = Some(progress_bridge(app));
@@ -339,11 +377,15 @@ pub fn git_fetch<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> R
 }
 
 #[tauri::command]
-pub async fn git_push<R: tauri::Runtime>(
-    window: tauri::Window<R>,
-    state: tauri::State<'_, AppState>,
+pub async fn git_push<R: Runtime>(
+    window: Window<R>,
+    state: State<'_, AppState>,
 ) -> Result<(), String> {
     info!("git_push called");
+
+    if !state.has_repo() {
+        return Err("No repository selected".to_string());
+    }
 
     let repo = get_open_repo(&state)?;
     let app_for_worker = window.app_handle().clone();
