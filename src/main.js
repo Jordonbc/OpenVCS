@@ -581,13 +581,14 @@ function renderBranches() {
   const items = (state.branches || []).filter(b => !q || b.name.toLowerCase().includes(q));
 
   branchList.innerHTML = items.map(b => {
+    const kindType = b.kind?.type || '';              // "Local" | "Remote"
+    const remote    = b.kind?.remote || '';           // "origin" when Remote
     let kindLabel = '';
-    if (b.kind === 'Local') {
+
+    if (kindType === 'Local' || kindType === 'local') {
       kindLabel = '<span class="badge kind">Local</span>';
-    } else if (b.kind?.Remote) {
-      // if backend sends { kind: { Remote: { remote: "origin" } } }
-      const remote = b.kind.Remote?.remote || 'remote';
-      kindLabel = `<span class="badge kind">Remote:${remote}</span>`;
+    } else if (kindType === 'Remote' || kindType === 'remote') {
+      kindLabel = `<span class="badge kind">Remote:${remote || 'remote'}</span>`;
     }
 
     return `
