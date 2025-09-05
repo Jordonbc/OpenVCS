@@ -10,14 +10,6 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[profile.release]
-opt-level = "z"            # optimize for size
-lto = true                 # link-time optimizations
-codegen-units = 1          # single codegen unit for better inlining
-panic = "abort"            # no unwind tables
-debug = false              # drop debug info
-strip = "symbols"          # remove symbol table (cargo ≥1.62)
-
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
@@ -28,17 +20,24 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2.4", default-features = false, features = [] }
 
+[features]
+default = ["with-git", "with-git-libgit2"]        # enable both by default
+with-git = ["dep:openvcs-git"]
+with-git-libgit2 = ["dep:openvcs-git-libgit2"]
+
 [dependencies]
+openvcs-core = { path = "../crates/openvcs-core" }
+openvcs-git = { path = "../crates/openvcs-git", optional = true }
+openvcs-git-libgit2 = { path = "../crates/openvcs-git-libgit2", optional = true }
+
 tauri = { version = "2.8", features = [] }
 tauri-plugin-opener = "2.5"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-git2 = "0.20"
-thiserror = "2"
-tauri-plugin-dialog = "2.4.0"
-lazy_static = "1.5.0"
-tokio = "1.47.1"
-dirs = "6.0.0"
-regex = "1.11.2"
-chrono = "0.4.41"
+tauri-plugin-dialog = "2.4"
+tokio = "1.47"
+dirs = "6"
+regex = "1.11"
+log = "0.4" 
+env_logger = "0.11"
+parking_lot = "0.12"
 

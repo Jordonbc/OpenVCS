@@ -1,6 +1,6 @@
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
+use openvcs_core::BackendId;
 
-mod git;
 mod utilities;
 mod tauri_commands;
 mod menus;
@@ -8,8 +8,36 @@ mod workarounds;
 mod state;
 mod validate;
 
+#[cfg(feature = "with-git")]
+#[allow(unused_imports)]
+use openvcs_git as _;
+
+#[cfg(feature = "with-git-libgit2")]
+#[allow(unused_imports)]
+use openvcs_git_libgit2 as _;
+
+pub const GIT_SYSTEM_ID: BackendId  = "git-system";
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if std::env::var_os("RUST_LOG").is_none() {
+        // Show info globally; debug for your crates
+        std::env::set_var(
+            "RUST_LOG",
+            "info,openvcs_core=debug,openvcs_git=debug,openvcs_git_libgit2=debug"
+        );
+    }
+
+    // Pretty timestamps help
+    env_logger::Builder::from_default_env()
+        .format_timestamp_millis()
+        .init();
+
+    // (Optional) prove the registry is populated at startup
+    for b in openvcs_core::list_backends() {
+        log::info!("backend loaded: {} ({})", b.id, b.name);
+    }
+
     workarounds::apply_linux_nvidia_workaround();
 
     println!("Running OpenVCS...");
@@ -18,6 +46,9 @@ pub fn run() {
         .manage(state::AppState::default())
         .setup(|app| {
             menus::build_and_attach_menu(app)?;
+
+            let state = app.state::<state::AppState>();
+            state.set_backend_id(GIT_SYSTEM_ID);
             Ok(())
         })
         .on_window_event(handle_window_event::<_>)

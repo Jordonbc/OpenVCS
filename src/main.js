@@ -579,15 +579,28 @@ function closeBranchPopover() {
 function renderBranches() {
   const q = branchFilter.value.trim().toLowerCase();
   const items = (state.branches || []).filter(b => !q || b.name.toLowerCase().includes(q));
-  branchList.innerHTML = items.map(b => `
-    <li role="option" data-branch="${b.name}" aria-selected="${b.current ? 'true' : 'false'}">
-      <span class="label">
-        <span class="branch-dot" aria-hidden="true" style="box-shadow:none;${b.current?'':'opacity:.5'}"></span>
-        <span class="name" title="${b.name}">${b.name}</span>
-      </span>
-      ${b.current ? '<span class="badge">Current</span>' : ''}
-    </li>
-  `).join('');
+
+  branchList.innerHTML = items.map(b => {
+    const kindType = b.kind?.type || '';              // "Local" | "Remote"
+    const remote    = b.kind?.remote || '';           // "origin" when Remote
+    let kindLabel = '';
+
+    if (kindType === 'Local' || kindType === 'local') {
+      kindLabel = '<span class="badge kind">Local</span>';
+    } else if (kindType === 'Remote' || kindType === 'remote') {
+      kindLabel = `<span class="badge kind">Remote:${remote || 'remote'}</span>`;
+    }
+
+    return `
+      <li role="option" data-branch="${b.name}" aria-selected="${b.current ? 'true' : 'false'}">
+        <span class="label">
+          <span class="branch-dot" aria-hidden="true" style="box-shadow:none;${b.current?'':'opacity:.5'}"></span>
+          <span class="name" title="${b.name}">${b.name}</span>
+        </span>
+        ${b.current ? '<span class="badge">Current</span>' : kindLabel}
+      </li>
+    `;
+  }).join('');
 }
 
 branchBtn?.addEventListener('click', (e) => {

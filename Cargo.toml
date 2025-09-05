@@ -1,0 +1,19 @@
+[workspace]
+members = [
+  "crates/openvcs-core",
+  "crates/openvcs-git",
+  "crates/openvcs-git-libgit2",
+  "src-tauri",
+]
+resolver = "2"
+
+# optional: set which members build when you run `cargo build` at the root
+default-members = ["src-tauri"]
+
+[profile.release]
+opt-level = "z"            # optimize for size
+lto = true                 # link-time optimizations
+codegen-units = 1          # single codegen unit for better inlining
+panic = "abort"            # no unwind tables
+debug = false              # drop debug info
+strip = "symbols"          # remove symbol table (cargo ≥1.62)
