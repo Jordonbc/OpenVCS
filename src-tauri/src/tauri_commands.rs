@@ -7,14 +7,10 @@ use crate::state::AppState;
 use crate::utilities::utilities;
 use crate::validate;
 
-use openvcs_core::{
-    OnEvent, VcsEvent,
-    models::{BranchItem, StatusPayload, CommitItem},
-    get_backend, list_backends, Repo as CoreRepo,
-};
+use openvcs_core::{OnEvent, VcsEvent, models::{BranchItem, StatusPayload, CommitItem}, get_backend, list_backends, Repo as CoreRepo, BackendId};
 use openvcs_core::models::LogQuery;
 
-fn selected_backend_id(state: &State<'_, AppState>) -> String {
+fn selected_backend_id(state: &State<'_, AppState>) -> BackendId {
     state.backend_id()
 }
 
@@ -181,30 +177,22 @@ pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, Stri
 pub fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, String> {
     info!("git_status: fetching repo status");
 
-    if !state.has_repo() {
-        return Err("No repository selected".to_string());
-    }
+    let core_repo = state
+        .current_repo_handle()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = core_repo.inner();
 
-    let repo = get_open_repo(&state)
-        .map_err(|e| {
-            error!("git_status: failed to open repo: {e}");
-            e
-        })?;
+    let payload = vcs.status_payload().map_err(|e| {
+        error!("git_status: failed to compute status: {e}");
+        e.to_string()
+    })?;
 
-    let summary = repo.inner().status_summary()
-        .map_err(|e| {
-            error!("git_status: failed to get status summary: {e}");
-            e.to_string()
-        })?;
+    debug!("git_status: files={}, ahead={}, behind={}",
+        payload.files.len(), payload.ahead, payload.behind);
 
-    debug!(
-        "git_status: summary = untracked={}, modified={}, staged={}, conflicted={}",
-        summary.untracked, summary.modified, summary.staged, summary.conflicted
-    );
-
-    // TODO: once Vcs trait exposes file lists + ahead/behind, populate them here.
-    Ok(StatusPayload { files: vec![], ahead: 0, behind: 0 })
+    Ok(payload)
 }
+
 
 /* ---------- git_log ---------- */
 #[tauri::command]
@@ -458,7 +446,7 @@ pub fn list_backends_cmd() -> Vec<(String, String)> {
 }
 
 #[tauri::command]
-pub fn set_backend_cmd(state: State<'_, AppState>, backend_id: String) -> Result<(), String> {
+pub fn set_backend_cmd(state: State<'_, AppState>, backend_id: BackendId) -> Result<(), String> {
     use log::{info, warn, error};
     use std::path::Path;
 

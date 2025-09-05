@@ -4,12 +4,12 @@ use std::sync::{Arc};
 use parking_lot::RwLock;
 
 use log::{debug, info};
-use openvcs_core::{Repo as CoreRepo, Vcs};
+use openvcs_core::{BackendId, Repo as CoreRepo, Vcs};
 
 #[derive(Default)]
 pub struct AppState {
     // Selected backend (string id; e.g., "git-libgit2" or "git-system")
-    backend_id: RwLock<String>,
+    backend_id: RwLock<BackendId>,
 
     // Active repo path (what your UI shows)
     current_repo: RwLock<Option<PathBuf>>,
@@ -23,12 +23,12 @@ pub struct AppState {
 
 impl AppState {
     /* -------- backend selection -------- */
-    pub fn set_backend_id(&self, id: String) {
+    pub fn set_backend_id(&self, id: BackendId) {
         info!("Changing active backend to: {}", id);
         *self.backend_id.write() = id;
     }
     
-    pub fn backend_id(&self) -> String {
+    pub fn backend_id(&self) -> BackendId {
         let id = self.backend_id.read().clone();
         debug!("Queried active backend: {}", id);
         id

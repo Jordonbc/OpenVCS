@@ -160,4 +160,9 @@ impl Vcs for GitLibGit2 {
     fn log_commits(&self, q: &models::LogQuery) -> Result<Vec<models::CommitItem>> {
         self.inner.log_commits(q).map_err(Self::map_err)
     }
+
+    fn status_payload(&self) -> Result<models::StatusPayload> {
+        self.inner.status_payload().map_err(Self::map_err)
+    }
+
 }

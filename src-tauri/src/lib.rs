@@ -16,7 +16,7 @@ use openvcs_git as _;
 #[allow(unused_imports)]
 use openvcs_git_libgit2 as _;
 
-pub const GIT_LIBGIT2_ID: &str = "git-libgit2";
+pub const GIT_SYSTEM_ID: BackendId  = "git-system";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -48,7 +48,7 @@ pub fn run() {
             menus::build_and_attach_menu(app)?;
 
             let state = app.state::<state::AppState>();
-            state.set_backend_id(GIT_LIBGIT2_ID.to_string());
+            state.set_backend_id(GIT_SYSTEM_ID);
             Ok(())
         })
         .on_window_event(handle_window_event::<_>)

@@ -14,7 +14,7 @@ use log::{debug, error, info, trace, warn};
 use thiserror::Error;
 use time::{OffsetDateTime, UtcOffset};
 use time::format_description::well_known::Rfc3339;
-use openvcs_core::models::{CommitItem, LogQuery};
+use openvcs_core::models::{CommitItem, FileEntry, LogQuery, StatusPayload};
 
 pub type Result<T> = std::result::Result<T, GitError>;
 
@@ -711,6 +711,75 @@ impl Git {
 
             debug!("log_commits: returned {} item(s)", out.len());
             Ok(out)
+        })
+    }
+
+    pub fn status_payload(&self) -> Result<StatusPayload> {
+        self.with_repo(|repo| -> Result<StatusPayload> {
+            // Gather statuses
+            let mut sopts = g::StatusOptions::new();
+            sopts.include_untracked(true)
+                .recurse_untracked_dirs(true)
+                .renames_head_to_index(true)
+                .renames_index_to_workdir(true);
+
+            let statuses = repo.statuses(Some(&mut sopts))?;
+
+            let mut files = Vec::<FileEntry>::with_capacity(statuses.len());
+            let mut summary = StatusSummary::default();
+
+            for e in statuses.iter() {
+                let s = e.status();
+
+                if s.contains(g::Status::WT_NEW)                        { summary.untracked += 1; }
+                if s.intersects(g::Status::WT_MODIFIED | g::Status::WT_TYPECHANGE) { summary.modified  += 1; }
+                if s.intersects(g::Status::INDEX_NEW | g::Status::INDEX_MODIFIED | g::Status::INDEX_TYPECHANGE) {
+                    summary.staged += 1;
+                }
+                if s.contains(g::Status::CONFLICTED)                    { summary.conflicted += 1; }
+
+                let code = if s.contains(g::Status::CONFLICTED) {
+                    "U"
+                } else if s.contains(g::Status::INDEX_DELETED) || s.contains(g::Status::WT_DELETED) {
+                    "D"
+                } else if s.contains(g::Status::INDEX_NEW) || s.contains(g::Status::WT_NEW) {
+                    "A"
+                } else if s.intersects(g::Status::INDEX_MODIFIED | g::Status::WT_MODIFIED | g::Status::INDEX_TYPECHANGE | g::Status::WT_TYPECHANGE) {
+                    "M"
+                } else {
+                    "R?"
+                }.to_string();
+
+                let path = e.head_to_index()
+                    .and_then(|d| d.new_file().path())
+                    .or_else(|| e.index_to_workdir().and_then(|d| d.new_file().path()))
+                    .or_else(|| e.head_to_index().and_then(|d| d.old_file().path()))
+                    .or_else(|| e.index_to_workdir().and_then(|d| d.old_file().path()))
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                files.push(FileEntry { path, status: code, hunks: Vec::new() });
+            }
+
+            // ahead/behind (best effort)
+            let (ahead, behind) = {
+                let branch_name = repo.head()
+                    .ok()
+                    .and_then(|h| if h.is_branch() { h.shorthand().map(|s| s.to_string()) } else { None });
+                if let Some(name) = branch_name {
+                    if let Ok(branch) = repo.find_branch(&name, g::BranchType::Local) {
+                        if let Ok(up) = branch.upstream() {
+                            if let (Some(h), Some(u)) = (branch.get().target(), up.get().target()) {
+                                if let Ok((a, b)) = repo.graph_ahead_behind(h, u) {
+                                    (a as u32, b as u32)
+                                } else { (0, 0) }
+                            } else { (0, 0) }
+                        } else { (0, 0) }
+                    } else { (0, 0) }
+                } else { (0, 0) }
+            };
+
+            Ok(StatusPayload { files, ahead, behind })
         })
     }
 }

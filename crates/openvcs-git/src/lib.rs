@@ -5,7 +5,7 @@ use std::{
     process::{Command, Stdio},
     sync::Arc,
 };
-use openvcs_core::models::{CommitItem, LogQuery};
+use openvcs_core::models::{CommitItem, FileEntry, LogQuery, StatusPayload};
 /* ============================ registry wiring ============================ */
 
 pub const GIT_SYSTEM_ID: BackendId  = "git-system";
@@ -218,8 +218,49 @@ impl Vcs for GitSystem {
         Ok(s)
     }
 
-    fn hard_reset_head(&self) -> Result<()> {
-        Self::run_git(Some(&self.workdir), ["reset", "--hard", "HEAD"])
+    fn status_payload(&self) -> Result<StatusPayload> {
+        // Per-file changes via porcelain v2
+        let out = Self::run_git_capture(Some(&self.workdir), ["status", "--porcelain=v2"])?;
+        let mut files = Vec::<FileEntry>::new();
+
+        for line in out.lines() {
+            if line.starts_with("1 ") {
+                // "1 XY ... <path>"
+                let xy = &line[2..4];
+                let status = match xy {
+                    "??" => "A",
+                    " M" | "M " | "MM" | " T" | "T " => "M",
+                    " D" | "D " => "D",
+                    _ => "R?",
+                }.to_string();
+
+                if let Some(path) = line.split_whitespace().last() {
+                    files.push(FileEntry { path: path.to_string(), status, hunks: Vec::new() });
+                }
+            } else if line.starts_with("2 ") {
+                // rename record; use new path
+                if let Some(path) = line.split_whitespace().last() {
+                    files.push(FileEntry { path: path.to_string(), status: "R?".into(), hunks: Vec::new() });
+                }
+            } else if line.starts_with("u ") {
+                // conflicted; last token is path
+                if let Some(path) = line.split_whitespace().last() {
+                    files.push(FileEntry { path: path.to_string(), status: "U".into(), hunks: Vec::new() });
+                }
+            }
+        }
+
+        // ahead/behind: @{upstream}...HEAD
+        let (mut behind, mut ahead) = (0u32, 0u32);
+        if let Ok(ab) = Self::run_git_capture(Some(&self.workdir), ["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]) {
+            let mut parts = ab.split_whitespace();
+            if let (Some(b), Some(a)) = (parts.next(), parts.next()) {
+                behind = b.parse().unwrap_or(0);
+                ahead  = a.parse().unwrap_or(0);
+            }
+        }
+
+        Ok(StatusPayload { files, ahead, behind })
     }
 
     fn log_commits(&self, q: &LogQuery) -> Result<Vec<CommitItem>> {
@@ -287,5 +328,9 @@ impl Vcs for GitSystem {
         }
 
         Ok(items)
+    }
+
+    fn hard_reset_head(&self) -> Result<()> {
+        Self::run_git(Some(&self.workdir), ["reset", "--hard", "HEAD"])
     }
 }

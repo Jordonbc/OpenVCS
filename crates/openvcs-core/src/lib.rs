@@ -81,6 +81,9 @@ pub trait Vcs: Send + Sync {
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String>;
     fn status_summary(&self) -> Result<StatusSummary>;
 
+    /// Full working tree status for the UI (files + ahead/behind).
+    fn status_payload(&self) -> Result<models::StatusPayload>;
+
     /// History / log (VCS-agnostic). Returns a single page of commits.
     fn log_commits(&self, query: &models::LogQuery) -> Result<Vec<models::CommitItem>>;
 
