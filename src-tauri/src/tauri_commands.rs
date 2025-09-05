@@ -67,14 +67,37 @@ pub async fn browse_directory<R: Runtime>(
 }
 
 #[tauri::command]
-pub async fn add_repo<R: Runtime>(window: Window<R>, state: State<'_, AppState>, path: String) -> Result<(), String> {
+pub async fn add_repo<R: Runtime>(
+    window: Window<R>,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<(), String> {
+    info!("add_repo: requested path = {}", path);
+
     let be = selected_backend_id(&state);
-    let desc = get_backend(&be).ok_or_else(|| format!("Backend not found: {be}"))?;
-    // Try opening with the selected backend; report a nice error if not a repo
-    (desc.open)(Path::new(&path)).map_err(|e| e.to_string())?;
-    // Persist path + clear/open handle lazily later if you like
+    let desc = get_backend(&be)
+        .ok_or_else(|| {
+            let m = format!("Backend not found: {be}");
+            error!("{m}");
+            m
+        })?;
+
+    let handle = (desc.open)(Path::new(&path)).map_err(|e| {
+        let m = format!("Failed to open repo with backend `{}`: {}", be, e);
+        error!("{m}");
+        m
+    })?;
+
+    // Persist both the path and the handle
     state.set_current_repo(PathBuf::from(&path));
-    let _ = window.app_handle().emit("repo:selected", &path);
+    state.set_current_repo_handle(handle);
+
+    // Notify the UI
+    if let Err(e) = window.app_handle().emit("repo:selected", &path) {
+        warn!("add_repo: failed to emit repo:selected: {}", e);
+    }
+
+    info!("add_repo: repository opened and stored for backend `{}`", be);
     Ok(())
 }
 
@@ -374,23 +397,50 @@ pub fn list_backends_cmd() -> Vec<(String, String)> {
     backends
 }
 
-
 #[tauri::command]
 pub fn set_backend_cmd(state: State<'_, AppState>, backend_id: String) -> Result<(), String> {
-    info!("set_backend_cmd called with backend_id={}", backend_id);
+    use log::{info, warn, error};
+    use std::path::Path;
 
-    match get_backend(&backend_id) {
-        Some(desc) => {
-            info!("Switching to backend: {} ({})", backend_id, desc.name);
-            state.set_backend_id(backend_id);
-            Ok(())
-        }
+    info!("set_backend_cmd: requested backend = {}", &backend_id);
+
+    let desc = match get_backend(&backend_id) {
+        Some(d) => d,
         None => {
-            warn!("Attempted to set unknown backend: {}", backend_id);
-            Err(format!("Unknown backend: {backend_id}"))
+            warn!("set_backend_cmd: unknown backend `{}`", backend_id);
+            return Err(format!("Unknown backend: {backend_id}"));
         }
+    };
+
+    // Update the selected backend id.
+    state.set_backend_id(backend_id.clone());
+    info!("set_backend_cmd: backend switched to {} ({})", backend_id, desc.name);
+
+    // If a repo path is already selected, try to reopen it with the new backend.
+    if let Some(path) = state.current_repo() {
+        info!("set_backend_cmd: reopening current repo with new backend: {}", path.display());
+        match (desc.open)(Path::new(&path)) {
+            Ok(handle) => {
+                state.set_current_repo_handle(handle);
+                info!("set_backend_cmd: repo reopened with backend `{}`", backend_id);
+            }
+            Err(e) => {
+                // Clear stale handle
+                state.clear_current_repo_handle();
+                error!(
+                    "set_backend_cmd: failed to reopen repo `{}` with backend `{}`: {}",
+                    path.display(),
+                    backend_id,
+                    e
+                );
+                return Err(format!("Failed to reopen repo with `{backend_id}`: {e}"));
+            }
+        }
+    } else {
+        // No repo selected; just ensure there's no stale handle.
+        state.clear_current_repo_handle();
+        info!("set_backend_cmd: no current repo; cleared any existing handle");
     }
+
+    Ok(())
 }
-
-
-

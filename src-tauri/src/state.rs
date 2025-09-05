@@ -1,5 +1,7 @@
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
+
+use parking_lot::RwLock;
 
 use log::{debug, info};
 use openvcs_core::{Repo as CoreRepo, Vcs};
@@ -21,29 +23,31 @@ pub struct AppState {
 
 impl AppState {
     /* -------- backend selection -------- */
-
-    
     pub fn set_backend_id(&self, id: String) {
         info!("Changing active backend to: {}", id);
-        *self.backend_id.write().unwrap() = id;
+        *self.backend_id.write() = id;
     }
     
     pub fn backend_id(&self) -> String {
-        let id = self.backend_id.read().unwrap().clone();
+        let id = self.backend_id.read().clone();
         debug!("Queried active backend: {}", id);
         id
+    }
+
+    pub fn has_repo(&self) -> bool {
+        self.repo_handle.read().is_some()
     }
 
     /* -------- current repo path -------- */
 
     pub fn set_current_repo(&self, path: PathBuf) {
         {
-            let mut cur = self.current_repo.write().unwrap();
+            let mut cur = self.current_repo.write();
             *cur = Some(path.clone());
         }
 
         // Update recents (front insert, unique, cap N)
-        let mut r = self.recents.write().unwrap();
+        let mut r = self.recents.write();
         r.retain(|p| p != &path);
         r.insert(0, path.clone());
         const MAX_RECENTS: usize = 10;
@@ -59,18 +63,18 @@ impl AppState {
     }
 
     pub fn clear_current_repo(&self) {
-        *self.current_repo.write().unwrap() = None;
-        *self.repo_handle.write().unwrap() = None;
+        *self.current_repo.write() = None;
+        *self.repo_handle.write() = None;
 
         info!("Cleared current repository and repo handle");
     }
 
     pub fn current_repo(&self) -> Option<PathBuf> {
-        self.current_repo.read().unwrap().clone()
+        self.current_repo.read().clone()
     }
 
     pub fn recents(&self) -> Vec<PathBuf> {
-        self.recents.read().unwrap().clone()
+        self.recents.read().clone()
     }
 
     /* -------- backend handle (Arc<dyn Vcs>) -------- */
@@ -78,13 +82,13 @@ impl AppState {
     /// Set the active backend instance for the current repo.
     pub fn set_current_repo_handle(&self, handle: Arc<dyn Vcs>) {
         info!("Setting current repo handle (backend: {})", handle.id());
-        *self.repo_handle.write().unwrap() = Some(handle);
+        *self.repo_handle.write() = Some(handle);
     }
 
     /// Clear the backend instance (e.g., when closing the repo).
     pub fn clear_current_repo_handle(&self) {
         info!("Clearing current repo handle");
-        *self.repo_handle.write().unwrap() = None;
+        *self.repo_handle.write() = None;
     }
 
     /// Get a **cloned** Repo wrapper for callers (cheap clone of Arc).
@@ -92,7 +96,6 @@ impl AppState {
     pub fn current_repo_handle(&self) -> Option<CoreRepo> {
         self.repo_handle
             .read()
-            .unwrap()
             .as_ref()
             .map(|arc| CoreRepo::new(arc.clone()))
     }

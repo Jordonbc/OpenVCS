@@ -36,7 +36,7 @@ impl GitLibGit2 {
     fn map_err<E: std::fmt::Display>(e: E) -> VcsError {
         let msg = e.to_string();
         // Loud, because this bubbles up as a user-visible failure.
-        error!("git-libgit2: backend error: {msg}");
+        error!("backend error: {msg}");
         VcsError::Backend { backend: GIT_LIBGIT2_ID, msg }
 }
 
@@ -45,7 +45,7 @@ impl GitLibGit2 {
         move |s: String| {
             // Always log locally; *also* forward to UI if a callback is present.
             if let Some(rest) = s.strip_prefix("remote: ") {
-                debug!("git-libgit2[remote]: {rest}");
+                debug!("[remote]: {rest}");
                 if let Some(cb) = &on {
                     cb(VcsEvent::RemoteMessage(s));
                 }
@@ -54,7 +54,7 @@ impl GitLibGit2 {
 
             if s.starts_with("auth:") {
                 // Auth noise is critical when debugging; warn-level is intentional.
-                warn!("git-libgit2[auth]: {s}");
+                warn!("[auth]: {s}");
                 if let Some(cb) = &on {
                     cb(VcsEvent::Auth { method: "ssh", detail: s });
                 }
@@ -63,7 +63,7 @@ impl GitLibGit2 {
 
             if let Some(rest) = s.strip_prefix("push status: ") {
                 // Status lines are useful at info; they summarize server acceptance/rejection.
-                info!("git-libgit2[push-status]: {rest}");
+                info!("[push-status]: {rest}");
                 let (refname, status) = if let Some((l, r)) = rest.split_once(" → ") {
                     (l.to_string(), Some(r.to_string()))
                 } else if rest.ends_with(" ok") {
@@ -78,7 +78,7 @@ impl GitLibGit2 {
             }
 
             // Generic progress falls back to trace to avoid spamming normal logs.
-            trace!("git-libgit2: {s}");
+            trace!("{s}");
             if let Some(cb) = &on {
                 cb(VcsEvent::Progress { phase: "libgit2", detail: s });
             }
@@ -141,9 +141,9 @@ impl Vcs for GitLibGit2 {
             .map_err(Self::map_err)
     }
 
-    fn status_summary(&self) -> Result<openvcs_core::StatusSummary> {
+    fn status_summary(&self) -> Result<StatusSummary> {
         let s = self.inner.status_summary().map_err(Self::map_err)?;
-        Ok(openvcs_core::StatusSummary {
+        Ok(StatusSummary {
             untracked: s.untracked,
             modified: s.modified,
             staged: s.staged,
