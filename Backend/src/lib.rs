@@ -1,4 +1,4 @@
-use tauri::{Emitter, Manager};
+use tauri::{Emitter};
 use openvcs_core::{backend_descriptor, backend_id, BackendId};
 
 mod utilities;
