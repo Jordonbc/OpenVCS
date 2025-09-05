@@ -12,6 +12,7 @@ use openvcs_core::{
     models::{BranchItem, StatusPayload, CommitItem},
     get_backend, list_backends, Repo as CoreRepo,
 };
+use openvcs_core::models::LogQuery;
 
 fn selected_backend_id(state: &State<'_, AppState>) -> String {
     state.backend_id()
@@ -207,14 +208,31 @@ pub fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, String> {
 
 /* ---------- git_log ---------- */
 #[tauri::command]
-pub fn git_log(state: State<'_, AppState>, _limit: Option<usize>) -> Result<Vec<CommitItem>, String> {
-    if !state.has_repo() {
-        return Err("No repository selected".to_string());
-    }
+pub fn git_log(
+    state: State<'_, AppState>,
+    limit: Option<usize>,
+) -> Result<Vec<CommitItem>, String> {
+    // Acquire the CoreRepo wrapper the right way
+    let core_repo = state
+        .current_repo_handle()
+        .ok_or_else(|| "No repository selected".to_string())?;
 
-    info!("git_log: command called (not yet implemented)");
-    warn!("git_log: returning placeholder error for now");
-    Err("git_log not implemented for the generic VCS yet".into())
+    // Call the backend directly via &dyn Vcs
+    let vcs = core_repo.inner();
+
+    let q = LogQuery {
+        rev: None,
+        path: None,
+        since_utc: None,
+        until_utc: None,
+        author_contains: None,
+        skip: 0,
+        limit: (limit.unwrap_or(100)).min(1000) as u32,
+        topo_order: true,
+        include_merges: true,
+    };
+
+    vcs.log_commits(&q).map_err(|e| e.to_string())
 }
 
 /* ---------- optional: branch ops used by your JS ---------- */

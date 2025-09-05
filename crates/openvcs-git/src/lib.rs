@@ -8,6 +8,8 @@ use std::{
 use openvcs_core::models::{CommitItem, LogQuery};
 /* ============================ registry wiring ============================ */
 
+pub const GIT_SYSTEM_ID: BackendId  = "git-system";
+
 fn caps_static() -> Capabilities {
     Capabilities { commits: true, branches: true, tags: true, staging: true, push_pull: true, fast_forward: true }
 }

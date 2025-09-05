@@ -4,6 +4,8 @@ use std::{path::{Path, PathBuf}, sync::Arc};
 use log::{debug, error, info, trace, warn};
 use openvcs_core::*;
 
+pub const GIT_LIBGIT2_ID: BackendId = "git-libgit2";
+
 fn caps_static() -> Capabilities {
     Capabilities { commits: true, branches: true, tags: true, staging: true, push_pull: true, fast_forward: true }
 }

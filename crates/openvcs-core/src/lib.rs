@@ -5,11 +5,6 @@ use std::{path::{Path, PathBuf}, sync::Arc};
 /// Backend identifiers are stable, kebab-case strings registered by each backend crate.
 pub type BackendId = &'static str;
 
-/// Suggested well-known IDs (use these in your backend crates).
-pub const GIT_SYSTEM_ID: BackendId  = "git-system";
-pub const GIT_LIBGIT2_ID: BackendId = "git-libgit2";
-// Future: pub const HG_ID: BackendId = "mercurial"; pub const FOSSIL_ID: BackendId = "fossil";
-
 #[derive(Clone, Debug, Default)]
 pub struct Capabilities {
     pub commits: bool,
