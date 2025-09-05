@@ -8,7 +8,7 @@ use crate::utilities::utilities;
 use crate::validate;
 
 use openvcs_core::{OnEvent, VcsEvent, models::{BranchItem, StatusPayload, CommitItem}, get_backend, list_backends, Repo as CoreRepo, BackendId};
-use openvcs_core::models::LogQuery;
+use openvcs_core::models::{BranchKind, LogQuery};
 
 fn selected_backend_id(state: &State<'_, AppState>) -> BackendId {
     state.backend_id()
@@ -142,35 +142,45 @@ fn get_repo_root(state: &State<'_, AppState>) -> Result<PathBuf, String> {
 pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
     info!("list_branches: fetching branch list");
 
-    if !state.has_repo() {
-        return Err("No repository selected".to_string());
+    let core_repo = state
+        .current_repo_handle()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = core_repo.inner();
+
+    debug!("list_branches: workdir={}", vcs.workdir().display());
+
+    let current = vcs.current_branch()
+        .map_err(|e| { error!("list_branches: current_branch failed: {e}"); e.to_string() })?;
+
+    let locals = vcs.local_branches()
+        .map_err(|e| { error!("list_branches: local_branches failed: {e}"); e.to_string() })?;
+
+    // Trim, drop empties, dedup, and build items with full_ref populated
+    let mut seen = std::collections::HashSet::new();
+    let mut items: Vec<BranchItem> = Vec::new();
+
+    for raw in locals {
+        let name = raw.trim();
+        if name.is_empty() {
+            // Help track down the source if this ever happens again
+            warn!("list_branches: skipping empty branch name from backend");
+            continue;
+        }
+        if !seen.insert(name.to_string()) {
+            continue; // dedup
+        }
+        items.push(BranchItem {
+            current: current.as_deref() == Some(name),
+            name: name.to_string(),
+            full_ref: format!("refs/heads/{name}"),
+            kind: BranchKind::Local,
+        });
     }
 
-    let repo = get_open_repo(&state)
-        .map_err(|e| {
-            error!("list_branches: failed to open repo: {e}");
-            e
-        })?;
-
-    let current = repo.inner().current_branch()
-        .map_err(|e| {
-            error!("list_branches: failed to get current branch: {e}");
-            e.to_string()
-        })?;
-
-    let locals = repo.inner().local_branches()
-        .map_err(|e| {
-            error!("list_branches: failed to list local branches: {e}");
-            e.to_string()
-        })?;
-
-    debug!("list_branches: current={:?}, locals={:?}", current, locals);
-
-    Ok(locals.into_iter().map(|name| BranchItem {
-        current: current.as_deref() == Some(name.as_str()),
-        name,
-    }).collect())
+    debug!("list_branches: current={:?}, count={}", current, items.len());
+    Ok(items)
 }
+
 
 /* ---------- git_status ---------- */
 #[tauri::command]
@@ -465,7 +475,7 @@ pub fn set_backend_cmd(state: State<'_, AppState>, backend_id: BackendId) -> Res
     };
 
     // Update the selected backend id.
-    state.set_backend_id(backend_id.clone());
+    state.set_backend_id(backend_id);
     info!("set_backend_cmd: backend switched to {} ({})", backend_id, desc.name);
 
     // If a repo path is already selected, try to reopen it with the new backend.

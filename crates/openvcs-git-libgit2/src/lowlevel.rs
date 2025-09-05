@@ -14,7 +14,7 @@ use log::{debug, error, info, trace, warn};
 use thiserror::Error;
 use time::{OffsetDateTime, UtcOffset};
 use time::format_description::well_known::Rfc3339;
-use openvcs_core::models::{CommitItem, FileEntry, LogQuery, StatusPayload};
+use openvcs_core::models::{BranchItem, BranchKind, CommitItem, FileEntry, LogQuery, StatusPayload};
 
 pub type Result<T> = std::result::Result<T, GitError>;
 
@@ -830,6 +830,40 @@ impl Git {
         })
     }
 
+    pub fn branches(&self) -> Result<Vec<BranchItem>> {
+        self.with_repo(|repo| -> Result<Vec<BranchItem>> {
+            let mut items = Vec::new();
+
+            for br in repo.branches(None)? { // None => Local + Remote
+                let (branch, bty) = br?;
+                // short name: "main" or "origin/feature"
+                let name = branch.name()?.unwrap_or("").to_string();
+                // full ref: "refs/heads/main" or "refs/remotes/origin/feature"
+                let full_ref = branch.get().name().unwrap_or("").to_string();
+
+                // Skip remote HEAD alias like "refs/remotes/origin/HEAD" (noise)
+                if full_ref.ends_with("/HEAD") && matches!(bty, git2::BranchType::Remote) {
+                    continue;
+                }
+
+                let kind = match bty {
+                    git2::BranchType::Local => BranchKind::Local,
+                    git2::BranchType::Remote => {
+                        // "origin/feature" → "origin"
+                        let remote = name.split('/').next().unwrap_or("").to_string();
+                        BranchKind::Remote { remote }
+                    }
+                };
+
+                // Only local branches can be “current”
+                let current = matches!(bty, git2::BranchType::Local) && branch.is_head();
+
+                items.push(BranchItem { name, full_ref, kind, current });
+            }
+
+            Ok(items)
+        })
+    }
 }
 
 #[derive(Default, Clone, Copy, Debug)]

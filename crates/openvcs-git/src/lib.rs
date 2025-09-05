@@ -5,7 +5,7 @@ use std::{
     process::{Command, Stdio},
     sync::Arc,
 };
-use openvcs_core::models::{CommitItem, FileEntry, LogQuery, StatusPayload};
+use openvcs_core::models::{BranchItem, BranchKind, CommitItem, FileEntry, LogQuery, StatusPayload};
 /* ============================ registry wiring ============================ */
 
 pub const GIT_SYSTEM_ID: BackendId  = "git-system";
@@ -369,5 +369,49 @@ impl Vcs for GitSystem {
         }
 
         Ok(Vec::new())
+    }
+
+    fn branches(&self) -> Result<Vec<BranchItem>> {
+        // name, short, head flag
+        let out = Self::run_git_capture(
+            Some(&self.workdir),
+            ["for-each-ref",
+                "--format=%(refname) %(refname:short) %(HEAD)",
+                "refs/heads", "refs/remotes"]
+        )?;
+
+        let mut items = Vec::new();
+        for line in out.lines() {
+            let mut parts = line.split_whitespace();
+            let full = parts.next().unwrap_or("");
+            let short = parts.next().unwrap_or("").to_string();
+            let head_flag = parts.next().unwrap_or("");
+
+            if full.is_empty() || short.is_empty() { continue; }
+
+            if full.starts_with("refs/heads/") {
+                let current = head_flag == "*";
+                items.push(BranchItem {
+                    name: short,
+                    full_ref: full.to_string(),
+                    kind: BranchKind::Local,
+                    current,
+                });
+            } else if full.starts_with("refs/remotes/") {
+                // refs/remotes/<remote>/<branch>
+                // filter origin/HEAD
+                if full.ends_with("/HEAD") { continue; }
+                let after = &full["refs/remotes/".len()..];
+                let remote = after.split('/').next().unwrap_or("").to_string();
+
+                items.push(BranchItem {
+                    name: short,                     // e.g., "origin/feature"
+                    full_ref: full.to_string(),      // full ref
+                    kind: BranchKind::Remote { remote },
+                    current: false,
+                });
+            }
+        }
+        Ok(items)
     }
 }

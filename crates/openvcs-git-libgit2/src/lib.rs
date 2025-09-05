@@ -3,6 +3,7 @@ mod lowlevel;
 use std::{path::{Path, PathBuf}, sync::Arc};
 use log::{debug, error, info, trace, warn};
 use openvcs_core::*;
+use openvcs_core::models::BranchItem;
 
 pub const GIT_LIBGIT2_ID: BackendId = "git-libgit2";
 
@@ -167,5 +168,9 @@ impl Vcs for GitLibGit2 {
 
     fn diff_file(&self, path: &Path) -> Result<Vec<String>> {
         self.inner.diff_file(path).map_err(Self::map_err)
+    }
+
+    fn branches(&self) -> Result<Vec<models::BranchItem>> {
+        self.inner.branches().map_err(Self::map_err)
     }
 }
