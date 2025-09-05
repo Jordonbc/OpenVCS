@@ -12,6 +12,9 @@ use git2::{
 };
 use log::{debug, error, info, trace, warn};
 use thiserror::Error;
+use time::{OffsetDateTime, UtcOffset};
+use time::format_description::well_known::Rfc3339;
+use openvcs_core::models::{CommitItem, LogQuery};
 
 pub type Result<T> = std::result::Result<T, GitError>;
 
@@ -620,6 +623,96 @@ impl Git {
             Ok(())
         })
     }
+
+    /// Return a single page of commits based on the provided query.
+    pub fn log_commits(&self, q: &LogQuery) -> Result<Vec<CommitItem>> {
+        debug!(
+            "log_commits: rev={:?} path={:?} author~={:?} since={:?} until={:?} skip={} limit={} topo={} merges={}",
+            q.rev, q.path, q.author_contains, q.since_utc, q.until_utc, q.skip, q.limit, q.topo_order, q.include_merges
+        );
+
+        self.with_repo(|repo| -> Result<Vec<CommitItem>> {
+            let mut walk = repo.revwalk()?;
+            let sort = if q.topo_order { g::Sort::TOPOLOGICAL | g::Sort::TIME } else { g::Sort::TIME };
+            let _ = walk.set_sorting(sort);
+
+            let rev = q.rev.as_deref().unwrap_or("HEAD");
+            walk.push_ref(rev)?;
+
+            // Pre-parse filters once
+            let path_filter = q.path.as_deref();
+            let auth_sub = q.author_contains.as_ref().map(|s| s.to_lowercase());
+            let since = q.since_utc.as_deref().and_then(parse_iso_to_epoch_secs);
+            let until = q.until_utc.as_deref().and_then(parse_iso_to_epoch_secs);
+
+            let mut out = Vec::with_capacity(q.limit as usize);
+            let mut matched = 0u32;
+
+            for oid_res in walk {
+                let oid = oid_res?;
+                let commit = repo.find_commit(oid)?;
+
+                // merges?
+                if !q.include_merges && commit.parent_count() > 1 {
+                    continue;
+                }
+
+                // date filters (git time is seconds + offset)
+                let t = commit.time();
+                let secs = t.seconds();
+                if let Some(s) = since {
+                    if secs < s { continue; }
+                }
+                if let Some(u) = until {
+                    if secs > u { continue; }
+                }
+
+                // author filter (substring on "Name <email>")
+                if let Some(sub) = &auth_sub {
+                    let who = {
+                        let a = commit.author();
+                        format!("{} <{}>", a.name().unwrap_or(""), a.email().unwrap_or(""))
+                    };
+                    if !who.to_lowercase().contains(sub) {
+                        continue;
+                    }
+                }
+
+                // path filter (touches prefix)
+                if let Some(prefix) = path_filter {
+                    if !commit_touches_path(repo, oid, prefix)? {
+                        continue;
+                    }
+                }
+
+                // pagination (skip first N matches after filters)
+                if matched < q.skip {
+                    matched += 1;
+                    continue;
+                }
+
+                // DTO
+                let id_full = oid.to_string();
+                let short = &id_full[..id_full.len().min(7)];
+                let when = git_time_to_rfc3339(t);
+                let author = {
+                    let a = commit.author();
+                    format!("{} <{}>", a.name().unwrap_or(""), a.email().unwrap_or(""))
+                };
+                let msg = commit.summary().unwrap_or("").to_string();
+                let meta = format!("{when} • {short}");
+
+                out.push(CommitItem { id: id_full, msg, meta, author });
+
+                if out.len() as u32 >= q.limit {
+                    break;
+                }
+            }
+
+            debug!("log_commits: returned {} item(s)", out.len());
+            Ok(out)
+        })
+    }
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -728,6 +821,58 @@ where
 
     cb
 }
+
+/// Parse RFC3339/ISO8601 into epoch seconds; on failure return None (ignore filter).
+fn parse_iso_to_epoch_secs(s: &str) -> Option<i64> {
+    OffsetDateTime::parse(s, &Rfc3339).ok().map(|dt| dt.unix_timestamp())
+}
+
+/// Convert git2::Time to RFC3339 string, honoring the embedded offset minutes.
+fn git_time_to_rfc3339(t: g::Time) -> String {
+    let offset = UtcOffset::from_whole_seconds((t.offset_minutes() * 60) as i32)
+        .unwrap_or(UtcOffset::UTC);
+    OffsetDateTime::from_unix_timestamp(t.seconds())
+        .unwrap_or(OffsetDateTime::UNIX_EPOCH)
+        .to_offset(offset)
+        .format(&Rfc3339)
+        .unwrap_or_else(|_| "1970-01-01T00:00:00Z".into())
+}
+
+/// Fast check whether a commit touches a given path prefix.
+fn commit_touches_path(repo: &Repository, oid: Oid, path_prefix: &str) -> Result<bool> {
+    let commit = repo.find_commit(oid)?;
+    let tree = commit.tree()?;
+
+    // Parent tree or truly empty tree (works for SHA-1 and SHA-256 repos)
+    let parent_tree = if commit.parent_count() > 0 {
+        commit.parent(0)?.tree()?
+    } else {
+        // Create an empty tree with a Treebuilder (do NOT use the index here).
+        let tb = repo.treebuilder(None)?;
+        let empty_oid = tb.write()?;
+        repo.find_tree(empty_oid)?
+    };
+
+    // If you want a quick win, apply the pathspec here to let libgit2 filter for us.
+    let mut opts = g::DiffOptions::new();
+    opts.pathspec(path_prefix);
+
+    let mut touched = false;
+    repo.diff_tree_to_tree(Some(&parent_tree), Some(&tree), Some(&mut opts))?
+        .foreach(
+            &mut |delta, _| {
+                // If a delta exists at all with our pathspec, we can bail out early.
+                if delta.status() != g::Delta::Unmodified {
+                    touched = true;
+                    return false; // stop
+                }
+                true
+            },
+            None, None, None,
+        )?;
+    Ok(touched)
+}
+
 
 /// Turn absolute path into repo-relative for index operations.
 pub fn rel_to_workdir(workdir: &Path, p: &Path) -> Result<PathBuf> {

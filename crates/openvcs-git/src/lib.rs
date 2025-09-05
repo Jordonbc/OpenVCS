@@ -5,7 +5,7 @@ use std::{
     process::{Command, Stdio},
     sync::Arc,
 };
-
+use openvcs_core::models::{CommitItem, LogQuery};
 /* ============================ registry wiring ============================ */
 
 fn caps_static() -> Capabilities {
@@ -218,5 +218,72 @@ impl Vcs for GitSystem {
 
     fn hard_reset_head(&self) -> Result<()> {
         Self::run_git(Some(&self.workdir), ["reset", "--hard", "HEAD"])
+    }
+
+    fn log_commits(&self, q: &LogQuery) -> Result<Vec<CommitItem>> {
+        // Build: git log [rev?] [--topo-order] [--no-merges] --date=iso-strict
+        //        [--since=..] [--until=..] [--author=..] --skip=N --max-count=M
+        //        --pretty='...%x00...' [-- path]
+        let mut args: Vec<String> = vec!["log".into()];
+
+        if let Some(rev) = &q.rev {
+            args.push(rev.clone());
+        }
+
+        if q.topo_order {
+            args.push("--topo-order".into());
+        }
+        if !q.include_merges {
+            args.push("--no-merges".into());
+        }
+
+        args.push("--date=iso-strict".into());
+        if let Some(s) = &q.since_utc {
+            args.push(format!("--since={s}"));
+        }
+        if let Some(u) = &q.until_utc {
+            args.push(format!("--until={u}"));
+        }
+        if let Some(a) = &q.author_contains {
+            args.push(format!("--author={a}"));
+        }
+
+        args.push(format!("--skip={}", q.skip));
+        args.push(format!("--max-count={}", q.limit));
+
+        // NUL-separated fields, one commit per line
+        args.push("--pretty=format:%H%x00%an <%ae>%x00%ad%x00%s".into());
+
+        if let Some(p) = &q.path {
+            args.push("--".into());
+            args.push(p.clone());
+        }
+
+        let out = Self::run_git_capture(Some(&self.workdir), args)?;
+        let mut items = Vec::with_capacity(q.limit as usize);
+
+        for line in out.lines() {
+            // Each line → one commit with NUL-separated fields
+            let mut parts = line.split('\0');
+            let id = parts.next().unwrap_or_default();
+            if id.is_empty() {
+                continue;
+            }
+            let author = parts.next().unwrap_or_default().to_string();
+            let when   = parts.next().unwrap_or_default().to_string();
+            let msg    = parts.next().unwrap_or_default().to_string();
+
+            let short = &id[..id.len().min(7)];
+            let meta  = format!("{when} • {short}");
+
+            items.push(CommitItem {
+                id: id.to_string(),
+                msg,
+                meta,
+                author,
+            });
+        }
+
+        Ok(items)
     }
 }

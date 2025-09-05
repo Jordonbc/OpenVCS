@@ -154,4 +154,8 @@ impl Vcs for GitLibGit2 {
     fn hard_reset_head(&self) -> Result<()> {
         self.inner.hard_reset_head().map_err(Self::map_err)
     }
+
+    fn log_commits(&self, q: &models::LogQuery) -> Result<Vec<models::CommitItem>> {
+        self.inner.log_commits(q).map_err(Self::map_err)
+    }
 }

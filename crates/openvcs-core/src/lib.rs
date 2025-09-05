@@ -86,6 +86,9 @@ pub trait Vcs: Send + Sync {
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String>;
     fn status_summary(&self) -> Result<StatusSummary>;
 
+    /// History / log (VCS-agnostic). Returns a single page of commits.
+    fn log_commits(&self, query: &models::LogQuery) -> Result<Vec<models::CommitItem>>;
+
     // recovery
     fn hard_reset_head(&self) -> Result<()>;
 }
@@ -215,5 +218,33 @@ pub mod models {
         pub msg: String,
         pub meta: String, // e.g., date or short info
         pub author: String,
+    }
+
+    /// Query for commit history. Keep this VCS-agnostic and stable.
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+    pub struct LogQuery {
+        /// Show commits reachable from this ref. `None` = HEAD.
+        pub rev: Option<String>,
+        /// Optional path filter (single path for now; extendable to Vec later).
+        pub path: Option<String>,
+        /// ISO 8601 `since` (UTC) e.g. "2025-09-01T00:00:00Z".
+        pub since_utc: Option<String>,
+        /// ISO 8601 `until` (UTC).
+        pub until_utc: Option<String>,
+        /// Author substring match ("name" or "name <email>").
+        pub author_contains: Option<String>,
+        /// Pagination
+        pub skip: u32,
+        pub limit: u32, // required by most UIs
+        /// Prefer topological order when true, otherwise chronological.
+        pub topo_order: bool,
+        /// Include merge commits when true (backends may ignore if unsupported).
+        pub include_merges: bool,
+    }
+
+    impl LogQuery {
+        pub fn head(limit: u32) -> Self {
+            Self { limit, ..Default::default() }
+        }
     }
 }
