@@ -3,17 +3,19 @@ mod lowlevel;
 use std::{path::{Path, PathBuf}, sync::Arc};
 use log::{debug, error, info, trace, warn};
 use openvcs_core::*;
-use openvcs_core::models::{BranchItem, StatusSummary};
+use openvcs_core::backend_descriptor::{BackendDescriptor, BACKENDS};
+use openvcs_core::backend_id::BackendId;
+use openvcs_core::models::{Capabilities, OnEvent, StatusSummary, VcsEvent};
 
-pub const GIT_LIBGIT2_ID: BackendId = "git-libgit2";
+pub const GIT_LIBGIT2_ID: BackendId = backend_id!("git-libgit2");
 
 fn caps_static() -> Capabilities {
     Capabilities { commits: true, branches: true, tags: true, staging: true, push_pull: true, fast_forward: true }
 }
-fn open_factory(path: &std::path::Path) -> Result<Arc<dyn Vcs>> {
+fn open_factory(path: &Path) -> Result<Arc<dyn Vcs>> {
     GitLibGit2::open(path).map(|v| Arc::new(v) as Arc<dyn Vcs>)
 }
-fn clone_factory(url: &str, dest: &std::path::Path, on: Option<openvcs_core::OnEvent>) -> Result<Arc<dyn Vcs>> {
+fn clone_factory(url: &str, dest: &Path, on: Option<OnEvent>) -> Result<Arc<dyn Vcs>> {
     GitLibGit2::clone(url, dest, on).map(|v| Arc::new(v) as Arc<dyn Vcs>)
 }
 

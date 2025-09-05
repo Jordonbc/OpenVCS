@@ -7,15 +7,14 @@ use crate::state::AppState;
 use crate::utilities::utilities;
 use crate::validate;
 
-use openvcs_core::{OnEvent, VcsEvent, models::{BranchItem, StatusPayload, CommitItem}, get_backend, list_backends, Repo as CoreRepo, BackendId};
-use openvcs_core::models::{BranchKind, LogQuery};
+use openvcs_core::{OnEvent, models::{BranchItem, StatusPayload, CommitItem}, Repo, BackendId, backend_id};
+use openvcs_core::backend_descriptor::{get_backend, list_backends};
+use openvcs_core::models::{VcsEvent};
 
-fn selected_backend_id(state: &State<'_, AppState>) -> BackendId {
-    state.backend_id()
-}
-
-fn get_open_repo(state: &State<'_, AppState>) -> Result<CoreRepo, String> {
-    state.current_repo_handle().ok_or_else(|| "No repository opened".to_string())
+#[derive(serde::Serialize)]
+struct RepoSelectedPayload {
+    path: String,
+    backend: String,
 }
 
 // Bridge core events → UI messages
@@ -68,33 +67,51 @@ pub async fn add_repo<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
     path: String,
+    backend_id: Option<BackendId>,
 ) -> Result<(), String> {
-    info!("add_repo: requested path = {}", path);
+    let be = backend_id.unwrap_or_else(|| backend_id!("git-system"));
+    add_repo_internal(window, state, path, be).await
+}
 
-    let be = selected_backend_id(&state);
-    let desc = get_backend(&be)
-        .ok_or_else(|| {
-            let m = format!("Backend not found: {be}");
-            error!("{m}");
-            m
-        })?;
+pub async fn add_repo_internal<R: Runtime>(
+    window: Window<R>,
+    state: State<'_, AppState>,
+    path: String,
+    backend_id: BackendId,
+) -> Result<(), String> {
+    info!("add_repo: requested path = {}, backend = {}", path, backend_id);
 
-    let handle = (desc.open)(Path::new(&path)).map_err(|e| {
-        let m = format!("Failed to open repo with backend `{}`: {}", be, e);
+    if !Path::new(&path).exists() {
+        let m = format!("Path does not exist: {}", path);
+        error!("{m}");
+        return Err(m);
+    }
+
+    let desc = get_backend(&backend_id).ok_or_else(|| {
+        let m = format!("Backend not found: {backend_id}");
         error!("{m}");
         m
     })?;
 
-    // Persist both the path and the handle
-    state.set_current_repo(PathBuf::from(&path));
-    state.set_current_repo_handle(handle);
+    let handle = (desc.open)(Path::new(&path)).map_err(|e| {
+        let m = format!("Failed to open repo with backend `{backend_id}`: {e}");
+        error!("{m}");
+        m
+    })?;
 
-    // Notify the UI
-    if let Err(e) = window.app_handle().emit("repo:selected", &path) {
+    let repo = Arc::new(Repo::new(handle));
+    state.set_current_repo(repo);
+
+    // structured event
+    let payload = RepoSelectedPayload {
+        path: path.clone(),
+        backend: backend_id.as_ref().to_owned(),
+    };
+    if let Err(e) = window.app_handle().emit("repo:selected", &payload) {
         warn!("add_repo: failed to emit repo:selected: {}", e);
     }
 
-    info!("add_repo: repository opened and stored for backend `{}`", be);
+    info!("add_repo: repository opened and stored (backend = {})", backend_id);
     Ok(())
 }
 
@@ -116,11 +133,9 @@ pub fn validate_clone_input(url: String, dest: String) -> validate::Validation {
 
 #[tauri::command]
 pub fn current_repo_path(state: State<'_, AppState>) -> Option<String> {
-    if !state.has_repo() {
-        return None;
-    }
-
-    state.current_repo().map(|p| p.to_string_lossy().to_string())
+    state
+        .current_repo()
+        .map(|repo| repo.inner().workdir().to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -130,11 +145,10 @@ pub fn list_recent_repos(state: State<'_, AppState>) -> Vec<String> {
 
 /* ---------- helpers ---------- */
 fn get_repo_root(state: &State<'_, AppState>) -> Result<PathBuf, String> {
-    if !state.has_repo() {
-        return Err("No repository selected".to_string());
-    }
-
-    state.current_repo().ok_or_else(|| "No repository selected".to_string())
+    state
+        .current_repo()
+        .map(|repo| repo.inner().workdir().to_path_buf())
+        .ok_or_else(|| "No repository selected".to_string())
 }
 
 /* ---------- list_branches ---------- */
@@ -145,28 +159,34 @@ pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, Stri
 
     info!("list_branches: fetching unified branches via Vcs::branches()");
 
-    let core_repo = state
-        .current_repo_handle()
+    let repo = state
+        .current_repo()
         .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = core_repo.inner();
+    let vcs = repo.inner();
 
     debug!("list_branches: workdir={}", vcs.workdir().display());
 
     // Ask backend for unified branches and current branch name
-    let mut items = vcs.branches()
-        .map_err(|e| { error!("list_branches: branches() failed: {e:?}"); e.to_string() })?;
+    let mut items = vcs
+        .branches()
+        .map_err(|e| {
+            error!("list_branches: branches() failed: {e:?}");
+            e.to_string()
+        })?;
 
-    let current_local = vcs.current_branch()
-        .map_err(|e| { error!("list_branches: current_branch failed: {e:?}"); e.to_string() })?;
+    let current_local = vcs
+        .current_branch()
+        .map_err(|e| {
+            error!("list_branches: current_branch failed: {e:?}");
+            e.to_string()
+        })?;
 
     // Helper: infer kind from full_ref if backend returned Unknown
     fn infer_kind(full_ref: &str) -> BranchKind {
         if let Some(rest) = full_ref.strip_prefix("refs/heads/") {
-            // Local
-            let _ = rest; // keep for clarity
+            let _ = rest;
             BranchKind::Local
         } else if let Some(rest) = full_ref.strip_prefix("refs/remotes/") {
-            // Remote: refs/remotes/<remote>/<name...>
             if let Some((remote, _name)) = rest.split_once('/') {
                 return BranchKind::Remote { remote: remote.to_string() };
             }
@@ -177,7 +197,6 @@ pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, Stri
     }
 
     // Sanitize, infer kind where Unknown, and enforce a single "current"
-    // Strategy: compute which short name is current (only applies to Local)
     let current_name = current_local.as_deref();
 
     // Deduplicate by full_ref (stable identity)
@@ -199,10 +218,10 @@ pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, Stri
             it.kind = infer_kind(&it.full_ref);
         }
 
-        // Reconcile "current": prefer backend flag if consistent; otherwise decide from current_branch()
+        // Reconcile "current": only locals can be current
         it.current = match (&it.kind, current_name) {
             (BranchKind::Local, Some(curr)) => it.name == *curr,
-            _ => false, // only local branches can be "current"
+            _ => false,
         };
 
         // Dedup by full_ref (first wins)
@@ -217,7 +236,9 @@ pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, Stri
     // Sort: current → local → remote → unknown, then by name
     out.sort_by(|a, b| {
         let bucket = |x: &BranchItem| {
-            if x.current { 0 } else {
+            if x.current {
+                0
+            } else {
                 match x.kind {
                     BranchKind::Local => 1,
                     BranchKind::Remote { .. } => 2,
@@ -242,22 +263,25 @@ pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, Stri
 pub fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, String> {
     info!("git_status: fetching repo status");
 
-    let core_repo = state
-        .current_repo_handle()
+    let repo = state
+        .current_repo()
         .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = core_repo.inner();
+    let vcs = repo.inner();
 
     let payload = vcs.status_payload().map_err(|e| {
         error!("git_status: failed to compute status: {e}");
         e.to_string()
     })?;
 
-    debug!("git_status: files={}, ahead={}, behind={}",
-        payload.files.len(), payload.ahead, payload.behind);
+    debug!(
+        "git_status: files={}, ahead={}, behind={}",
+        payload.files.len(),
+        payload.ahead,
+        payload.behind
+    );
 
     Ok(payload)
 }
-
 
 /* ---------- git_log ---------- */
 #[tauri::command]
@@ -265,13 +289,12 @@ pub fn git_log(
     state: State<'_, AppState>,
     limit: Option<usize>,
 ) -> Result<Vec<CommitItem>, String> {
-    // Acquire the CoreRepo wrapper the right way
-    let core_repo = state
-        .current_repo_handle()
-        .ok_or_else(|| "No repository selected".to_string())?;
+    use openvcs_core::models::{CommitItem, LogQuery};
 
-    // Call the backend directly via &dyn Vcs
-    let vcs = core_repo.inner();
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
 
     let q = LogQuery {
         rev: None,
@@ -291,23 +314,25 @@ pub fn git_log(
 /* ---------- optional: branch ops used by your JS ---------- */
 #[tauri::command]
 pub fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
-    info!("git_checkout_branch: attempting to checkout branch '{}'", name);
-
-    if !state.has_repo() {
-        return Err("No repository selected".to_string());
+    let branch = name.trim();
+    if branch.is_empty() {
+        return Err("Branch name cannot be empty".to_string());
     }
 
-    let repo = get_open_repo(&state)?;
-    match repo.inner().checkout_branch(&name) {
-        Ok(_) => {
-            info!("git_checkout_branch: successfully checked out '{}'", name);
-            Ok(())
-        }
-        Err(e) => {
-            error!("git_checkout_branch: failed to checkout '{}': {}", name, e);
-            Err(e.to_string())
-        }
-    }
+    info!("git_checkout_branch: attempting to checkout '{branch}'");
+
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+
+    vcs.checkout_branch(branch).map_err(|e| {
+        error!("git_checkout_branch: failed to checkout '{branch}': {e}");
+        e.to_string()
+    })?;
+
+    info!("git_checkout_branch: successfully checked out '{branch}'");
+    Ok(())
 }
 
 #[tauri::command]
@@ -317,49 +342,50 @@ pub fn git_create_branch(
     from: Option<String>,
     checkout: Option<bool>,
 ) -> Result<(), String> {
-    info!("git_create_branch: requested branch '{}', from={:?}, checkout={:?}", name, from, checkout);
+    info!(
+        "git_create_branch: requested branch '{}', from={:?}, checkout={:?}",
+        name, from, checkout
+    );
 
-    if !state.has_repo() {
-        return Err("No repository selected".to_string());
-    }
-
-    let repo = get_open_repo(&state)?;
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
 
     // If a base branch is provided, check it out first.
-    if let Some(from) = from.clone() {
-        match repo.inner().checkout_branch(&from) {
-            Ok(_) => info!("git_create_branch: successfully checked out base branch '{}'", from),
+    if let Some(from) = from {
+        match vcs.checkout_branch(&from) {
+            Ok(_) => info!("git_create_branch: successfully checked out base branch '{from}'"),
             Err(e) => {
-                error!("git_create_branch: failed to checkout base branch '{}': {}", from, e);
+                error!(
+                    "git_create_branch: failed to checkout base branch '{from}': {e}"
+                );
                 return Err(format!("base branch not found or cannot checkout: {e}"));
             }
         }
     }
 
-    match repo.inner().create_branch(&name, checkout.unwrap_or(false)) {
-        Ok(_) => {
-            info!("git_create_branch: successfully created branch '{}'", name);
-            Ok(())
-        }
-        Err(e) => {
-            error!("git_create_branch: failed to create branch '{}': {}", name, e);
-            Err(e.to_string())
-        }
-    }
+    vcs.create_branch(&name, checkout.unwrap_or(false))
+        .map_err(|e| {
+            error!("git_create_branch: failed to create branch '{name}': {e}");
+            e.to_string()
+        })?;
+
+    info!("git_create_branch: successfully created branch '{name}'");
+    Ok(())
 }
 
 #[tauri::command]
 pub fn git_diff_file(state: State<'_, AppState>, path: String) -> Result<Vec<String>, String> {
-    let core_repo = state
-        .current_repo_handle()
+    use std::path::PathBuf;
+
+    let repo = state
+        .current_repo()
         .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = core_repo.inner();
+    let vcs = repo.inner();
 
     // Allow either absolute or repo-relative; backend handles stripping
-    let lines = vcs.diff_file(&PathBuf::from(path))
-        .map_err(|e| e.to_string())?;
-
-    Ok(lines)
+    vcs.diff_file(&PathBuf::from(path)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -371,12 +397,11 @@ pub async fn commit_changes<R: Runtime>(
 ) -> Result<String, String> {
     info!("commit_changes called (summary: \"{}\")", summary);
 
-    if !state.has_repo() {
-        return Err("No repository selected".to_string());
-    }
-
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let repo = repo.clone(); // move into blocking task
     let app = window.app_handle().clone();
-    let repo = get_open_repo(&state)?;
 
     let message = if description.trim().is_empty() {
         summary.clone()
@@ -407,27 +432,26 @@ pub async fn commit_changes<R: Runtime>(
         on(VcsEvent::Info("Commit created."));
         Ok(oid)
     })
-    .await
-    .map_err(|e| {
-        error!("commit_changes task join error: {e}");
-        format!("commit task failed: {e}")
-    })?
+        .await
+        .map_err(|e| {
+            error!("commit_changes task join error: {e}");
+            format!("commit task failed: {e}")
+        })?
 }
 
 #[tauri::command]
 pub fn git_fetch<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
     info!("git_fetch called");
 
-    if !state.has_repo() {
-        return Err("No repository selected".to_string());
-    }
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
 
-    let repo = get_open_repo(&state)?;
     let app = window.app_handle().clone();
     let on = Some(progress_bridge(app));
 
-    let current = repo
-        .inner()
+    let current = vcs
         .current_branch()
         .map_err(|e| {
             error!("Failed to get current branch: {e}");
@@ -438,16 +462,14 @@ pub fn git_fetch<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> R
             "Detached HEAD; cannot determine upstream".to_string()
         })?;
 
-    info!("Fetching branch '{}' from origin", current);
+    info!("Fetching branch '{current}' from origin");
 
-    repo.inner()
-        .fetch("origin", &current, on)
-        .map_err(|e| {
-            error!("Fetch failed for branch '{}': {e}", current);
-            e.to_string()
-        })?;
+    vcs.fetch("origin", &current, on).map_err(|e| {
+        error!("Fetch failed for branch '{current}': {e}");
+        e.to_string()
+    })?;
 
-    info!("Fetch completed successfully for branch '{}'", current);
+    info!("Fetch completed successfully for branch '{current}'");
     Ok(())
 }
 
@@ -458,38 +480,43 @@ pub async fn git_push<R: Runtime>(
 ) -> Result<(), String> {
     info!("git_push called");
 
-    if !state.has_repo() {
-        return Err("No repository selected".to_string());
-    }
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?
+        .clone();
 
-    let repo = get_open_repo(&state)?;
     let app_for_worker = window.app_handle().clone();
     let app_for_final  = window.app_handle().clone();
 
     async_runtime::spawn_blocking(move || -> Result<(), String> {
         let on = Some(progress_bridge(app_for_worker));
 
-        let current = repo.inner().current_branch().map_err(|e| {
-            error!("Failed to determine current branch: {e}");
-            e.to_string()
-        })?.ok_or_else(|| {
-            warn!("Detached HEAD, cannot push");
-            "detached HEAD".to_string()
-        })?;
+        let current = repo.inner()
+            .current_branch()
+            .map_err(|e| {
+                error!("Failed to determine current branch: {e}");
+                e.to_string()
+            })?
+            .ok_or_else(|| {
+                warn!("Detached HEAD, cannot push");
+                "detached HEAD".to_string()
+            })?;
 
         let refspec = format!("refs/heads/{0}:refs/heads/{0}", current);
-        info!("Pushing branch '{}' with refspec '{}'", current, refspec);
+        info!("Pushing branch '{current}' with refspec '{refspec}'");
 
-        repo.inner().push("origin", &refspec, on).map_err(|e| {
-            error!("Push failed for branch '{}': {e}", current);
-            e.to_string()
-        })
+        repo.inner()
+            .push("origin", &refspec, on)
+            .map_err(|e| {
+                error!("Push failed for branch '{current}': {e}");
+                e.to_string()
+            })
     })
-    .await
-    .map_err(|e| {
-        error!("Join error in git_push task: {e}");
-        e.to_string()
-    })??;
+        .await
+        .map_err(|e| {
+            error!("Join error in git_push task: {e}");
+            e.to_string()
+        })??;
 
     let _ = app_for_final.emit(
         "git-progress",
@@ -503,8 +530,10 @@ pub async fn git_push<R: Runtime>(
 #[tauri::command]
 pub fn list_backends_cmd() -> Vec<(String, String)> {
     info!("list_backends_cmd called");
-    let backends: Vec<(String, String)> =
-        list_backends().map(|b| (b.id.to_string(), b.name.to_string())).collect();
+
+    let backends: Vec<(String, String)> = list_backends()
+        .map(|b| (b.id.as_ref().to_string(), b.name.to_string()))
+        .collect();
 
     info!("Found {} registered backends", backends.len());
     for (id, name) in &backends {
@@ -516,10 +545,7 @@ pub fn list_backends_cmd() -> Vec<(String, String)> {
 
 #[tauri::command]
 pub fn set_backend_cmd(state: State<'_, AppState>, backend_id: BackendId) -> Result<(), String> {
-    use log::{info, warn, error};
-    use std::path::Path;
-
-    info!("set_backend_cmd: requested backend = {}", &backend_id);
+    info!("set_backend_cmd: requested backend = {}", backend_id);
 
     let desc = match get_backend(&backend_id) {
         Some(d) => d,
@@ -529,23 +555,28 @@ pub fn set_backend_cmd(state: State<'_, AppState>, backend_id: BackendId) -> Res
         }
     };
 
-    // Update the selected backend id.
-    state.set_backend_id(backend_id);
-    info!("set_backend_cmd: backend switched to {} ({})", backend_id, desc.name);
+    // If a repo is open, reopen it with the new backend and swap it into state.
+    if let Some(repo) = state.current_repo() {
+        let path = repo.inner().workdir().to_path_buf();
+        info!(
+            "set_backend_cmd: reopening current repo with backend {} → {}",
+            repo.id(),
+            backend_id
+        );
 
-    // If a repo path is already selected, try to reopen it with the new backend.
-    if let Some(path) = state.current_repo() {
-        info!("set_backend_cmd: reopening current repo with new backend: {}", path.display());
         match (desc.open)(Path::new(&path)) {
             Ok(handle) => {
-                state.set_current_repo_handle(handle);
-                info!("set_backend_cmd: repo reopened with backend `{}`", backend_id);
+                let new_repo = Arc::new(Repo::new(handle));
+                state.set_current_repo(new_repo);
+                info!(
+                    "set_backend_cmd: repo reopened with backend `{}` (path={})",
+                    backend_id,
+                    path.display()
+                );
             }
             Err(e) => {
-                // Clear stale handle
-                state.clear_current_repo_handle();
                 error!(
-                    "set_backend_cmd: failed to reopen repo `{}` with backend `{}`: {}",
+                    "set_backend_cmd: failed to reopen repo '{}' with backend `{}`: {}",
                     path.display(),
                     backend_id,
                     e
@@ -554,9 +585,8 @@ pub fn set_backend_cmd(state: State<'_, AppState>, backend_id: BackendId) -> Res
             }
         }
     } else {
-        // No repo selected; just ensure there's no stale handle.
-        state.clear_current_repo_handle();
-        info!("set_backend_cmd: no current repo; cleared any existing handle");
+        // No repo open; nothing to reopen. Succeed silently.
+        info!("set_backend_cmd: no repo open; will use `{}` when opening a repo", backend_id);
     }
 
     Ok(())

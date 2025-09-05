@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -77,3 +78,25 @@ impl LogQuery {
         Self { limit, ..Default::default() }
     }
 }
+
+#[derive(Clone, Debug, Default)]
+pub struct Capabilities {
+    pub commits: bool,
+    pub branches: bool,
+    pub tags: bool,
+    pub staging: bool,
+    pub push_pull: bool,
+    pub fast_forward: bool,
+}
+
+#[derive(Clone, Debug)]
+pub enum VcsEvent {
+    Info(&'static str),
+    RemoteMessage(String),
+    Progress { phase: &'static str, detail: String },
+    Auth { method: &'static str, detail: String },
+    PushStatus { refname: String, status: Option<String> },
+    Warning(String),
+    Error(String),
+}
+pub type OnEvent = Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>;

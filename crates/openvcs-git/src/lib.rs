@@ -5,10 +5,12 @@ use std::{
     process::{Command, Stdio},
     sync::Arc,
 };
-use openvcs_core::models::{BranchItem, BranchKind, CommitItem, FileEntry, LogQuery, StatusPayload, StatusSummary};
+use openvcs_core::backend_descriptor::{BackendDescriptor, BACKENDS};
+use openvcs_core::backend_id::BackendId;
+use openvcs_core::models::{BranchItem, BranchKind, Capabilities, CommitItem, FileEntry, LogQuery, OnEvent, StatusPayload, StatusSummary, VcsEvent};
 /* ============================ registry wiring ============================ */
 
-pub const GIT_SYSTEM_ID: BackendId  = "git-system";
+pub const GIT_SYSTEM_ID: BackendId = backend_id!("git-system");
 
 fn caps_static() -> Capabilities {
     Capabilities { commits: true, branches: true, tags: true, staging: true, push_pull: true, fast_forward: true }

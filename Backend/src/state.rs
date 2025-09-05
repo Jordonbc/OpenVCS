@@ -1,50 +1,39 @@
-use std::path::PathBuf;
-use std::sync::{Arc};
-
-use parking_lot::RwLock;
+use std::{path::PathBuf, sync::Arc};
 
 use log::{debug, info};
-use openvcs_core::{BackendId, Repo as CoreRepo, Vcs};
+use parking_lot::RwLock;
 
+use openvcs_core::Repo;
+
+/// Central application state.
+/// Keeps track of the currently open repo and MRU recents.
+/// Backend choice is tied to each repo (via `Repo::id()`), not stored globally.
 #[derive(Default)]
 pub struct AppState {
-    // Selected backend (string id; e.g., "git-libgit2" or "git-system")
-    backend_id: RwLock<BackendId>,
+    /// Currently open repository
+    current_repo: RwLock<Option<Arc<Repo>>>,
 
-    // Active repo path (what your UI shows)
-    current_repo: RwLock<Option<PathBuf>>,
-
-    // Active backend instance for the current repo
-    repo_handle: RwLock<Option<Arc<dyn Vcs>>>,
-
-    // MRU list for “Recents”
+    /// MRU list for “Recents”
     recents: RwLock<Vec<PathBuf>>,
 }
 
 impl AppState {
-    /* -------- backend selection -------- */
-    pub fn set_backend_id(&self, id: BackendId) {
-        info!("Changing active backend to: {}", id);
-        *self.backend_id.write() = id;
-    }
-    
-    pub fn backend_id(&self) -> BackendId {
-        let id = self.backend_id.read().clone();
-        debug!("Queried active backend: {}", id);
-        id
-    }
+    /* -------- repo lifecycle -------- */
 
     pub fn has_repo(&self) -> bool {
-        self.repo_handle.read().is_some()
+        self.current_repo.read().is_some()
     }
 
-    /* -------- current repo path -------- */
+    pub fn set_current_repo(&self, repo: Arc<Repo>) {
+        let path = repo.inner().workdir().to_path_buf();
 
-    pub fn set_current_repo(&self, path: PathBuf) {
-        {
-            let mut cur = self.current_repo.write();
-            *cur = Some(path.clone());
-        }
+        info!(
+            "AppState: set current repo (backend={}, path={})",
+            repo.id(),
+            path.display()
+        );
+
+        *self.current_repo.write() = Some(repo);
 
         // Update recents (front insert, unique, cap N)
         let mut r = self.recents.write();
@@ -55,48 +44,27 @@ impl AppState {
             r.truncate(MAX_RECENTS);
         }
 
-        info!("Set current repo: {}", path.display());
         debug!(
-            "Recents updated: [{}]",
-            r.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
+            "AppState: recents -> [{}]",
+            r.iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
 
     pub fn clear_current_repo(&self) {
         *self.current_repo.write() = None;
-        *self.repo_handle.write() = None;
-
-        info!("Cleared current repository and repo handle");
+        info!("AppState: cleared current repository");
     }
 
-    pub fn current_repo(&self) -> Option<PathBuf> {
+    /* -------- getters -------- */
+
+    pub fn current_repo(&self) -> Option<Arc<Repo>> {
         self.current_repo.read().clone()
     }
 
     pub fn recents(&self) -> Vec<PathBuf> {
         self.recents.read().clone()
-    }
-
-    /* -------- backend handle (Arc<dyn Vcs>) -------- */
-
-    /// Set the active backend instance for the current repo.
-    pub fn set_current_repo_handle(&self, handle: Arc<dyn Vcs>) {
-        info!("Setting current repo handle (backend: {})", handle.id());
-        *self.repo_handle.write() = Some(handle);
-    }
-
-    /// Clear the backend instance (e.g., when closing the repo).
-    pub fn clear_current_repo_handle(&self) {
-        info!("Clearing current repo handle");
-        *self.repo_handle.write() = None;
-    }
-
-    /// Get a **cloned** Repo wrapper for callers (cheap clone of Arc).
-    /// Returns `None` if no repo is open.
-    pub fn current_repo_handle(&self) -> Option<CoreRepo> {
-        self.repo_handle
-            .read()
-            .as_ref()
-            .map(|arc| CoreRepo::new(arc.clone()))
     }
 }

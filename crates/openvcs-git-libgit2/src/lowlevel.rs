@@ -813,7 +813,7 @@ impl Git {
                 None => {
                     // No HEAD (initial commit). Treat staged as additions vs empty tree.
                     // libgit2 empty tree via Treebuilder
-                    let mut tb = repo.treebuilder(None)?;
+                    let tb = repo.treebuilder(None)?;
                     let empty = tb.write()?;
                     repo.find_tree(empty)?
                 }

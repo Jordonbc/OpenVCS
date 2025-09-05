@@ -1,5 +1,5 @@
 use tauri::{Emitter, Manager};
-use openvcs_core::BackendId;
+use openvcs_core::{backend_descriptor, backend_id, BackendId};
 
 mod utilities;
 mod tauri_commands;
@@ -16,7 +16,7 @@ use openvcs_git as _;
 #[allow(unused_imports)]
 use openvcs_git_libgit2 as _;
 
-pub const GIT_SYSTEM_ID: BackendId  = "git-system";
+pub const GIT_SYSTEM_ID: BackendId = backend_id!("git-system");
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -34,7 +34,7 @@ pub fn run() {
         .init();
 
     // (Optional) prove the registry is populated at startup
-    for b in openvcs_core::list_backends() {
+    for b in backend_descriptor::list_backends() {
         log::info!("backend loaded: {} ({})", b.id, b.name);
     }
 
@@ -46,9 +46,6 @@ pub fn run() {
         .manage(state::AppState::default())
         .setup(|app| {
             menus::build_and_attach_menu(app)?;
-
-            let state = app.state::<state::AppState>();
-            state.set_backend_id(GIT_SYSTEM_ID);
             Ok(())
         })
         .on_window_event(handle_window_event::<_>)
