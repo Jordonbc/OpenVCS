@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use log::{debug, error, info, warn};
 use tauri::{async_runtime, Emitter, Manager, Runtime, State, Window};
 use crate::state::AppState;
 use crate::utilities::utilities;
@@ -35,7 +36,6 @@ fn progress_bridge<R: Runtime>(app: tauri::AppHandle<R>) -> OnEvent {
         let _ = app.emit("git-progress", ProgressPayload { message: msg });
     })
 }
-
 
 #[derive(serde::Serialize, Clone)]
 struct ProgressPayload {
@@ -114,10 +114,28 @@ fn get_repo_root(state: &State<'_, AppState>) -> Result<PathBuf, String> {
 /* ---------- list_branches ---------- */
 #[tauri::command]
 pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
-    println!("calling list_branches");
-    let repo = get_open_repo(&state)?;
-    let current = repo.inner().current_branch().map_err(|e| e.to_string())?;
-    let locals  = repo.inner().local_branches().map_err(|e| e.to_string())?;
+    info!("list_branches: fetching branch list");
+
+    let repo = get_open_repo(&state)
+        .map_err(|e| {
+            error!("list_branches: failed to open repo: {e}");
+            e
+        })?;
+
+    let current = repo.inner().current_branch()
+        .map_err(|e| {
+            error!("list_branches: failed to get current branch: {e}");
+            e.to_string()
+        })?;
+
+    let locals = repo.inner().local_branches()
+        .map_err(|e| {
+            error!("list_branches: failed to list local branches: {e}");
+            e.to_string()
+        })?;
+
+    debug!("list_branches: current={:?}, locals={:?}", current, locals);
+
     Ok(locals.into_iter().map(|name| BranchItem {
         current: current.as_deref() == Some(name.as_str()),
         name,
@@ -127,54 +145,92 @@ pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, Stri
 /* ---------- git_status ---------- */
 #[tauri::command]
 pub fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, String> {
-    println!("calling git_status");
-    let repo = get_open_repo(&state)?;
-    let _s = repo.inner().status_summary().map_err(|e| e.to_string())?;
-    // TODO: once the Vcs trait exposes file lists + ahead/behind, populate them here.
+    info!("git_status: fetching repo status");
+
+    let repo = get_open_repo(&state)
+        .map_err(|e| {
+            error!("git_status: failed to open repo: {e}");
+            e
+        })?;
+
+    let summary = repo.inner().status_summary()
+        .map_err(|e| {
+            error!("git_status: failed to get status summary: {e}");
+            e.to_string()
+        })?;
+
+    debug!(
+        "git_status: summary = untracked={}, modified={}, staged={}, conflicted={}",
+        summary.untracked, summary.modified, summary.staged, summary.conflicted
+    );
+
+    // TODO: once Vcs trait exposes file lists + ahead/behind, populate them here.
     Ok(StatusPayload { files: vec![], ahead: 0, behind: 0 })
 }
 
 /* ---------- git_log ---------- */
 #[tauri::command]
 pub fn git_log(_state: State<'_, AppState>, _limit: Option<usize>) -> Result<Vec<CommitItem>, String> {
-    println!("calling git_log");
+    info!("git_log: command called (not yet implemented)");
+    warn!("git_log: returning placeholder error for now");
     Err("git_log not implemented for the generic VCS yet".into())
 }
-
 
 /* ---------- optional: branch ops used by your JS ---------- */
 #[tauri::command]
 pub fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
-    println!("calling git_checkout_branch");
-    let repo = get_open_repo(&state)?;
-    repo.inner().checkout_branch(&name).map_err(|e| e.to_string())
-}
+    info!("git_checkout_branch: attempting to checkout branch '{}'", name);
 
+    let repo = get_open_repo(&state)?;
+    match repo.inner().checkout_branch(&name) {
+        Ok(_) => {
+            info!("git_checkout_branch: successfully checked out '{}'", name);
+            Ok(())
+        }
+        Err(e) => {
+            error!("git_checkout_branch: failed to checkout '{}': {}", name, e);
+            Err(e.to_string())
+        }
+    }
+}
 
 #[tauri::command]
 pub fn git_create_branch(
     state: State<'_, AppState>,
     name: String,
     from: Option<String>,
-    checkout: Option<bool>,) -> Result<(), String> {
-    println!("calling git_create_branch");
+    checkout: Option<bool>,
+) -> Result<(), String> {
+    info!("git_create_branch: requested branch '{}', from={:?}, checkout={:?}", name, from, checkout);
+
     let repo = get_open_repo(&state)?;
 
     // If a base branch is provided, check it out first.
-    if let Some(from) = from {
-        repo.inner()
-            .checkout_branch(&from)
-            .map_err(|e| format!("base branch not found or cannot checkout: {e}"))?;
+    if let Some(from) = from.clone() {
+        match repo.inner().checkout_branch(&from) {
+            Ok(_) => info!("git_create_branch: successfully checked out base branch '{}'", from),
+            Err(e) => {
+                error!("git_create_branch: failed to checkout base branch '{}': {}", from, e);
+                return Err(format!("base branch not found or cannot checkout: {e}"));
+            }
+        }
     }
 
-    repo.inner()
-        .create_branch(&name, checkout.unwrap_or(false))
-        .map_err(|e| e.to_string())
+    match repo.inner().create_branch(&name, checkout.unwrap_or(false)) {
+        Ok(_) => {
+            info!("git_create_branch: successfully created branch '{}'", name);
+            Ok(())
+        }
+        Err(e) => {
+            error!("git_create_branch: failed to create branch '{}': {}", name, e);
+            Err(e.to_string())
+        }
+    }
 }
 
 #[tauri::command]
 pub fn git_diff_file(_state: State<'_, AppState>, _path: String) -> Result<Vec<String>, String> {
-    println!("calling git_diff_file");
+    info!("git_diff_file: called but not implemented for the generic VCS backend");
     Err("git_diff_file not implemented for the generic VCS yet".into())
 }
 
@@ -185,7 +241,7 @@ pub async fn commit_changes<R: Runtime>(
     summary: String,
     description: String,
 ) -> Result<String, String> {
-    println!("calling commit_changes");
+    info!("commit_changes called (summary: \"{}\")", summary);
 
     let app = window.app_handle().clone();
     let repo = get_open_repo(&state)?;
@@ -199,24 +255,37 @@ pub async fn commit_changes<R: Runtime>(
     async_runtime::spawn_blocking(move || {
         let on = progress_bridge(app);
         on(VcsEvent::Info("Staging changes…"));
+        info!("Staging changes for commit");
 
         // Backend-agnostic identity fallback; wire a real identity source later.
         let name = std::env::var("GIT_AUTHOR_NAME").unwrap_or_else(|_| "OpenVCS".into());
         let email = std::env::var("GIT_AUTHOR_EMAIL").unwrap_or_else(|_| "openvcs@example".into());
+        info!("Using identity: {} <{}>", name, email);
 
         on(VcsEvent::Info("Writing commit…"));
-        let oid = repo.inner().commit(&message, &name, &email, &[]).map_err(|e| e.to_string())?;
+        let oid = repo
+            .inner()
+            .commit(&message, &name, &email, &[])
+            .map_err(|e| {
+                error!("Commit failed: {e}");
+                e.to_string()
+            })?;
+        info!("Commit created successfully: {oid}");
+
         on(VcsEvent::Info("Commit created."));
         Ok(oid)
     })
     .await
-    .map_err(|e| format!("commit task failed: {e}"))?
+    .map_err(|e| {
+        error!("commit_changes task join error: {e}");
+        format!("commit task failed: {e}")
+    })?
 }
-
 
 #[tauri::command]
 pub fn git_fetch<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
-    println!("calling git_fetch");
+    info!("git_fetch called");
+
     let repo = get_open_repo(&state)?;
     let app = window.app_handle().clone();
     let on = Some(progress_bridge(app));
@@ -224,50 +293,103 @@ pub fn git_fetch<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> R
     let current = repo
         .inner()
         .current_branch()
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Detached HEAD; cannot determine upstream".to_string())?;
+        .map_err(|e| {
+            error!("Failed to get current branch: {e}");
+            e.to_string()
+        })?
+        .ok_or_else(|| {
+            warn!("Detached HEAD detected, cannot determine upstream branch");
+            "Detached HEAD; cannot determine upstream".to_string()
+        })?;
 
-    repo.inner().fetch("origin", &current, on).map_err(|e| e.to_string())
+    info!("Fetching branch '{}' from origin", current);
+
+    repo.inner()
+        .fetch("origin", &current, on)
+        .map_err(|e| {
+            error!("Fetch failed for branch '{}': {e}", current);
+            e.to_string()
+        })?;
+
+    info!("Fetch completed successfully for branch '{}'", current);
+    Ok(())
 }
-
 
 #[tauri::command]
 pub async fn git_push<R: tauri::Runtime>(
     window: tauri::Window<R>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    println!("calling git_push");
+    info!("git_push called");
+
     let repo = get_open_repo(&state)?;
     let app_for_worker = window.app_handle().clone();
+    let app_for_final  = window.app_handle().clone();
 
     async_runtime::spawn_blocking(move || -> Result<(), String> {
         let on = Some(progress_bridge(app_for_worker));
-        let current = repo.inner().current_branch().map_err(|e| e.to_string())?
-            .ok_or_else(|| "detached HEAD".to_string())?;
+
+        let current = repo.inner().current_branch().map_err(|e| {
+            error!("Failed to determine current branch: {e}");
+            e.to_string()
+        })?.ok_or_else(|| {
+            warn!("Detached HEAD, cannot push");
+            "detached HEAD".to_string()
+        })?;
+
         let refspec = format!("refs/heads/{0}:refs/heads/{0}", current);
-        repo.inner().push("origin", &refspec, on).map_err(|e| e.to_string())
+        info!("Pushing branch '{}' with refspec '{}'", current, refspec);
+
+        repo.inner().push("origin", &refspec, on).map_err(|e| {
+            error!("Push failed for branch '{}': {e}", current);
+            e.to_string()
+        })
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| {
+        error!("Join error in git_push task: {e}");
+        e.to_string()
+    })??;
 
-    let _ = window.app_handle().emit("git-progress", ProgressPayload { message: "Push complete".into() });
+    let _ = app_for_final.emit(
+        "git-progress",
+        ProgressPayload { message: "Push complete".into() }
+    );
+
+    info!("Push completed successfully.");
     Ok(())
 }
 
 #[tauri::command]
 pub fn list_backends_cmd() -> Vec<(String, String)> {
-    println!("calling list_backends_cmd");
-    list_backends().map(|b| (b.id.to_string(), b.name.to_string())).collect()
+    info!("list_backends_cmd called");
+    let backends: Vec<(String, String)> =
+        list_backends().map(|b| (b.id.to_string(), b.name.to_string())).collect();
+
+    info!("Found {} registered backends", backends.len());
+    for (id, name) in &backends {
+        info!("  - {} ({})", id, name);
+    }
+
+    backends
 }
+
 
 #[tauri::command]
 pub fn set_backend_cmd(state: State<'_, AppState>, backend_id: String) -> Result<(), String> {
-    println!("calling set_backend_cmd");
-    if get_backend(&backend_id).is_none() {
-        return Err(format!("Unknown backend: {backend_id}"));
+    info!("set_backend_cmd called with backend_id={}", backend_id);
+
+    match get_backend(&backend_id) {
+        Some(desc) => {
+            info!("Switching to backend: {} ({})", backend_id, desc.name);
+            state.set_backend_id(backend_id);
+            Ok(())
+        }
+        None => {
+            warn!("Attempted to set unknown backend: {}", backend_id);
+            Err(format!("Unknown backend: {backend_id}"))
+        }
     }
-    state.set_backend_id(backend_id);
-    Ok(())
 }
 
 
