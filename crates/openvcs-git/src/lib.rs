@@ -33,6 +33,8 @@ pub static GIT_SYS_DESC: BackendDescriptor = BackendDescriptor {
     clone_repo: clone_factory,
 };
 
+const GIT_COMMAND_NAME: &'static str = "git";
+
 /* ============================== implementation ============================== */
 
 pub struct GitSystem {
@@ -52,7 +54,7 @@ impl GitSystem {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        let mut cmd = Command::new("git");
+        let mut cmd = Command::new(GIT_COMMAND_NAME);
         if let Some(c) = cwd { cmd.current_dir(c); }
         let status = cmd
             .args(args.into_iter().map(|s| s.as_ref().to_string()))
@@ -71,7 +73,7 @@ impl GitSystem {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        let mut cmd = Command::new("git");
+        let mut cmd = Command::new(GIT_COMMAND_NAME);
         if let Some(c) = cwd { cmd.current_dir(c); }
         let out = cmd
             .args(args.into_iter().map(|s| s.as_ref().to_string()))
@@ -89,7 +91,7 @@ impl GitSystem {
     }
 
     fn run_git_streaming<const N: usize>(cwd: &Path, args: [&str; N], on: Option<OnEvent>) -> Result<()> {
-        let mut cmd = Command::new("git");
+        let mut cmd = Command::new(GIT_COMMAND_NAME);
         cmd.current_dir(cwd)
             .args(args)
             .env("GIT_SSH_COMMAND", "ssh")
@@ -150,6 +152,50 @@ impl Vcs for GitSystem {
         let out = Self::run_git_capture(Some(&self.workdir), ["rev-parse", "--abbrev-ref", "HEAD"])?;
         let s = out.trim();
         Ok(if s == "HEAD" { None } else { Some(s.to_string()) })
+    }
+
+    fn branches(&self) -> Result<Vec<BranchItem>> {
+        // name, short, head flag
+        let out = Self::run_git_capture(
+            Some(&self.workdir),
+            ["for-each-ref",
+                "--format=%(refname) %(refname:short) %(HEAD)",
+                "refs/heads", "refs/remotes"]
+        )?;
+
+        let mut items = Vec::new();
+        for line in out.lines() {
+            let mut parts = line.split_whitespace();
+            let full = parts.next().unwrap_or("");
+            let short = parts.next().unwrap_or("").to_string();
+            let head_flag = parts.next().unwrap_or("");
+
+            if full.is_empty() || short.is_empty() { continue; }
+
+            if full.starts_with("refs/heads/") {
+                let current = head_flag == "*";
+                items.push(BranchItem {
+                    name: short,
+                    full_ref: full.to_string(),
+                    kind: BranchKind::Local,
+                    current,
+                });
+            } else if full.starts_with("refs/remotes/") {
+                // refs/remotes/<remote>/<branch>
+                // filter origin/HEAD
+                if full.ends_with("/HEAD") { continue; }
+                let after = &full["refs/remotes/".len()..];
+                let remote = after.split('/').next().unwrap_or("").to_string();
+
+                items.push(BranchItem {
+                    name: short,                     // e.g., "origin/feature"
+                    full_ref: full.to_string(),      // full ref
+                    kind: BranchKind::Remote { remote },
+                    current: false,
+                });
+            }
+        }
+        Ok(items)
     }
 
     fn local_branches(&self) -> Result<Vec<String>> {
@@ -332,10 +378,6 @@ impl Vcs for GitSystem {
         Ok(items)
     }
 
-    fn hard_reset_head(&self) -> Result<()> {
-        Self::run_git(Some(&self.workdir), ["reset", "--hard", "HEAD"])
-    }
-
     fn diff_file(&self, path: &Path) -> Result<Vec<String>> {
         let p = Self::path_str(path)?;
         // Prefer *unstaged* first
@@ -373,47 +415,7 @@ impl Vcs for GitSystem {
         Ok(Vec::new())
     }
 
-    fn branches(&self) -> Result<Vec<BranchItem>> {
-        // name, short, head flag
-        let out = Self::run_git_capture(
-            Some(&self.workdir),
-            ["for-each-ref",
-                "--format=%(refname) %(refname:short) %(HEAD)",
-                "refs/heads", "refs/remotes"]
-        )?;
-
-        let mut items = Vec::new();
-        for line in out.lines() {
-            let mut parts = line.split_whitespace();
-            let full = parts.next().unwrap_or("");
-            let short = parts.next().unwrap_or("").to_string();
-            let head_flag = parts.next().unwrap_or("");
-
-            if full.is_empty() || short.is_empty() { continue; }
-
-            if full.starts_with("refs/heads/") {
-                let current = head_flag == "*";
-                items.push(BranchItem {
-                    name: short,
-                    full_ref: full.to_string(),
-                    kind: BranchKind::Local,
-                    current,
-                });
-            } else if full.starts_with("refs/remotes/") {
-                // refs/remotes/<remote>/<branch>
-                // filter origin/HEAD
-                if full.ends_with("/HEAD") { continue; }
-                let after = &full["refs/remotes/".len()..];
-                let remote = after.split('/').next().unwrap_or("").to_string();
-
-                items.push(BranchItem {
-                    name: short,                     // e.g., "origin/feature"
-                    full_ref: full.to_string(),      // full ref
-                    kind: BranchKind::Remote { remote },
-                    current: false,
-                });
-            }
-        }
-        Ok(items)
+    fn hard_reset_head(&self) -> Result<()> {
+        Self::run_git(Some(&self.workdir), ["reset", "--hard", "HEAD"])
     }
 }
