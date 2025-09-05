@@ -1,6 +1,7 @@
 mod lowlevel;
 
 use std::{path::{Path, PathBuf}, sync::Arc};
+use log::{debug, error, info, trace, warn};
 use openvcs_core::*;
 
 fn caps_static() -> Capabilities {
@@ -33,31 +34,57 @@ pub struct GitLibGit2 {
 
 impl GitLibGit2 {
     fn map_err<E: std::fmt::Display>(e: E) -> VcsError {
-        VcsError::Backend { backend: GIT_LIBGIT2_ID, msg: e.to_string() }
-    }
+        let msg = e.to_string();
+        // Loud, because this bubbles up as a user-visible failure.
+        error!("git-libgit2: backend error: {msg}");
+        VcsError::Backend { backend: GIT_LIBGIT2_ID, msg }
+}
+
 
     fn adapt_progress(on: Option<OnEvent>) -> impl Fn(String) + Send + Sync + 'static {
         move |s: String| {
-            if let Some(cb) = &on {
-                if s.starts_with("remote: ") {
+            // Always log locally; *also* forward to UI if a callback is present.
+            if let Some(rest) = s.strip_prefix("remote: ") {
+                debug!("git-libgit2[remote]: {rest}");
+                if let Some(cb) = &on {
                     cb(VcsEvent::RemoteMessage(s));
-                } else if s.starts_with("auth:") {
-                    cb(VcsEvent::Auth { method: "ssh", detail: s });
-                } else if let Some(rest) = s.strip_prefix("push status: ") {
-                    let (refname, status) = if let Some((l, r)) = rest.split_once(" → ") {
-                        (l.to_string(), Some(r.to_string()))
-                    } else if let Some((l, _)) = rest.split_once(" ok") {
-                        (l.to_string(), None)
-                    } else {
-                        (rest.to_string(), None)
-                    };
-                    cb(VcsEvent::PushStatus { refname, status });
-                } else {
-                    cb(VcsEvent::Progress { phase: "libgit2", detail: s });
                 }
+                return;
+            }
+
+            if s.starts_with("auth:") {
+                // Auth noise is critical when debugging; warn-level is intentional.
+                warn!("git-libgit2[auth]: {s}");
+                if let Some(cb) = &on {
+                    cb(VcsEvent::Auth { method: "ssh", detail: s });
+                }
+                return;
+            }
+
+            if let Some(rest) = s.strip_prefix("push status: ") {
+                // Status lines are useful at info; they summarize server acceptance/rejection.
+                info!("git-libgit2[push-status]: {rest}");
+                let (refname, status) = if let Some((l, r)) = rest.split_once(" → ") {
+                    (l.to_string(), Some(r.to_string()))
+                } else if rest.ends_with(" ok") {
+                    (rest.trim_end_matches(" ok").to_string(), None)
+                } else {
+                    (rest.to_string(), None)
+                };
+                if let Some(cb) = &on {
+                    cb(VcsEvent::PushStatus { refname, status });
+                }
+                return;
+            }
+
+            // Generic progress falls back to trace to avoid spamming normal logs.
+            trace!("git-libgit2: {s}");
+            if let Some(cb) = &on {
+                cb(VcsEvent::Progress { phase: "libgit2", detail: s });
             }
         }
     }
+
 }
 
 impl Vcs for GitLibGit2 {
