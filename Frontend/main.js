@@ -881,16 +881,20 @@ setThemeSel?.addEventListener('change', () => {
 
 async function openSettings() {
   if (!settingsModal) return;
+  settingsModal.classList.add('show');           // <-- add this
   settingsModal.setAttribute('aria-hidden', 'false');
+
   // close buttons/backdrop
   qsa('[data-close], .backdrop', settingsModal).forEach(el =>
       el.addEventListener('click', closeSettings, { once: true })
   );
+
   await loadSettingsIntoForm();
 }
 
 function closeSettings() {
   if (!settingsModal) return;
+  settingsModal.classList.remove('show');        // <-- and this
   settingsModal.setAttribute('aria-hidden', 'true');
 }
 
