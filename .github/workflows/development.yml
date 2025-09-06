@@ -67,4 +67,6 @@ jobs:
 
       - name: Build Tauri app
         working-directory: Backend
+        env:
+          FRONTEND_SKIP_BUILD: '1'
         run: cargo tauri build --verbose

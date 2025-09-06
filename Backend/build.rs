@@ -19,6 +19,10 @@ fn main() {
 }
 
 fn build_frontend() {
+    if env::var_os("FRONTEND_SKIP_BUILD").is_some() {
+        return;
+    }
+    
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let frontend_dir = manifest_dir.join("..").join("Frontend");
 
