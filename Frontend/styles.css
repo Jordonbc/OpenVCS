@@ -723,6 +723,86 @@ button:disabled,
 /* Forms look unchanged */
 #settings-panels .panel-form{ display: grid; gap: .8rem; }
 
+/* 1) Opt controls into dark native styling */
+:root[data-theme="dark"] {
+  color-scheme: dark; /* lets the UA render built-ins dark (scrollbars, inputs, selects) */
+}
 
+/* If you want it scoped just to overlays, use this instead: */
+/*
+:root[data-theme="dark"] .modal,
+:root[data-theme="dark"] .popover { color-scheme: dark; }
+*/
 
+/* 2) Control tokens (feel free to adjust) */
+:root {
+  --control-bg:        #1f2126;
+  --control-bg-focus:  #24272d;
+  --control-border:    #3a3f47;
+  --control-text:      #e8ebf1;
+  --control-muted:     #a6aebb;
+  --accent:            #4da3ff;
+}
+
+/* 3) Dark form controls inside modals (Settings, Command sheet, etc.) */
+#settings-modal select,
+#settings-modal input[type="text"],
+#settings-modal input[type="number"],
+#settings-modal input[type="search"],
+#settings-modal textarea,
+#modal select,
+#modal input[type="text"],
+#modal input[type="number"],
+#modal input[type="search"],
+#modal textarea,
+.popover input[type="search"] {
+  background-color: var(--control-bg);
+  color: var(--control-text);
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  line-height: 1.2;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Make sure the browser doesn’t keep a light look */
+#settings-modal select,
+#modal select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+/* Focus state */
+#settings-modal select:focus,
+#settings-modal input:focus,
+#settings-modal textarea:focus,
+#modal select:focus,
+#modal input:focus,
+#modal textarea:focus,
+.popover input:focus {
+  outline: none;
+  background-color: var(--control-bg-focus);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+/* Placeholder + disabled */
+#settings-modal ::placeholder,
+#modal ::placeholder,
+.popover ::placeholder { color: var(--control-muted); }
+
+#settings-modal :disabled,
+#modal :disabled { opacity: .7; cursor: not-allowed; }
+
+/* Checkbox/radio tinting */
+#settings-modal input[type="checkbox"],
+#settings-modal input[type="radio"],
+#modal input[type="checkbox"],
+#modal input[type="radio"] { accent-color: var(--accent); }
+
+/* Optional: darken the drop-down list itself where supported */
+#settings-modal select option,
+#modal select option { background-color: var(--control-bg); color: var(--control-text); }
 
