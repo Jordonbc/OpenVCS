@@ -1,0 +1,55 @@
+/* ==========================================================================
+   tokens.css — design tokens (colors, radii, typography, controls)
+   - Defaults are dark; switching theme is done via [data-theme="light"|"dark"].
+   - If no data-theme is set, it falls back to the OS preference.
+   ========================================================================== */
+
+:root{
+    /* Base (dark-first) */
+    --bg:#242424; --surface:#2a2a2a; --surface-2:#313131;
+    --text:#e6e6e6; --muted:#b7bcc5; --border:rgba(255,255,255,.08);
+
+    /* Brand / status */
+    --accent:#3584e4; --accent-2:#4c94ea;
+    --danger:#c01c28; --success:#26a269; --warning:#f59e0b;
+
+    /* Elevation + radii */
+    --shadow-1:none;
+    --r-xs:4px; --r-sm:6px; --r-md:6px; --r-lg:8px;
+
+    /* Typography */
+    --font:"Cantarell",system-ui,-apple-system,"Inter","Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+
+    /* Form control tokens (used in overlays) */
+    --control-bg:#1f2126;
+    --control-bg-focus:#24272d;
+    --control-border:#3a3f47;
+    --control-text:#e8ebf1;
+    --control-muted:#a6aebb;
+
+    /* Global type defaults */
+    font-family:var(--font);
+    font-size:15px;
+}
+
+/* Dark theme (explicit) */
+:root[data-theme="dark"]{
+    color-scheme: dark;
+}
+
+/* Light theme (explicit) */
+:root[data-theme="light"]{
+    color-scheme: light;
+    --bg:#f6f6f7; --surface:#ffffff; --surface-2:#f0f0f2;
+    --text:#1b1b1c; --muted:#666c76; --border:rgba(0,0,0,.12);
+}
+
+/* OS preference fallback when no data-theme is set */
+@media (prefers-color-scheme: light){
+    :root:not([data-theme]){
+        color-scheme: light;
+        --bg:#f6f6f7; --surface:#ffffff; --surface-2:#f0f0f2;
+        --text:#1b1b1c; --muted:#666c76; --border:rgba(0,0,0,.12);
+    }
+}

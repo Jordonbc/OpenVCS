@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "composite": true,
+    "skipLibCheck": true
+  },
+  "include": ["vite.config.ts", "vite.config.mts"]
+}

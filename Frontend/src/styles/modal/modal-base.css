@@ -1,0 +1,64 @@
+/* ==========================================================================
+   modal-base.css — Base styles for all modal dialogs
+   --------------------------------------------------------------------------
+   This file provides the shared foundation for all modals/sheets:
+   - Modal container (full-screen positioning, backdrop, stacking context)
+   - Generic dialog box styling (surface, border, radius, shadow)
+   - Header + body layout primitives
+   - Dark mode integration (form controls + color-scheme hint)
+   - Shared form control styling (inputs, textareas, checkboxes, radios)
+   These rules apply across Settings, Command Sheet, and any other overlays.
+   ========================================================================== */
+
+/* src/styles/modal/modal-base.css */
+
+.modal{
+    position:fixed; inset:0; z-index:50; padding:12px;
+    display:flex; align-items:center; justify-content:center;
+    isolation:isolate;                 /* keep stacking context self-contained */
+    overscroll-behavior:contain;       /* avoid scroll chaining behind the modal */
+}
+.modal[aria-hidden="true"]{ display:none; }
+
+.backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.55); }
+
+.dialog.sheet{
+    position:relative; overflow:hidden;
+    background:var(--surface); color:var(--text);
+    border:1px solid var(--border); border-radius:var(--r-lg); box-shadow:var(--shadow-1);
+}
+
+.sheet-head{
+    display:flex; align-items:center; justify-content:space-between; gap:.5rem;
+    padding:.6rem; border-bottom:1px solid var(--border); background:var(--surface-2);
+}
+.sheet-body{ padding:1rem; display:grid; gap:1rem; }
+
+/* Dark-styled form controls only inside overlays (Settings, Command Sheet, popovers) */
+:root[data-theme="dark"] .modal,
+:root[data-theme="dark"] .popover{ color-scheme: dark; }
+
+.modal :is(
+  select,
+  input[type="text"],
+  input[type="number"],
+  input[type="search"],
+  textarea
+),
+.popover input[type="search"]{
+    background-color:var(--control-bg);
+    color:var(--control-text);
+    border:1px solid var(--control-border);
+    border-radius:8px;
+    padding:8px 10px;
+    line-height:1.2;
+    width:100%;
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+}
+
+.modal ::placeholder,
+.popover ::placeholder{ color:var(--control-muted); }
+
+.modal :disabled{ opacity:.7; cursor:not-allowed; }
+
+.modal :is(input[type="checkbox"], input[type="radio"]){ accent-color:var(--accent); }

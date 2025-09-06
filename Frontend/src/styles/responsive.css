@@ -1,0 +1,16 @@
+/* ==========================================================================
+   responsive.css — global media queries
+   ========================================================================== */
+
+/* Narrow app layouts */
+@media (max-width: 980px){
+    .work{ grid-template-columns: 1fr; }
+    .resizer{ display: none; }
+    .left{ order: 1; height: 42vh; }
+    .right{ order: 2; height: 58vh; }
+}
+
+/* Motion preferences */
+@media (prefers-reduced-motion: reduce){
+    *{ transition: none !important; animation: none !important; }
+}

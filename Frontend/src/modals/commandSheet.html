@@ -1,0 +1,72 @@
+<!-- Command Sheet (Clone / Add / Switch) -->
+<div class="modal" id="command-modal" aria-hidden="true">
+    <div class="backdrop" data-close></div>
+    <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+        <div class="sheet-head">
+            <div class="seg" role="tablist" aria-label="Repository actions">
+                <button class="seg-btn active" data-sheet="clone" role="tab" aria-selected="true" id="sheet-tab-clone">Clone</button>
+                <button class="seg-btn" data-sheet="add" role="tab" aria-selected="false" id="sheet-tab-add">Add Existing</button>
+                <button class="seg-btn" data-sheet="switch" role="tab" aria-selected="false" id="sheet-tab-switch">Switch</button>
+            </div>
+            <button class="icon close" data-close aria-label="Close">✕</button>
+        </div>
+
+        <!-- Clone -->
+        <section class="sheet-body" id="sheet-clone" role="tabpanel" aria-labelledby="sheet-tab-clone">
+            <h3 id="sheet-title">Clone repository</h3>
+            <div class="group">
+                <label for="clone-url">Source</label>
+                <div class="input-row">
+                    <div class="seg small">
+                        <button class="seg-btn small active" data-proto="https" type="button">HTTPS</button>
+                        <button class="seg-btn small" data-proto="ssh" type="button">SSH</button>
+                    </div>
+                    <input id="clone-url" placeholder="https://github.com/user/repo.git or git@github.com:user/repo.git" />
+                </div>
+                <div class="hint" id="clone-url-hint">Enter a valid Git URL.</div>
+            </div>
+            <div class="group">
+                <label for="clone-path">Destination</label>
+                <div class="input-row">
+                    <input id="clone-path" placeholder="/home/jordon/Projects" />
+                    <button class="pick" id="browse-clone" type="button">Browse…</button>
+                </div>
+                <div class="hint">A new folder will be created inside the destination.</div>
+            </div>
+            <div class="sheet-actions">
+                <button class="tbtn" data-close type="button">Cancel</button>
+                <button class="tbtn primary big" id="do-clone" type="button" disabled>Clone</button>
+            </div>
+        </section>
+
+        <!-- Add Existing -->
+        <section class="sheet-body hidden" id="sheet-add" role="tabpanel" aria-labelledby="sheet-tab-add">
+            <h3>Add existing repository</h3>
+            <div class="group">
+                <label for="add-path">Repository folder</label>
+                <div class="input-row">
+                    <input id="add-path" placeholder="/path/to/repo (must contain .git)" />
+                    <button class="pick" id="browse-add" type="button">Browse…</button>
+                </div>
+                <div class="hint" id="add-path-hint">Select a folder that already contains a Git repo.</div>
+            </div>
+            <div class="sheet-actions">
+                <button class="tbtn" data-close type="button">Cancel</button>
+                <button class="tbtn primary big" id="do-add" type="button" disabled>Add</button>
+            </div>
+        </section>
+
+        <!-- SWITCH -->
+        <section class="sheet-body hidden" id="sheet-switch" role="tabpanel" aria-labelledby="sheet-tab-switch">
+            <h3>Switch repository</h3>
+            <div class="group">
+                <label>Recent</label>
+                <ul class="recent" id="recent-list"></ul>
+            </div>
+            <div class="sheet-actions">
+                <button class="tbtn" data-close type="button">Cancel</button>
+                <button class="tbtn primary big" id="do-switch" type="button" disabled>Open</button>
+            </div>
+        </section>
+    </div>
+</div>

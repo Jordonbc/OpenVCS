@@ -1,0 +1,36 @@
+/* ==========================================================================
+   command-sheet.css — Styles for the Command Palette / Quick Actions modal
+   --------------------------------------------------------------------------
+   This file defines layout and look for the "Command Sheet" modal:
+   - Dialog sizing and responsive width cap
+   - Recent items list (grid layout, max height with scrolling)
+   - Individual item styling (hover, spacing, borders, background, cursor)
+   ========================================================================== */
+
+/* src/styles/modal/command-sheet.css */
+
+#command-modal .dialog.sheet { width: min(680px, 95vw); }
+
+#command-modal .recent {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: .4rem;
+    max-height: 40vh;
+    overflow: auto;
+}
+
+#command-modal .recent li {
+    display: flex;
+    justify-content: space-between;
+    gap: .75rem;
+    align-items: center;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    padding: .6rem .8rem;
+    border-radius: var(--r-md);
+    cursor: pointer;
+}
+
+#command-modal .recent li:hover { border-color: var(--accent); }

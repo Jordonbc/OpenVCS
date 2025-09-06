@@ -1,0 +1,77 @@
+/* ==========================================================================
+   popover.css — Lightweight overlay menus
+   --------------------------------------------------------------------------
+   Defines the look and feel of popovers used for branch switching
+   and other contextual menus.
+   ========================================================================== */
+
+/* Container */
+.popover {
+    position: absolute;
+    z-index: 70;
+    min-width: 280px;
+    max-height: 60vh;
+    overflow: auto;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-1);
+}
+.popover[hidden] { display: none !important; }
+
+/* Header */
+.pop-head {
+    display: flex;
+    gap: .5rem;
+    align-items: center;
+    padding: .5rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+}
+#branch-filter {
+    flex: 1;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    border-radius: var(--r-sm);
+    padding: .5rem .6rem;
+}
+
+/* List */
+.pop-list {
+    list-style: none;
+    margin: 0;
+    padding: .35rem;
+    display: grid;
+    gap: .25rem;
+}
+.pop-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    padding: .5rem .6rem;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+}
+.pop-list li:hover { background: rgba(255,255,255,.04); }
+.pop-list li[aria-selected="true"] {
+    background: rgba(53,132,228,.12);
+    outline: 1px solid rgba(53,132,228,.35);
+}
+.pop-list .label {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    min-width: 0;
+}
+.pop-list .name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.pop-list .badge {
+    border-radius: 999px;
+    font-size: .75rem;
+}
