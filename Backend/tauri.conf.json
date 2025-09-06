@@ -3,7 +3,9 @@
   "productName": "OpenVCS",
   "identifier": "dev.jordon.openvcs",
   "build": {
-    "frontendDist": "../Frontend"
+    "beforeDevCommand": "npm run dev --prefix ../Frontend",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../Frontend/dist"
   },
   "app": {
     "withGlobalTauri": true,
