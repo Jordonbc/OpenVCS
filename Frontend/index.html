@@ -215,13 +215,13 @@
         <button class="icon close" data-close aria-label="Close">✕</button>
       </div>
 
-      <section class="sheet-body" style="display:grid; grid-template-columns: 220px 1fr; gap:1rem; min-height:420px;">
+      <section class="sheet-body">
         <!-- Sidebar -->
         <nav aria-label="Settings sections">
-          <ul id="settings-nav" class="list" style="list-style:none; padding:0; margin:0;">
+          <ul id="settings-nav" class="list">
             <li><button class="seg-btn active" data-section="general">General</button></li>
             <li><button class="seg-btn" data-section="git">Git</button></li>
-            <li><button class="seg-btn" data-section="diff">Diff & Merge</button></li>
+            <li><button class="seg-btn" data-section="diff">Diff &amp; Merge</button></li>
             <li><button class="seg-btn" data-section="lfs">LFS</button></li>
             <li><button class="seg-btn" data-section="performance">Performance</button></li>
             <li><button class="seg-btn" data-section="ux">UX</button></li>
@@ -230,7 +230,7 @@
         </nav>
 
         <!-- Panels -->
-        <div id="settings-panels" style="display:grid; gap:1rem;">
+        <div id="settings-panels">
           <!-- General -->
           <form class="panel-form" data-panel="general">
             <div class="group">
@@ -416,7 +416,7 @@
           </form>
 
           <!-- Footer actions -->
-          <div class="sheet-actions" style="margin-top:auto;">
+          <div class="sheet-actions">
             <button class="tbtn" id="settings-reset" type="button">Restore defaults</button>
             <div style="flex:1"></div>
             <button class="tbtn" data-close type="button">Cancel</button>
