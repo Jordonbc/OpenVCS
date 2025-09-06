@@ -27,6 +27,7 @@ fn build_file_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu
     let clone_item = MenuItem::with_id(app, "clone_repo", "Clone…", true, Some("Ctrl+Shift+C"))?;
     let add_item   = MenuItem::with_id(app, "add_repo",   "Add Existing…", true, Some("Ctrl+O"))?;
     let open_item  = MenuItem::with_id(app, "open_repo",  "Switch…", true, Some("Ctrl+R"))?;
+    let prefs_item = MenuItem::with_id(app, "settings", "Preferences…", true, Some("Ctrl+P"))?;
 
     menu::SubmenuBuilder::new(app, "File")
         .item(&clone_item)
@@ -34,6 +35,7 @@ fn build_file_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu
         .item(&open_item)
         .separator()
         .item(&menu::PredefinedMenuItem::quit(app, None)?)
+        .item(&prefs_item)
         .build()
 }
 
@@ -101,8 +103,12 @@ pub fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: Me
                 }
             });
         }
+        "settings" => {
+            // Tell the webview to open the Settings modal
+            let _ = app.emit("ui:open-settings", ());
+        }
         _ => {
-            // Forward to frontend (listen with `window.__TAURI__.event.listen("menu", ...)`)
+            // Fallback: forward other menu IDs if you already rely on this
             let _ = app.emit("menu", id);
         }
     }

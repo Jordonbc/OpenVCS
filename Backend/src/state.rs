@@ -4,12 +4,16 @@ use log::{debug, info};
 use parking_lot::RwLock;
 
 use openvcs_core::Repo;
+use crate::settings::AppConfig;
 
 /// Central application state.
 /// Keeps track of the currently open repo and MRU recents.
 /// Backend choice is tied to each repo (via `Repo::id()`), not stored globally.
 #[derive(Default)]
 pub struct AppState {
+    /// Global settings (loaded on startup), thread-safe.
+    config: RwLock<AppConfig>,
+
     /// Currently open repository
     current_repo: RwLock<Option<Arc<Repo>>>,
 
@@ -18,6 +22,61 @@ pub struct AppState {
 }
 
 impl AppState {
+    pub fn new_with_config() -> Self {
+        let cfg = AppConfig::load_or_default(); // reads ~/.config/openvcs/openvcs.conf
+        Self {
+            config: RwLock::new(cfg),
+            ..Default::default()
+        }
+    }
+
+    /// Persist current config to disk.
+    pub fn save_config(&self) -> Result<(), String> {
+        let cfg = self.config.read().clone();
+        cfg.save().map_err(|e| e.to_string())
+    }
+
+    /* -------- config access -------- */
+
+    /// Snapshot of current config (cheap clone; sections are small).
+    pub fn config(&self) -> AppConfig {
+        self.config.read().clone()
+    }
+
+    /// Read-only closure access (avoid cloning if you’re just reading).
+    pub fn with_config<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&AppConfig) -> R
+    {
+        let cfg = self.config.read();
+        f(&cfg)
+    }
+
+    /// Replace whole config: validate → save → swap (readers never see an unsaved state).
+    pub fn set_config(&self, mut next: AppConfig) -> Result<(), String> {
+        next.migrate();
+        next.validate();
+        next.save().map_err(|e| e.to_string())?;
+        *self.config.write() = next;
+        Ok(())
+    }
+
+    /// Transactional edit: clone → mutate → validate → save → swap.
+    /// Keep the closure FAST (no blocking/async in here).
+    pub fn edit_config<F>(&self, f: F) -> Result<(), String>
+    where
+        F: FnOnce(&mut AppConfig),
+    {
+        let cur = self.config.read().clone();
+        let mut next = cur.clone();
+        f(&mut next);
+        next.migrate();
+        next.validate();
+        next.save().map_err(|e| e.to_string())?;
+        *self.config.write() = next;
+        Ok(())
+    }
+
     /* -------- repo lifecycle -------- */
 
     pub fn has_repo(&self) -> bool {

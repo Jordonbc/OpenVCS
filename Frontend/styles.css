@@ -438,3 +438,98 @@ button:disabled,
 
 /* Prevent fixed-height bars from shrinking when content grows */
 .titlebar, .tabs, .footer { flex: 0 0 auto; }
+
+/* ---------- Settings ---------- */
+#settings-modal .dialog.sheet { width: min(920px, 96vw); }
+#settings-modal .sheet-body {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 1rem;
+  min-height: 420px;
+}
+
+/* Sidebar */
+#settings-modal nav ul { display: grid; gap: .25rem; }
+#settings-modal nav .seg-btn {
+  width: 100%;
+  text-align: left;
+  justify-content: flex-start;
+  padding: .5rem .75rem;
+}
+#settings-modal nav .seg-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+/* Panels */
+#settings-panels { display: grid; gap: 1rem; }
+.panel-form { display: grid; gap: .8rem; }
+.panel-form.hidden { display: none; }
+
+.panel-form .group label { color: var(--muted); font-size: .85rem; }
+.panel-form input[type="text"],
+.panel-form input[type="number"],
+.panel-form select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: var(--r-sm);
+  padding: .55rem .65rem;
+  font: inherit;
+}
+.panel-form input[type="number"] { text-align: right; }
+
+.panel-form .checkbox {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+}
+.panel-form .checkbox input {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+/* Toggle switch (used in Git auto-fetch) */
+.switch { display: inline-flex; align-items: center; }
+.switch input[type="checkbox"] {
+  appearance: none;
+  width: 42px; height: 24px; position: relative;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  transition: background-color .15s ease, border-color .15s ease;
+  outline: none; cursor: pointer;
+}
+.switch input[type="checkbox"]::after {
+  content: "";
+  position: absolute; top: 2px; left: 2px;
+  width: 20px; height: 20px; border-radius: 999px;
+  background: var(--text); opacity: .85;
+  transition: transform .15s ease;
+}
+.switch input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.switch input[type="checkbox"]:checked::after { transform: translateX(18px); }
+
+/* Settings footer */
+#settings-modal .sheet-actions {
+  padding-top: .5rem;
+  border-top: 1px solid var(--border);
+}
+
+/* Responsive */
+@media (max-width: 880px) {
+  #settings-modal .sheet-body { grid-template-columns: 1fr; }
+  #settings-modal nav ul {
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    overflow: auto;
+    padding-bottom: .25rem;
+  }
+  #settings-modal nav .seg-btn { text-align: center; }
+}
+

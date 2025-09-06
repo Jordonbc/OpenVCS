@@ -63,6 +63,57 @@ const addPath      = qs('#add-path');
 const doAdd        = qs('#do-add');
 const recentList   = qs('#recent-list');
 
+/* ----- Settings modal ----- */
+const settingsModal  = qs('#settings-modal');
+const settingsSave   = qs('#settings-save');
+const settingsReset  = qs('#settings-reset');
+const settingsNav    = qs('#settings-nav');
+const settingsPanels = qs('#settings-panels');
+
+/* General */
+const setThemeSel         = qs('#set-theme');
+const setLanguageSel      = qs('#set-language');
+const setUpdateChannelSel = qs('#set-update-channel');
+const setReopenLastChk    = qs('#set-reopen-last');
+const setChecksOnLaunch   = qs('#set-checks-on-launch');
+
+/* Git */
+const setGitBackend       = qs('#set-git-backend');
+const setAutoFetchChk     = qs('#set-auto-fetch');
+const setAutoFetchMin     = qs('#set-auto-fetch-minutes');
+const setPruneOnFetch     = qs('#set-prune-on-fetch');
+const setWatcherDebounce  = qs('#set-watcher-debounce-ms');
+const setLargeRepoThresh  = qs('#set-large-repo-threshold-mb');
+const setHookPolicy       = qs('#set-hook-policy');
+const setRespectAutocrlf  = qs('#set-respect-autocrlf');
+
+/* Diff */
+const setTabWidth         = qs('#set-tab-width');
+const setIgnoreWhitespace = qs('#set-ignore-whitespace');
+const setMaxFileSizeMb    = qs('#set-max-file-size-mb');
+const setIntraline        = qs('#set-intraline');
+const setBinaryPlaceholders = qs('#set-binary-placeholders');
+
+/* LFS */
+const setLfsEnabled       = qs('#set-lfs-enabled');
+const setLfsConcurrency   = qs('#set-lfs-concurrency');
+const setLfsBandwidth     = qs('#set-lfs-bandwidth');
+const setLfsRequireLock   = qs('#set-lfs-require-lock');
+const setLfsBgFetch       = qs('#set-lfs-bg-fetch');
+
+/* Performance */
+const setGraphCap         = qs('#set-graph-cap');
+const setProgressiveRender= qs('#set-progressive-render');
+const setGpuAccel         = qs('#set-gpu-accel');
+const setIndexWarm        = qs('#set-index-warm');
+const setBgIndexOnBattery = qs('#set-bg-index-on-battery');
+
+/* UX */
+const setUiScale          = qs('#set-ui-scale');
+const setFontMono         = qs('#set-font-mono');
+const setVimNav           = qs('#set-vim-nav');
+const setCbMode           = qs('#set-cb-mode');
+
 qsa('[data-close], .backdrop', modal).forEach(el => el.addEventListener('click', closeSheet));
 qsa('[data-proto]').forEach(b => b.addEventListener('click', () => {
   qsa('[data-proto]').forEach(x => x.classList.remove('active'));
@@ -120,6 +171,7 @@ function notify(text) {
 function setTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   prefs.theme = theme; savePrefs();
+  if (setThemeSel) setVal(setThemeSel, theme);
 }
 function toggleTheme() { setTheme(prefs.theme === 'dark' ? 'light' : 'dark'); }
 function statusLabel(s) { return s === 'A' ? 'Added' : s === 'M' ? 'Modified' : s === 'D' ? 'Deleted' : 'Changed'; }
@@ -419,12 +471,21 @@ TAURI.listen?.('menu', ({ payload: id }) => {
   }
 });
 
-TAURI.listen?.('repo:selected', ({ payload }) => {
-  notify(`Opened ${payload}`);
+TAURI.listen?.('repo:selected', async ({ payload }) => {
+  const path =
+      typeof payload === 'string'
+          ? payload
+          : (payload?.path ?? payload?.repoPath ?? payload?.repo ?? payload?.dir ?? '');
+
+  if (path) notify(`Opened ${path}`);
+
+  setRepoHeader(path);           // set name from selected path right away
   closeSheet?.();
-  hydrateBranches();
-  hydrateStatus();
-  hydrateCommits();
+
+  await hydrateBranches();       // updates state.branch
+  setRepoHeader(path);           // refresh branch label now that state.branch is known
+
+  await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
 });
 
 
@@ -799,10 +860,208 @@ function resetRepoHeader() {
   if (repoBranchEl) repoBranchEl.textContent = 'No repo open';
 }
 
-TAURI.listen?.('repo:selected', async ({ payload: path }) => {
-  setRepoHeader(path);           // set name from selected path right away
-  closeSheet?.();
-  await hydrateBranches();       // updates state.branch
-  setRepoHeader(path);           // refresh branch label now that state.branch is known
-  await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+TAURI.listen?.('ui:open-settings', () => openSettings());
+
+/* =========================
+   Settings helpers
+   ========================= */
+function toKebab(v){ return String(v ?? '').toLowerCase().replace(/_/g,'-'); }
+function setVal(el, v){ if (el) el.value = v ?? ''; }
+function setNum(el, v){ if (el) el.value = Number(v ?? 0); }
+function setChk(el, v){ if (el) el.checked = !!v; }
+function getVal(el){ return el?.value; }
+function getNum(el){ const n = Number(el?.value ?? 0); return Number.isFinite(n) ? n : 0; }
+function getChk(el){ return !!el?.checked; }
+
+/* Live preview theme when changing in Settings */
+setThemeSel?.addEventListener('change', () => {
+  const v = getVal(setThemeSel);
+  document.documentElement.setAttribute('data-theme', v === 'dark' ? 'dark' : v === 'light' ? 'light' : 'system');
+});
+
+async function openSettings() {
+  if (!settingsModal) return;
+  settingsModal.setAttribute('aria-hidden', 'false');
+  // close buttons/backdrop
+  qsa('[data-close], .backdrop', settingsModal).forEach(el =>
+      el.addEventListener('click', closeSettings, { once: true })
+  );
+  await loadSettingsIntoForm();
+}
+
+function closeSettings() {
+  if (!settingsModal) return;
+  settingsModal.setAttribute('aria-hidden', 'true');
+}
+
+/* Sidebar section switching (buttons carry data-section, forms carry data-panel) */
+settingsNav?.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-section]');
+  if (!btn) return;
+  const section = btn.getAttribute('data-section');
+  qsa('#settings-nav button').forEach(b => b.classList.toggle('active', b === btn));
+  qsa('#settings-panels .panel-form').forEach(p => {
+    p.classList.toggle('hidden', p.getAttribute('data-panel') !== section);
+  });
+});
+
+async function loadSettingsIntoForm() {
+  try {
+    const cfg = TAURI.has ? await TAURI.invoke('get_global_settings') : null;
+    if (!cfg) return;
+
+    // Stash full object so we don’t drop unknown sections on save
+    settingsModal.dataset.currentCfg = JSON.stringify(cfg);
+
+    // General
+    setVal(setThemeSel, toKebab(cfg.general?.theme));
+    setVal(setLanguageSel, toKebab(cfg.general?.language));
+    setVal(setUpdateChannelSel, toKebab(cfg.general?.update_channel));
+    setChk(setReopenLastChk, cfg.general?.reopen_last_repos);
+    setChk(setChecksOnLaunch, cfg.general?.checks_on_launch);
+
+    // Git
+    const backend = toKebab(cfg.git?.backend);
+    setVal(setGitBackend, backend === 'libgit2' ? 'libgit2' : 'git-system');
+    setChk(setAutoFetchChk, cfg.git?.auto_fetch);
+    setNum(setAutoFetchMin, cfg.git?.auto_fetch_minutes);
+    setChk(setPruneOnFetch, cfg.git?.prune_on_fetch);
+    setNum(setWatcherDebounce, cfg.git?.watcher_debounce_ms);
+    setNum(setLargeRepoThresh, cfg.git?.large_repo_threshold_mb);
+    setVal(setHookPolicy, toKebab(cfg.git?.allow_hooks));
+    setChk(setRespectAutocrlf, cfg.git?.respect_core_autocrlf);
+
+    // Diff
+    setNum(setTabWidth, cfg.diff?.tab_width);
+    setVal(setIgnoreWhitespace, toKebab(cfg.diff?.ignore_whitespace));
+    setNum(setMaxFileSizeMb, cfg.diff?.max_file_size_mb);
+    setChk(setIntraline, cfg.diff?.intraline);
+    setChk(setBinaryPlaceholders, cfg.diff?.show_binary_placeholders);
+
+    // LFS
+    setChk(setLfsEnabled, cfg.lfs?.enabled);
+    setNum(setLfsConcurrency, cfg.lfs?.concurrency);
+    setNum(setLfsBandwidth, cfg.lfs?.bandwidth_kbps);
+    setChk(setLfsRequireLock, cfg.lfs?.require_lock_before_edit);
+    setChk(setLfsBgFetch, cfg.lfs?.background_fetch_on_checkout);
+
+    // Performance
+    setNum(setGraphCap, cfg.performance?.graph_node_cap);
+    setChk(setProgressiveRender, cfg.performance?.progressive_render);
+    setChk(setGpuAccel, cfg.performance?.gpu_accel);
+    setChk(setIndexWarm, cfg.performance?.index_warm_on_open);
+    setChk(setBgIndexOnBattery, cfg.performance?.background_index_on_battery);
+
+    // UX
+    setVal(setUiScale, cfg.ux?.ui_scale);
+    setVal(setFontMono, cfg.ux?.font_mono);
+    setChk(setVimNav, cfg.ux?.vim_nav);
+    setVal(setCbMode, toKebab(cfg.ux?.color_blind_mode));
+  } catch (e) {
+    console.error(e);
+    notify('Failed to load settings');
+  }
+}
+
+function collectSettingsFromForm() {
+  const base = JSON.parse(settingsModal.dataset.currentCfg || '{}');
+
+  const general = {
+    ...base.general,
+    theme: getVal(setThemeSel),
+    language: getVal(setLanguageSel),
+    update_channel: getVal(setUpdateChannelSel),
+    reopen_last_repos: getChk(setReopenLastChk),
+    checks_on_launch: getChk(setChecksOnLaunch),
+  };
+
+  const git = {
+    ...base.git,
+    backend: getVal(setGitBackend),
+    auto_fetch: getChk(setAutoFetchChk),
+    auto_fetch_minutes: getNum(setAutoFetchMin),
+    prune_on_fetch: getChk(setPruneOnFetch),
+    watcher_debounce_ms: getNum(setWatcherDebounce),
+    large_repo_threshold_mb: getNum(setLargeRepoThresh),
+    allow_hooks: getVal(setHookPolicy),
+    respect_core_autocrlf: getChk(setRespectAutocrlf),
+  };
+
+  const diff = {
+    ...base.diff,
+    tab_width: getNum(setTabWidth),
+    ignore_whitespace: getVal(setIgnoreWhitespace),
+    max_file_size_mb: getNum(setMaxFileSizeMb),
+    intraline: getChk(setIntraline),
+    show_binary_placeholders: getChk(setBinaryPlaceholders),
+  };
+
+  const lfs = {
+    ...base.lfs,
+    enabled: getChk(setLfsEnabled),
+    concurrency: getNum(setLfsConcurrency),
+    bandwidth_kbps: getNum(setLfsBandwidth),
+    require_lock_before_edit: getChk(setLfsRequireLock),
+    background_fetch_on_checkout: getChk(setLfsBgFetch),
+  };
+
+  const performance = {
+    ...base.performance,
+    graph_node_cap: getNum(setGraphCap),
+    progressive_render: getChk(setProgressiveRender),
+    gpu_accel: getChk(setGpuAccel),
+    index_warm_on_open: getChk(setIndexWarm),
+    background_index_on_battery: getChk(setBgIndexOnBattery),
+  };
+
+  const ux = {
+    ...base.ux,
+    ui_scale: Number(getVal(setUiScale)),
+    font_mono: getVal(setFontMono),
+    vim_nav: getChk(setVimNav),
+    color_blind_mode: getVal(setCbMode),
+  };
+
+  return { ...base, general, git, diff, lfs, performance, ux };
+}
+
+/* Save + Defaults */
+settingsSave?.addEventListener('click', async () => {
+  try {
+    const next = collectSettingsFromForm();
+    if (TAURI.has) await TAURI.invoke('set_global_settings', { cfg: next });
+    notify('Settings saved');
+
+    // Apply relevant immediate effects
+    const theme = next.general?.theme || 'system';
+    document.documentElement.setAttribute('data-theme', theme);
+
+    closeSettings();
+  } catch (e) {
+    console.error(e);
+    notify('Failed to save settings');
+  }
+});
+
+settingsReset?.addEventListener('click', async () => {
+  try {
+    // Ask backend for defaults by clearing then saving defaults, or rebuild locally:
+    if (!TAURI.has) return;
+    const cur = await TAURI.invoke('get_global_settings');
+
+    // Overwrite only sections we expose; leave unknown sections untouched
+    cur.general = { theme: 'system', language: 'system', update_channel: 'stable', reopen_last_repos: true, checks_on_launch: true, telemetry: false, crash_reports: false };
+    cur.git = { backend: 'git-system', auto_fetch: true, auto_fetch_minutes: 30, prune_on_fetch: true, watcher_debounce_ms: 300, large_repo_threshold_mb: 500, allow_hooks: 'ask', respect_core_autocrlf: true };
+    cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
+    cur.lfs = { enabled: true, concurrency: 4, bandwidth_kbps: 0, require_lock_before_edit: false, background_fetch_on_checkout: true };
+    cur.performance = { graph_node_cap: 5000, progressive_render: true, gpu_accel: true, index_warm_on_open: true, background_index_on_battery: false };
+    cur.ux = { ui_scale: 1.0, font_mono: 'monospace', vim_nav: false, color_blind_mode: 'none' };
+
+    await TAURI.invoke('set_global_settings', { cfg: cur });
+    await loadSettingsIntoForm();
+    notify('Defaults restored');
+  } catch (e) {
+    console.error(e);
+    notify('Failed to restore defaults');
+  }
 });

@@ -10,6 +10,7 @@ use crate::validate;
 use openvcs_core::{OnEvent, models::{BranchItem, StatusPayload, CommitItem}, Repo, BackendId, backend_id};
 use openvcs_core::backend_descriptor::{get_backend, list_backends};
 use openvcs_core::models::{VcsEvent};
+use crate::settings::AppConfig;
 
 #[derive(serde::Serialize)]
 struct RepoSelectedPayload {
@@ -590,4 +591,17 @@ pub fn set_backend_cmd(state: State<'_, AppState>, backend_id: BackendId) -> Res
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_global_settings(state: State<'_, AppState>) -> Result<AppConfig, String> {
+    Ok(state.config())
+}
+
+#[tauri::command]
+pub fn set_global_settings(
+    state: State<'_, AppState>,
+    cfg: AppConfig,
+) -> Result<(), String> {
+    state.set_config(cfg)
 }
