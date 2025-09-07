@@ -10,11 +10,11 @@ OpenVCS is a new and upcoming cross‑platform version control client built with
 
 ## Key Goals
 
-- 🧩 **Fully customisable** — themes, layout, and extensibility at the core.
-- 🗂 **Multi‑VCS architecture** — designed to support many backends beyond Git.
-- ⚡ **Lightweight & fast** — native shell via Tauri + Rust.
-- 🧰 **Developer‑first UX** — frictionless flows for common VCS tasks.
-- 🧱 **Local‑first** — avoids heavyweight runtimes and keeps resource use low.
+- 🧩 **Fully customisable** - themes, layout, and extensibility at the core.
+- 🗂 **Multi‑VCS architecture** - designed to support many backends beyond Git.
+- ⚡ **Lightweight & fast** - native shell via Tauri + Rust.
+- 🧰 **Developer‑first UX** - frictionless flows for common VCS tasks.
+- 🧱 **Local‑first** - avoids heavyweight runtimes and keeps resource use low.
 
 ## Platform Targets
 
@@ -109,9 +109,9 @@ cargo build
 
 Design principles:
 
-1. **Separation of concerns** — UI logic stays in the frontend; VCS logic lives in backend crates.
-2. **Backend abstraction** — a trait‑driven interface to enable multiple VCS backends over time.
-3. **Extensibility** — theming and plugin hooks are planned as part of the long‑term architecture, but will follow after the core VCS features are complete.
+1. **Separation of concerns** - UI logic stays in the frontend; VCS logic lives in backend crates.
+2. **Backend abstraction** - a trait‑driven interface to enable multiple VCS backends over time.
+3. **Extensibility** - theming and plugin hooks are planned as part of the long‑term architecture, but will follow after the core VCS features are complete.
 
 ---
 
@@ -162,4 +162,3 @@ The UI is actively evolving as core features take shape. Below is a small previe
 ![OpenVCS UI](docs/images/Settings-UI-Preview.png)
 
 More screenshots and demos will be shared once the design stabilises and a reliable build is ready.
-
