@@ -12,7 +12,8 @@ export function bindCommit() {
         const summary = commitSummary?.value.trim() || '';
         if (!summary) { commitSummary?.focus(); notify('Summary is required'); return; }
         const hasHunks = (state.selectedHunks || []).length > 0 && (state.currentDiff || []).length > 0;
-        const hasFiles = state.selectedFiles && state.selectedFiles.size > 0;
+        const selectedFiles = state.selectedFiles ? Array.from(state.selectedFiles) : [];
+        const hasFiles = selectedFiles.length > 0;
         if (!hasHunks && !hasFiles) {
             notify('Select files or hunks to commit');
             return;
