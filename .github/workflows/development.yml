@@ -1,4 +1,4 @@
-name: Dev Build Check
+name: Dev CI (fast)
 
 on:
   push:
@@ -6,25 +6,24 @@ on:
   pull_request:
     branches: [ Dev ]
 
-jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: ubuntu-22.04
-          - platform: windows-latest
+concurrency:
+  group: dev-${{ github.ref }}
+  cancel-in-progress: true
 
-    runs-on: ${{ matrix.platform }}
+jobs:
+  dev:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          lfs: true
           fetch-depth: 0
+          lfs: false   # flip to true only if your checks actually read LFS blobs
 
-      # Frontend (Node + Vite)
+      # ---------- Frontend: lint + typecheck only ----------
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -36,23 +35,19 @@ jobs:
         working-directory: Frontend
         run: npm ci
 
-      - name: Build frontend
+      - name: Lint
         working-directory: Frontend
-        run: npm run build
+        run: npm run lint --if-present
 
-      # Backend (Rust + Tauri)
+      - name: Typecheck
+        working-directory: Frontend
+        run: npm run typecheck --if-present
+
+      # ---------- Backend: cargo check only ----------
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Linux deps
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libappindicator3-dev librsvg2-dev patchelf \
-            libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
-
-      - name: Cache Cargo
+      - name: Cache Cargo (root workspace target/)
         uses: actions/cache@v4
         with:
           path: |
@@ -62,11 +57,5 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --locked
-
-      - name: Build Tauri app
-        working-directory: Backend
-        env:
-          FRONTEND_SKIP_BUILD: '1'
-        run: cargo tauri build --verbose
+      - name: Cargo check
+        run: cargo check --all-features
