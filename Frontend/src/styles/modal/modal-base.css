@@ -20,10 +20,11 @@
 }
 .modal[aria-hidden="true"]{ display:none; }
 
-.backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.55); }
+.backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.55); z-index:0; }
 
 .dialog.sheet{
     position:relative; overflow:hidden;
+    z-index:1; /* ensure dialog renders above backdrop */
     background:var(--surface); color:var(--text);
     border:1px solid var(--border); border-radius:var(--r-lg); box-shadow:var(--shadow-1);
 }
