@@ -1,0 +1,220 @@
+<!-- Settings modal -->
+<div class="modal" id="settings-modal" aria-hidden="true">
+    <div class="backdrop" data-close></div>
+    <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="sheet-head">
+            <h3 id="settings-title" style="margin:0">Settings</h3>
+            <button class="icon close" data-close aria-label="Close">✕</button>
+        </div>
+
+        <section class="sheet-body">
+            <!-- Sidebar -->
+            <nav aria-label="Settings sections">
+                <ul id="settings-nav" class="list">
+                    <li><button class="seg-btn active" data-section="general">General</button></li>
+                    <li><button class="seg-btn" data-section="git">Git</button></li>
+                    <li><button class="seg-btn" data-section="diff">Diff &amp; Merge</button></li>
+                    <li><button class="seg-btn" data-section="lfs">LFS</button></li>
+                    <li><button class="seg-btn" data-section="performance">Performance</button></li>
+                    <li><button class="seg-btn" data-section="ux">UX</button></li>
+                    <!-- You can add: integrations, advanced, experimental, logging, network later -->
+                </ul>
+            </nav>
+
+            <!-- Panels -->
+            <div id="settings-panels">
+                <!-- General -->
+                <form class="panel-form" data-panel="general">
+                    <div class="group">
+                        <label for="set-theme">Theme</label>
+                        <select id="set-theme">
+                            <option value="system">System</option>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </select>
+                    </div>
+
+                    <div class="group">
+                        <label for="set-language">Language</label>
+                        <select id="set-language">
+                            <option value="system">System</option>
+                            <option value="en">English</option>
+                        </select>
+                    </div>
+
+                    <div class="group">
+                        <label for="set-update-channel">Update channel</label>
+                        <select id="set-update-channel">
+                            <option value="stable">Stable</option>
+                            <option value="beta">Beta</option>
+                            <option value="nightly">Nightly</option>
+                        </select>
+                    </div>
+
+                    <div class="group">
+                        <label class="checkbox">
+                            <input type="checkbox" id="set-reopen-last" />
+                            Reopen last repositories on startup
+                        </label>
+                    </div>
+
+                    <div class="group">
+                        <label class="checkbox">
+                            <input type="checkbox" id="set-checks-on-launch" />
+                            Check for updates on launch
+                        </label>
+                    </div>
+                </form>
+
+                <!-- Git -->
+                <form class="panel-form hidden" data-panel="git">
+                    <div class="group">
+                        <label for="set-git-backend">Backend</label>
+                        <select id="set-git-backend">
+                            <option value="system">System</option>
+                            <option value="libgit2">Libgit2</option>
+                        </select>
+                    </div>
+
+                    <div class="group" style="display:grid; grid-template-columns: 1fr auto; gap:.6rem;">
+                        <label for="set-auto-fetch">Auto fetch</label>
+                        <label class="switch"><input type="checkbox" id="set-auto-fetch" /></label>
+
+                        <label for="set-auto-fetch-minutes">Interval (minutes)</label>
+                        <input id="set-auto-fetch-minutes" type="number" min="1" max="720" />
+                    </div>
+
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-prune-on-fetch" /> Prune on fetch</label>
+                    </div>
+
+                    <div class="group">
+                        <label for="set-watcher-debounce-ms">File watcher debounce (ms)</label>
+                        <input id="set-watcher-debounce-ms" type="number" min="50" max="10000" />
+                    </div>
+
+                    <div class="group">
+                        <label for="set-large-repo-threshold-mb">Large repo threshold (MB)</label>
+                        <input id="set-large-repo-threshold-mb" type="number" min="10" max="10000" />
+                    </div>
+
+                    <div class="group">
+                        <label for="set-hook-policy">Hooks</label>
+                        <select id="set-hook-policy">
+                            <option value="deny">Deny</option>
+                            <option value="ask">Ask</option>
+                            <option value="allow">Allow</option>
+                        </select>
+                    </div>
+
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-respect-autocrlf" /> Respect core.autocrlf</label>
+                    </div>
+                </form>
+
+                <!-- Diff -->
+                <form class="panel-form hidden" data-panel="diff">
+                    <div class="group">
+                        <label for="set-tab-width">Tab width</label>
+                        <input id="set-tab-width" type="number" min="1" max="16" />
+                    </div>
+
+                    <div class="group">
+                        <label for="set-ignore-whitespace">Ignore whitespace</label>
+                        <select id="set-ignore-whitespace">
+                            <option value="none">None</option>
+                            <option value="eol">End-of-line</option>
+                            <option value="all">All</option>
+                        </select>
+                    </div>
+
+                    <div class="group">
+                        <label for="set-max-file-size-mb">Max file size (MB)</label>
+                        <input id="set-max-file-size-mb" type="number" min="1" max="1024" />
+                    </div>
+
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-intraline" /> Intraline highlight</label>
+                    </div>
+
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-binary-placeholders" /> Show binary placeholders</label>
+                    </div>
+                </form>
+
+                <!-- LFS -->
+                <form class="panel-form hidden" data-panel="lfs">
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-lfs-enabled" /> Enable LFS integration</label>
+                    </div>
+                    <div class="group">
+                        <label for="set-lfs-concurrency">Concurrent transfers</label>
+                        <input id="set-lfs-concurrency" type="number" min="1" max="16" />
+                    </div>
+                    <div class="group">
+                        <label for="set-lfs-bandwidth">Bandwidth cap (kbps, 0=unlimited)</label>
+                        <input id="set-lfs-bandwidth" type="number" min="0" max="1000000" />
+                    </div>
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-lfs-require-lock" /> Require lock before edit</label>
+                    </div>
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-lfs-bg-fetch" /> Background fetch on checkout</label>
+                    </div>
+                </form>
+
+                <!-- Performance -->
+                <form class="panel-form hidden" data-panel="performance">
+                    <div class="group">
+                        <label for="set-graph-cap">Graph node cap</label>
+                        <input id="set-graph-cap" type="number" min="1000" max="200000" />
+                    </div>
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-progressive-render" /> Progressive render</label>
+                    </div>
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-gpu-accel" /> GPU acceleration</label>
+                    </div>
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-index-warm" /> Warm index on open</label>
+                    </div>
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-bg-index-on-battery" /> Background index on battery</label>
+                    </div>
+                </form>
+
+                <!-- UX -->
+                <form class="panel-form hidden" data-panel="ux">
+                    <div class="group">
+                        <label for="set-ui-scale">UI scale</label>
+                        <input id="set-ui-scale" type="number" step="0.05" min="0.75" max="2.0" />
+                    </div>
+                    <div class="group">
+                        <label for="set-font-mono">Monospace font</label>
+                        <input id="set-font-mono" type="text" placeholder="monospace" />
+                    </div>
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-vim-nav" /> Vim-style navigation</label>
+                    </div>
+                    <div class="group">
+                        <label for="set-cb-mode">Color-blind mode</label>
+                        <select id="set-cb-mode">
+                            <option value="none">None</option>
+                            <option value="protanopia">Protanopia</option>
+                            <option value="deuteranopia">Deuteranopia</option>
+                            <option value="tritanopia">Tritanopia</option>
+                        </select>
+                    </div>
+                </form>
+
+                <!-- Footer actions -->
+                <div class="sheet-actions">
+                    <button class="tbtn" id="settings-reset" type="button">Restore defaults</button>
+                    <div style="flex:1"></div>
+                    <button class="tbtn" data-close type="button">Cancel</button>
+                    <button class="tbtn primary big" id="settings-save" type="button">Save</button>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>

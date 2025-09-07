@@ -1,0 +1,144 @@
+/* App Layout */
+.app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Titlebar */
+.titlebar {
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: 0 .6rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+.title-actions { margin-left: auto; display: flex; align-items: center; gap: .45rem; }
+
+/* Repo switcher */
+.repo-switch {
+    display: flex; align-items: center; gap: .6rem;
+    background: var(--surface-2); padding: .35rem .6rem;
+    border-radius: var(--r-sm); cursor: pointer;
+    min-width: 220px; user-select: none;
+}
+.repo-switch:hover { outline: 1px solid var(--border); }
+.repo-meta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.repo-title { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.repo-branch { color: var(--muted); font-size: .82rem; }
+
+/* Tabs */
+.tabs {
+    display: flex; align-items: center; gap: .25rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    padding: 0 .5rem; height: 36px;
+}
+.tab {
+    border: none; background: transparent; color: var(--muted);
+    padding: .55rem .75rem; cursor: pointer; border-bottom: 2px solid transparent;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+/* Work area */
+.work {
+    flex: 1 1 auto; display: grid;
+    grid-template-columns: minmax(220px, 32vw) 6px 1fr;
+    min-height: 0; width: 100%; overflow: hidden;
+}
+.panel { min-width: 0; min-height: 0; }
+
+/* Left column */
+.left {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    min-height: 0;
+}
+
+/* Right column — grid: header | diff | commit */
+.right {
+    background: var(--surface-2);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ensure nested scroller works */
+.diff { min-height: 0; overflow: auto; }
+
+/* prevent accidental shrinking */
+.panel, .left, .right, .diff { min-width: 0; }
+
+/* Resizer */
+.resizer { background: transparent; cursor: col-resize; }
+.resizer:hover { background: rgba(255,255,255,.04); }
+
+/* Footer */
+.footer {
+    height: 34px; border-top: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 .8rem; font-size: .82rem; color: var(--muted);
+}
+
+/* LEFT COLUMN: structure + scrolling + list rows */
+.left{
+    background:var(--surface);
+    border-right:1px solid var(--border);
+    display:flex;                 /* column layout */
+    flex-direction:column;
+    min-height:0;                 /* allow inner scrollers to shrink */
+}
+
+.left-head{
+    flex:0 0 auto;                /* fixed header */
+    display:flex; align-items:center; gap:.6rem;
+    padding:.5rem;
+    border-bottom:1px solid var(--border);
+}
+
+/* filter pill */
+.filter{
+    flex:1;
+    display:flex; align-items:center; gap:.4rem;
+    border:1px solid var(--border); border-radius:999px;
+    padding:.3rem .6rem; background:transparent;
+}
+.filter input{
+    flex:1; min-width:0; border:none; outline:none;
+    background:transparent; color:var(--text);
+}
+.filter-icon{ opacity:.85; }
+
+/* list area scrolls */
+.list{
+    list-style:none; margin:0; padding:.25rem;
+    display:flex; flex-direction:column; gap:.25rem;
+    flex:1 1 auto;
+    overflow:auto;
+    min-height:0;                 /* critical for scrolling */
+}
+
+/* rows */
+.row{
+    display:flex; align-items:center; gap:.6rem;
+    padding:.5rem .6rem; border-radius:var(--r-md);
+    border:1px solid transparent; cursor:pointer;
+}
+.row:hover{ background:rgba(255,255,255,.04); }
+.row.active{ background:rgba(53,132,228,.12); border-color:rgba(53,132,228,.35); }
+
+.file{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.badge{
+    font-size:.78rem; color:var(--muted);
+    border:1px solid var(--border); padding:.15rem .45rem;
+    border-radius:999px;
+}
+

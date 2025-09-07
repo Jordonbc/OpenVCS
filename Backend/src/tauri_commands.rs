@@ -117,6 +117,39 @@ pub async fn add_repo_internal<R: Runtime>(
 }
 
 #[tauri::command]
+pub async fn clone_repo<R: Runtime>(
+    window: Window<R>,
+    state: State<'_, AppState>,
+    url: String,
+    dest: String,
+    backend_id: Option<BackendId>,
+) -> Result<(), String> {
+    use std::fs;
+    use std::path::PathBuf;
+
+    let be = backend_id.unwrap_or_else(|| backend_id!("git-system"));
+    let desc = get_backend(&be).ok_or_else(|| format!("Backend not found: {be}"))?;
+
+    // Compute target path: <dest>/<repo-name>
+    let folder = infer_repo_dir_from_url(&url);
+    if folder.is_empty() {
+        return Err("Cannot infer target directory from URL".into());
+    }
+    let target: PathBuf = Path::new(&dest).join(&folder);
+
+    // Ensure parent exists
+    fs::create_dir_all(&dest).map_err(|e| format!("Failed to create dest: {e}"))?;
+
+    // Clone via the backend, with progress bridge
+    let on = Some(progress_bridge(window.app_handle().clone()));
+    info!("clone_repo: cloning via backend {} into {}", be, target.display());
+    (desc.clone_repo)(&url, &target, on).map_err(|e| format!("Clone failed: {e}"))?;
+
+    // Open the freshly cloned repo and set it current
+    add_repo_internal(window, state, target.to_string_lossy().to_string(), be).await
+}
+
+#[tauri::command]
 pub fn validate_git_url(url: String) -> validate::Validation {
     validate::validate_git_url(url)
 }
@@ -152,9 +185,26 @@ fn get_repo_root(state: &State<'_, AppState>) -> Result<PathBuf, String> {
         .ok_or_else(|| "No repository selected".to_string())
 }
 
+#[tauri::command]
+pub async fn open_repo<R: Runtime>(
+    window: Window<R>,
+    state: State<'_, AppState>,
+    path: String,
+    backend_id: Option<BackendId>,
+) -> Result<(), String> {
+    let be = backend_id.unwrap_or_else(|| backend_id!("git-system"));
+    add_repo_internal(window, state, path, be).await
+}
+
+fn infer_repo_dir_from_url(url: &str) -> String {
+    let trimmed = url.trim_end_matches('/');
+    let last = trimmed.rsplit('/').next().unwrap_or(trimmed);
+    last.trim_end_matches(".git").to_string()
+}
+
 /* ---------- list_branches ---------- */
 #[tauri::command]
-pub fn list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
+pub fn git_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
     use openvcs_core::models::{BranchItem, BranchKind};
     use std::collections::HashSet;
 
@@ -290,7 +340,7 @@ pub fn git_log(
     state: State<'_, AppState>,
     limit: Option<usize>,
 ) -> Result<Vec<CommitItem>, String> {
-    use openvcs_core::models::{CommitItem, LogQuery};
+    use openvcs_core::models::LogQuery;
 
     let repo = state
         .current_repo()
@@ -388,6 +438,44 @@ pub fn git_diff_file(state: State<'_, AppState>, path: String) -> Result<Vec<Str
     // Allow either absolute or repo-relative; backend handles stripping
     vcs.diff_file(&PathBuf::from(path)).map_err(|e| e.to_string())
 }
+
+#[derive(serde::Serialize)]
+pub struct RepoSummary {
+    path: String,
+    current_branch: String,
+    branches: Vec<BranchItem>,
+}
+
+#[tauri::command]
+pub fn get_repo_summary(state: State<'_, AppState>) -> Result<RepoSummary, String> {
+    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+
+    let path = vcs.workdir().to_string_lossy().to_string();
+
+    let branches = vcs.branches().map_err(|e| e.to_string())?;
+    let current = vcs.current_branch().map_err(|e| e.to_string())?
+        .unwrap_or_else(|| "HEAD".into());
+
+    // Reuse your existing normalization by calling the tauri command directly:
+    let normalized = git_list_branches(state)?;
+
+    Ok(RepoSummary {
+        path,
+        current_branch: current,
+        branches: normalized,
+    })
+}
+
+#[tauri::command]
+pub fn git_current_branch(state: State<'_, AppState>) -> Result<String, String> {
+    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
+    repo.inner()
+        .current_branch()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Detached HEAD".to_string())
+}
+
 
 #[tauri::command]
 pub async fn commit_changes<R: Runtime>(

@@ -1,0 +1,125 @@
+<!-- Command Sheet (Clone / Add / Switch) -->
+<div class="modal" id="command-modal" aria-hidden="true">
+    <div class="backdrop" data-close></div>
+
+    <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="command-title">
+        <!-- Hidden title for accessibility -->
+        <h2 id="command-title" class="visually-hidden">Repository actions</h2>
+
+        <div class="sheet-head">
+            <!-- Segmented tabs with sliding indicator -->
+            <div class="seg" role="tablist" aria-label="Repository actions" id="repo-seg">
+                <span class="seg-indicator" aria-hidden="true"></span>
+
+                <button
+                        class="seg-btn active"
+                        id="sheet-tab-clone"
+                        data-sheet="clone"
+                        role="tab"
+                        aria-selected="true"
+                        aria-controls="sheet-clone"
+                        tabindex="0">
+                    Clone
+                </button>
+
+                <button
+                        class="seg-btn"
+                        id="sheet-tab-add"
+                        data-sheet="add"
+                        role="tab"
+                        aria-selected="false"
+                        aria-controls="sheet-add"
+                        tabindex="-1">
+                    Add Existing
+                </button>
+
+                <button
+                        class="seg-btn"
+                        id="sheet-tab-switch"
+                        data-sheet="switch"
+                        role="tab"
+                        aria-selected="false"
+                        aria-controls="sheet-switch"
+                        tabindex="-1">
+                    Switch
+                </button>
+            </div>
+
+            <button class="icon close" data-close aria-label="Close">✕</button>
+        </div>
+
+        <!-- Clone -->
+        <section
+                class="sheet-body"
+                id="sheet-clone"
+                role="tabpanel"
+                aria-labelledby="sheet-tab-clone">
+            <h3>Clone repository</h3>
+
+            <div class="group">
+                <label for="clone-url">Source</label>
+                <div class="input-row">
+                    <input type="text" id="clone-url"
+                           placeholder="https://github.com/user/repo.git or git@github.com:user/repo.git" />
+                </div>
+                <div class="hint" id="clone-url-hint">Enter a valid Git URL. Protocol will be detected automatically.</div>
+            </div>
+
+            <div class="group">
+                <label for="clone-path">Destination</label>
+                <div class="input-row">
+                    <input type="text" id="clone-path" placeholder="/home/jordon/Projects" />
+                    <button class="pick" id="browse-clone" type="button">Browse…</button>
+                </div>
+                <div class="hint">A new folder will be created inside the destination.</div>
+            </div>
+
+            <div class="sheet-actions">
+                <button class="tbtn" data-close type="button">Cancel</button>
+                <button class="tbtn primary big" id="do-clone" type="button" disabled>Clone</button>
+            </div>
+        </section>
+
+        <!-- Add Existing -->
+        <section
+                class="sheet-body hidden"
+                id="sheet-add"
+                role="tabpanel"
+                aria-labelledby="sheet-tab-add">
+            <h3>Add existing repository</h3>
+
+            <div class="group">
+                <label for="add-path">Repository folder</label>
+                <div class="input-row">
+                    <input type="text" id="add-path" placeholder="/path/to/repo (must contain .git)" />
+                    <button class="pick" id="browse-add" type="button">Browse…</button>
+                </div>
+                <div class="hint" id="add-path-hint">Select a folder that already contains a Git repo.</div>
+            </div>
+
+            <div class="sheet-actions">
+                <button class="tbtn" data-close type="button">Cancel</button>
+                <button class="tbtn primary big" id="do-add" type="button" disabled>Add</button>
+            </div>
+        </section>
+
+        <!-- Switch -->
+        <section
+                class="sheet-body hidden"
+                id="sheet-switch"
+                role="tabpanel"
+                aria-labelledby="sheet-tab-switch">
+            <h3>Switch repository</h3>
+
+            <div class="group">
+                <label>Recent</label>
+                <ul class="recent" id="recent-list"></ul>
+            </div>
+
+            <div class="sheet-actions">
+                <button class="tbtn" data-close type="button">Cancel</button>
+                <button class="tbtn primary big" id="do-switch" type="button" disabled>Open</button>
+            </div>
+        </section>
+    </div>
+</div>

@@ -1,0 +1,103 @@
+/* ==========================================================================
+   settings.css — Styles for the Settings modal
+   --------------------------------------------------------------------------
+   This file defines layout and look for the Settings modal dialog:
+   - Dialog sizing, header, and 2-column body structure
+   - Sidebar navigation buttons (default, hover, active, focus states)
+   - Right-hand content area (scrollable panels, forms, groups)
+   - Footer action row (Restore defaults / Cancel / Save) pinned correctly
+     so it hugs content on tall windows and sticks visible while scrolling.
+   ========================================================================== */
+
+/* src/styles/modal/settings.css */
+
+/* Dialog sizing + layout */
+#settings-modal .dialog.sheet{
+    width: clamp(560px, 92vw, 960px);
+    height: min(640px, calc(100vh - 24px));
+    display: flex;
+    flex-direction: column;
+}
+#settings-modal .sheet-head{ flex: 0 0 auto; }
+#settings-modal .sheet-body{
+    flex: 1 1 auto; min-height: 0; overflow: hidden;
+    display: grid; grid-template-columns: 240px 1fr; gap: 1rem; padding: 1rem;
+}
+
+/* Left nav (scrollable) */
+#settings-modal nav{ overflow: auto; padding-right: .25rem; }
+#settings-modal nav ul{ list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+
+/* Sidebar buttons (base/hover/active/focus) */
+#settings-modal nav .seg-btn{
+    width: 100%;
+    display: block;
+    text-align: left;
+    padding: .55rem .75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+}
+#settings-modal nav .seg-btn:hover{
+    border-color: var(--accent);
+    color: var(--text);
+}
+#settings-modal nav .seg-btn.active{
+    color: var(--text);
+    background:
+            linear-gradient(to right,
+            color-mix(in oklab, var(--accent) 18%, transparent) 0%,
+            transparent 32%);
+    border-color: var(--accent);
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+#settings-modal nav .seg-btn:focus-visible{
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent);
+}
+
+/* Make the right-side content a flex column so the footer can hug the content
+   when there's extra vertical space, but still stick while scrolling */
+#settings-panels{
+    display: flex;               /* was: display:grid */
+    flex-direction: column;
+    gap: 1rem;
+    min-height: 0;
+    overflow: auto;
+    padding-right: .25rem;
+}
+
+#settings-panels .panel-form{ display: grid; gap: 1rem; }
+#settings-panels .panel-form .group{ display: grid; gap: .45rem; }
+
+/* Footer actions: sit just below content when short, stick at viewport bottom when long */
+#settings-modal .sheet-actions{
+    margin-top: auto;
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    justify-content: flex-end;
+    padding: .5rem 0 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+}
+
+/* Responsive: collapse sidebar on narrow screens */
+@media (max-width: 880px){
+    #settings-modal .sheet-body{ grid-template-columns: 1fr; }
+    #settings-modal nav ul{
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: max-content;
+        gap: .5rem;
+        overflow: auto;
+        padding-bottom: .25rem;
+        margin: 0;
+    }
+    #settings-modal nav .seg-btn{ text-align: center; }
+}
+

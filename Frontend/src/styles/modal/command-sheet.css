@@ -1,0 +1,207 @@
+/* ==========================================================================
+   command-sheet.css — Styles for the Command Palette / Quick Actions modal
+   --------------------------------------------------------------------------
+   This file defines layout and look for the "Command Sheet" modal:
+   - Dialog sizing and responsive width cap
+   - Recent items list (grid layout, max height with scrolling)
+   - Individual item styling (hover, spacing, borders, background, cursor)
+   ========================================================================== */
+
+/* src/styles/modal/command-sheet.css */
+
+/* Dialog size */
+#command-modal .dialog.sheet {
+    width: min(680px, 95vw);
+}
+
+/* Hide inactive panels completely */
+#command-modal .sheet-body.hidden {
+    display: none !important;
+}
+
+/* Header layout (tabs left, close right) */
+#command-modal .sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+}
+
+/* --------------------------------------------------------------------------
+   Slider Tabs (ONLY the header segmented control)
+   -------------------------------------------------------------------------- */
+
+#command-modal .sheet-head .seg {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: 4px;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--fg, #fff) 6%, transparent);
+    isolation: isolate; /* pill stays beneath labels */
+}
+
+/* Transparent tab buttons so the pill shows through */
+#command-modal .sheet-head .seg .seg-btn {
+    position: relative;
+    z-index: 1;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    color: color-mix(in oklab, var(--fg, #fff) 65%, transparent);
+    padding: .48rem .92rem;
+    border-radius: 9999px;
+    line-height: 1;
+    white-space: nowrap;
+    transition: color .18s ease;
+}
+
+#command-modal .sheet-head .seg .seg-btn:hover {
+    color: color-mix(in oklab, var(--fg, #fff) 85%, transparent);
+}
+
+#command-modal .sheet-head .seg .seg-btn.active {
+    color: var(--fg, #fff);
+}
+
+/* The single sliding pill */
+#command-modal .sheet-head .seg .seg-indicator {
+    --seg-x: 0px;
+    --seg-w: 0px;
+    position: absolute;
+    z-index: 0;
+    top: 4px;                  /* match .seg padding */
+    left: 4px;                 /* match .seg padding */
+    height: calc(100% - 8px);  /* minus top+bottom padding */
+    width: var(--seg-w);
+    transform: translateX(var(--seg-x));
+    border-radius: 9999px;
+    background: var(--accent, #5aa2ff);
+    box-shadow:
+            0 0 0 1px color-mix(in oklab, var(--accent, #5aa2ff) 55%, transparent),
+            0 4px 14px color-mix(in oklab, var(--accent, #5aa2ff) 24%, transparent);
+    transition:
+            transform .28s cubic-bezier(.2,.8,.2,1),
+            width .28s cubic-bezier(.2,.8,.2,1);
+    pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   Body / groups / inputs
+   -------------------------------------------------------------------------- */
+
+#command-modal .sheet-body {
+    padding: 1rem 1.25rem 1.25rem;
+}
+
+#command-modal .group {
+    margin: 0 0 1rem 0;
+}
+
+#command-modal label {
+    display: inline-block;
+    margin-bottom: .35rem;
+    color: var(--fg, #eaeaea);
+    font-weight: 500;
+}
+
+/* Rows that contain [input + button] */
+#command-modal .input-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+}
+
+/* Inputs grow and are allowed to shrink next to buttons */
+#command-modal .input-row > input {
+    flex: 1 1 0%;
+    min-width: 0;   /* critical to prevent overflow/clipping */
+    width: 100%;
+}
+
+/* Browse button stays tight, no wrapping */
+#command-modal .input-row > .pick {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+#command-modal .hint {
+    margin-top: .35rem;
+    color: var(--muted, #9aa0a6);
+    font-size: .9rem;
+}
+
+/* Actions row */
+#command-modal .sheet-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: .5rem;
+    margin-top: 1rem;
+}
+
+/* Optional: panel slide-in animation */
+@media (prefers-reduced-motion: no-preference) {
+    #command-modal .sheet-body:not(.hidden) {
+        animation: commandSheetIn .22s cubic-bezier(.2,.8,.2,1);
+    }
+}
+@keyframes commandSheetIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* --------------------------------------------------------------------------
+   Recent list (Switch panel)
+   -------------------------------------------------------------------------- */
+
+#command-modal .recent {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: .4rem;
+    max-height: 40vh;
+    overflow: auto;
+}
+
+/* Normal item */
+#command-modal .recent li {
+    display: flex;
+    justify-content: space-between;
+    gap: .75rem;
+    align-items: center;
+    border: 1px solid var(--border, #2a2a2a);
+    background: var(--surface, #161616);
+    padding: .6rem .8rem;
+    border-radius: var(--r-md, 8px);
+    cursor: pointer;
+}
+
+#command-modal .recent li:hover {
+    border-color: var(--accent, #5aa2ff);
+}
+
+/* Name + path stack */
+#command-modal .recent li > div {
+    min-width: 0; /* enable truncation */
+}
+
+#command-modal .recent li .path {
+    opacity: .8;
+    font-size: .9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Empty-state item (when there are no recents) */
+#command-modal .recent li.empty {
+    display: block;
+    padding: .75rem .8rem;
+    color: var(--muted, #9aa0a6);
+    border: 1px dashed var(--border, #2a2a2a);
+    border-radius: var(--r-md, 8px);
+    text-align: center;
+    cursor: default;
+}
