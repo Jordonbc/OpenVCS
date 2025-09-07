@@ -1059,39 +1059,37 @@ pub fn rel_to_workdir(workdir: &Path, p: &Path) -> Result<PathBuf> {
 }
 
 pub fn git_identity(git: &Git) -> Option<(String, String)> {
-    debug!("Reading Git identity from config...");
-    git.with_repo(|repo| {
-        let cfg = match repo.config() {
-            Ok(c) => c,
-            Err(e) => {
-                warn!("Could not open Git config: {e}");
-                return None;
-            }
-        };
+    debug!("Reading Git identity from config…");
 
-        let name  = match cfg.get_string("user.name") {
-            Ok(n) => n,
-            Err(e) => {
-                warn!("Missing or invalid user.name in Git config: {e}");
-                return None;
-            }
-        };
-        let email = match cfg.get_string("user.email") {
-            Ok(e) => e,
-            Err(e) => {
-                warn!("Missing or invalid user.email in Git config: {e}");
-                return None;
-            }
-        };
-
-        if name.trim().is_empty() || email.trim().is_empty() {
-            warn!("Git identity is empty: name='{name}', email='{email}'");
-            return None;
-        }
-
-        debug!("Git identity resolved: {name} <{email}>");
+    // Helper to read name/email from a given config scope
+    fn read_identity_from(cfg: &g::Config) -> Option<(String, String)> {
+        let name = cfg.get_string("user.name").ok()?;
+        let email = cfg.get_string("user.email").ok()?;
+        if name.trim().is_empty() || email.trim().is_empty() { return None; }
         Some((name, email))
-    })
+    }
+
+    // Try repository config first
+    if let Some((n, e)) = git.with_repo(|repo| {
+        match repo.config() {
+            Ok(c) => read_identity_from(&c),
+            Err(e) => { warn!("Could not open repo Git config: {e}"); None }
+        }
+    }) { return Some((n, e)); }
+
+    // Fallback to default (global/system) config
+    match g::Config::open_default() {
+        Ok(cfg) => {
+            if let Some((n, e)) = read_identity_from(&cfg) {
+                debug!("Git identity (global): {n} <{e}>");
+                Some((n, e))
+            } else { None }
+        }
+        Err(e) => {
+            warn!("Could not open default Git config: {e}");
+            None
+        }
+    }
 }
 
 fn collect_patch_lines(diff: &g::Diff) -> Result<Vec<String>> {

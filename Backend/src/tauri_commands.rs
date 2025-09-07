@@ -504,9 +504,18 @@ pub async fn commit_changes<R: Runtime>(
         on(VcsEvent::Info("Staging changes…"));
         info!("Staging changes for commit");
 
-        // Backend-agnostic identity fallback; wire a real identity source later.
-        let name = std::env::var("GIT_AUTHOR_NAME").unwrap_or_else(|_| "OpenVCS".into());
-        let email = std::env::var("GIT_AUTHOR_EMAIL").unwrap_or_else(|_| "openvcs@example".into());
+        // Resolve identity: prefer VCS-reported (repo-local, then global), then env, then final fallback
+        let (name, email) = repo
+            .inner()
+            .get_identity()
+            .ok()
+            .flatten()
+            .or_else(|| {
+                let n = std::env::var("GIT_AUTHOR_NAME").ok();
+                let e = std::env::var("GIT_AUTHOR_EMAIL").ok();
+                match (n, e) { (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)), _ => None }
+            })
+            .unwrap_or_else(|| ("OpenVCS".into(), "openvcs@example".into()));
         info!("Using identity: {} <{}>", name, email);
 
         on(VcsEvent::Info("Writing commit…"));
