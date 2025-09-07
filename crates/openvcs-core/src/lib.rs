@@ -60,6 +60,10 @@ pub trait Vcs: Send + Sync {
     fn fetch(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()>;
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()>;
 
+    /// Fast-forward only pull of the current branch from the specified remote/branch.
+    /// Implementations should fetch as needed and then update the current branch if a fast-forward is possible.
+    fn pull_ff_only(&self, remote: &str, branch: &str, on: Option<OnEvent>) -> Result<()>;
+
     // content
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String>;
     fn status_summary(&self) -> Result<models::StatusSummary>;

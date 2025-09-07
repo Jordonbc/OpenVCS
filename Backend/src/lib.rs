@@ -122,6 +122,7 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_diff_file,
         tauri_commands::commit_changes,
         tauri_commands::git_fetch,
+        tauri_commands::git_pull,
         tauri_commands::git_push,
         tauri_commands::get_global_settings,
         tauri_commands::set_global_settings,

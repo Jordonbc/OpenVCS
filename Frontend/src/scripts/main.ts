@@ -1,7 +1,7 @@
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
-import { prefs, savePrefs } from './state/state';
+import { prefs, savePrefs, state } from './state/state';
 import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme, toggleTheme,
     bindLayoutActionState
@@ -40,8 +40,24 @@ function boot() {
     // title actions
     themeBtn?.addEventListener('click', toggleTheme);
     fetchBtn?.addEventListener('click', async () => {
-        try { if (TAURI.has) await TAURI.invoke('git_fetch', {}); notify('Fetched'); await Promise.allSettled([hydrateStatus(), hydrateCommits()]); }
-        catch { notify('Fetch failed'); }
+        try {
+            if (!TAURI.has) return;
+            const hasLocalChanges = Array.isArray(state.files) && state.files.length > 0;
+            const ahead = (state as any).ahead || 0;
+            const behind = (state as any).behind || 0;
+            const canFastForward = !hasLocalChanges && ahead === 0;
+
+            if (canFastForward) {
+                await TAURI.invoke('git_pull', {});
+                notify(behind > 0 ? 'Pulled (fast-forward)' : 'Already up to date');
+            } else {
+                await TAURI.invoke('git_fetch', {});
+                notify('Fetched');
+            }
+            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+        } catch {
+            notify('Fetch/Pull failed');
+        }
     });
     pushBtn?.addEventListener('click', async () => {
         try { if (TAURI.has) await TAURI.invoke('git_push', {}); notify('Pushed'); }

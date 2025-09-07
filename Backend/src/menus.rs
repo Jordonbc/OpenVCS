@@ -62,7 +62,7 @@ fn build_view_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu
 
 /// ----- Repository -----
 fn build_repository_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu::Submenu<R>> {
-    let fetch_item  = MenuItem::with_id(app, "fetch",  "Fetch",  true, Some("F5"))?;
+    let fetch_item  = MenuItem::with_id(app, "fetch",  "Fetch/Pull",  true, Some("F5"))?;
     let push_item   = MenuItem::with_id(app, "push",   "Push",   true, Some("Ctrl+P"))?;
     let commit_item = MenuItem::with_id(app, "commit", "Commit", true, Some("Ctrl+Enter"))?;
     let repo_settings_item = MenuItem::with_id(app, "repo-settings", "Repository Settings", true, None::<&str>)?;

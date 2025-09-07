@@ -163,6 +163,13 @@ impl Vcs for GitLibGit2 {
             .map_err(Self::map_err)
     }
 
+    fn pull_ff_only(&self, remote: &str, branch: &str, _on: Option<OnEvent>) -> Result<()> {
+        // Use libgit2 path that fetches and performs a fast-forward when possible.
+        // Progress is logged; we currently do not bridge per-line progress for this path.
+        let upstream = format!("{}/{}", remote, branch);
+        self.inner.fast_forward(&upstream).map_err(Self::map_err)
+    }
+
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String> {
         self.inner.commit(message, name, email, paths)
             .map(|oid| oid.to_string())

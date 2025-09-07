@@ -58,7 +58,9 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let status = cmd
             .args(args.into_iter().map(|s| s.as_ref().to_string()))
-            .env("GIT_SSH_COMMAND", "ssh")
+            // Disable interactive terminal prompts; rely on ssh-agent or fail fast
+            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_TERMINAL_PROMPT", "0")
             .status()
             .map_err(VcsError::Io)?;
         if status.success() {
@@ -77,7 +79,8 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let out = cmd
             .args(args.into_iter().map(|s| s.as_ref().to_string()))
-            .env("GIT_SSH_COMMAND", "ssh")
+            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(VcsError::Io)?;
         if out.status.success() {
@@ -94,7 +97,8 @@ impl GitSystem {
         let mut cmd = Command::new(GIT_COMMAND_NAME);
         cmd.current_dir(cwd)
             .args(args)
-            .env("GIT_SSH_COMMAND", "ssh")
+            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_TERMINAL_PROMPT", "0")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -247,6 +251,17 @@ impl Vcs for GitSystem {
 
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
         Self::run_git_streaming(&self.workdir, ["push", "--progress", remote, refspec], on)
+    }
+
+    fn pull_ff_only(&self, remote: &str, branch: &str, on: Option<OnEvent>) -> Result<()> {
+        // Prefer a single pull with ff-only for simplicity and to surface server messages
+        // Equivalent to: git fetch <remote> <branch>; git merge --ff-only <remote>/<branch>
+        // Using streaming to forward progress to the UI when available.
+        Self::run_git_streaming(
+            &self.workdir,
+            ["pull", "--ff-only", "--no-rebase", remote, branch],
+            on,
+        )
     }
 
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String> {
