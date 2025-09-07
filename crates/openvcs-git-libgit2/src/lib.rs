@@ -129,6 +129,29 @@ impl Vcs for GitLibGit2 {
         self.inner.ensure_remote(name, url).map_err(Self::map_err)
     }
 
+    fn list_remotes(&self) -> Result<Vec<(String, String)>> {
+        // Prefer reading from the repository config: remote.<name>.url
+        let mut out: Vec<(String, String)> = Vec::new();
+        let res = self.inner.with_repo(|repo| {
+            let cfg = repo.config().map_err(|e| Self::map_err(e))?;
+            // Iterate over entries matching remote.*.url
+            let mut iter = cfg.entries(Some("remote.*.url")).map_err(|e| Self::map_err(e))?;
+            while let Some(Ok(entry)) = iter.next() {
+                if let (Some(name), Some(val)) = (entry.name(), entry.value()) {
+                    // name like "remote.origin.url" → extract "origin"
+                    let remote_name = name.trim_start_matches("remote.").trim_end_matches(".url").to_string();
+                    out.push((remote_name, val.to_string()));
+                }
+            }
+            Ok::<(), VcsError>(())
+        });
+        match res { Ok(()) => Ok(out), Err(e) => Err(e) }
+    }
+
+    fn remove_remote(&self, name: &str) -> Result<()> {
+        self.inner.with_repo(|repo| repo.remote_delete(name)).map_err(Self::map_err)
+    }
+
     fn fetch(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
         self.inner.fetch_with_progress(remote, refspec, Self::adapt_progress(on))
             .map(|_| ())
@@ -174,5 +197,18 @@ impl Vcs for GitLibGit2 {
 
     fn branches(&self) -> Result<Vec<models::BranchItem>> {
         self.inner.branches().map_err(Self::map_err)
+    }
+
+    fn get_identity(&self) -> Result<Option<(String, String)>> {
+        Ok(lowlevel::git_identity(&self.inner))
+    }
+
+    fn set_identity_local(&self, name: &str, email: &str) -> Result<()> {
+        self.inner.with_repo(|repo| {
+            let mut cfg = repo.config()?;
+            cfg.set_str("user.name", name)?;
+            cfg.set_str("user.email", email)?;
+            Ok(())
+        }).map_err(Self::map_err::<git2::Error>)
     }
 }

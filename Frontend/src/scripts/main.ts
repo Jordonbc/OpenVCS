@@ -13,6 +13,7 @@ import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
 import { openModal } from './ui/modals';
 import { openSettings, loadSettingsIntoForm } from './features/settings';
+import { openRepoSettings } from './features/repoSettings';
 
 // Title bar actions
 const themeBtn = qs<HTMLButtonElement>('#theme-btn');
@@ -116,8 +117,9 @@ function boot() {
     })();
 
     // open settings via event
-    TAURI.listen?.('ui:open-settings', () => openModal('settings-modal'));
-    TAURI.listen?.('ui:open-about', () => openAbout());
-}
+      TAURI.listen?.('ui:open-settings', () => openModal('settings-modal'));
+      TAURI.listen?.('ui:open-about', () => openAbout());
+      TAURI.listen?.('ui:open-repo-settings', () => openRepoSettings());
+  }
 
 boot();

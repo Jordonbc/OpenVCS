@@ -65,10 +65,12 @@ fn build_repository_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Resul
     let fetch_item  = MenuItem::with_id(app, "fetch",  "Fetch",  true, Some("F5"))?;
     let push_item   = MenuItem::with_id(app, "push",   "Push",   true, Some("Ctrl+P"))?;
     let commit_item = MenuItem::with_id(app, "commit", "Commit", true, Some("Ctrl+Enter"))?;
+    let repo_settings_item = MenuItem::with_id(app, "repo-settings", "Repository Settings", true, None::<&str>)?;
     menu::SubmenuBuilder::new(app, "Repository")
         .item(&fetch_item)
         .item(&push_item)
         .item(&commit_item)
+        .item(&repo_settings_item)
         .build()
 }
 
@@ -106,6 +108,10 @@ pub fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: Me
         "settings" => {
             // Tell the webview to open the Settings modal
             let _ = app.emit("ui:open-settings", ());
+        }
+        "repo-settings" => {
+            // Tell the webview to open the Settings modal
+            let _ = app.emit("ui:open-repo-settings", ());
         }
         _ => {
             // Fallback: forward other menu IDs if you already rely on this

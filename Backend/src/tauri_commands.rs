@@ -11,6 +11,7 @@ use openvcs_core::{OnEvent, models::{BranchItem, StatusPayload, CommitItem}, Rep
 use openvcs_core::backend_descriptor::{get_backend, list_backends};
 use openvcs_core::models::{VcsEvent};
 use crate::settings::AppConfig;
+use crate::repo_settings::RepoConfig;
 
 #[derive(serde::Serialize)]
 struct RepoSelectedPayload {
@@ -503,9 +504,18 @@ pub async fn commit_changes<R: Runtime>(
         on(VcsEvent::Info("Staging changes…"));
         info!("Staging changes for commit");
 
-        // Backend-agnostic identity fallback; wire a real identity source later.
-        let name = std::env::var("GIT_AUTHOR_NAME").unwrap_or_else(|_| "OpenVCS".into());
-        let email = std::env::var("GIT_AUTHOR_EMAIL").unwrap_or_else(|_| "openvcs@example".into());
+        // Resolve identity: prefer VCS-reported (repo-local, then global), then env, then final fallback
+        let (name, email) = repo
+            .inner()
+            .get_identity()
+            .ok()
+            .flatten()
+            .or_else(|| {
+                let n = std::env::var("GIT_AUTHOR_NAME").ok();
+                let e = std::env::var("GIT_AUTHOR_EMAIL").ok();
+                match (n, e) { (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)), _ => None }
+            })
+            .unwrap_or_else(|| ("OpenVCS".into(), "openvcs@example".into()));
         info!("Using identity: {} <{}>", name, email);
 
         on(VcsEvent::Info("Writing commit…"));
@@ -692,4 +702,61 @@ pub fn set_global_settings(
     cfg: AppConfig,
 ) -> Result<(), String> {
     state.set_config(cfg)
+}
+
+#[tauri::command]
+pub fn get_repo_settings(state: State<'_, AppState>) -> Result<RepoConfig, String> {
+    let mut cfg = state.repo_config();
+    // If a repo is open, enrich settings from actual Git config
+    if let Some(repo) = state.current_repo() {
+        let vcs = repo.inner();
+        // identity (repository-local)
+        match vcs.get_identity() {
+            Ok(Some((name, email))) => {
+                cfg.user_name = Some(name);
+                cfg.user_email = Some(email);
+            }
+            Ok(None) => { /* leave as-is */ }
+            Err(e) => {
+                warn!("get_repo_settings: get_identity failed: {e}");
+            }
+        }
+
+        // remotes: capture 'origin' URL if present
+        match vcs.list_remotes() {
+            Ok(list) => {
+                if let Some((_, url)) = list.into_iter().find(|(n, _)| n == "origin") {
+                    cfg.origin_url = Some(url);
+                }
+            }
+            Err(e) => warn!("get_repo_settings: list_remotes failed: {e}"),
+        }
+    }
+
+    Ok(cfg)
+}
+
+#[tauri::command]
+pub fn set_repo_settings(
+    state: State<'_, AppState>,
+    cfg: RepoConfig,
+) -> Result<(), String> {
+    // Persist repo-specific cache (none currently persisted beyond identity/remote)
+    state.set_repo_config(RepoConfig { ..cfg.clone() })?;
+
+    // Apply to Git if a repo is open
+    if let Some(repo) = state.current_repo() {
+        let vcs = repo.inner();
+        // Identity: set when both present
+        if let (Some(name), Some(email)) = (cfg.user_name.as_deref(), cfg.user_email.as_deref()) {
+            vcs.set_identity_local(name, email).map_err(|e| e.to_string())?;
+        }
+        // Origin remote URL
+        if let Some(url) = cfg.origin_url.as_deref() {
+            if !url.trim().is_empty() {
+                vcs.ensure_remote("origin", url).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    Ok(())
 }

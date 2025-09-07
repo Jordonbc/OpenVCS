@@ -1,0 +1,50 @@
+/* src/styles/modal/repo-settings.css */
+#repo-settings-modal .dialog.sheet{
+    background: var(--surface);
+    color: var(--text);
+}
+#repo-settings-modal .sheet-head{
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+}
+#repo-settings-modal .dialog.sheet{
+    width:30rem;
+    max-width:100%;
+    display:flex;
+    flex-direction:column;
+}
+#repo-settings-modal .sheet-body{
+    background: var(--surface);
+    padding:1rem;
+    overflow:auto;
+}
+#repo-settings-modal .panel-form{
+    display:grid;
+    gap:1rem;
+}
+#repo-settings-modal .sheet-actions{
+    background: var(--surface);
+    display:flex;
+    gap:.5rem;
+    justify-content:flex-end;
+    padding:1rem;
+    border-top:1px solid var(--border);
+}
+
+/* Form controls — theme-aware via tokens */
+#repo-settings-modal .panel-form .group label{ color: var(--muted); }
+#repo-settings-modal .panel-form input[type="text"],
+#repo-settings-modal .panel-form input[type="number"],
+#repo-settings-modal .panel-form select,
+#repo-settings-modal .panel-form textarea{
+    width:100%;
+    background: var(--surface-2);
+    color: var(--text);
+    border:1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding:.55rem .65rem;
+    font: inherit;
+}
+#repo-settings-modal .panel-form input[type="number"]{ text-align:right; }
+#repo-settings-modal .panel-form .checkbox{ display:flex; align-items:center; gap:.6rem; }
+#repo-settings-modal .panel-form .checkbox input{ width:1.1rem; height:1.1rem; }

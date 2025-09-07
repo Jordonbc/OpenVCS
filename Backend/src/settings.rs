@@ -68,6 +68,8 @@ impl Default for General {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Git {
     #[serde(default)] pub backend: GitBackend,
+    /// Default branch name used when creating new repos or inferring defaults
+    #[serde(default)] pub default_branch: String,
     #[serde(default)] pub auto_fetch: bool,
     #[serde(default)] pub auto_fetch_minutes: u32,
     #[serde(default)] pub prune_on_fetch: bool,
@@ -80,6 +82,7 @@ impl Default for Git {
     fn default() -> Self {
         Self {
             backend: GitBackend::System,
+            default_branch: "main".into(),
             auto_fetch: true,
             auto_fetch_minutes: 30,
             prune_on_fetch: true,

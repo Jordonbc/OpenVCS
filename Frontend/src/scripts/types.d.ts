@@ -41,6 +41,7 @@ export interface GlobalSettings {
     };
     git?: {
         backend?: 'git-system'|'libgit2'|string;
+        default_branch?: string;
         auto_fetch?: boolean;
         auto_fetch_minutes?: number;
         prune_on_fetch?: boolean;
@@ -79,4 +80,10 @@ export interface GlobalSettings {
         vim_nav?: boolean;
         color_blind_mode?: string;
     };
+}
+
+export interface RepoSettings {
+    user_name?: string;
+    user_email?: string;
+    origin_url?: string;
 }

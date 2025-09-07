@@ -9,6 +9,7 @@
 @import "./modal/modal-base.css";
 @import "./modal/command-sheet.css";
 @import "./modal/settings.css";
+@import "./modal/repo-settings.css";
 
 /* Media queries last */
 @import "./responsive.css";
