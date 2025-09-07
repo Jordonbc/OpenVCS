@@ -120,7 +120,7 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     padding:.15rem .8rem;
 }
 .gutter{ color:var(--muted); text-align:right; user-select:none; }
-.code{ white-space:pre; }
+.code{ white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; min-width:0; }
 .hline.add{ background:rgba(38,162,105,.12); }
 .hline.del{ background:rgba(192,28,40,.12); }
 
