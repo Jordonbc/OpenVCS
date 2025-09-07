@@ -10,6 +10,9 @@ use crate::repo_settings::RepoConfig;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
+// Default MRU size used as a fallback when settings are missing/invalid
+pub const MAX_RECENTS: usize = 10;
+
 /// Central application state.
 /// Keeps track of the currently open repo and MRU recents.
 /// Backend choice is tied to each repo (via `Repo::id()`), not stored globally.
@@ -125,7 +128,7 @@ impl AppState {
         r.retain(|p| p != &path);
         r.insert(0, path.clone());
         let limit = self.config.read().ux.recents_limit as usize;
-        let max_items = if limit == 0 { 10 } else { limit };
+        let max_items = if limit == 0 { MAX_RECENTS } else { limit };
         if r.len() > max_items { r.truncate(max_items); }
 
         debug!(
@@ -219,7 +222,7 @@ fn save_recents_to_disk(list: &Vec<PathBuf>) -> Result<(), String> {
 impl AppState {
     fn enforce_recents_limit_and_persist(&self) {
         let limit = self.config.read().ux.recents_limit as usize;
-        let max_items = if limit == 0 { 10 } else { limit };
+        let max_items = if limit == 0 { MAX_RECENTS } else { limit };
         let mut r = self.recents.write();
         if r.len() > max_items { r.truncate(max_items); }
         if let Err(e) = save_recents_to_disk(&r.clone()) {
