@@ -21,9 +21,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          lfs: false   # flip to true only if your checks actually read LFS blobs
+          lfs: true
 
-      # ---------- Frontend: lint + typecheck only ----------
+      # ---------- Frontend: lint + typecheck ----------
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -43,11 +43,21 @@ jobs:
         working-directory: Frontend
         run: npm run typecheck --if-present
 
-      # ---------- Backend: cargo check only ----------
+      # ---------- Backend: cargo check ----------
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Cargo (root workspace target/)
+      - name: Install Linux build deps (GTK3 headers for gdk-sys)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libglib2.0-dev \
+            libgdk-pixbuf-2.0-dev \
+            libpango1.0-dev
+
+      - name: Cache Cargo
         uses: actions/cache@v4
         with:
           path: |
