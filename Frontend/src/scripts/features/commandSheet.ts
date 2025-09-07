@@ -7,7 +7,7 @@ import { state } from "../state/state";
 type Which = "clone" | "add" | "switch";
 
 type Branch = { name: string; current?: boolean; kind?: { type?: string; remote?: string } };
-type RepoSummary = { path: string; currentBranch: string; branches: Branch[] };
+type RepoSummary = { path: string; current_branch: string; branches: Branch[] };
 
 // Elements inside the modal
 let root: HTMLElement | null = null;
