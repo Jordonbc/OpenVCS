@@ -11,6 +11,7 @@ use openvcs_core::{OnEvent, models::{BranchItem, StatusPayload, CommitItem}, Rep
 use openvcs_core::backend_descriptor::{get_backend, list_backends};
 use openvcs_core::models::{VcsEvent};
 use crate::settings::AppConfig;
+use crate::repo_settings::RepoConfig;
 
 #[derive(serde::Serialize)]
 struct RepoSelectedPayload {
@@ -692,4 +693,17 @@ pub fn set_global_settings(
     cfg: AppConfig,
 ) -> Result<(), String> {
     state.set_config(cfg)
+}
+
+#[tauri::command]
+pub fn get_repo_settings(state: State<'_, AppState>) -> Result<RepoConfig, String> {
+    Ok(state.repo_config())
+}
+
+#[tauri::command]
+pub fn set_repo_settings(
+    state: State<'_, AppState>,
+    cfg: RepoConfig,
+) -> Result<(), String> {
+    state.set_repo_config(cfg)
 }

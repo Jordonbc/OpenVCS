@@ -80,3 +80,7 @@ export interface GlobalSettings {
         color_blind_mode?: string;
     };
 }
+
+export interface RepoSettings {
+    default_branch?: string;
+}

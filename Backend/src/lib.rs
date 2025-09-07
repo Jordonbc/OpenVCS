@@ -8,6 +8,7 @@ mod workarounds;
 mod state;
 mod validate;
 mod settings;
+mod repo_settings;
 
 #[cfg(feature = "with-git")]
 #[allow(unused_imports)]
@@ -85,6 +86,8 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_push,
         tauri_commands::get_global_settings,
         tauri_commands::set_global_settings,
+        tauri_commands::get_repo_settings,
+        tauri_commands::set_repo_settings,
     ]
 }
 

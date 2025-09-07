@@ -4,12 +4,15 @@ import settingsHtml from "@modals/settings.html?raw";
 import cmdHtml from "@modals/commandSheet.html?raw";
 import aboutHtml from "@modals/about.html?raw";
 import { wireSettings } from "../features/settings";
+import repoSettingsHtml from "@modals/repo-settings.html?raw";
+import { wireRepoSettings } from "../features/repoSettings";
 
 // Lazy fragments (only those NOT present at load)
 const FRAGMENTS: Record<string, string> = {
     "settings-modal": settingsHtml,
     "about-modal": aboutHtml,
     "command-modal": cmdHtml,
+    "repo-settings-modal": repoSettingsHtml,
 };
 
 const loaded = new Set<string>();
@@ -45,6 +48,7 @@ export function hydrate(id: string): void {
     loaded.add(id);
 
     if (id === "settings-modal") wireSettings();
+    if (id === "repo-settings-modal") wireRepoSettings();
 }
 
 export function openModal(id: string): void {

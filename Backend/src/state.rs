@@ -5,6 +5,7 @@ use parking_lot::RwLock;
 
 use openvcs_core::Repo;
 use crate::settings::AppConfig;
+use crate::repo_settings::RepoConfig;
 
 /// Central application state.
 /// Keeps track of the currently open repo and MRU recents.
@@ -13,6 +14,9 @@ use crate::settings::AppConfig;
 pub struct AppState {
     /// Global settings (loaded on startup), thread-safe.
     config: RwLock<AppConfig>,
+
+    /// Repository-specific settings (in-memory for now)
+    repo_config: RwLock<RepoConfig>,
 
     /// Currently open repository
     current_repo: RwLock<Option<Arc<Repo>>>,
@@ -26,6 +30,7 @@ impl AppState {
         let cfg = AppConfig::load_or_default(); // reads ~/.config/openvcs/openvcs.conf
         Self {
             config: RwLock::new(cfg),
+            repo_config: RwLock::new(RepoConfig::default()),
             ..Default::default()
         }
     }
@@ -58,6 +63,17 @@ impl AppState {
         next.validate();
         next.save().map_err(|e| e.to_string())?;
         *self.config.write() = next;
+        Ok(())
+    }
+
+    /* -------- repo config -------- */
+
+    pub fn repo_config(&self) -> RepoConfig {
+        self.repo_config.read().clone()
+    }
+
+    pub fn set_repo_config(&self, cfg: RepoConfig) -> Result<(), String> {
+        *self.repo_config.write() = cfg;
         Ok(())
     }
 

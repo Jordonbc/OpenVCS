@@ -1,0 +1,20 @@
+<div class="modal" id="repo-settings-modal" aria-hidden="true">
+    <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="repo-settings-title">
+        <div class="sheet-head">
+            <h3 id="repo-settings-title" style="margin:0">Repository Settings</h3>
+        </div>
+        <div class="sheet-body">
+            <form id="repo-settings-form" class="panel-form">
+                <div class="group">
+                    <label for="default-branch">Default branch</label>
+                    <input id="default-branch" type="text" />
+                </div>
+            </form>
+        </div>
+        <div class="sheet-actions">
+            <button class="tbtn" type="button" data-close>Cancel</button>
+            <button class="tbtn primary big" id="repo-settings-save" type="button">Save</button>
+        </div>
+    </div>
+    <div class="backdrop" data-close></div>
+</div>
