@@ -83,7 +83,7 @@ function boot() {
         if (statusEl) statusEl.textContent = payload?.message || 'Working…';
     });
 
-    // repo selected -> refresh
+  // repo selected -> refresh
     TAURI.listen?.('repo:selected', async ({ payload }) => {
         const path = typeof payload === 'string'
             ? payload
@@ -95,7 +95,27 @@ function boot() {
         await hydrateBranches();
         setRepoHeader(path);
         await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+
+        // Broadcast app-level event so branch UI and actions can sync
+        window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
+        refreshRepoActions();
     });
+
+  // If backend reopened a repo before the webview was ready, sync initial state.
+  if (TAURI.has) {
+    TAURI.invoke<string | null>('current_repo_path')
+      .then(async (p) => {
+        const path = (p || '').trim();
+        if (!path) return;
+        setRepoHeader(path);
+        await hydrateBranches();
+        setRepoHeader(path);
+        await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+        window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
+        refreshRepoActions();
+      })
+      .catch(() => {});
+  }
 
     // app focus throttle + refresh
     (function () {

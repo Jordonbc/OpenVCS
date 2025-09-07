@@ -1,4 +1,5 @@
-use tauri::{Emitter};
+use tauri::{Emitter, Manager};
+use std::sync::Arc;
 use openvcs_core::{backend_descriptor, backend_id, BackendId};
 
 mod utilities;
@@ -19,6 +20,40 @@ use openvcs_git as _;
 use openvcs_git_libgit2 as _;
 
 pub const GIT_SYSTEM_ID: BackendId = backend_id!("git-system");
+
+/// Attempt to reopen the most recent repository at startup if the
+/// global setting `general.reopen_last_repos` is enabled.
+fn try_reopen_last_repo<R: tauri::Runtime>(app: &tauri::App<R>) {
+    use openvcs_core::{backend_descriptor::get_backend, Repo};
+    use std::path::Path;
+
+    let state = app.state::<state::AppState>();
+    let cfg = state.config();
+    if !cfg.general.reopen_last_repos { return; }
+
+    let recents = state.recents();
+    if let Some(path) = recents.into_iter().find(|p| p.exists()) {
+        let backend: BackendId = match cfg.git.backend {
+            settings::GitBackend::System => GIT_SYSTEM_ID,
+            settings::GitBackend::Libgit2 => backend_id!("libgit2"),
+        };
+
+        let path_str = path.to_string_lossy().to_string();
+        match get_backend(&backend) {
+            Some(desc) => match (desc.open)(Path::new(&path_str)) {
+                Ok(handle) => {
+                    let repo = Arc::new(Repo::new(handle));
+                    state.set_current_repo(repo);
+                    if let Err(e) = app.emit("repo:selected", &path_str) {
+                        log::warn!("startup reopen: failed to emit repo:selected: {}", e);
+                    }
+                }
+                Err(e) => log::warn!("startup reopen: failed to open repo: {}", e),
+            },
+            None => log::warn!("startup reopen: unknown backend `{}`", backend),
+        }
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -48,6 +83,10 @@ pub fn run() {
         .manage(state::AppState::new_with_config())
         .setup(|app| {
             menus::build_and_attach_menu(app)?;
+
+            // On startup, optionally reopen the last repository if enabled in settings.
+            try_reopen_last_repo(app);
+
             Ok(())
         })
         .on_window_event(handle_window_event::<_>)

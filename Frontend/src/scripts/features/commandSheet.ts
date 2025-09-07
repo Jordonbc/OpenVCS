@@ -66,12 +66,14 @@ async function validateAdd() {
 async function refreshRepoSummary() {
     if (!TAURI.has) return;
     const info = await TAURI.invoke<RepoSummary>("get_repo_summary");
-    state.branch = info.currentBranch || "";
-    state.branches = Array.isArray(info.branches) ? info.branches : [];
+    // Note: backend uses snake_case field names
+    // @ts-ignore
+    state.branch = (info as any).current_branch || "";
+    state.branches = Array.isArray((info as any).branches) ? (info as any).branches : [];
     const repoBranch = document.querySelector<HTMLElement>("#repo-branch");
     if (repoBranch) repoBranch.textContent = state.branch || "—";
     // Broadcast for any listeners (branches UI, status bar, etc.)
-    window.dispatchEvent(new CustomEvent("app:repo-selected", { detail: { path: info.path } }));
+    window.dispatchEvent(new CustomEvent("app:repo-selected", { detail: { path: (info as any).path } }));
 }
 
 /* ---------------- slider indicator helpers ---------------- */

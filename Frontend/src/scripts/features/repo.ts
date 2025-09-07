@@ -143,6 +143,7 @@ export async function hydrateBranches() {
         if (has) {
             state.branches = list as any;
             state.branch = current || (list.find((b: any) => b.current)?.name) || state.branch || 'main';
+            window.dispatchEvent(new CustomEvent('app:branches-updated'));
         }
     } catch (e) {
         // Don’t nuke state here; status/summary calls will decide hasRepo
