@@ -173,9 +173,19 @@ pub fn current_repo_path(state: State<'_, AppState>) -> Option<String> {
         .map(|repo| repo.inner().workdir().to_string_lossy().to_string())
 }
 
+#[derive(serde::Serialize)]
+pub struct RecentRepoDto { path: String, name: Option<String> }
+
 #[tauri::command]
-pub fn list_recent_repos(state: State<'_, AppState>) -> Vec<String> {
-    state.recents().into_iter().map(|p| p.to_string_lossy().to_string()).collect()
+pub fn list_recent_repos(state: State<'_, AppState>) -> Vec<RecentRepoDto> {
+    state
+        .recents()
+        .into_iter()
+        .map(|p| {
+            let name = p.file_name().and_then(|os| os.to_str()).map(|s| s.to_string());
+            RecentRepoDto { path: p.to_string_lossy().to_string(), name }
+        })
+        .collect()
 }
 
 /* ---------- helpers ---------- */

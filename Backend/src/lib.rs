@@ -45,7 +45,7 @@ pub fn run() {
     println!("Running OpenVCS...");
 
     tauri::Builder::default()
-        .manage(state::AppState::default())
+        .manage(state::AppState::new_with_config())
         .setup(|app| {
             menus::build_and_attach_menu(app)?;
             Ok(())

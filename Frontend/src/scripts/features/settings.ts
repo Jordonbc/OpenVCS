@@ -64,7 +64,7 @@ export function wireSettings() {
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, bandwidth_kbps: 0, require_lock_before_edit: false, background_fetch_on_checkout: true };
             cur.performance = { graph_node_cap: 5000, progressive_render: true, gpu_accel: true, index_warm_on_open: true, background_index_on_battery: false };
-            cur.ux = { ui_scale: 1.0, font_mono: 'monospace', vim_nav: false, color_blind_mode: 'none' };
+            cur.ux = { ui_scale: 1.0, font_mono: 'monospace', vim_nav: false, color_blind_mode: 'none', recents_limit: 10 };
 
             await TAURI.invoke('set_global_settings', { cfg: cur });
             await loadSettingsIntoForm(modal);
@@ -130,12 +130,15 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         background_index_on_battery: !!get<HTMLInputElement>('#set-bg-index-on-battery')?.checked,
     };
 
+    const rlRaw = get<HTMLInputElement>('#set-recents-limit')?.value ?? '';
+    const recentsLimit = rlRaw.trim() === '' ? 10 : Math.max(1, Math.min(100, Number(rlRaw)));
     o.ux = {
         ...o.ux,
         ui_scale: Number(get<HTMLInputElement>('#set-ui-scale')?.value ?? 1),
         font_mono: get<HTMLInputElement>('#set-font-mono')?.value,
         vim_nav: !!get<HTMLInputElement>('#set-vim-nav')?.checked,
         color_blind_mode: get<HTMLSelectElement>('#set-cb-mode')?.value,
+        recents_limit: recentsLimit,
     };
 
     return o;
@@ -155,6 +158,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elChan  = get<HTMLSelectElement>('#set-update-channel'); if (elChan) elChan.value = toKebab(cfg.general?.update_channel);
     const elReo   = get<HTMLInputElement>('#set-reopen-last'); if (elReo) elReo.checked = !!cfg.general?.reopen_last_repos;
     const elChk   = get<HTMLInputElement>('#set-checks-on-launch'); if (elChk) elChk.checked = !!cfg.general?.checks_on_launch;
+    const elRl    = get<HTMLInputElement>('#set-recents-limit'); if (elRl) elRl.value = String(cfg.ux?.recents_limit ?? 10);
 
     const backend = toKebab(cfg.git?.backend);
     const elGb = get<HTMLSelectElement>('#set-git-backend'); if (elGb) elGb.value = backend === 'libgit2' ? 'libgit2' : 'git-system';
