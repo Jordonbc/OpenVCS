@@ -222,6 +222,25 @@ impl Vcs for GitSystem {
         }
     }
 
+    fn list_remotes(&self) -> Result<Vec<(String, String)>> {
+        // List names first, then resolve fetch URL for each
+        let out = Self::run_git_capture(Some(&self.workdir), ["remote"])?;
+        let mut items = Vec::new();
+        for name in out.lines().map(|l| l.trim()).filter(|s| !s.is_empty()) {
+            // Prefer fetch URL; if multiple, git remote get-url returns one (the default)
+            if let Ok(url) = Self::run_git_capture(Some(&self.workdir), ["remote", "get-url", name]) {
+                let u = url.trim();
+                if !u.is_empty() { items.push((name.to_string(), u.to_string())); }
+            }
+        }
+        Ok(items)
+    }
+
+    fn remove_remote(&self, name: &str) -> Result<()> {
+        // git remote remove exits nonzero if missing; treat that as Backend error
+        Self::run_git(Some(&self.workdir), ["remote", "remove", name])
+    }
+
     fn fetch(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
         Self::run_git_streaming(&self.workdir, ["fetch", "--progress", remote, refspec], on)
     }
@@ -417,5 +436,24 @@ impl Vcs for GitSystem {
 
     fn hard_reset_head(&self) -> Result<()> {
         Self::run_git(Some(&self.workdir), ["reset", "--hard", "HEAD"])
+    }
+
+    fn get_identity(&self) -> Result<Option<(String, String)>> {
+        // Prefer repo context, but allow Git's normal precedence (local → global → system)
+        let name = match Self::run_git_capture(Some(&self.workdir), ["config", "--get", "user.name"]) {
+            Ok(s) => s.trim().to_string(),
+            Err(_) => return Ok(None),
+        };
+        let email = match Self::run_git_capture(Some(&self.workdir), ["config", "--get", "user.email"]) {
+            Ok(s) => s.trim().to_string(),
+            Err(_) => return Ok(None),
+        };
+        if name.is_empty() || email.is_empty() { return Ok(None); }
+        Ok(Some((name, email)))
+    }
+
+    fn set_identity_local(&self, name: &str, email: &str) -> Result<()> {
+        Self::run_git(Some(&self.workdir), ["config", "--local", "user.name", name])?;
+        Self::run_git(Some(&self.workdir), ["config", "--local", "user.email", email])
     }
 }

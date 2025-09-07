@@ -10,18 +10,26 @@ export async function wireRepoSettings() {
     if (!modal || (modal as any).__wired) return;
     (modal as any).__wired = true;
 
-    const input = modal.querySelector('#default-branch') as HTMLInputElement | null;
+    const nameInput  = modal.querySelector('#git-user-name') as HTMLInputElement | null;
+    const emailInput = modal.querySelector('#git-user-email') as HTMLInputElement | null;
+    const originInput= modal.querySelector('#git-origin-url') as HTMLInputElement | null;
     const saveBtn = modal.querySelector('#repo-settings-save') as HTMLButtonElement | null;
 
     if (TAURI.has) {
         try {
             const cfg = await TAURI.invoke<RepoSettings>('get_repo_settings');
-            if (input && cfg?.default_branch) input.value = cfg.default_branch;
+            if (nameInput && cfg?.user_name) nameInput.value = cfg.user_name;
+            if (emailInput && cfg?.user_email) emailInput.value = cfg.user_email;
+            if (originInput && cfg?.origin_url) originInput.value = cfg.origin_url;
         } catch { /* ignore */ }
     }
 
     saveBtn?.addEventListener('click', async () => {
-        const next: RepoSettings = { default_branch: input?.value || '' };
+        const next: RepoSettings = {
+            user_name: nameInput?.value || undefined,
+            user_email: emailInput?.value || undefined,
+            origin_url: originInput?.value || undefined,
+        };
         try {
             if (TAURI.has) await TAURI.invoke('set_repo_settings', { cfg: next });
             closeModal('repo-settings-modal');

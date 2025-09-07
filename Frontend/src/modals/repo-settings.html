@@ -6,8 +6,16 @@
         <div class="sheet-body">
             <form id="repo-settings-form" class="panel-form">
                 <div class="group">
-                    <label for="default-branch">Default branch</label>
-                    <input id="default-branch" type="text" />
+                    <label for="git-user-name">Git user.name (repo-local)</label>
+                    <input id="git-user-name" type="text" />
+                </div>
+                <div class="group">
+                    <label for="git-user-email">Git user.email (repo-local)</label>
+                    <input id="git-user-email" type="email" />
+                </div>
+                <div class="group">
+                    <label for="git-origin-url">Origin remote URL</label>
+                    <input id="git-origin-url" type="text" placeholder="git@host:org/repo.git or https://…" />
                 </div>
             </form>
         </div>

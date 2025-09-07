@@ -53,6 +53,10 @@ pub trait Vcs: Send + Sync {
 
     // network
     fn ensure_remote(&self, name: &str, url: &str) -> Result<()>;
+    /// List configured remotes as (name, url) pairs (fetch URL if multiple).
+    fn list_remotes(&self) -> Result<Vec<(String, String)>>;
+    /// Remove a configured remote by name (no-op if missing).
+    fn remove_remote(&self, name: &str) -> Result<()>;
     fn fetch(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()>;
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()>;
 
@@ -75,6 +79,12 @@ pub trait Vcs: Send + Sync {
 
     // recovery
     fn hard_reset_head(&self) -> Result<()>;
+
+    // config
+    /// Read repository-local identity (user.name, user.email). Returns None if missing.
+    fn get_identity(&self) -> Result<Option<(String, String)>>;
+    /// Set repository-local identity (user.name, user.email).
+    fn set_identity_local(&self, name: &str, email: &str) -> Result<()>;
 }
 
 /// A concrete repository handle that owns a chosen backend instance.
