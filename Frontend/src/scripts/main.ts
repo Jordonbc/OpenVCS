@@ -16,7 +16,6 @@ import { openSettings, loadSettingsIntoForm } from './features/settings';
 import { openRepoSettings } from './features/repoSettings';
 
 // Title bar actions
-const themeBtn = qs<HTMLButtonElement>('#theme-btn');
 const fetchBtn = qs<HTMLButtonElement>('#fetch-btn');
 const pushBtn  = qs<HTMLButtonElement>('#push-btn');
 const cloneBtn = qs<HTMLButtonElement>('#clone-btn');
@@ -25,7 +24,17 @@ const commitBtn = qs<HTMLButtonElement>('#commit-btn');
 
 function boot() {
     // theme & basic layout
-    setTheme(prefs.theme);
+    // Prefer native settings for theme; fall back to current in-memory default
+    if (TAURI.has) {
+        TAURI.invoke<any>('get_global_settings')
+            .then((cfg) => {
+                const t = cfg?.general?.theme as ('dark'|'light'|'system'|undefined);
+                setTheme(t || prefs.theme);
+            })
+            .catch(() => setTheme(prefs.theme));
+    } else {
+        setTheme(prefs.theme);
+    }
     bindTabs((t) => { setTab(t); renderList(); });
     initResizer();
 
@@ -38,7 +47,6 @@ function boot() {
     bindRepoHotkeys(commitBtn || null, openSheet);
 
     // title actions
-    themeBtn?.addEventListener('click', toggleTheme);
     fetchBtn?.addEventListener('click', async () => {
         try {
             if (!TAURI.has) return;
@@ -83,7 +91,7 @@ function boot() {
             case 'clone_repo': openSheet('clone'); break;
             case 'add_repo':   openSheet('add');   break;
             case 'open_repo':  openSheet('switch');break;
-            case 'toggle_theme': themeBtn?.click(); break;
+            case 'toggle_theme': toggleTheme(); break;
             case 'fetch': fetchBtn?.click(); break;
             case 'push':  pushBtn?.click();  break;
             case 'commit': commitBtn?.click(); break;

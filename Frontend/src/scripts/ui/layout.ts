@@ -1,5 +1,6 @@
 import { qs, qsa, setText } from '../lib/dom';
 import { prefs, savePrefs, state, hasRepo, hasChanges } from '../state/state';
+import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 
 const workGrid = qs<HTMLElement>('.work');
@@ -17,6 +18,7 @@ export function setTheme(theme: 'dark'|'light'|'system') {
     // (optional) mirror into settings select if present
     const sel = document.querySelector<HTMLSelectElement>('#settings-modal #set-theme');
     if (sel) sel.value = theme;
+    // Track effective theme in-memory (native settings persist it)
     prefs.theme = theme === 'system'
         ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
         : theme;
@@ -24,7 +26,22 @@ export function setTheme(theme: 'dark'|'light'|'system') {
 }
 
 export function toggleTheme() {
-    setTheme(prefs.theme === 'dark' ? 'light' : 'dark');
+    const next = (prefs.theme === 'dark' ? 'light' : 'dark');
+    // Persist to native settings when available, then apply to UI
+    if (TAURI.has) {
+        (async () => {
+            try {
+                const cur = await TAURI.invoke<any>('get_global_settings');
+                if (cur && typeof cur === 'object') {
+                    cur.general = { ...(cur.general || {}), theme: next };
+                    await TAURI.invoke('set_global_settings', { cfg: cur });
+                }
+            } catch {}
+            setTheme(next);
+        })();
+    } else {
+        setTheme(next);
+    }
 }
 
 export function setTab(tab: 'changes'|'history') {

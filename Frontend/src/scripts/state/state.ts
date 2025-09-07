@@ -1,24 +1,16 @@
 // src/state/state.ts
 import type { AppPrefs, Branch, CommitItem, FileStatus } from '../types';
 
-const PREFS_KEY = 'ovcs.prefs.v1';
-
-function safeParse<T>(s: string | null, fallback: T): T {
-    try { return JSON.parse(s ?? '') as T; } catch { return fallback; }
-}
-
 export const defaultPrefs: AppPrefs = {
     theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
     leftW: 0,
     tab: 'changes',
 };
 
-export let prefs: AppPrefs = {
-    ...defaultPrefs,
-    ...safeParse<AppPrefs>(localStorage.getItem(PREFS_KEY), {} as any),
-};
+// In-memory-only UI prefs. Persisted preferences now live in native Rust config.
+export let prefs: AppPrefs = { ...defaultPrefs };
 export function savePrefs() {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    // no-op: web prefs are not persisted; native settings handle persistence
 }
 
 export const state = {
