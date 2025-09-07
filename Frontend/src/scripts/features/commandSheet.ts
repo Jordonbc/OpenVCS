@@ -19,6 +19,10 @@ let doAddBtn: HTMLButtonElement | null = null;
 
 let recentList: HTMLElement | null = null;
 
+// Slider indicator bits
+let seg: HTMLElement | null = null;
+let segIndicator: HTMLElement | null = null;
+
 function el<T extends HTMLElement>(sel: string, r: ParentNode = document): T | null {
     return r.querySelector(sel) as T | null;
 }
@@ -59,24 +63,66 @@ async function validateAdd() {
     }
 }
 
+/* ---------------- slider indicator helpers ---------------- */
+
+function ensureIndicator(): HTMLElement | null {
+    if (!seg) return null;
+    let ind = seg.querySelector<HTMLElement>(".seg-indicator");
+    if (!ind) {
+        ind = document.createElement("span");
+        ind.className = "seg-indicator";
+        ind.setAttribute("aria-hidden", "true");
+        seg.prepend(ind);
+    }
+    return ind;
+}
+
+function positionIndicator() {
+    if (!seg || !segIndicator) return;
+    const active = seg.querySelector<HTMLButtonElement>(".seg-btn.active");
+    if (!active) return;
+
+    const segRect = seg.getBoundingClientRect();
+    const btnRect = active.getBoundingClientRect();
+    const padL = parseFloat(getComputedStyle(seg).paddingLeft || "0");
+
+    const x = Math.max(0, Math.round(btnRect.left - segRect.left - padL));
+    const w = Math.max(1, Math.round(btnRect.width));
+    segIndicator.style.setProperty("--seg-x", `${x}px`);
+    segIndicator.style.setProperty("--seg-w", `${w}px`);
+}
+
+/* ---------------- tabs/panels ---------------- */
+
 function setSheet(which: Which) {
+    // Tabs ARIA + active state + roving tabindex
     tabs.forEach((b) => {
         const on = (b.dataset.sheet as Which) === which;
         b.classList.toggle("active", on);
         b.setAttribute("aria-selected", on ? "true" : "false");
+        b.tabIndex = on ? 0 : -1;
     });
+
+    // Panels
     (["clone", "add", "switch"] as Which[]).forEach((k) => {
         panels[k].classList.toggle("hidden", k !== which);
     });
+
+    // Reposition the slider after layout changes
+    positionIndicator();
 }
 
 export function openSheet(which: Which = "clone") {
     openModal("command-modal");
-    // ensure we have the root (in case someone calls open before bind)
     if (!root) bindCommandSheet();
     setSheet(which);
+
+    // Focus first relevant input without scrolling
     const focusId = which === "clone" ? "clone-url" : which === "add" ? "add-path" : null;
-    if (focusId) setTimeout(() => root?.querySelector<HTMLInputElement>("#" + focusId)?.focus(), 0);
+    if (focusId) setTimeout(() => root?.querySelector<HTMLInputElement>("#" + focusId)?.focus({ preventScroll: true }), 0);
+
+    // Align the pill once frame is painted
+    requestAnimationFrame(positionIndicator);
 }
 
 export function closeSheet() {
@@ -92,12 +138,15 @@ export function bindCommandSheet() {
     (root as any).__wired = true;
 
     // Resolve elements inside the modal
-    tabs = Array.from(root.querySelectorAll<HTMLButtonElement>(".seg-btn[data-sheet]"));
+    seg = root.querySelector(".sheet-head .seg") as HTMLElement | null;
+    tabs = Array.from(root.querySelectorAll<HTMLButtonElement>(".sheet-head .seg .seg-btn"));
     panels = {
         clone: root.querySelector("#sheet-clone") as HTMLElement,
         add: root.querySelector("#sheet-add") as HTMLElement,
         switch: root.querySelector("#sheet-switch") as HTMLElement,
     };
+
+    segIndicator = ensureIndicator();
 
     cloneUrl = el<HTMLInputElement>("#clone-url", root);
     clonePath = el<HTMLInputElement>("#clone-path", root);
@@ -108,20 +157,33 @@ export function bindCommandSheet() {
 
     recentList = el<HTMLElement>("#recent-list", root);
 
-    // Tab switching
+    // Tab switching (click)
     tabs.forEach((btn) =>
         btn.addEventListener("click", () => setSheet((btn.dataset.sheet as Which) || "clone"))
     );
 
-    // Proto toggle (HTTPS/SSH)
-    Array.from(root.querySelectorAll<HTMLButtonElement>("[data-proto]")).forEach((b) => {
-        b.addEventListener("click", () => {
-            Array.from(root!.querySelectorAll("[data-proto]")).forEach((x) =>
-                x.classList.remove("active")
-            );
-            b.classList.add("active");
-        });
+    // Keyboard navigation on the tablist
+    seg?.addEventListener("keydown", (e: KeyboardEvent) => {
+        const idx = tabs.findIndex((t) => t.classList.contains("active"));
+        let next = idx;
+        switch (e.key) {
+            case "ArrowLeft": next = (idx - 1 + tabs.length) % tabs.length; break;
+            case "ArrowRight": next = (idx + 1) % tabs.length; break;
+            case "Home": next = 0; break;
+            case "End": next = tabs.length - 1; break;
+            case "Enter":
+            case " ":
+                (document.activeElement as HTMLElement)?.click();
+                e.preventDefault();
+                return;
+            default: return;
+        }
+        e.preventDefault();
+        tabs[next].focus();
+        tabs[next].click();
     });
+
+    // --- removed proto toggle (HTTPS/SSH) ---
 
     // Validation
     cloneUrl?.addEventListener("input", validateClone);
@@ -177,7 +239,7 @@ export function bindCommandSheet() {
         }
     });
 
-    // Recents
+    // Recents (Open inline)
     (async function loadRecents() {
         try {
             let recents: any[] = [];
@@ -216,4 +278,19 @@ export function bindCommandSheet() {
             }
         } catch {}
     })();
+
+    // Keep the slider aligned on layout changes to the header
+    if (seg) {
+        const ro = new ResizeObserver(() => positionIndicator());
+        ro.observe(seg);
+    }
+    // Realign when modal visibility toggles (aria-hidden/class)
+    const mo = new MutationObserver(() => {
+        // Use next frame to ensure layout is settled
+        requestAnimationFrame(positionIndicator);
+    });
+    mo.observe(root, { attributes: true, attributeFilter: ["aria-hidden", "class"] });
+
+    // First alignment
+    requestAnimationFrame(positionIndicator);
 }
