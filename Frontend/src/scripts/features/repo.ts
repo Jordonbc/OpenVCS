@@ -5,6 +5,7 @@ import { notify } from '../lib/notify';
 import { state, prefs, statusLabel, statusClass } from '../state/state';
 
 const filterInput   = qs<HTMLInputElement>('#filter');
+const selectAllBox  = qs<HTMLInputElement>('#select-all');
 const listEl        = qs<HTMLElement>('#file-list');
 const countEl       = qs<HTMLElement>('#changes-count');
 
@@ -28,6 +29,13 @@ export function bindRepoHotkeys(commitBtn: HTMLButtonElement | null, openSheet: 
 
 export function bindFilter() {
     filterInput?.addEventListener('input', () => renderList());
+    selectAllBox?.addEventListener('change', () => {
+        if (prefs.tab !== 'changes') return;
+        state.defaultSelectAll = false;
+        const files = getVisibleFiles();
+        toggleSelectAll(Boolean(selectAllBox?.checked), files);
+        renderList();
+    });
 }
 
 export function renderList() {
@@ -36,6 +44,7 @@ export function renderList() {
     listEl.innerHTML = '';
     const isHistory = prefs.tab === 'history';
     const q = filterInput.value.trim().toLowerCase();
+    updateCommitButton();
 
     if (isHistory) {
         const commits = (state.commits || []).filter(c =>
@@ -69,11 +78,14 @@ export function renderList() {
         !q || (f.path || '').toLowerCase().includes(q)
     );
     countEl.textContent = `${files.length} file${files.length === 1 ? '' : 's'}`;
+    updateSelectAllState(files);
 
     if (!files.length) {
         listEl.innerHTML = `<li class="row" aria-disabled="true"><div class="file">No changes. Clone or add a repository to get started.</div></li>`;
         diffHeadPath.textContent = 'Select a file to view changes';
         diffEl.innerHTML = '';
+        updateSelectAllState([]);
+        updateCommitButton();
         return;
     }
 
@@ -81,15 +93,26 @@ export function renderList() {
         const li = document.createElement('li');
         li.className = 'row';
         li.setAttribute('role', 'option');
+        li.setAttribute('data-path', f.path || '');
         li.innerHTML = `
+      <input type="checkbox" class="pick" aria-label="Select file" ${state.selectedFiles.has(f.path) ? 'checked' : ''} />
       <span class="status ${statusClass(f.status)}">${escapeHtml(f.status || '')}</span>
       <div class="file" title="${escapeHtml(f.path || '')}">${escapeHtml(f.path || '')}</div>
       <span class="badge">${statusLabel(f.status)}</span>`;
         li.addEventListener('click', () => selectFile(f, i));
+        // prevent row click when toggling checkbox
+        const cb = li.querySelector<HTMLInputElement>('input.pick');
+        if (cb) cb.dataset.path = f.path || '';
+        cb?.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            toggleFilePick(f.path, !!cb?.checked);
+            updateSelectAllState(files);
+        });
         listEl.appendChild(li);
     });
 
     selectFile(files[0], 0);
+    updateCommitButton();
 }
 
 function highlightRow(index: number) {
@@ -108,7 +131,22 @@ async function selectFile(file: { path: string }, index: number) {
         if (TAURI.has && file.path) {
             lines = await TAURI.invoke<string[]>('git_diff_file', { path: file.path });
         }
-        diffEl.innerHTML = renderHunk(lines || []);
+        state.currentFile = file.path;
+        state.currentDiff = lines || [];
+        diffEl.innerHTML = renderHunksWithSelection(state.currentDiff);
+        bindHunkToggles(diffEl);
+        const cached = (state as any).selectedHunksByFile?.[file.path] as number[] | undefined;
+        if (Array.isArray(cached)) {
+            state.selectedHunks = cached.slice();
+            updateHunkCheckboxes();
+        } else if (state.selectedFiles.has(file.path) || state.defaultSelectAll) {
+            state.selectedHunks = allHunkIndices(state.currentDiff);
+            updateHunkCheckboxes();
+        } else {
+            state.selectedHunks = [];
+        }
+        syncFileCheckboxWithHunks();
+        updateCommitButton();
     } catch (e) {
         console.error(e);
         diffEl.innerHTML = `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load diff</div></div></div>`;
@@ -158,6 +196,14 @@ export async function hydrateStatus() {
         const result = await TAURI.invoke<{ files: any[]; ahead?: number; behind?: number }>('git_status');
         state.hasRepo = true;
         state.files = Array.isArray(result?.files) ? (result.files as any) : [];
+        // Default-select all files unless the user has modified selection
+        const currentPaths = new Set((state.files || []).map(f => f.path));
+        if (state.defaultSelectAll) {
+            state.selectedFiles = new Set(Array.from(currentPaths));
+        } else {
+            // prune stale selections no longer present
+            state.selectedFiles.forEach(p => { if (!currentPaths.has(p)) state.selectedFiles.delete(p); });
+        }
         // ahead/behind are optional in older backends; default to 0
         (state as any).ahead = Number((result as any)?.ahead || 0);
         (state as any).behind = Number((result as any)?.behind || 0);
@@ -166,6 +212,7 @@ export async function hydrateStatus() {
     } catch (e) {
         console.warn('hydrateStatus failed', e);
         state.files = [];
+        state.selectedFiles.clear();
         renderList();
         window.dispatchEvent(new CustomEvent('app:status-updated'));
     }
@@ -184,12 +231,175 @@ export async function hydrateCommits() {
     }
 }
 
-function renderHunk(hunk: string[]) {
-    return `<div class="hunk">${
-        (hunk || []).map((ln, i) => {
-            const first = (typeof ln === 'string' ? ln[0] : ' ') || ' ';
-            const t = first === '+' ? 'add' : first === '-' ? 'del' : '';
-            return `<div class="hline ${t}"><div class="gutter">${i+1}</div><div class="code">${escapeHtml(String(ln))}</div></div>`;
-        }).join('')
-    }</div>`;
+function renderHunksWithSelection(lines: string[]) {
+    if (!lines || !lines.length) return '';
+    // Split lines into file header and hunks (@@)
+    let idx = lines.findIndex(l => l.startsWith('@@'));
+    const header = idx >= 0 ? lines.slice(0, idx) : lines.slice();
+    const rest = idx >= 0 ? lines.slice(idx) : [];
+    const starts: number[] = [];
+    rest.forEach((l, i) => { if (l.startsWith('@@')) starts.push(i); });
+    starts.push(rest.length);
+
+    let html = '';
+    // Render header
+    html += `<div class="hunk">${header.map((ln, i) => hline(ln, i+1)).join('')}</div>`;
+
+    // Render each hunk with a checkbox
+    for (let h = 0; h < starts.length - 1; h++) {
+        const s = starts[h];
+        const e = starts[h+1];
+        const hunkLines = rest.slice(s, e);
+        const offset = (idx >= 0 ? idx : 0) + s; // approximate numbering
+        html += `<div class="hunk" data-hunk-index="${h}">
+  <div class="hline"><div class="gutter"></div><div class="code"><label><input type="checkbox" class="pick-hunk" data-hunk="${h}" /> Include hunk</label></div></div>
+  ${hunkLines.map((ln, i) => hline(ln, offset + i + 1)).join('')}
+</div>`;
+    }
+    return html;
+}
+
+function hline(ln: string, n: number) {
+    const first = (typeof ln === 'string' ? ln[0] : ' ') || ' ';
+    const t = first === '+' ? 'add' : first === '-' ? 'del' : '';
+    return `<div class="hline ${t}"><div class="gutter">${n}</div><div class="code">${escapeHtml(String(ln))}</div></div>`;
+}
+
+function toggleFilePick(path: string, on: boolean) {
+    if (!path) return;
+    state.defaultSelectAll = false;
+    if (on) state.selectedFiles.add(path); else state.selectedFiles.delete(path);
+    // If this is the currently viewed file, mirror selection to all hunks in the diff
+    if (state.currentFile && state.currentFile === path) {
+        if (on) {
+            state.selectedHunks = allHunkIndices(state.currentDiff);
+            (state as any).selectedHunksByFile[state.currentFile] = state.selectedHunks.slice();
+        } else {
+            state.selectedHunks = [];
+            delete (state as any).selectedHunksByFile[state.currentFile];
+        }
+        updateHunkCheckboxes();
+    }
+    updateCommitButton();
+}
+
+function updateSelectAllState(visible: { path: string }[]) {
+    if (!selectAllBox) return;
+    if (prefs.tab !== 'changes') {
+        selectAllBox.indeterminate = false;
+        selectAllBox.checked = false;
+        return;
+    }
+    const total = visible.length;
+    if (total === 0) {
+        selectAllBox.indeterminate = false;
+        selectAllBox.checked = false;
+        return;
+    }
+    const selected = visible.filter(f => state.selectedFiles.has(f.path)).length;
+    selectAllBox.indeterminate = selected > 0 && selected < total;
+    selectAllBox.checked = selected === total;
+}
+
+function getVisibleFiles(): { path: string }[] {
+    if (prefs.tab !== 'changes') return [];
+    const q = (filterInput?.value || '').trim().toLowerCase();
+    return (state.files || []).filter(f => !q || (f.path || '').toLowerCase().includes(q));
+}
+
+function toggleSelectAll(on: boolean, visible: { path: string }[]) {
+    if (on) {
+        visible.forEach(f => { if (f.path) toggleFilePick(f.path, true); });
+    } else {
+        visible.forEach(f => { if (f.path) toggleFilePick(f.path, false); });
+    }
+}
+
+function bindHunkToggles(root: HTMLElement) {
+    const boxes = root.querySelectorAll<HTMLInputElement>('input.pick-hunk');
+    boxes.forEach(b => {
+        b.addEventListener('change', () => {
+            state.defaultSelectAll = false;
+            const idx = Number(b.dataset.hunk || -1);
+            if (b.checked) {
+                if (!state.selectedHunks.includes(idx)) state.selectedHunks.push(idx);
+            } else {
+                state.selectedHunks = state.selectedHunks.filter(i => i !== idx);
+            }
+            if (state.currentFile) {
+                (state as any).selectedHunksByFile[state.currentFile] = state.selectedHunks.slice();
+            }
+            // Update file checkbox and selectedFiles based on hunk selection
+            const before = (state.selectedHunks || []).length;
+            // Sync checkbox tri-state
+            (function(){ syncFileCheckboxWithHunks(); })();
+            if ((state.selectedHunks || []).length === 0 && state.currentFile) {
+                state.selectedFiles.delete(state.currentFile);
+                delete (state as any).selectedHunksByFile[state.currentFile];
+            }
+            updateSelectAllState(getVisibleFiles());
+            updateCommitButton();
+        });
+    });
+}
+
+function syncFileCheckboxWithHunks() {
+    if (!state.currentFile) return;
+    const total = allHunkIndices(state.currentDiff).length;
+    const sel = (state.selectedHunks || []).length;
+    if (total === 0) {
+        updateListCheckboxForPath(state.currentFile, false, false);
+        state.selectedFiles.delete(state.currentFile);
+        return;
+    }
+    if (sel === 0) {
+        updateListCheckboxForPath(state.currentFile, false, false);
+        state.selectedFiles.delete(state.currentFile);
+    } else if (sel === total) {
+        updateListCheckboxForPath(state.currentFile, true, false);
+        state.selectedFiles.add(state.currentFile);
+    } else {
+        updateListCheckboxForPath(state.currentFile, false, true);
+        state.selectedFiles.delete(state.currentFile);
+    }
+}
+
+function allHunkIndices(lines: string[]) {
+    if (!Array.isArray(lines) || !lines.length) return [] as number[];
+    const idx = lines.findIndex(l => l.startsWith('@@'));
+    const rest = idx >= 0 ? lines.slice(idx) : [];
+    const starts: number[] = [];
+    rest.forEach((l, i) => { if (l.startsWith('@@')) starts.push(i); });
+    // indices are 0..(count-1)
+    return starts.map((_, i) => i);
+}
+
+function updateHunkCheckboxes() {
+    const root = diffEl as HTMLElement;
+    if (!root) return;
+    const boxes = root.querySelectorAll<HTMLInputElement>('input.pick-hunk');
+    boxes.forEach(b => {
+        const idx = Number(b.dataset.hunk || -1);
+        b.checked = state.selectedHunks.includes(idx);
+    });
+}
+
+function updateListCheckboxForPath(path: string, checked: boolean, indeterminate: boolean) {
+    if (!listEl || !path) return;
+    const selector = `li.row[data-path="${path.replace(/(["\\])/g, '\\$1')}"] input.pick`;
+    const cb = listEl.querySelector<HTMLInputElement>(selector);
+    if (cb) {
+        cb.checked = checked;
+        (cb as any).indeterminate = indeterminate;
+    }
+}
+
+function updateCommitButton() {
+    const btn = document.getElementById('commit-btn') as HTMLButtonElement | null;
+    if (!btn) return;
+    const hasHunks = (state.selectedHunks || []).length > 0 && (state.currentDiff || []).length > 0;
+    const hasFiles = state.selectedFiles && state.selectedFiles.size > 0;
+    const summary = document.getElementById('commit-summary') as HTMLInputElement | null;
+    const summaryFilled = (summary?.value.trim().length ?? 0) > 0;
+    btn.disabled = !(summaryFilled && (hasHunks || hasFiles));
 }

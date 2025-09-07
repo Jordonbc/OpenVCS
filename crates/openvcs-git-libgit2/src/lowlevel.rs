@@ -546,6 +546,47 @@ impl Git {
         })
     }
 
+    /// Commit whatever is currently staged in the index (no additional staging).
+    pub fn commit_index(
+        &self,
+        message: &str,
+        name: &str,
+        email: &str,
+    ) -> Result<g::Oid> {
+        self.with_repo(|repo| {
+            let mut idx = repo.index()?;
+            if idx.is_empty() {
+                return Err(GitError::NothingToCommit);
+            }
+            let tree_oid = idx.write_tree()?;
+            idx.write()?;
+            let tree = repo.find_tree(tree_oid)?;
+
+            let sig = g::Signature::now(name, email)?;
+
+            let parents = match repo.head() {
+                Ok(h) if h.is_branch() => {
+                    vec![repo.head()?.peel_to_commit()?]
+                }
+                _ => Vec::new(),
+            };
+            let parent_refs: Vec<&g::Commit> = parents.iter().collect();
+
+            let head_ref = if parent_refs.is_empty() {
+                None
+            } else {
+                Some(repo.head()?.name().ok_or_else(|| g::Error::from_str("HEAD name missing"))?.to_string())
+            };
+
+            let target_ref = if let Some(name) = head_ref { Some(name) } else { None };
+            let oid = match &target_ref {
+                Some(name) => repo.commit(Some(name), &sig, &sig, message, &tree, &parent_refs)?,
+                None => repo.commit(None, &sig, &sig, message, &tree, &[])?
+            };
+            Ok(oid)
+        })
+    }
+
     pub fn push_refspec_with_progress<F>(&self, remote: &str, refspec: &str, on: F) -> Result<()>
     where
         F: Fn(String) + Send + Sync + 'static,

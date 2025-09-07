@@ -21,6 +21,13 @@ export const state = {
     commits: [] as CommitItem[],    // recent commits
     ahead: 0 as number,             // commits ahead of upstream
     behind: 0 as number,            // commits behind upstream
+    defaultSelectAll: true as boolean, // by default select all files/hunks until user toggles
+    // Selection state
+    selectedFiles: new Set<string>(),
+    currentFile: '' as string,
+    currentDiff: [] as string[],
+    selectedHunks: [] as number[],  // indices of selected hunks for current file
+    selectedHunksByFile: {} as Record<string, number[]>,
     // Optional: track the current repo path if you want to show it anywhere
     // repoPath: '' as string,
 };

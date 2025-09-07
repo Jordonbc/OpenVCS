@@ -21,15 +21,30 @@ export function bindCommit() {
         try {
             const description = commitDesc?.value || '';
 
-            if (TAURI.has && hasHunks && state.currentFile) {
-                const patch = buildPatchForSelectedHunks(state.currentFile, state.currentDiff, state.selectedHunks);
-                if (!patch) { notify('No hunks selected'); return; }
-                await TAURI.invoke('commit_patch', { summary, description, patch });
-            } else if (TAURI.has && hasFiles) {
-                const files = Array.from(state.selectedFiles);
-                await TAURI.invoke('commit_selected', { summary, description, files });
-            } else if (TAURI.has) {
-                await TAURI.invoke('commit_changes', { summary, description });
+            // Build a combined patch when any file has partial hunks selected, or when we want per-file control
+            const hunksMap: Record<string, number[]> = (state as any).selectedHunksByFile || {};
+            const partialFiles = Object.keys(hunksMap).filter(p => Array.isArray(hunksMap[p]) && hunksMap[p].length > 0);
+
+            // Build patch only for partial files; collect full files separately
+            let combinedPatch = '';
+            for (const path of partialFiles) {
+                let lines: string[] = [];
+                try { lines = await TAURI.invoke<string[]>('git_diff_file', { path }); } catch {}
+                if (!Array.isArray(lines) || lines.length === 0) continue;
+                combinedPatch += buildPatchForSelectedHunks(path, lines, hunksMap[path]) + '\n';
+            }
+
+            // Full files are those selected that are not in partialFiles
+            const fullFiles = selectedFiles.filter(f => !partialFiles.includes(f));
+
+            if (TAURI.has) {
+                if (combinedPatch.trim().length > 0 || fullFiles.length > 0) {
+                    await TAURI.invoke('commit_patch_and_files', { summary, description, patch: combinedPatch, files: fullFiles });
+                } else {
+                    // Nothing explicitly selected; last resort: block and notify
+                    notify('Nothing selected to commit');
+                    return;
+                }
             }
             notify(`Committed to ${state.branch}: ${summary}`);
             if (commitSummary) commitSummary.value = '';

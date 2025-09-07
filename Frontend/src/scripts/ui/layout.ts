@@ -127,9 +127,11 @@ export function refreshRepoActions() {
     if (summary) summary.disabled = !(repoOn && changesOn);
     if (desc)    desc.disabled    = !(repoOn && changesOn);
 
-    // Commit button requires: repo + changes + non-empty summary
+    // Commit button requires: repo + changes + non-empty summary + explicit selection (files or hunks)
     const summaryFilled = (summary?.value.trim().length ?? 0) > 0;
-    if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled);
+    const selected = ((state as any).selectedHunks && (state as any).selectedHunks.length > 0)
+                  || ((state as any).selectedFiles && (state as any).selectedFiles.size > 0);
+    if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && selected);
 
     // Optional hygiene: if changes disappear, clear any stale text so the next enablement starts clean
     if (!changesOn) {

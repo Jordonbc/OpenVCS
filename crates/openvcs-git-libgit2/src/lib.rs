@@ -176,6 +176,12 @@ impl Vcs for GitLibGit2 {
             .map_err(Self::map_err)
     }
 
+    fn commit_index(&self, message: &str, name: &str, email: &str) -> Result<String> {
+        self.inner.commit_index(message, name, email)
+            .map(|oid| oid.to_string())
+            .map_err(Self::map_err)
+    }
+
     fn status_summary(&self) -> Result<StatusSummary> {
         let s = self.inner.status_summary().map_err(Self::map_err)?;
         Ok(StatusSummary {
@@ -200,6 +206,11 @@ impl Vcs for GitLibGit2 {
 
     fn diff_file(&self, path: &Path) -> Result<Vec<String>> {
         self.inner.diff_file(path).map_err(Self::map_err)
+    }
+
+    fn stage_patch(&self, _patch: &str) -> Result<()> {
+        // Not implemented yet for libgit2 backend.
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
     }
 
     fn branches(&self) -> Result<Vec<models::BranchItem>> {
