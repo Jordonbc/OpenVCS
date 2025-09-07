@@ -23,7 +23,7 @@ export const state = {
     commits: [] as CommitItem[]
 };
 
-export const hasRepo = () => !!state.hasRepo && !!state.branch;
+export const hasRepo = () => state.hasRepo && state.branch;
 export const hasChanges = () => Array.isArray(state.files) && state.files.length > 0;
 
 export const statusLabel = (s: string) => s === 'A' ? 'Added' : s === 'M' ? 'Modified' : s === 'D' ? 'Deleted' : 'Changed';
