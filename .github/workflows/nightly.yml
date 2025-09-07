@@ -18,7 +18,7 @@ jobs:
       ahead_count: ${{ steps.diff.outputs.ahead_count }}
     steps:
       - name: Checkout Dev
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: Dev
           fetch-depth: 0   # we need history and tags
@@ -73,7 +73,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout Dev
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: Dev
           fetch-depth: 0
