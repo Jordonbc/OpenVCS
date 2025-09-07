@@ -43,6 +43,10 @@
       <aside class="panel left" id="left" aria-label="List panel">
         <div class="left-head">
           <div class="filter">
+            <label class="select-all" title="Select all visible files">
+              <input id="select-all" type="checkbox" aria-label="Select all visible files" />
+              <span>All</span>
+            </label>
             <span class="filter-icon" aria-hidden="true">🔎</span>
             <input id="filter" type="search" placeholder="Filter files… (Ctrl+F)" aria-label="Filter files or commits" />
           </div>
@@ -73,7 +77,7 @@
           </div>
           <div class="actions">
             <span class="kbd">Ctrl+Enter</span>
-            <button class="btn primary" id="commit-btn">Commit</button>
+            <button class="btn primary" id="commit-btn" disabled>Commit</button>
           </div>
         </section>
       </main>

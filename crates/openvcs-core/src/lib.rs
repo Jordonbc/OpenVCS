@@ -66,6 +66,9 @@ pub trait Vcs: Send + Sync {
 
     // content
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String>;
+    /// Commit the current index as-is without staging additional paths.
+    /// Implementations should not modify the index before committing.
+    fn commit_index(&self, message: &str, name: &str, email: &str) -> Result<String>;
     fn status_summary(&self) -> Result<models::StatusSummary>;
 
     /// Full working tree status for the UI (files + ahead/behind).
@@ -80,6 +83,10 @@ pub trait Vcs: Send + Sync {
     /// 2) Fallback to index vs HEAD (staged)
     /// 3) Include untracked as additions
     fn diff_file(&self, path: &Path) -> Result<Vec<String>>;
+
+    /// Stage a unified-diff patch directly into the index (partial commit support).
+    /// Backends may return `VcsError::Unsupported` if not implemented.
+    fn stage_patch(&self, patch: &str) -> Result<()>;
 
     // recovery
     fn hard_reset_head(&self) -> Result<()>;
