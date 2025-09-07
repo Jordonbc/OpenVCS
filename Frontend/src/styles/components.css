@@ -75,11 +75,19 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     display:flex; align-items:center; gap:.6rem;
     padding:.5rem .6rem; border-radius:var(--r-md);
     border:1px solid transparent; cursor:pointer;
+    position:relative; /* allow active marker */
 }
 .row:hover{ background:rgba(255,255,255,.04); }
 .row.active{ background:rgba(53,132,228,.12); border-color:rgba(53,132,228,.35); }
+/* Add a thin accent marker for the active (viewed) row so it stays visible even when picked */
+.row.active::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+    background:var(--accent); border-radius:var(--r-md) 0 0 var(--r-md);
+}
 /* Picked (included in next commit) uses a success tint so it differs from active */
 .row.picked{ background:rgba(38,162,105,.10); border-color:rgba(38,162,105,.35); }
+/* When a row is both picked and active, keep the picked (green) background and show active marker */
+.row.active.picked{ background:rgba(38,162,105,.10); border-color:rgba(38,162,105,.35); }
 .file{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .status.add{ color:var(--success); }
 .status.mod{ color:#8b5cf6; }
