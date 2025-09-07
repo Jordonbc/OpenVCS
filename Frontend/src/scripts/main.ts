@@ -48,6 +48,11 @@ function boot() {
 
     // title actions
     fetchBtn?.addEventListener('click', async () => {
+        const statusEl = document.getElementById('status');
+        const setBusy = (msg: string) => {
+            if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
+        };
+        const clearBusy = () => { if (statusEl) statusEl.classList.remove('busy'); };
         try {
             if (!TAURI.has) return;
             const hasLocalChanges = Array.isArray(state.files) && state.files.length > 0;
@@ -56,20 +61,29 @@ function boot() {
             const canFastForward = !hasLocalChanges && ahead === 0;
 
             if (canFastForward) {
+                setBusy('Pulling…');
                 await TAURI.invoke('git_pull', {});
                 notify(behind > 0 ? 'Pulled (fast-forward)' : 'Already up to date');
             } else {
+                setBusy('Fetching…');
                 await TAURI.invoke('git_fetch', {});
                 notify('Fetched');
             }
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
         } catch {
             notify('Fetch/Pull failed');
-        }
+        } finally { clearBusy(); }
     });
     pushBtn?.addEventListener('click', async () => {
-        try { if (TAURI.has) await TAURI.invoke('git_push', {}); notify('Pushed'); }
-        catch { notify('Push failed'); }
+        const statusEl = document.getElementById('status');
+        const setBusy = (msg: string) => {
+            if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
+        };
+        const clearBusy = () => { if (statusEl) statusEl.classList.remove('busy'); };
+        try {
+            if (TAURI.has) { setBusy('Pushing…'); await TAURI.invoke('git_push', {}); }
+            notify('Pushed');
+        } catch { notify('Push failed'); } finally { clearBusy(); }
     });
     cloneBtn?.addEventListener('click', () => openSheet('clone'));
     repoSwitch?.addEventListener('click', () => openSheet('switch'));
