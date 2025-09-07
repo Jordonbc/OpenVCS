@@ -9,6 +9,7 @@ jobs:
   publish-tauri:
     permissions:
       contents: write
+      # id-token: write   # <-- uncomment if you later adopt OIDC code-signing
     strategy:
       fail-fast: false
       matrix:
@@ -21,22 +22,29 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           lfs: true
           fetch-depth: 0
 
-      # ---- Cache Cargo (big speedup) ----
-      - name: Cache Cargo
-        uses: actions/cache@v4
+      # ---------- Frontend (Node + Vite) ----------
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: Frontend/package-lock.json
 
+      - name: Install frontend deps
+        working-directory: Frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: Frontend
+        run: npm run build
+
+      # ---------- Rust toolchain & deps ----------
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
@@ -47,16 +55,38 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y libappindicator3-dev librsvg2-dev patchelf
-          # Tauri v2 prefers WebKitGTK 4.1; fall back to 4.0 if 4.1 isnt available
+          # Prefer WebKitGTK 4.1; fall back to 4.0 if 4.1 isn't available
           sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
 
-      - uses: tauri-apps/tauri-action@v0
+      # ---------- Cargo caching ----------
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            Backend/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      # ---------- Build & publish with Tauri action ----------
+      - name: Build and create GitHub Release (draft)
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # We already built the Frontend; tell Backend/Tauri to skip any beforeBuildCommand
+          FRONTEND_SKIP_BUILD: '1'
         with:
+          # Point the action at your Tauri project (Backend/)
+          projectPath: Backend
+          # If your Tauri config expects distDir to already exist, ensure Frontend build outputs there
+          # Alternatively, if Backend/tauri.conf.json points to "../Frontend/dist", no change needed.
+
           tagName: openvcs-v__VERSION__
           releaseName: 'OpenVCS v__VERSION__'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+          includeDebug: false   # default; set true if you want debug archives too
+          # bundles: ''           # e.g. 'deb,appimage,msi,nsis' if you want to restrict output
