@@ -59,6 +59,12 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     border:1px solid var(--border); border-radius:999px;
     padding:.3rem .6rem; background:transparent;
 }
+.filter .select-all{ display:flex; align-items:center; gap:.35rem; margin-right:.45rem; opacity:.9; }
+.filter .select-all span{ font-size:.85rem; color:var(--muted); }
+.filter .select-all input{ appearance:none; -webkit-appearance:none; width:16px; height:16px; border:1px solid var(--border); border-radius:4px; background:transparent; display:inline-block; }
+.filter .select-all input:hover{ border-color:var(--accent); }
+.filter .select-all input:checked{ background:rgba(38,162,105,1); border-color:rgba(38,162,105,1); box-shadow:0 0 0 2px rgba(38,162,105,.18); }
+.filter .select-all input:indeterminate{ background:rgba(38,162,105,1); opacity:.7; }
 .filter input{
     flex:1; min-width:0; border:none; outline:none;
     background:transparent; color:var(--text);
