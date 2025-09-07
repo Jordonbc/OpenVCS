@@ -94,10 +94,13 @@ export function renderList() {
         li.className = 'row';
         li.setAttribute('role', 'option');
         li.setAttribute('data-path', f.path || '');
+        const picked = state.selectedFiles.has(f.path);
+        li.classList.toggle('picked', picked);
         li.innerHTML = `
-      <input type="checkbox" class="pick" aria-label="Select file" ${state.selectedFiles.has(f.path) ? 'checked' : ''} />
+      <input type="checkbox" class="pick" aria-label="Select file" ${picked ? 'checked' : ''} />
       <span class="status ${statusClass(f.status)}">${escapeHtml(f.status || '')}</span>
       <div class="file" title="${escapeHtml(f.path || '')}">${escapeHtml(f.path || '')}</div>
+      <span class="pick-mark" aria-hidden="true">✓</span>
       <span class="badge">${statusLabel(f.status)}</span>`;
         li.addEventListener('click', () => selectFile(f, i));
         // prevent row click when toggling checkbox
@@ -107,6 +110,7 @@ export function renderList() {
             ev.stopPropagation();
             toggleFilePick(f.path, !!cb?.checked);
             updateSelectAllState(files);
+            li.classList.toggle('picked', !!cb?.checked && !(cb as any).indeterminate);
         });
         listEl.appendChild(li);
     });
@@ -233,26 +237,26 @@ export async function hydrateCommits() {
 
 function renderHunksWithSelection(lines: string[]) {
     if (!lines || !lines.length) return '';
-    // Split lines into file header and hunks (@@)
+    // Find hunks; hide prelude lines like 'diff --git' / 'index ...' / '---' / '+++'
     let idx = lines.findIndex(l => l.startsWith('@@'));
-    const header = idx >= 0 ? lines.slice(0, idx) : lines.slice();
     const rest = idx >= 0 ? lines.slice(idx) : [];
     const starts: number[] = [];
     rest.forEach((l, i) => { if (l.startsWith('@@')) starts.push(i); });
     starts.push(rest.length);
 
-    let html = '';
-    // Render header
-    html += `<div class="hunk">${header.map((ln, i) => hline(ln, i+1)).join('')}</div>`;
+    if (starts.length <= 1) {
+        return `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">No textual hunks to display</div></div></div>`;
+    }
 
-    // Render each hunk with a checkbox
+    let html = '';
+    // Render each hunk with a compact checkbox in the gutter
     for (let h = 0; h < starts.length - 1; h++) {
         const s = starts[h];
         const e = starts[h+1];
         const hunkLines = rest.slice(s, e);
         const offset = (idx >= 0 ? idx : 0) + s; // approximate numbering
         html += `<div class="hunk" data-hunk-index="${h}">
-  <div class="hline"><div class="gutter"></div><div class="code"><label><input type="checkbox" class="pick-hunk" data-hunk="${h}" /> Include hunk</label></div></div>
+  <div class="hline"><div class="gutter"><label class="pick-toggle"><input type="checkbox" class="pick-hunk" data-hunk="${h}" /><span class="sr-only">Include hunk</span></label></div><div class="code"></div></div>
   ${hunkLines.map((ln, i) => hline(ln, offset + i + 1)).join('')}
 </div>`;
     }
@@ -339,6 +343,8 @@ function bindHunkToggles(root: HTMLElement) {
             }
             updateSelectAllState(getVisibleFiles());
             updateCommitButton();
+            const hk = b.closest('.hunk') as HTMLElement | null;
+            if (hk) hk.classList.toggle('picked', b.checked);
         });
     });
 }
@@ -380,7 +386,10 @@ function updateHunkCheckboxes() {
     const boxes = root.querySelectorAll<HTMLInputElement>('input.pick-hunk');
     boxes.forEach(b => {
         const idx = Number(b.dataset.hunk || -1);
-        b.checked = state.selectedHunks.includes(idx);
+        const on = state.selectedHunks.includes(idx);
+        b.checked = on;
+        const hk = b.closest('.hunk') as HTMLElement | null;
+        if (hk) hk.classList.toggle('picked', on);
     });
 }
 

@@ -62,26 +62,27 @@ export function bindCommit() {
 // Construct a minimal patch for one file by combining the file header and selected hunks.
 function buildPatchForSelectedHunks(path: string, lines: string[], hunkIndices: number[]): string {
     if (!Array.isArray(lines) || !lines.length || !hunkIndices.length) return '';
-    // Identify header span and hunk boundaries
-    const headerStart = lines.findIndex(l => l.startsWith('diff --git '));
-    if (headerStart < 0) return '';
-    let i = headerStart;
-    const header: string[] = [];
-    // Collect header lines up to first hunk header (starts with '@@')
-    for (; i < lines.length; i++) { const ln = lines[i]; header.push(ln); if (ln.startsWith('@@')) break; }
-    if (i >= lines.length) return '';
-    // Find all hunk start indices
-    const hStarts: number[] = [];
-    for (let j = i; j < lines.length; j++) { if (lines[j].startsWith('@@')) hStarts.push(j); }
-    hStarts.push(lines.length); // sentinel end
-    // Build patch combining header (up to before first @@) and selected hunks
-    const preHunkHeader = header.slice(0, header.findIndex(l => l.startsWith('@@'))).join('\n');
-    let out = preHunkHeader ? preHunkHeader + '\n' : '';
-    for (const idx of hunkIndices.sort((a,b)=>a-b)) {
-        if (idx < 0 || idx >= hStarts.length - 1) continue;
-        const start = hStarts[idx];
-        const end = hStarts[idx+1];
-        const chunk = lines.slice(start, end).join('\n');
+    const normPath = String(path).replace(/\\/g, '/');
+    // Locate all hunk starts
+    const starts: number[] = [];
+    for (let i = 0; i < lines.length; i++) {
+        if ((lines[i] || '').startsWith('@@')) starts.push(i);
+    }
+    if (starts.length === 0) return '';
+    starts.push(lines.length);
+
+    // Compose minimal header (avoid carrying index/mode lines that can corrupt apply)
+    let out = `diff --git a/${normPath} b/${normPath}\n` +
+              `--- a/${normPath}\n` +
+              `+++ b/${normPath}\n`;
+
+    // Append selected hunks in order
+    const sorted = [...hunkIndices].sort((a,b)=>a-b);
+    for (const h of sorted) {
+        if (h < 0 || h >= starts.length - 1) continue;
+        const s = starts[h];
+        const e = starts[h+1];
+        const chunk = lines.slice(s, e).join('\n');
         out += chunk + '\n';
     }
     return out.trimEnd() + '\n';
