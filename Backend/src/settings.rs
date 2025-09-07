@@ -50,6 +50,9 @@ pub struct General {
     #[serde(default)] pub checks_on_launch: bool,
     #[serde(default)] pub telemetry: bool,
     #[serde(default)] pub crash_reports: bool,
+    /// Deprecated: moved to Ux.recents_limit
+    #[serde(default, rename = "recents_limit", skip_serializing_if = "Option::is_none")]
+    pub recents_limit_deprecated: Option<u32>,
 }
 impl Default for General {
     fn default() -> Self {
@@ -61,6 +64,7 @@ impl Default for General {
             checks_on_launch: true,
             telemetry: false,
             crash_reports: false,
+            recents_limit_deprecated: None,
         }
     }
 }
@@ -207,6 +211,8 @@ pub struct Ux {
     #[serde(default)] pub font_mono: String,
     #[serde(default)] pub vim_nav: bool,
     #[serde(default)] pub color_blind_mode: ColorBlindMode,
+    /// Max number of recent repositories to keep in MRU list
+    #[serde(default)] pub recents_limit: u32,
 }
 impl Default for Ux {
     fn default() -> Self {
@@ -215,6 +221,7 @@ impl Default for Ux {
             font_mono: "monospace".into(),
             vim_nav: false,
             color_blind_mode: ColorBlindMode::None,
+            recents_limit: 10,
         }
     }
 }
@@ -424,6 +431,10 @@ impl AppConfig {
             1 => { /* current */ }
             _ => { /* future: add stepwise migrations */ }
         }
+        // Move deprecated General.recents_limit → Ux.recents_limit when present
+        if let Some(v) = self.general.recents_limit_deprecated.take() {
+            self.ux.recents_limit = v.clamp(1, 100);
+        }
     }
 
     /// Clamp and normalize values so hand edits can’t break the app.
@@ -450,5 +461,8 @@ impl AppConfig {
             self.network.http_low_speed_time_secs.clamp(1, 600);
         self.network.http_low_speed_limit =
             self.network.http_low_speed_limit.clamp(128, 10_000_000);
+
+        // UX
+        self.ux.recents_limit = self.ux.recents_limit.clamp(1, 100);
     }
 }

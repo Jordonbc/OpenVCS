@@ -79,6 +79,7 @@ export interface GlobalSettings {
         font_mono?: string;
         vim_nav?: boolean;
         color_blind_mode?: string;
+        recents_limit?: number;
     };
 }
 
