@@ -3,8 +3,22 @@ name: Dev CI (fast)
 on:
   push:
     branches: [ Dev ]
+    paths:
+      - 'Frontend/**'
+      - 'Backend/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/development.yml'
   pull_request:
     branches: [ Dev ]
+    paths:
+      - 'Frontend/**'
+      - 'Backend/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/development.yml'
 
 concurrency:
   group: dev-${{ github.ref }}
@@ -15,6 +29,10 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
+      SCCACHE_CACHE_SIZE: '2G'
     timeout-minutes: 20
 
     steps:
@@ -48,6 +66,9 @@ jobs:
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Install Linux build deps
         if: runner.os == 'Linux'
         run: |
@@ -61,15 +82,8 @@ jobs:
             libwebkit2gtk-4.1-dev
           pkg-config --modversion javascriptcoregtk-4.1
 
-      - name: Cache Cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
 
       - name: Cargo check
         run: cargo check

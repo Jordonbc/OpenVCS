@@ -62,6 +62,10 @@ jobs:
     if: needs.check-changes.outputs.changed == 'true'
     permissions:
       contents: write
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
+      SCCACHE_CACHE_SIZE: '2G'
     strategy:
       fail-fast: false
       matrix:
@@ -99,6 +103,9 @@ jobs:
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Install Linux deps
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -108,15 +115,8 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
 
       # ---------- Cache ----------
-      - name: Cache Cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            Backend/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
 
       # ---------- Reset rolling tag (optional but keeps things tidy) ----------
       - name: Remove existing 'openvcs-nightly' release & tag (if any)
