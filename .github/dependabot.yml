@@ -1,0 +1,46 @@
+# To get started with Dependabot version updates, you'll need to specify which
+# package ecosystems to update and where the package manifests are located.
+# Please see the documentation for all configuration options:
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # 1) GitHub Actions in .github/workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:30" }  # UTC
+    target-branch: Dev
+    open-pull-requests-limit: 5
+    labels: [deps, ci]
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+
+  # 2) npm in Frontend/
+  - package-ecosystem: npm
+    directory: /Frontend
+    schedule: { interval: weekly, day: monday, time: "06:45" }  # UTC
+    target-branch: Dev
+    open-pull-requests-limit: 10
+    labels: [deps, frontend]
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+
+  # 3) Cargo (workspace rooted at repo root)
+  - package-ecosystem: cargo
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "07:00" }  # UTC
+    target-branch: Dev
+    open-pull-requests-limit: 10
+    labels: [deps, rust]
+    groups:
+      cargo-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+    # versioning-strategy: auto   # (default; leave as-is unless you want lockfile-only)
