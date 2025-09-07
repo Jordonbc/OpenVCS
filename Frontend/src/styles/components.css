@@ -162,6 +162,14 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     border-radius:6px; padding:.05rem .32rem; color:var(--muted); font-size:.8rem;
 }
 
+/* Status bar spinner when busy (e.g., committing) */
+#status.busy::after{
+    content:""; display:inline-block; width:12px; height:12px; margin-left:.5rem;
+    border:2px solid var(--muted); border-top-color:var(--accent);
+    border-radius:50%; animation:spin .8s linear infinite; vertical-align:-2px;
+}
+@keyframes spin { from{ transform:rotate(0deg);} to{ transform:rotate(360deg);} }
+
 /* ========== Branch switcher (button only) ========== */
 .branch-switch{
     display:inline-flex; align-items:center; gap:.45rem; margin-left:.4rem;

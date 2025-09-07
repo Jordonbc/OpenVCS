@@ -102,10 +102,25 @@ function boot() {
     });
 
     // backend events
-    TAURI.listen?.('git-progress', ({ payload }) => {
-        const statusEl = document.getElementById('status');
-        if (statusEl) statusEl.textContent = payload?.message || 'Working…';
-    });
+    // Global busy indicator for any Git activity
+    (function(){
+        let busyTimer: any = null;
+        const setBusy = (msg: string) => {
+            const s = document.getElementById('status');
+            if (!s) return;
+            s.textContent = msg || 'Working…';
+            s.classList.add('busy');
+            if (busyTimer) clearTimeout(busyTimer);
+            // Clear after a short quiet period
+            busyTimer = setTimeout(() => {
+                s.classList.remove('busy');
+                s.textContent = 'Ready';
+            }, 1500);
+        };
+        TAURI.listen?.('git-progress', ({ payload }) => {
+            setBusy(String((payload as any)?.message || 'Working…'));
+        });
+    })();
 
   // repo selected -> refresh
     TAURI.listen?.('repo:selected', async ({ payload }) => {

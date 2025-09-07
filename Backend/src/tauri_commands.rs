@@ -701,6 +701,7 @@ pub async fn commit_patch_and_files<R: Runtime>(
             let paths: Vec<PathBuf> = files.into_iter().map(PathBuf::from).collect();
             repo.inner().commit(&message, &name, &email, &paths).map_err(|e| e.to_string())?
         };
+        on(VcsEvent::Info("Commit complete"));
         Ok(oid)
     })
     .await
@@ -737,6 +738,10 @@ pub fn git_fetch<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> R
     })?;
 
     info!("Fetch completed successfully for branch '{current}'");
+    let _ = window.app_handle().emit(
+        "git-progress",
+        ProgressPayload { message: format!("Fetch complete ({current})") }
+    );
     Ok(())
 }
 
@@ -771,6 +776,10 @@ pub fn git_pull<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Re
     })?;
 
     info!("Pull (ff-only) completed successfully for branch '{current}'");
+    let _ = window.app_handle().emit(
+        "git-progress",
+        ProgressPayload { message: format!("Pull complete ({current})") }
+    );
     Ok(())
 }
 

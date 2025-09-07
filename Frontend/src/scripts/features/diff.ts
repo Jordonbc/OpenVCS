@@ -19,7 +19,15 @@ export function bindCommit() {
             notify('Select files or hunks to commit');
             return;
         }
+        const statusEl = document.getElementById('status');
+        const setBusy = (msg: string) => {
+            if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
+        };
+        const clearBusy = (msg?: string) => {
+            if (statusEl) { statusEl.classList.remove('busy'); if (msg) statusEl.textContent = msg; }
+        };
         try {
+            setBusy('Committing…');
             const description = commitDesc?.value || '';
 
             // Build a combined patch when any file has partial hunks selected, or when we want per-file control
@@ -57,7 +65,11 @@ export function bindCommit() {
             state.currentFile = '' as any;
             // Refresh status and commits immediately
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+            clearBusy('Ready');
         } catch { notify('Commit failed'); }
+        finally {
+            clearBusy('Ready');
+        }
     });
 }
 
