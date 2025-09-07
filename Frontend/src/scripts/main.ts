@@ -2,7 +2,10 @@ import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
 import { prefs, savePrefs } from './state/state';
-import { bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme, toggleTheme } from './ui/layout';
+import {
+    bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme, toggleTheme,
+    bindLayoutActionState
+} from './ui/layout';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
 import { bindRepoHotkeys, bindFilter, renderList, hydrateBranches, hydrateStatus, hydrateCommits } from './features/repo';
 import { bindBranchUI } from './features/branches';
@@ -30,6 +33,7 @@ function boot() {
     bindCommit();
     bindCommandSheet();
     bindBranchUI();
+    bindLayoutActionState()
     bindRepoHotkeys(commitBtn || null, openSheet);
 
     // title actions

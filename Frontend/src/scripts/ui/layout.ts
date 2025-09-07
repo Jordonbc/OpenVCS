@@ -91,7 +91,9 @@ export function initResizer() {
 }
 
 export function refreshRepoActions() {
-    const repo = hasRepo();
+    const repoOn       = hasRepo();
+    const changesOn    = hasChanges();
+
     const fetchBtn = qs<HTMLButtonElement>('#fetch-btn');
     const pushBtn  = qs<HTMLButtonElement>('#push-btn');
     const branchBtn= qs<HTMLButtonElement>('#branch-switch');
@@ -99,16 +101,43 @@ export function refreshRepoActions() {
     const desc     = qs<HTMLTextAreaElement>('#commit-desc');
     const commit   = qs<HTMLButtonElement>('#commit-btn');
 
-    if (fetchBtn) fetchBtn.disabled  = !repo;
-    if (pushBtn)  pushBtn.disabled   = !repo;
-    if (branchBtn)branchBtn.disabled = !repo;
+    // Repo-scoped actions
+    if (fetchBtn)  fetchBtn.disabled  = !repoOn;
+    if (pushBtn)   pushBtn.disabled   = !repoOn;
+    if (branchBtn) branchBtn.disabled = !repoOn;
 
-    const summaryFilled = !!summary?.value.trim();
-    if (summary) summary.disabled = !repo || !hasChanges();
-    if (desc)    desc.disabled    = !repo;
-    if (commit)  commit.disabled  = !repo || !hasChanges() || !summaryFilled;
+    // Text inputs are ONLY enabled when there are active changes in an open repo
+    if (summary) summary.disabled = !(repoOn && changesOn);
+    if (desc)    desc.disabled    = !(repoOn && changesOn);
 
-    if (commitBox) commitBox.classList.toggle('disabled', !repo || !hasChanges());
+    // Commit button requires: repo + changes + non-empty summary
+    const summaryFilled = (summary?.value.trim().length ?? 0) > 0;
+    if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled);
+
+    // Optional hygiene: if changes disappear, clear any stale text so the next enablement starts clean
+    if (!changesOn) {
+        if (summary && summary.value) summary.value = '';
+        if (desc && desc.value) desc.value = '';
+    }
+
+    // Visual affordance for the whole box (hidden/disabled when no changes or on History tab)
+    if (commitBox) {
+        commitBox.classList.toggle('disabled', !(repoOn && changesOn && prefs.tab === 'changes'));
+        // if you hide entirely on history tab, you already do that in setTab()
+    }
+}
+
+export function bindLayoutActionState() {
+    // Recompute on repo selection, status refresh, branch changes, and typing (when enabled)
+    window.addEventListener('app:repo-selected', refreshRepoActions);
+    window.addEventListener('app:status-updated', refreshRepoActions);
+    window.addEventListener('app:branches-updated', refreshRepoActions);
+
+    // Summary typing should re-evaluate the commit button state
+    qs<HTMLInputElement>('#commit-summary')?.addEventListener('input', refreshRepoActions);
+
+    // First paint
+    refreshRepoActions();
 }
 
 export function setRepoHeader(pathMaybe?: string) {

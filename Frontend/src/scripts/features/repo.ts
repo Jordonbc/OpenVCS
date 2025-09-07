@@ -158,10 +158,12 @@ export async function hydrateStatus() {
         state.hasRepo = true;
         state.files = Array.isArray(result?.files) ? (result.files as any) : [];
         renderList();
+        window.dispatchEvent(new CustomEvent('app:status-updated'));
     } catch (e) {
         console.warn('hydrateStatus failed', e);
         state.files = [];
         renderList();
+        window.dispatchEvent(new CustomEvent('app:status-updated'));
     }
 }
 
