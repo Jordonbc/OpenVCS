@@ -2,6 +2,7 @@ import { qs } from '../lib/dom';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { state } from '../state/state';
+import { hydrateStatus, hydrateCommits } from './repo';
 
 export function bindCommit() {
     const commitBtn     = qs<HTMLButtonElement>('#commit-btn');
@@ -54,7 +55,8 @@ export function bindCommit() {
             state.selectedHunks = [];
             state.currentDiff = [];
             state.currentFile = '' as any;
-            // Status/commits will refresh at a higher layer on focus or after ops
+            // Refresh status and commits immediately
+            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
         } catch { notify('Commit failed'); }
     });
 }
