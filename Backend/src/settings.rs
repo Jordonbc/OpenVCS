@@ -50,9 +50,6 @@ pub struct General {
     #[serde(default)] pub checks_on_launch: bool,
     #[serde(default)] pub telemetry: bool,
     #[serde(default)] pub crash_reports: bool,
-    /// Deprecated: moved to Ux.recents_limit
-    #[serde(default, rename = "recents_limit", skip_serializing_if = "Option::is_none")]
-    pub recents_limit_deprecated: Option<u32>,
 }
 impl Default for General {
     fn default() -> Self {
@@ -64,8 +61,7 @@ impl Default for General {
             checks_on_launch: true,
             telemetry: false,
             crash_reports: false,
-            recents_limit_deprecated: None,
-        }
+            }
     }
 }
 
@@ -431,10 +427,7 @@ impl AppConfig {
             1 => { /* current */ }
             _ => { /* future: add stepwise migrations */ }
         }
-        // Move deprecated General.recents_limit → Ux.recents_limit when present
-        if let Some(v) = self.general.recents_limit_deprecated.take() {
-            self.ux.recents_limit = v.clamp(1, 100);
-        }
+        // no-op
     }
 
     /// Clamp and normalize values so hand edits can’t break the app.
