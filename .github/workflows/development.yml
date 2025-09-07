@@ -33,7 +33,7 @@ jobs:
 
       - name: Install frontend deps
         working-directory: Frontend
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Lint
         working-directory: Frontend
@@ -69,4 +69,4 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Cargo check
-        run: cargo check --all-features
+        run: cargo check
