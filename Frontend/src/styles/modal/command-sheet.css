@@ -106,16 +106,11 @@
     font-weight: 500;
 }
 
-/* Rows that contain [seg + input] or [input + button] */
+/* Rows that contain [input + button] */
 #command-modal .input-row {
     display: flex;
     align-items: center;
     gap: .5rem;
-}
-
-/* Keep the small HTTPS/SSH toggle compact */
-#command-modal .input-row > .seg {
-    flex: 0 0 auto;
 }
 
 /* Inputs grow and are allowed to shrink next to buttons */
@@ -170,6 +165,7 @@
     overflow: auto;
 }
 
+/* Normal item */
 #command-modal .recent li {
     display: flex;
     justify-content: space-between;
@@ -184,4 +180,28 @@
 
 #command-modal .recent li:hover {
     border-color: var(--accent, #5aa2ff);
+}
+
+/* Name + path stack */
+#command-modal .recent li > div {
+    min-width: 0; /* enable truncation */
+}
+
+#command-modal .recent li .path {
+    opacity: .8;
+    font-size: .9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Empty-state item (when there are no recents) */
+#command-modal .recent li.empty {
+    display: block;
+    padding: .75rem .8rem;
+    color: var(--muted, #9aa0a6);
+    border: 1px dashed var(--border, #2a2a2a);
+    border-radius: var(--r-md, 8px);
+    text-align: center;
+    cursor: default;
 }

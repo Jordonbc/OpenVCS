@@ -2,10 +2,14 @@
 import { TAURI } from "../lib/tauri";
 import { notify } from "../lib/notify";
 import { openModal, closeModal, hydrate } from "../ui/modals";
+import { state } from "../state/state";
 
 type Which = "clone" | "add" | "switch";
 
-// Elements live inside the modal; we resolve them after hydrating
+type Branch = { name: string; current?: boolean; kind?: { type?: string; remote?: string } };
+type RepoSummary = { path: string; currentBranch: string; branches: Branch[] };
+
+// Elements inside the modal
 let root: HTMLElement | null = null;
 let tabs: HTMLButtonElement[] = [];
 let panels: Record<Which, HTMLElement> = {} as any;
@@ -37,10 +41,7 @@ async function validateClone() {
     const url = cloneUrl?.value.trim();
     const dest = clonePath?.value.trim();
     try {
-        const res = await TAURI.invoke<{ ok: boolean; reason?: string }>(
-            "validate_clone_input",
-            { url, dest }
-        );
+        const res = await TAURI.invoke<{ ok: boolean; reason?: string }>("validate_clone_input", { url, dest });
         setDisabled("do-clone", !res?.ok);
         if (!res?.ok && res?.reason) notify(res.reason);
     } catch {
@@ -52,15 +53,25 @@ async function validateAdd() {
     if (!TAURI.has) return;
     const path = addPath?.value.trim();
     try {
-        const res = await TAURI.invoke<{ ok: boolean; reason?: string }>(
-            "validate_add_path",
-            { path }
-        );
+        const res = await TAURI.invoke<{ ok: boolean; reason?: string }>("validate_add_path", { path });
         setDisabled("do-add", !res?.ok);
         if (!res?.ok && res?.reason) notify(res.reason);
     } catch {
         setDisabled("do-add", true);
     }
+}
+
+/* ---------------- repo summary + broadcast ---------------- */
+
+async function refreshRepoSummary() {
+    if (!TAURI.has) return;
+    const info = await TAURI.invoke<RepoSummary>("get_repo_summary");
+    state.branch = info.currentBranch || "";
+    state.branches = Array.isArray(info.branches) ? info.branches : [];
+    const repoBranch = document.querySelector<HTMLElement>("#repo-branch");
+    if (repoBranch) repoBranch.textContent = state.branch || "—";
+    // Broadcast for any listeners (branches UI, status bar, etc.)
+    window.dispatchEvent(new CustomEvent("app:repo-selected", { detail: { path: info.path } }));
 }
 
 /* ---------------- slider indicator helpers ---------------- */
@@ -183,8 +194,6 @@ export function bindCommandSheet() {
         tabs[next].click();
     });
 
-    // --- removed proto toggle (HTTPS/SSH) ---
-
     // Validation
     cloneUrl?.addEventListener("input", validateClone);
     clonePath?.addEventListener("input", validateClone);
@@ -220,6 +229,7 @@ export function bindCommandSheet() {
         if (!url || !dest) return;
         try {
             if (TAURI.has) await TAURI.invoke("clone_repo", { url, dest });
+            await refreshRepoSummary();               // ensure state + event
             notify(`Cloned ${url} → ${dest}`);
             closeSheet();
         } catch {
@@ -232,6 +242,7 @@ export function bindCommandSheet() {
         if (!path) return;
         try {
             if (TAURI.has) await TAURI.invoke("add_repo", { path });
+            await refreshRepoSummary();               // ensure state + event
             notify(`Added ${path}`);
             closeSheet();
         } catch {
@@ -239,44 +250,63 @@ export function bindCommandSheet() {
         }
     });
 
-    // Recents (Open inline)
+    // Recents (Open inline) — hardened mapping + empty state
     (async function loadRecents() {
         try {
-            let recents: any[] = [];
+            let raw: unknown = [];
             if (TAURI.has) {
-                const fromRust = await TAURI.invoke<any[]>("list_recent_repos").catch(() => null);
-                if (Array.isArray(fromRust)) recents = fromRust;
+                raw = await TAURI.invoke<any[]>("list_recent_repos").catch(() => []);
             }
+
+            type Recent = { path: string; name?: string };
+
+            const items: Recent[] = Array.isArray(raw)
+                ? raw
+                    .filter((r: any): r is Recent => !!r && typeof r === "object" && typeof r.path === "string" && r.path.trim() !== "")
+                    .map((r: any) => ({
+                        path: r.path.trim(),
+                        name: typeof r.name === "string" ? r.name.trim() : undefined
+                    }))
+                : [];
+
             if (recentList) {
-                recentList.innerHTML = (recents || [])
-                    .map(
-                        (r) => `
+                if (items.length === 0) {
+                    recentList.innerHTML = `<li class="empty" aria-disabled="true">No recent repositories</li>`;
+                } else {
+                    recentList.innerHTML = items.map(r => {
+                        const base = r.name || r.path.split(/[\\/]/).pop() || r.path;
+                        return `
               <li data-path="${r.path}">
                 <div>
-                  <strong>${r.name || (r.path || "").split("/").pop() || ""}</strong>
-                  <div class="path">${r.path || ""}</div>
+                  <strong>${base}</strong>
+                  <div class="path" title="${r.path}">${r.path}</div>
                 </div>
                 <button class="tbtn" type="button" data-open>Open</button>
-              </li>`
-                    )
-                    .join("");
+              </li>`;
+                    }).join("");
+                }
 
-                recentList.addEventListener("click", async (e) => {
-                    const btn = (e.target as HTMLElement).closest("[data-open]") as HTMLElement | null;
-                    if (!btn) return;
-                    const li = (e.target as HTMLElement).closest("li") as HTMLElement | null;
-                    if (!li) return;
-                    const path = li.dataset.path!;
+                recentList.onclick = async (e) => {
+                    const openBtn = (e.target as HTMLElement).closest("[data-open]") as HTMLElement | null;
+                    if (!openBtn) return;
+                    const li = (e.target as HTMLElement).closest("li[data-path]") as HTMLElement | null;
+                    const path = li?.dataset.path?.trim();
+                    if (!path) return; // ignore bogus entries
                     try {
                         if (TAURI.has) await TAURI.invoke("open_repo", { path });
+                        await refreshRepoSummary();         // ensure state + event
                         notify(`Opened ${path}`);
                         closeSheet();
                     } catch {
                         notify("Open failed");
                     }
-                });
+                };
             }
-        } catch {}
+        } catch {
+            if (recentList) {
+                recentList.innerHTML = `<li class="empty" aria-disabled="true">No recent repositories</li>`;
+            }
+        }
     })();
 
     // Keep the slider aligned on layout changes to the header
@@ -286,7 +316,6 @@ export function bindCommandSheet() {
     }
     // Realign when modal visibility toggles (aria-hidden/class)
     const mo = new MutationObserver(() => {
-        // Use next frame to ensure layout is settled
         requestAnimationFrame(positionIndicator);
     });
     mo.observe(root, { attributes: true, attributeFilter: ["aria-hidden", "class"] });
