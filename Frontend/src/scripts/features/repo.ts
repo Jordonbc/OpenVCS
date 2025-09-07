@@ -155,9 +155,12 @@ export async function hydrateBranches() {
 export async function hydrateStatus() {
     if (!TAURI.has) return;
     try {
-        const result = await TAURI.invoke<{ files: any[] }>('git_status');
+        const result = await TAURI.invoke<{ files: any[]; ahead?: number; behind?: number }>('git_status');
         state.hasRepo = true;
         state.files = Array.isArray(result?.files) ? (result.files as any) : [];
+        // ahead/behind are optional in older backends; default to 0
+        (state as any).ahead = Number((result as any)?.ahead || 0);
+        (state as any).behind = Number((result as any)?.behind || 0);
         renderList();
         window.dispatchEvent(new CustomEvent('app:status-updated'));
     } catch (e) {

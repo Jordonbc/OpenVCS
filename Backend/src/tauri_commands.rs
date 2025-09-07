@@ -583,6 +583,40 @@ pub fn git_fetch<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> R
 }
 
 #[tauri::command]
+pub fn git_pull<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
+    info!("git_pull called");
+
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+
+    let app = window.app_handle().clone();
+    let on = Some(progress_bridge(app));
+
+    let current = vcs
+        .current_branch()
+        .map_err(|e| {
+            error!("Failed to get current branch: {e}");
+            e.to_string()
+        })?
+        .ok_or_else(|| {
+            warn!("Detached HEAD detected, cannot determine upstream branch for pull");
+            "Detached HEAD; cannot determine upstream".to_string()
+        })?;
+
+    info!("Fast-forward pulling branch '{current}' from origin");
+
+    vcs.pull_ff_only("origin", &current, on).map_err(|e| {
+        error!("Pull (ff-only) failed for branch '{current}': {e}");
+        e.to_string()
+    })?;
+
+    info!("Pull (ff-only) completed successfully for branch '{current}'");
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn git_push<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,

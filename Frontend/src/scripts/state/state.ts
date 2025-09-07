@@ -27,6 +27,8 @@ export const state = {
     branches: [] as Branch[],       // list of branches
     files: [] as FileStatus[],      // working tree status
     commits: [] as CommitItem[],    // recent commits
+    ahead: 0 as number,             // commits ahead of upstream
+    behind: 0 as number,            // commits behind upstream
     // Optional: track the current repo path if you want to show it anywhere
     // repoPath: '' as string,
 };
