@@ -120,7 +120,7 @@ jobs:
 
       # ---------- Reset rolling tag (optional but keeps things tidy) ----------
       - name: Remove existing 'openvcs-nightly' release & tag (if any)
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const owner = context.repo.owner;
