@@ -1,14 +1,15 @@
+// src/scripts/features/repo.ts
 import { qs, qsa, escapeHtml } from '../lib/dom';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { state, prefs, statusLabel, statusClass } from '../state/state';
 
-const filterInput = qs<HTMLInputElement>('#filter');
-const listEl      = qs<HTMLElement>('#file-list');
-const countEl     = qs<HTMLElement>('#changes-count');
+const filterInput   = qs<HTMLInputElement>('#filter');
+const listEl        = qs<HTMLElement>('#file-list');
+const countEl       = qs<HTMLElement>('#changes-count');
 
-const diffHeadPath = qs<HTMLElement>('#diff-path');
-const diffEl       = qs<HTMLElement>('#diff');
+const diffHeadPath  = qs<HTMLElement>('#diff-path');
+const diffEl        = qs<HTMLElement>('#diff');
 
 export function bindRepoHotkeys(commitBtn: HTMLButtonElement | null, openSheet: (w: 'clone'|'add'|'switch') => void) {
     if (!filterInput) return;
@@ -18,10 +19,9 @@ export function bindRepoHotkeys(commitBtn: HTMLButtonElement | null, openSheet: 
         if (e.ctrlKey && key === 'r') { e.preventDefault(); openSheet('switch'); }
         if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); commitBtn?.click(); }
         if (e.key === 'Escape') {
-            const modal = document.getElementById('modal');
             const about = document.getElementById('about-modal');
-            if (modal?.classList.contains('show')) openSheet('clone'); // no-op, keep focus; or close in caller
             if (about?.classList.contains('show')) about.classList.remove('show');
+            // do not force-open the command sheet on Esc; let modal system handle closes
         }
     });
 }
@@ -54,9 +54,10 @@ export function renderList() {
         commits.forEach((c, i) => {
             const li = document.createElement('li');
             li.className = 'row';
-            li.innerHTML = `<span class="badge">${(c.id || '').slice(0,7)}</span>
-                      <div class="file" title="${escapeHtml(c.msg || '')}">${escapeHtml(c.msg || '(no message)')}</div>
-                      <span class="badge">${escapeHtml(c.meta || '')}</span>`;
+            li.innerHTML = `
+        <span class="badge">${(c.id || '').slice(0,7)}</span>
+        <div class="file" title="${escapeHtml(c.msg || '')}">${escapeHtml(c.msg || '(no message)')}</div>
+        <span class="badge">${escapeHtml(c.meta || '')}</span>`;
             li.addEventListener('click', () => selectHistory(c, i));
             listEl.appendChild(li);
         });
@@ -92,7 +93,7 @@ export function renderList() {
 }
 
 function highlightRow(index: number) {
-    const rows = qsa<HTMLElement>('.row', listEl || undefined as any);
+    const rows = qsa<HTMLElement>('.row', listEl || (undefined as any));
     rows.forEach((el, i) => el.classList.toggle('active', i === index));
 }
 
@@ -127,51 +128,52 @@ function selectHistory(commit: any, index: number) {
     </div>`;
 }
 
+/* ---------------- hydration ---------------- */
+
+/** Keep names consistent with backend: git_list_branches / git_current_branch */
 export async function hydrateBranches() {
+    if (!TAURI.has) return;
     try {
-        if (!TAURI.has) return;
-        const list = await TAURI.invoke<any[]>('list_branches');
-        state.hasRepo = Array.isArray(list) && list.length > 0;
-        if (state.hasRepo) {
-            state.branches = list;
-            state.branch = list.find(b => b.current)?.name || state.branch || 'main';
-        } else {
-            state.branch = '';
-            state.branches = [];
-            state.files = [];
-            state.commits = [];
-            renderList();
+        const list = await TAURI.invoke<any[]>('git_list_branches');
+        const current = await TAURI.invoke<string>('git_current_branch').catch(() => '');
+
+        const has = Array.isArray(list) && list.length > 0;
+        state.hasRepo = state.hasRepo || has; // don’t flip to false if another hydrate confirms true
+
+        if (has) {
+            state.branches = list as any;
+            state.branch = current || (list.find((b: any) => b.current)?.name) || state.branch || 'main';
         }
-    } catch {}
+    } catch (e) {
+        // Don’t nuke state here; status/summary calls will decide hasRepo
+        console.warn('hydrateBranches failed', e);
+    }
 }
 
+/** Status drives file list; on failure we clear files but don’t assert repo absence unless it’s consistent */
 export async function hydrateStatus() {
+    if (!TAURI.has) return;
     try {
-        if (!TAURI.has) return;
         const result = await TAURI.invoke<{ files: any[] }>('git_status');
         state.hasRepo = true;
-        if (result && Array.isArray(result.files)) {
-            state.files = result.files as any;
-            renderList();
-        }
-    } catch {
-        state.hasRepo = false;
+        state.files = Array.isArray(result?.files) ? (result.files as any) : [];
+        renderList();
+    } catch (e) {
+        console.warn('hydrateStatus failed', e);
         state.files = [];
         renderList();
     }
 }
 
 export async function hydrateCommits() {
+    if (!TAURI.has) return;
     try {
-        if (!TAURI.has) return;
         const list = await TAURI.invoke<any[]>('git_log', { limit: 100 });
         state.hasRepo = true;
-        if (Array.isArray(list)) {
-            state.commits = list as any;
-            if (prefs.tab === 'history') renderList();
-        }
-    } catch {
-        state.hasRepo = false;
+        state.commits = Array.isArray(list) ? (list as any) : [];
+        if (prefs.tab === 'history') renderList();
+    } catch (e) {
+        console.warn('hydrateCommits failed', e);
         state.commits = [];
     }
 }
