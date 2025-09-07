@@ -10,6 +10,8 @@ jobs:
   check-changes:
     name: Check if Dev changed since last nightly
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
     outputs:
       changed: ${{ steps.diff.outputs.changed }}
       since_sha: ${{ steps.diff.outputs.since_sha }}
