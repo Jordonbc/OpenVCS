@@ -6,6 +6,8 @@ import aboutHtml from "@modals/about.html?raw";
 import { wireSettings } from "../features/settings";
 import repoSettingsHtml from "@modals/repo-settings.html?raw";
 import { wireRepoSettings } from "../features/repoSettings";
+import newBranchHtml from "@modals/new-branch.html?raw";
+import { wireNewBranch } from "../features/newBranch";
 
 // Lazy fragments (only those NOT present at load)
 const FRAGMENTS: Record<string, string> = {
@@ -13,6 +15,7 @@ const FRAGMENTS: Record<string, string> = {
     "about-modal": aboutHtml,
     "command-modal": cmdHtml,
     "repo-settings-modal": repoSettingsHtml,
+    "new-branch-modal": newBranchHtml,
 };
 
 const loaded = new Set<string>();
@@ -49,6 +52,7 @@ export function hydrate(id: string): void {
 
     if (id === "settings-modal") wireSettings();
     if (id === "repo-settings-modal") wireRepoSettings();
+    if (id === "new-branch-modal") wireNewBranch();
 }
 
 export function openModal(id: string): void {

@@ -1,0 +1,31 @@
+<!-- New Branch modal -->
+<div class="modal" id="new-branch-modal" aria-hidden="true">
+    <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="new-branch-title">
+        <div class="sheet-head">
+            <h3 id="new-branch-title" style="margin:0">Create New Branch</h3>
+        </div>
+        <div class="sheet-body">
+            <form id="new-branch-form" class="panel-form">
+                <div class="group">
+                    <label for="new-branch-name">Branch name</label>
+                    <input id="new-branch-name" type="text" placeholder="e.g. feature/cool-thing" />
+                </div>
+                <div class="group">
+                    <label for="new-branch-base">Base branch</label>
+                    <select id="new-branch-base"></select>
+                </div>
+                <div class="group checkbox">
+                    <input id="new-branch-checkout" type="checkbox" checked />
+                    <label for="new-branch-checkout">Checkout branch after create</label>
+                </div>
+            </form>
+        </div>
+        <div class="sheet-actions">
+            <button class="tbtn" type="button" data-close>Cancel</button>
+            <button class="tbtn primary big" id="new-branch-create" type="button" disabled>Create</button>
+        </div>
+    </div>
+    <div class="backdrop" data-close></div>
+    
+</div>
+

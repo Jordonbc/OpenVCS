@@ -3,6 +3,7 @@ import { qs } from '../lib/dom';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { state } from '../state/state';
+import { openModal } from '../ui/modals';
 import { renderList } from './repo';
 
 type Branch = { name: string; current?: boolean; kind?: { type?: string; remote?: string } };
@@ -120,19 +121,10 @@ export function bindBranchUI() {
         }
     });
 
-    // Create branch
-    qs<HTMLButtonElement>('#branch-new')?.addEventListener('click', async () => {
-        const base = (state.branches.find(b => b.current) || { name: '' }).name || '';
-        const name = prompt(`New branch name (from ${base})`)?.trim() || '';
-        if (!name) return;
-        try {
-            if (TAURI.has) await TAURI.invoke('git_create_branch', { name, from: base, checkout: true });
-            await loadBranches(); // resync
-            closeBranchPopover();
-            notify(`Created branch ${name}`);
-        } catch {
-            notify('Create branch failed');
-        }
+    // Create branch (open modal)
+    qs<HTMLButtonElement>('#branch-new')?.addEventListener('click', () => {
+        closeBranchPopover();
+        openModal('new-branch-modal');
     });
 
     // React when a repo is selected somewhere else (add/clone/open)

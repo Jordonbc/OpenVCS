@@ -1,0 +1,18 @@
+/* src/styles/modal/new-branch.css */
+
+#new-branch-modal .dialog.sheet{
+    width: clamp(420px, 92vw, 540px);
+    max-height: min(70vh, 560px);
+    display:flex; flex-direction:column;
+}
+#new-branch-modal .sheet-body{ flex:1 1 auto; min-height:0; overflow:auto; }
+
+#new-branch-modal .panel-form{ display:grid; gap:1rem; }
+#new-branch-modal .panel-form .group{ display:grid; gap:.45rem; }
+#new-branch-modal .panel-form .checkbox{ display:flex; align-items:center; gap:.6rem; }
+
+#new-branch-modal .sheet-actions{
+    margin-top:auto; display:flex; align-items:center; gap:.5rem;
+    justify-content:flex-end; padding:.5rem; border-top:1px solid var(--border);
+}
+
