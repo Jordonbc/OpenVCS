@@ -28,7 +28,7 @@ export async function openAbout(): Promise<void> {
         const aboutBuild    = q<HTMLElement>("#about-build", modal);
         const aboutHome     = q<HTMLAnchorElement>("#about-home", modal);
         const aboutRepo     = q<HTMLAnchorElement>("#about-repo", modal);
-        const aboutLicenses = q<HTMLButtonElement>("#about-licenses", modal);
+        const aboutLicenses = q<HTMLAnchorElement>("#about-licenses", modal);
 
         if (aboutVersion) aboutVersion.textContent = info?.version ? `v${info.version}` : "";
         if (aboutBuild)   aboutBuild.textContent   = info?.build ?? "";
@@ -42,12 +42,31 @@ export async function openAbout(): Promise<void> {
             aboutRepo.toggleAttribute("disabled", !info?.repository);
         }
 
-        if (aboutLicenses && !aboutLicenses.dataset.bound) {
-            aboutLicenses.addEventListener("click", async () => {
-                try { if (TAURI.has) await TAURI.invoke("show_licenses"); }
-                catch { notify("Unable to show licenses"); }
-            });
-            aboutLicenses.dataset.bound = "1"; // guard: bind once
+        if (aboutLicenses) {
+            const rawRepo = info?.repository || "";
+            const repo = rawRepo.replace(/\.git$/, "").replace(/\/+$/, "");
+            let licenseUrl = "#";
+            if (repo) {
+                try {
+                    const u = new URL(repo);
+                    const host = u.host.toLowerCase();
+                    if (host.includes("github.com")) {
+                        licenseUrl = `${repo}/blob/HEAD/LICENSE`;
+                    } else if (host.includes("gitlab.com")) {
+                        licenseUrl = `${repo}/-/blob/HEAD/LICENSE`;
+                    } else if (host.includes("bitbucket.org")) {
+                        licenseUrl = `${repo}/src/HEAD/LICENSE`;
+                    } else {
+                        // Generic fallback that often works (e.g., some forges)
+                        licenseUrl = `${repo}/blob/HEAD/LICENSE`;
+                    }
+                } catch {
+                    // If repo isn't a full URL, still attempt a sensible default
+                    licenseUrl = `${repo}/blob/HEAD/LICENSE`;
+                }
+            }
+            aboutLicenses.href = licenseUrl;
+            aboutLicenses.toggleAttribute("disabled", !repo);
         }
     } catch {
         notify("Unable to load About");
