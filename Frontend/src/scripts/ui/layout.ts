@@ -59,7 +59,7 @@ export function bindTabs(onChange: (t: 'changes'|'history') => void) {
 export function initResizer() {
     if (!workGrid || !resizer) return;
 
-    const MIN_LEFT = 220, MIN_RIGHT = 360, GUTTER = 6;
+    const MIN_LEFT = 320, MIN_RIGHT = 360, GUTTER = 6;
 
     const clampLeft = (px: number, cw: number) => Math.max(MIN_LEFT, Math.min(Math.max(MIN_LEFT, cw - MIN_RIGHT - GUTTER), px));
     const containerW = () => workGrid.getBoundingClientRect().width || window.innerWidth;

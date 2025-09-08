@@ -53,6 +53,18 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     display:flex; align-items:center; gap:.6rem;
     padding:.5rem; border-bottom:1px solid var(--border);
 }
+/* Count label at right of the filter */
+#changes-count{
+    flex:0 0 auto;
+    white-space:nowrap;
+    border:none;           /* override .badge pill */
+    background:transparent;/* override .badge pill */
+    padding:0;             /* override .badge pill */
+    border-radius:0;       /* override .badge pill */
+    color:var(--muted);
+    font-size:.85rem;
+    line-height:1;
+}
 .filter{
     flex:1;
     display:flex; align-items:center; gap:.4rem;
@@ -101,6 +113,9 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .status.add{ color:var(--success); }
 .status.mod{ color:#8b5cf6; }
 .status.del{ color:var(--danger); }
+/* Small status tag used in history list (outgoing marker) */
+.tag{ font-size:.72rem; color:var(--muted); border:1px solid var(--border); padding:.05rem .4rem; border-radius:999px; }
+.tag.up{ color:var(--success); border-color: rgba(38,162,105,.55); }
 
 /* ========== Right pane (header | scroll | commit) ========== */
 .right{
@@ -204,7 +219,7 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 
 /* ========== History (commit list) ========== */
 .row.commit{
-    display:grid; grid-template-columns:max-content 1fr max-content; column-gap:.6rem; align-items:center;
+    display:grid; grid-template-columns:max-content 1fr max-content max-content; column-gap:.6rem; align-items:center;
 }
 .row.commit .badge.hash { font-family: var(--mono); }
 .row.commit .file { min-width: 0; }

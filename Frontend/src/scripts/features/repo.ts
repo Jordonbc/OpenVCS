@@ -78,6 +78,16 @@ export function renderList() {
             return;
         }
 
+        // Show an informational row for commits present on remote but not pulled locally
+        const ahead = Number((state as any).ahead || 0);
+        const behind = Number((state as any).behind || 0);
+        if (behind > 0) {
+            const info = document.createElement('li');
+            info.className = 'row notice';
+            info.innerHTML = `<div class="file" title="Commits exist on the remote that are not pulled locally">↓ ${behind} incoming commit${behind === 1 ? '' : 's'} on remote</div>`;
+            listEl.appendChild(info);
+        }
+
         commits.forEach((c, i) => {
             const li = document.createElement('li');
             li.className = 'row commit';
@@ -85,9 +95,11 @@ export function renderList() {
             const whenRaw = String(c.meta || '').split('•')[0].trim();
             const rel = formatTimeAgo(whenRaw);
             const exact = (c.meta || '').trim();
+            const statusTag = i < ahead ? `<span class="tag up" title="Not on remote yet">↑ outgoing</span>` : '';
             li.innerHTML = `
         <span class="badge hash" title="${escapeHtml(c.id || '')}">${escapeHtml(short)}</span>
         <div class="file" title="${escapeHtml(c.msg || '')}">${escapeHtml(c.msg || '(no message)')}</div>
+        ${statusTag}
         <span class="badge time" title="${escapeHtml(exact)}">${escapeHtml(rel)}</span>`;
             li.addEventListener('click', () => selectHistory(c, i));
             listEl.appendChild(li);
@@ -160,7 +172,8 @@ export function renderList() {
 }
 
 function highlightRow(index: number) {
-    const rows = qsa<HTMLElement>('.row', listEl || (undefined as any));
+    const sel = (prefs.tab === 'history') ? '.row.commit' : '.row';
+    const rows = qsa<HTMLElement>(sel, listEl || (undefined as any));
     rows.forEach((el, i) => el.classList.toggle('active', i === index));
 }
 

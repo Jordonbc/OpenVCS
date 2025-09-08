@@ -48,7 +48,7 @@
 /* Work area */
 .work {
     flex: 1 1 auto; display: grid;
-    grid-template-columns: minmax(220px, 32vw) 6px 1fr;
+    grid-template-columns: minmax(320px, 32vw) 6px 1fr;
     min-height: 0; width: 100%; overflow: hidden;
 }
 .panel { min-width: 0; min-height: 0; }
@@ -141,4 +141,3 @@
     border:1px solid var(--border); padding:.15rem .45rem;
     border-radius:999px;
 }
-
