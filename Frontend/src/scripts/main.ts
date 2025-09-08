@@ -83,6 +83,8 @@ function boot() {
         try {
             if (TAURI.has) { setBusy('Pushing…'); await TAURI.invoke('git_push', {}); }
             notify('Pushed');
+            // Refresh status/commits so ahead/behind and history update immediately
+            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
         } catch { notify('Push failed'); } finally { clearBusy(); }
     });
     cloneBtn?.addEventListener('click', () => openSheet('clone'));
