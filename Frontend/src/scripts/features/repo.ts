@@ -58,6 +58,9 @@ export function renderList() {
 
     listEl.innerHTML = '';
     const isHistory = prefs.tab === 'history';
+    // Toggle list styling for history vs changes
+    if (isHistory) listEl.classList.add('commit-list');
+    else listEl.classList.remove('commit-list');
     const q = filterInput.value.trim().toLowerCase();
     updateCommitButton();
 
@@ -77,11 +80,15 @@ export function renderList() {
 
         commits.forEach((c, i) => {
             const li = document.createElement('li');
-            li.className = 'row';
+            li.className = 'row commit';
+            const short = (c.id || '').slice(0, 7);
+            const whenRaw = String(c.meta || '').split('•')[0].trim();
+            const rel = formatTimeAgo(whenRaw);
+            const exact = (c.meta || '').trim();
             li.innerHTML = `
-        <span class="badge">${(c.id || '').slice(0,7)}</span>
+        <span class="badge hash" title="${escapeHtml(c.id || '')}">${escapeHtml(short)}</span>
         <div class="file" title="${escapeHtml(c.msg || '')}">${escapeHtml(c.msg || '(no message)')}</div>
-        <span class="badge">${escapeHtml(c.meta || '')}</span>`;
+        <span class="badge time" title="${escapeHtml(exact)}">${escapeHtml(rel)}</span>`;
             li.addEventListener('click', () => selectHistory(c, i));
             listEl.appendChild(li);
         });
@@ -744,4 +751,34 @@ function updateCommitButton() {
         .some((k) => Array.isArray((state as any).selectedHunksByFile[k]) && (state as any).selectedHunksByFile[k].length > 0);
     const filesSelected = !!(state.selectedFiles && state.selectedFiles.size > 0);
     btn.disabled = !(summaryFilled && (hunksSelected || filesSelected));
+}
+
+// Convert an ISO/RFC3339 datetime string into a short relative phrase.
+function formatTimeAgo(isoMaybe: string): string {
+    try {
+        const d = new Date(String(isoMaybe || '').trim());
+        const t = d.getTime();
+        if (!isFinite(t)) return (isoMaybe || '').trim();
+        const now = Date.now();
+        let sec = Math.max(0, Math.round((now - t) / 1000));
+        if (sec < 45) return 'just now';
+        if (sec < 90) return '1 minute ago';
+        let min = Math.round(sec / 60);
+        if (min < 60) return `${min} minute${min === 1 ? '' : 's'} ago`;
+        let hr = Math.round(min / 60);
+        if (hr < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`;
+        let day = Math.round(hr / 24);
+        if (day === 1) return 'yesterday';
+        if (day < 7) return `${day} day${day === 1 ? '' : 's'} ago`;
+        let wk = Math.round(day / 7);
+        if (wk === 1) return '1 week ago';
+        if (wk < 5) return `${wk} weeks ago`;
+        let mon = Math.round(day / 30);
+        if (mon === 1) return '1 month ago';
+        if (mon < 12) return `${mon} months ago`;
+        let yr = Math.round(day / 365);
+        return `${yr} year${yr === 1 ? '' : 's'} ago`;
+    } catch {
+        return (isoMaybe || '').trim();
+    }
 }

@@ -201,3 +201,21 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     width:8px; height:8px; border-radius:999px; background:var(--accent);
     box-shadow:0 0 0 2px rgba(53,132,228,.18);
 }
+
+/* ========== History (commit list) ========== */
+.row.commit{
+    display:grid; grid-template-columns:max-content 1fr max-content; column-gap:.6rem; align-items:center;
+}
+.row.commit .badge.hash { font-family: var(--mono); }
+.row.commit .file { min-width: 0; }
+.row.commit .badge.time {
+    color: var(--muted);
+    font-size: .78rem;
+    /* plain text look */
+    border: none;
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    white-space: nowrap;
+    justify-self: end;
+}
