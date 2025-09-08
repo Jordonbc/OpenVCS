@@ -12,13 +12,10 @@ export function bindCommit() {
     commitBtn?.addEventListener('click', async () => {
         const summary = commitSummary?.value.trim() || '';
         if (!summary) { commitSummary?.focus(); notify('Summary is required'); return; }
-        const hasHunks = (state.selectedHunks || []).length > 0 && (state.currentDiff || []).length > 0;
+        const hunksMap: Record<string, number[]> = (state as any).selectedHunksByFile || {};
+        const hasHunks = Object.keys(hunksMap).some(p => Array.isArray(hunksMap[p]) && hunksMap[p].length > 0);
         const selectedFiles = state.selectedFiles ? Array.from(state.selectedFiles) : [];
         const hasFiles = selectedFiles.length > 0;
-        if (!hasHunks && !hasFiles) {
-            notify('Select files or hunks to commit');
-            return;
-        }
         const statusEl = document.getElementById('status');
         const setBusy = (msg: string) => {
             if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
@@ -30,11 +27,10 @@ export function bindCommit() {
             setBusy('Committing…');
             const description = commitDesc?.value || '';
 
-            // Build a combined patch when any file has partial hunks selected, or when we want per-file control
-            const hunksMap: Record<string, number[]> = (state as any).selectedHunksByFile || {};
+            // Build a combined patch when any file has partial hunks selected
             const partialFiles = Object.keys(hunksMap).filter(p => Array.isArray(hunksMap[p]) && hunksMap[p].length > 0);
 
-            // Build patch only for partial files; collect full files separately
+            // Build patch only from hunks; ignore selectedFiles for commit content per latest request
             let combinedPatch = '';
             for (const path of partialFiles) {
                 let lines: string[] = [];
@@ -42,16 +38,13 @@ export function bindCommit() {
                 if (!Array.isArray(lines) || lines.length === 0) continue;
                 combinedPatch += buildPatchForSelectedHunks(path, lines, hunksMap[path]) + '\n';
             }
-
-            // Full files are those selected that are not in partialFiles
+            // Full files: commit-selected files without partial hunks
             const fullFiles = selectedFiles.filter(f => !partialFiles.includes(f));
-
             if (TAURI.has) {
                 if (combinedPatch.trim().length > 0 || fullFiles.length > 0) {
                     await TAURI.invoke('commit_patch_and_files', { summary, description, patch: combinedPatch, files: fullFiles });
                 } else {
-                    // Nothing explicitly selected; last resort: block and notify
-                    notify('Nothing selected to commit');
+                    notify('Select files or hunks to commit');
                     return;
                 }
             }

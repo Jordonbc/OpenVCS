@@ -94,6 +94,9 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .row.picked{ background:rgba(38,162,105,.10); border-color:rgba(38,162,105,.35); }
 /* When a row is both picked and active, keep the picked (green) background and show active marker */
 .row.active.picked{ background:rgba(38,162,105,.10); border-color:rgba(38,162,105,.35); }
+/* Diff-selected (included in viewer) uses a subtle accent tint distinct from picked */
+.row.diffsel{ background:rgba(53,132,228,.08); border-color:rgba(53,132,228,.28); }
+.row.active.diffsel::before{ background:var(--accent); }
 .file{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .status.add{ color:var(--success); }
 .status.mod{ color:#8b5cf6; }
@@ -139,6 +142,21 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .row input.pick:hover, .pick-hunk:hover{ border-color:var(--accent); }
 .pick-toggle{ display:inline-flex; align-items:center; justify-content:center; }
 .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+/* Context menu */
+.ctxmenu{ position:fixed; z-index:9999; min-width:180px; background:var(--surface);
+    border:1px solid var(--border); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.25); overflow:hidden; }
+.ctxmenu .item{ padding:.45rem .7rem; cursor:pointer; font-size:.95rem; }
+.ctxmenu .item:hover{ background:rgba(255,255,255,.06); }
+.ctxmenu .sep{ height:1px; background:var(--border); margin:.25rem 0; }
+
+/* Prevent text selection during drag-select */
+.drag-selecting, .drag-selecting * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
 
 /* Check mark indicator at end of row when picked */
 .pick-mark{ margin-left:auto; color:rgba(38,162,105,1); opacity:0; transition:opacity .15s; font-weight:600; }

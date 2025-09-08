@@ -499,6 +499,29 @@ impl Vcs for GitSystem {
         )
     }
 
+    fn discard_paths(&self, paths: &[PathBuf]) -> Result<()> {
+        if paths.is_empty() { return Ok(()); }
+        let mut args: Vec<String> = vec!["restore".into(), "--staged".into(), "--worktree".into(), "--source=HEAD".into(), "--".into()];
+        for p in paths {
+            args.push(Self::path_str(p)?.to_string());
+        }
+        if let Err(_) = Self::run_git(Some(&self.workdir), args.clone()) {
+            for p in paths {
+                let mut single = vec!["restore".to_string(), "--staged".into(), "--worktree".into(), "--source=HEAD".into(), "--".into(), Self::path_str(p)?.to_string()];
+                let _ = Self::run_git(Some(&self.workdir), single);
+            }
+        }
+        Ok(())
+    }
+
+    fn apply_reverse_patch(&self, patch: &str) -> Result<()> {
+        Self::run_git_with_input(
+            Some(&self.workdir),
+            ["apply", "--reverse", "--index", "--unidiff-zero", "-p1", "-"],
+            patch,
+        )
+    }
+
     fn hard_reset_head(&self) -> Result<()> {
         Self::run_git(Some(&self.workdir), ["reset", "--hard", "HEAD"])
     }

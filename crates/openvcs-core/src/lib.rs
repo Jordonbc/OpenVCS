@@ -88,6 +88,12 @@ pub trait Vcs: Send + Sync {
     /// Backends may return `VcsError::Unsupported` if not implemented.
     fn stage_patch(&self, patch: &str) -> Result<()>;
 
+    /// Discard changes for the given paths (both index and worktree) by restoring from HEAD.
+    fn discard_paths(&self, paths: &[PathBuf]) -> Result<()>;
+
+    /// Apply a reverse patch to discard selected hunks (should update index and worktree when possible).
+    fn apply_reverse_patch(&self, patch: &str) -> Result<()>;
+
     // recovery
     fn hard_reset_head(&self) -> Result<()>;
 

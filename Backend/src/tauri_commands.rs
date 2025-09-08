@@ -450,6 +450,20 @@ pub fn git_diff_file(state: State<'_, AppState>, path: String) -> Result<Vec<Str
     vcs.diff_file(&PathBuf::from(path)).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn git_discard_paths(state: State<'_, AppState>, paths: Vec<String>) -> Result<(), String> {
+    use std::path::PathBuf;
+    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
+    let pb: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    repo.inner().discard_paths(&pb).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_discard_patch(state: State<'_, AppState>, patch: String) -> Result<(), String> {
+    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
+    repo.inner().apply_reverse_patch(&patch).map_err(|e| e.to_string())
+}
+
 #[derive(serde::Serialize)]
 pub struct RepoSummary {
     path: String,

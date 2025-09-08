@@ -11,6 +11,21 @@ const countEl       = qs<HTMLElement>('#changes-count');
 
 const diffHeadPath  = qs<HTMLElement>('#diff-path');
 const diffEl        = qs<HTMLElement>('#diff');
+let lastClickedIndex: number = -1;
+let isDragSelecting = false;
+let dragTargetState = true; // true=select, false=deselect
+let dragVisited = new Set<string>();
+let dragMoved = false;
+let suppressNextClick = false;
+let dragMode: 'diff' | 'commit' | null = null;
+let dragStartIndex: number = -1;
+let dragCurrentIndex: number = -1;
+let dragPreDiff = new Set<string>();
+let dragPrePicked = new Set<string>();
+
+// Global guards to suppress native text selection/drag while we paint-select
+document.addEventListener('selectstart', (e) => { if (isDragSelecting) e.preventDefault(); }, true);
+document.addEventListener('dragstart',   (e) => { if (isDragSelecting) e.preventDefault(); }, true);
 
 export function bindRepoHotkeys(commitBtn: HTMLButtonElement | null, openSheet: (w: 'clone'|'add'|'switch') => void) {
     if (!filterInput) return;
@@ -95,14 +110,24 @@ export function renderList() {
         li.setAttribute('role', 'option');
         li.setAttribute('data-path', f.path || '');
         const picked = state.selectedFiles.has(f.path);
+        const diffsel = state.diffSelectedFiles.has(f.path);
         li.classList.toggle('picked', picked);
+        li.classList.toggle('diffsel', diffsel);
         li.innerHTML = `
       <input type="checkbox" class="pick" aria-label="Select file" ${picked ? 'checked' : ''} />
       <span class="status ${statusClass(f.status)}">${escapeHtml(f.status || '')}</span>
       <div class="file" title="${escapeHtml(f.path || '')}">${escapeHtml(f.path || '')}</div>
       <span class="pick-mark" aria-hidden="true">✓</span>
       <span class="badge">${statusLabel(f.status)}</span>`;
-        li.addEventListener('click', () => selectFile(f, i));
+        li.addEventListener('click', (e) => onFileClick(e as MouseEvent, f, i, files));
+        li.addEventListener('mousedown', (e) => onFileMouseDown(e as MouseEvent, f, i, files, li));
+        li.addEventListener('mouseenter', () => {
+            if (isDragSelecting) {
+                dragCurrentIndex = i;
+                updateDragRange(files);
+            }
+        });
+        li.addEventListener('contextmenu', (ev) => onFileContextMenu(ev, f));
         // prevent row click when toggling checkbox
         const cb = li.querySelector<HTMLInputElement>('input.pick');
         if (cb) cb.dataset.path = f.path || '';
@@ -115,7 +140,15 @@ export function renderList() {
         listEl.appendChild(li);
     });
 
-    selectFile(files[0], 0);
+    // Preserve current viewed file if present; otherwise show combined diff or first file
+    const curIdx = state.currentFile ? files.findIndex(x => x.path === state.currentFile) : -1;
+    if (state.diffSelectedFiles && state.diffSelectedFiles.size > 1) {
+        renderCombinedDiff(Array.from(state.diffSelectedFiles));
+    } else if (curIdx >= 0) {
+        selectFile(files[curIdx], curIdx);
+    } else {
+        selectFile(files[0], 0);
+    }
     updateCommitButton();
 }
 
@@ -139,6 +172,71 @@ async function selectFile(file: { path: string }, index: number) {
         state.currentDiff = lines || [];
         diffEl.innerHTML = renderHunksWithSelection(state.currentDiff);
         bindHunkToggles(diffEl);
+        // Right-click on hunk → context menu to discard this hunk
+        const onCtx = (ev: Event) => {
+            const mev = ev as MouseEvent;
+            if (mev.type !== 'contextmenu') return;
+            const hk = (mev.target as HTMLElement).closest('.hunk') as HTMLElement | null;
+            if (!hk) return;
+            mev.preventDefault();
+            const idxAttr = hk.getAttribute('data-hunk-index');
+            const hi = idxAttr ? Number(idxAttr) : -1;
+            if (hi < 0) return;
+            const x = mev.clientX, y = mev.clientY;
+            const items: { label: string; action: () => void }[] = [];
+            items.push({ label: 'Discard hunk', action: async () => {
+                if (!TAURI.has) return;
+                const ok = window.confirm('Discard this hunk? This cannot be undone.');
+                if (!ok) return;
+                try {
+                    const patch = buildPatchForSelectedHunks(file.path, state.currentDiff, [hi]);
+                    if (patch) {
+                        await TAURI.invoke('git_discard_patch', { patch });
+                        await Promise.allSettled([hydrateStatus()]);
+                    }
+                } catch { notify('Discard failed'); }
+            }});
+            const selected = (state as any).selectedHunksByFile?.[file.path] as number[] | undefined;
+            if (Array.isArray(selected) && selected.length > 0) {
+                items.push({ label: 'Discard selected hunks (this file)', action: async () => {
+                    if (!TAURI.has) return;
+                    const ok = window.confirm(`Discard ${selected.length} selected hunk(s) in this file? This cannot be undone.`);
+                    if (!ok) return;
+                    try {
+                        const patch = buildPatchForSelectedHunks(file.path, state.currentDiff, selected);
+                        if (patch) {
+                            await TAURI.invoke('git_discard_patch', { patch });
+                            await Promise.allSettled([hydrateStatus()]);
+                        }
+                    } catch { notify('Discard failed'); }
+                }});
+            }
+            // Discard selected hunks across files
+            const hunksMap: Record<string, number[]> = (state as any).selectedHunksByFile || {};
+            const filesWithSel = Object.keys(hunksMap).filter(k => Array.isArray(hunksMap[k]) && hunksMap[k].length > 0);
+            if (filesWithSel.length > 0) {
+                items.push({ label: 'Discard selected hunks (all files)', action: async () => {
+                    if (!TAURI.has) return;
+                    const ok = window.confirm(`Discard selected hunks across ${filesWithSel.length} file(s)? This cannot be undone.`);
+                    if (!ok) return;
+                    try {
+                        let patch = '';
+                        for (const p of filesWithSel) {
+                            let lines: string[] = [];
+                            try { lines = await TAURI.invoke<string[]>('git_diff_file', { path: p }); } catch {}
+                            if (!Array.isArray(lines) || lines.length === 0) continue;
+                            patch += buildPatchForSelectedHunks(p, lines, hunksMap[p]) + '\n';
+                        }
+                        if (patch.trim()) {
+                            await TAURI.invoke('git_discard_patch', { patch });
+                            await Promise.allSettled([hydrateStatus()]);
+                        }
+                    } catch { notify('Discard failed'); }
+                }});
+            }
+            buildCtxMenu(items, x, y);
+        };
+        diffEl.addEventListener('contextmenu', onCtx, { once: true });
         const cached = (state as any).selectedHunksByFile?.[file.path] as number[] | undefined;
         if (Array.isArray(cached)) {
             state.selectedHunks = cached.slice();
@@ -267,6 +365,212 @@ function hline(ln: string, n: number) {
     const first = (typeof ln === 'string' ? ln[0] : ' ') || ' ';
     const t = first === '+' ? 'add' : first === '-' ? 'del' : '';
     return `<div class="hline ${t}"><div class="gutter">${n}</div><div class="code">${escapeHtml(String(ln))}</div></div>`;
+}
+
+function onFileClick(e: MouseEvent, file: { path: string }, index: number, visible: { path: string }[]) {
+    if (suppressNextClick) { suppressNextClick = false; return; }
+    const isToggle = e.ctrlKey || e.metaKey;
+    const isRange = e.shiftKey && lastClickedIndex >= 0;
+
+    if (isRange) {
+        // Toggle (invert) selection for the whole range
+        const a = Math.min(lastClickedIndex, index);
+        const b = Math.max(lastClickedIndex, index);
+        for (let i = a; i <= b; i++) {
+            const p = visible[i]?.path; if (!p) continue;
+            if (state.selectedFiles.has(p)) state.selectedFiles.delete(p);
+            else state.selectedFiles.add(p);
+        }
+        state.defaultSelectAll = false;
+        updateSelectAllState(visible);
+        renderList();
+        // Keep the clicked file as the viewed file
+        selectFile(file, index);
+    } else if (isToggle) {
+        const on = !state.selectedFiles.has(file.path);
+        toggleFilePick(file.path, on);
+        updateSelectAllState(visible);
+        // Update row UI immediately (checkbox + picked class)
+        if (listEl) {
+            const sel = `li.row[data-path="${(file.path || '').replace(/([\"\\])/g, '\\$1')}"]`;
+            const row = listEl.querySelector<HTMLElement>(sel);
+            if (row) {
+                row.classList.toggle('picked', on);
+                const cb = row.querySelector<HTMLInputElement>('input.pick');
+                if (cb) { cb.checked = on; (cb as any).indeterminate = false; }
+            }
+        }
+        // Do not affect diff multi-selection with commit toggle
+        if (!(state.diffSelectedFiles && state.diffSelectedFiles.size > 1)) {
+            selectFile(file, index);
+        }
+    } else {
+        // plain click: clear diff multi-selection and view just this file
+        clearDiffSelection();
+        selectFile(file, index);
+    }
+    lastClickedIndex = index;
+    updateCommitButton();
+}
+
+function onFileMouseDown(e: MouseEvent, file: { path: string }, index: number, visible: { path: string }[], li: HTMLElement) {
+    if (e.button !== 0) return; // left only
+    e.preventDefault(); // avoid starting native selection
+    dragMoved = false;
+    isDragSelecting = true;
+    dragVisited.clear();
+    document.body.classList.add('drag-selecting');
+    // Clear any current selection
+    try { const sel = window.getSelection?.(); sel && sel.removeAllRanges(); } catch {}
+    // Decide mode based on modifiers
+    dragMode = e.shiftKey ? 'diff' : (e.ctrlKey || e.metaKey) ? 'commit' : null;
+    if (dragMode === 'diff') {
+        dragTargetState = true;
+        dragStartIndex = index; dragCurrentIndex = index;
+        dragPreDiff = new Set(state.diffSelectedFiles);
+        updateDragRange(visible);
+    } else if (dragMode === 'commit') {
+        const currentlyOn = state.selectedFiles.has(file.path);
+        dragTargetState = !currentlyOn;
+        dragStartIndex = index; dragCurrentIndex = index;
+        dragPrePicked = new Set(state.selectedFiles);
+        updateDragRange(visible);
+    }
+
+    const startX = e.clientX, startY = e.clientY;
+    const onMove = (mv: MouseEvent) => {
+        if (!dragMoved && (Math.abs(mv.clientX - startX) + Math.abs(mv.clientY - startY) > 3)) dragMoved = true;
+        const el = document.elementFromPoint(mv.clientX, mv.clientY) as HTMLElement | null;
+        const row = el ? el.closest('li.row[data-path]') as HTMLElement | null : null;
+        if (row) {
+            const p = row.getAttribute('data-path') || '';
+            const i2 = visible.findIndex(v => v.path === p);
+            if (i2 >= 0 && i2 !== dragCurrentIndex) {
+                dragCurrentIndex = i2;
+                updateDragRange(visible);
+            }
+        }
+    };
+    const onUp = () => {
+        document.removeEventListener('mouseup', onUp);
+        document.removeEventListener('mousemove', onMove);
+        isDragSelecting = false;
+        document.body.classList.remove('drag-selecting');
+        updateSelectAllState(visible);
+        updateCommitButton();
+        if (dragMoved) suppressNextClick = true;
+        lastClickedIndex = index;
+        // If multiple files are diff-selected, render combined view
+        if (state.diffSelectedFiles && state.diffSelectedFiles.size > 1) {
+            renderCombinedDiff(Array.from(state.diffSelectedFiles));
+        }
+        dragMode = null;
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp, { once: true });
+}
+
+function applySelect(path: string, on: boolean, rowEl: HTMLElement | null, visible: { path: string }[], mode: 'diff'|'commit') {
+    state.defaultSelectAll = false;
+    if (mode === 'commit') {
+        if (on) state.selectedFiles.add(path); else state.selectedFiles.delete(path);
+        if (rowEl) rowEl.classList.toggle('picked', on);
+        const selector = `li.row[data-path="${path.replace(/([\"\\])/g, '\\$1')}"] input.pick`;
+        const cb = listEl?.querySelector<HTMLInputElement>(selector) || null;
+        if (cb) { cb.checked = on; (cb as any).indeterminate = false; }
+    } else {
+        if (on) state.diffSelectedFiles.add(path); else state.diffSelectedFiles.delete(path);
+        if (rowEl) rowEl.classList.toggle('diffsel', on);
+    }
+}
+
+function updateDragRange(visible: { path: string }[]) {
+    if (!isDragSelecting || dragMode === null) return;
+    const a = Math.min(dragStartIndex, dragCurrentIndex);
+    const b = Math.max(dragStartIndex, dragCurrentIndex);
+    if (dragMode === 'diff') {
+        const next = new Set(dragPreDiff);
+        for (let i = 0; i < visible.length; i++) {
+            const p = visible[i]?.path; if (!p) continue;
+            if (i >= a && i <= b) next.add(p); else if (!dragPreDiff.has(p)) next.delete(p);
+        }
+        state.diffSelectedFiles = next;
+        if (listEl) {
+            visible.forEach(v => {
+                const row = listEl!.querySelector<HTMLElement>(`li.row[data-path="${(v.path || '').replace(/([\"\\])/g, '\\$1')}"]`);
+                if (row) row.classList.toggle('diffsel', state.diffSelectedFiles.has(v.path));
+            });
+        }
+    } else if (dragMode === 'commit') {
+        const next = new Set<string>();
+        for (let i = 0; i < visible.length; i++) {
+            const p = visible[i]?.path; if (!p) continue;
+            const inRange = i >= a && i <= b;
+            const on = inRange ? dragTargetState : dragPrePicked.has(p);
+            if (on) next.add(p);
+            if (listEl) {
+                const row = listEl!.querySelector<HTMLElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"]`);
+                if (row) row.classList.toggle('picked', on);
+                const cb = listEl!.querySelector<HTMLInputElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"] input.pick`);
+                if (cb) { cb.checked = on; (cb as any).indeterminate = false; }
+            }
+            // If this is the currently viewed file, mirror commit selection to hunk selection
+            if (state.currentFile && p === state.currentFile) {
+                if (on) {
+                    state.selectedHunks = allHunkIndices(state.currentDiff);
+                    (state as any).selectedHunksByFile[state.currentFile] = state.selectedHunks.slice();
+                } else {
+                    state.selectedHunks = [];
+                    delete (state as any).selectedHunksByFile[state.currentFile];
+                }
+                updateHunkCheckboxes();
+            }
+        }
+        state.selectedFiles = next;
+    }
+}
+
+function buildCtxMenu(items: { label: string; action: () => void }[], x: number, y: number) {
+    // remove existing
+    document.querySelectorAll('.ctxmenu').forEach(el => el.remove());
+    const m = document.createElement('div');
+    m.className = 'ctxmenu';
+    m.style.left = `${x}px`;
+    m.style.top = `${y}px`;
+    items.forEach((it, idx) => {
+        if (it.label === '---') { const sep = document.createElement('div'); sep.className = 'sep'; m.appendChild(sep); return; }
+        const d = document.createElement('div'); d.className = 'item'; d.textContent = it.label;
+        d.addEventListener('click', () => { try { it.action(); } finally { m.remove(); } });
+        m.appendChild(d);
+    });
+    document.body.appendChild(m);
+    const close = () => m.remove();
+    setTimeout(() => { document.addEventListener('click', close, { once: true }); }, 0);
+}
+
+function onFileContextMenu(ev: MouseEvent, f: { path: string }) {
+    ev.preventDefault();
+    const x = ev.clientX, y = ev.clientY;
+    const hasSelectedFiles = state.selectedFiles && state.selectedFiles.size > 0;
+    const items: { label: string; action: () => void }[] = [];
+    items.push({ label: 'Discard changes', action: async () => {
+        if (!TAURI.has) return;
+        const ok = window.confirm(`Discard all changes in \n${f.path}? This cannot be undone.`);
+        if (!ok) return;
+        try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
+        catch { notify('Discard failed'); }
+    }});
+    if (hasSelectedFiles) {
+        items.push({ label: 'Discard selected files', action: async () => {
+            if (!TAURI.has) return;
+            const paths = Array.from(state.selectedFiles);
+            const ok = window.confirm(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
+            if (!ok) return;
+            try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
+            catch { notify('Discard failed'); }
+        }});
+    }
+    buildCtxMenu(items, x, y);
 }
 
 function toggleFilePick(path: string, on: boolean) {
@@ -403,12 +707,41 @@ function updateListCheckboxForPath(path: string, checked: boolean, indeterminate
     }
 }
 
+async function renderCombinedDiff(paths: string[]) {
+    if (!diffHeadPath || !diffEl) return;
+    const files = Array.from(new Set(paths)).filter(Boolean);
+    diffHeadPath.textContent = `Multiple files (${files.length})`;
+    diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
+    let html = '';
+    for (const p of files) {
+        try {
+            const lines = TAURI.has ? await TAURI.invoke<string[]>('git_diff_file', { path: p }) : [];
+            html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)}</div></div></div>`;
+            html += renderHunksWithSelection(lines || []);
+        } catch {
+            html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)} (failed to load diff)</div></div></div>`;
+        }
+    }
+    diffEl.innerHTML = html || '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">No diffs</div></div></div>';
+}
+
+function clearDiffSelection() {
+    if (!listEl) return;
+    if (state.diffSelectedFiles && state.diffSelectedFiles.size > 0) {
+        state.diffSelectedFiles.clear();
+        // Remove visual class from rows
+        const rows = listEl.querySelectorAll<HTMLElement>('li.row.diffsel');
+        rows.forEach(r => r.classList.remove('diffsel'));
+    }
+}
+
 function updateCommitButton() {
     const btn = document.getElementById('commit-btn') as HTMLButtonElement | null;
     if (!btn) return;
-    const hasHunks = (state.selectedHunks || []).length > 0 && (state.currentDiff || []).length > 0;
-    const hasFiles = state.selectedFiles && state.selectedFiles.size > 0;
     const summary = document.getElementById('commit-summary') as HTMLInputElement | null;
     const summaryFilled = (summary?.value.trim().length ?? 0) > 0;
-    btn.disabled = !(summaryFilled && (hasHunks || hasFiles));
+    const hunksSelected = Object.keys((state as any).selectedHunksByFile || {})
+        .some((k) => Array.isArray((state as any).selectedHunksByFile[k]) && (state as any).selectedHunksByFile[k].length > 0);
+    const filesSelected = !!(state.selectedFiles && state.selectedFiles.size > 0);
+    btn.disabled = !(summaryFilled && (hunksSelected || filesSelected));
 }

@@ -213,6 +213,14 @@ impl Vcs for GitLibGit2 {
         Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
     }
 
+    fn discard_paths(&self, _paths: &[PathBuf]) -> Result<()> {
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
+
+    fn apply_reverse_patch(&self, _patch: &str) -> Result<()> {
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
+
     fn branches(&self) -> Result<Vec<models::BranchItem>> {
         self.inner.branches().map_err(Self::map_err)
     }

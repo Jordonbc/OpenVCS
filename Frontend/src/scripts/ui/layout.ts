@@ -129,9 +129,11 @@ export function refreshRepoActions() {
 
     // Commit button requires: repo + changes + non-empty summary + explicit selection (files or hunks)
     const summaryFilled = (summary?.value.trim().length ?? 0) > 0;
-    const selected = ((state as any).selectedHunks && (state as any).selectedHunks.length > 0)
-                  || ((state as any).selectedFiles && (state as any).selectedFiles.size > 0);
-    if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && selected);
+    // Require either selected hunks or selected files (commit UI selection)
+    const hunksSelected = Object.keys((state as any).selectedHunksByFile || {})
+        .some((k) => Array.isArray((state as any).selectedHunksByFile[k]) && (state as any).selectedHunksByFile[k].length > 0);
+    const filesSelected = !!((state as any).selectedFiles && (state as any).selectedFiles.size > 0);
+    if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && (hunksSelected || filesSelected));
 
     // Optional hygiene: if changes disappear, clear any stale text so the next enablement starts clean
     if (!changesOn) {
