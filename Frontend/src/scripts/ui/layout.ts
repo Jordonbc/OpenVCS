@@ -12,6 +12,7 @@ const diffHeadPath = qs<HTMLElement>('#diff-path');
 
 const repoTitleEl  = qs<HTMLElement>('#repo-title');
 const repoBranchEl = qs<HTMLElement>('#repo-branch');
+const aheadBehindEl = qs<HTMLElement>('#ahead-behind');
 
 export function setTheme(theme: 'dark'|'light'|'system') {
     document.documentElement.setAttribute('data-theme', theme);
@@ -151,14 +152,15 @@ export function refreshRepoActions() {
 export function bindLayoutActionState() {
     // Recompute on repo selection, status refresh, branch changes, and typing (when enabled)
     window.addEventListener('app:repo-selected', refreshRepoActions);
-    window.addEventListener('app:status-updated', refreshRepoActions);
-    window.addEventListener('app:branches-updated', refreshRepoActions);
+    window.addEventListener('app:status-updated', () => { refreshRepoActions(); renderAheadBehind(); });
+    window.addEventListener('app:branches-updated', () => { refreshRepoActions(); renderAheadBehind(); });
 
     // Summary typing should re-evaluate the commit button state
     qs<HTMLInputElement>('#commit-summary')?.addEventListener('input', refreshRepoActions);
 
     // First paint
     refreshRepoActions();
+    renderAheadBehind();
 }
 
 export function setRepoHeader(pathMaybe?: string) {
@@ -171,4 +173,19 @@ export function setRepoHeader(pathMaybe?: string) {
 export function resetRepoHeader() {
     if (repoTitleEl) setText(repoTitleEl, 'Click to open Repo');
     if (repoBranchEl) setText(repoBranchEl, 'No repo open');
+}
+
+/** Update the small ahead/behind badge placed next to the History tab. */
+function renderAheadBehind() {
+    if (!aheadBehindEl) return;
+    const a = Number((state as any).ahead || 0);
+    const b = Number((state as any).behind || 0);
+    const show = (hasRepo() && (a > 0 || b > 0));
+    if (!show) {
+        aheadBehindEl.textContent = '';
+        aheadBehindEl.setAttribute('hidden', '');
+        return;
+    }
+    aheadBehindEl.textContent = `${a > 0 ? `↑${a}` : ''}${a > 0 && b > 0 ? ' ' : ''}${b > 0 ? `↓${b}` : ''}`;
+    aheadBehindEl.removeAttribute('hidden');
 }
