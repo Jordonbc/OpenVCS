@@ -93,6 +93,24 @@ impl GitSystem {
         }
     }
 
+    // Capture stdout even if the process exits with a non-zero status.
+    // Useful for commands like `git diff --no-index` which may return 1 when differences are found.
+    fn run_git_capture_any_exit<I, S>(cwd: Option<&Path>, args: I) -> Result<String>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut cmd = Command::new(GIT_COMMAND_NAME);
+        if let Some(c) = cwd { cmd.current_dir(c); }
+        let out = cmd
+            .args(args.into_iter().map(|s| s.as_ref().to_string()))
+            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()
+            .map_err(VcsError::Io)?;
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    }
+
     fn run_git_with_input<I, S>(cwd: Option<&Path>, args: I, input: &str) -> Result<()>
     where
         I: IntoIterator<Item = S>,
@@ -322,15 +340,19 @@ impl Vcs for GitSystem {
         let out = Self::run_git_capture(Some(&self.workdir), ["status", "--porcelain=v2"])?;
         let mut s = StatusSummary::default();
         for line in out.lines() {
-            if line.starts_with("1 ") {
+            if line.starts_with("? ") {
+                // Untracked file (porcelain v2)
+                s.untracked += 1;
+            } else if line.starts_with("1 ") {
+                // Ordinary changed entry: "1 XY ... <path>"
                 let code = &line[2..4];
                 match code {
-                    "??" => s.untracked += 1,
                     " M" | " T" | " D" | "MM" | "MT" | "MD" | "AM" | "AT" => s.modified += 1,
                     "M " | "T " | "A " => s.staged += 1,
                     _ => {}
                 }
             } else if line.starts_with("u ") {
+                // Unmerged/conflicted entry
                 s.conflicted += 1;
             }
         }
@@ -343,11 +365,15 @@ impl Vcs for GitSystem {
         let mut files = Vec::<FileEntry>::new();
 
         for line in out.lines() {
-            if line.starts_with("1 ") {
+            if line.starts_with("? ") {
+                // Untracked; token after "?" is the path
+                if let Some(path) = line.split_whitespace().last() {
+                    files.push(FileEntry { path: path.to_string(), status: "A".into(), hunks: Vec::new() });
+                }
+            } else if line.starts_with("1 ") {
                 // "1 XY ... <path>"
                 let xy = &line[2..4];
                 let status = match xy {
-                    "??" => "A",
                     " M" | "M " | "MM" | " T" | "T " => "M",
                     " D" | "D " => "D",
                     _ => "R?",
@@ -473,7 +499,7 @@ impl Vcs for GitSystem {
         // Only if the file exists, otherwise return empty
         let abs = if path.is_absolute() { path.to_path_buf() } else { self.workdir.join(path) };
         if abs.exists() {
-            let out_noindex = Self::run_git_capture(Some(&self.workdir), [
+            let out_noindex = Self::run_git_capture_any_exit(Some(&self.workdir), [
                 "diff", "--no-color", "--unified=3", "--no-index", "--",
                 "/dev/null", Self::path_str(&abs)?
             ])?;
