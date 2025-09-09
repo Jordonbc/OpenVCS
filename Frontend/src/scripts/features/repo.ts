@@ -136,8 +136,7 @@ export function renderList() {
       <input type="checkbox" class="pick" aria-label="Select file" ${picked ? 'checked' : ''} />
       <span class="status ${statusClass(f.status)}">${escapeHtml(f.status || '')}</span>
       <div class="file" title="${escapeHtml(f.path || '')}">${escapeHtml(f.path || '')}</div>
-      <span class="pick-mark" aria-hidden="true">✓</span>
-      <span class="badge">${statusLabel(f.status)}</span>`;
+      <span class="pick-mark" aria-hidden="true">✓</span>`;
         li.addEventListener('click', (e) => onFileClick(e as MouseEvent, f, i, files));
         li.addEventListener('mousedown', (e) => onFileMouseDown(e as MouseEvent, f, i, files, li));
         li.addEventListener('mouseenter', () => {

@@ -371,21 +371,29 @@ impl Vcs for GitSystem {
                     files.push(FileEntry { path: path.to_string(), status: "A".into(), hunks: Vec::new() });
                 }
             } else if line.starts_with("1 ") {
-                // "1 XY ... <path>"
+                // Ordinary changed entry: "1 XY ... <path>"
                 let xy = &line[2..4];
-                let status = match xy {
-                    " M" | "M " | "MM" | " T" | "T " => "M",
-                    " D" | "D " => "D",
-                    _ => "R?",
+                let x = xy.chars().nth(0).unwrap_or(' ');
+                let y = xy.chars().nth(1).unwrap_or(' ');
+                let is_mod = |c: char| c == 'M' || c == 'T';
+                let status = if x == 'A' || y == 'A' {
+                    "A"
+                } else if x == 'D' || y == 'D' {
+                    "D"
+                } else if is_mod(x) || is_mod(y) {
+                    "M"
+                } else {
+                    // Default to Modified for any other ordinary change combo
+                    "M"
                 }.to_string();
 
                 if let Some(path) = line.split_whitespace().last() {
                     files.push(FileEntry { path: path.to_string(), status, hunks: Vec::new() });
                 }
             } else if line.starts_with("2 ") {
-                // rename record; use new path
+                // Rename/copy record; mark as rename and use new path
                 if let Some(path) = line.split_whitespace().last() {
-                    files.push(FileEntry { path: path.to_string(), status: "R?".into(), hunks: Vec::new() });
+                    files.push(FileEntry { path: path.to_string(), status: "R".into(), hunks: Vec::new() });
                 }
             } else if line.starts_with("u ") {
                 // conflicted; last token is path
