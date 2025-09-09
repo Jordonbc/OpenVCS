@@ -81,6 +81,11 @@ export interface GlobalSettings {
         color_blind_mode?: string;
         recents_limit?: number;
     };
+    logging?: {
+        level?: 'trace'|'debug'|'info'|'warn'|'error'|string;
+        live_viewer?: boolean;
+        retain_archives?: number;
+    };
 }
 
 export interface RepoSettings {

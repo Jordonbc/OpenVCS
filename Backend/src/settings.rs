@@ -259,15 +259,21 @@ pub struct Logging {
     #[serde(default)] pub level: LogLevel,
     /// When true, show a live diagnostics pane in-app.
     #[serde(default)] pub live_viewer: bool,
+    /// How many archived logs to keep after rotation.
+    /// Use a serde default of 10 when the field is omitted in existing configs.
+    #[serde(default = "default_retain_archives")] pub retain_archives: u32,
 }
 impl Default for Logging {
     fn default() -> Self {
         Self {
             level: LogLevel::Info,
             live_viewer: false,
+            retain_archives: 10,
         }
     }
 }
+
+fn default_retain_archives() -> u32 { 10 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Network {
@@ -457,5 +463,9 @@ impl AppConfig {
 
         // UX
         self.ux.recents_limit = self.ux.recents_limit.clamp(1, 100);
+
+        // Logging
+        if self.logging.retain_archives == 0 { self.logging.retain_archives = 1; }
+        self.logging.retain_archives = self.logging.retain_archives.clamp(1, 100);
     }
 }

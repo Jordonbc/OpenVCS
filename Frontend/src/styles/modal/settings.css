@@ -101,3 +101,18 @@
     #settings-modal nav .seg-btn{ text-align: center; }
 }
 
+#settings-modal .help-tip {
+    position: relative;
+    display: inline-flex;
+    align-items: center; justify-content: center;
+    cursor: help; margin-left: .35rem;
+    width: 1.05rem; height: 1.05rem; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--muted); font-size: .7rem; font-weight: 700; line-height: 1;
+    user-select: none;
+    transition: background-color .12s, border-color .12s, color .12s;
+}
+#settings-modal .help-tip:hover,
+#settings-modal .help-tip:focus-visible {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+}

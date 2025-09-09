@@ -65,6 +65,7 @@ export function wireSettings() {
             cur.lfs = { enabled: true, concurrency: 4, bandwidth_kbps: 0, require_lock_before_edit: false, background_fetch_on_checkout: true };
             cur.performance = { graph_node_cap: 5000, progressive_render: true, gpu_accel: true, index_warm_on_open: true, background_index_on_battery: false };
             cur.ux = { ui_scale: 1.0, font_mono: 'monospace', vim_nav: false, color_blind_mode: 'none', recents_limit: 10 };
+            cur.logging = { level: 'info', live_viewer: false, retain_archives: 10 };
 
             await TAURI.invoke('set_global_settings', { cfg: cur });
             await loadSettingsIntoForm(modal);
@@ -141,6 +142,15 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         recents_limit: recentsLimit,
     };
 
+    // Logging
+    const keepRaw = get<HTMLInputElement>('#set-log-keep')?.value ?? '';
+    const keep = keepRaw.trim() === '' ? 10 : Math.max(1, Math.min(100, Number(keepRaw)));
+    o.logging = {
+        ...o.logging,
+        level: (get<HTMLSelectElement>('#set-log-level')?.value || 'info') as any,
+        retain_archives: keep,
+    };
+
     return o;
 }
 
@@ -192,4 +202,8 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elFm = get<HTMLInputElement>('#set-font-mono'); if (elFm) elFm.value = cfg.ux?.font_mono ?? 'monospace';
     const elVn = get<HTMLInputElement>('#set-vim-nav'); if (elVn) elVn.checked = !!cfg.ux?.vim_nav;
     const elCb = get<HTMLSelectElement>('#set-cb-mode'); if (elCb) elCb.value = toKebab(cfg.ux?.color_blind_mode);
+
+    // Logging
+    const elLvl = get<HTMLSelectElement>('#set-log-level'); if (elLvl) elLvl.value = toKebab(cfg.logging?.level || 'info');
+    const elKeep= get<HTMLInputElement>('#set-log-keep'); if (elKeep) elKeep.value = String(cfg.logging?.retain_archives ?? 10);
 }
