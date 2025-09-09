@@ -315,12 +315,7 @@ async function selectHistory(commit: any, index: number) {
               return `<div class="${cls}" data-idx="${i}"><span class="status ${statusClass(status)}">${escapeHtml(status)}</span><div class="file" title="${escapeHtml(f.path)}">${escapeHtml(f.path)}</div></div>`;
           }).join('')}
         </div>`;
-        const toolbar = `<div class="commit-tools" style="display:flex; gap:8px; align-items:center; padding:4px 0;">
-            <span style="opacity:.8">View:</span>
-            <button class="tbtn small" data-view="one" aria-pressed="true">One</button>
-            <button class="tbtn small" data-view="all" aria-pressed="false">All</button>
-        </div>`;
-        const right = `<div class="commit-right" style="flex:1; overflow:auto; padding-left: 8px; display:flex; flex-direction:column;">${toolbar}<div class="commit-content">${renderHunksReadonly(files[0].lines)}</div></div>`;
+        const right = `<div class="commit-right" style="flex:1; overflow:auto; padding-left: 8px; display:flex; flex-direction:column;"><div class="commit-content">${renderHunksReadonly(files[0].lines)}</div></div>`;
 
         diffEl.innerHTML = `
     <div class="hunk">
@@ -333,7 +328,6 @@ async function selectHistory(commit: any, index: number) {
 
         // Sidebar interactions
         const sideEl = diffEl.querySelector('.commit-files');
-        const contentWrap = diffEl.querySelector('.commit-right') as HTMLElement | null;
         const contentEl = diffEl.querySelector('.commit-content');
         if (sideEl && contentEl) {
             sideEl.querySelectorAll<HTMLElement>('.row').forEach(row => {
@@ -345,42 +339,6 @@ async function selectHistory(commit: any, index: number) {
                         (contentEl as HTMLElement).innerHTML = renderHunksReadonly(files[idx].lines);
                     }
                 });
-            });
-            // Toolbar: toggle One vs All
-            const btnOne = diffEl.querySelector('button[data-view="one"]') as HTMLButtonElement | null;
-            const btnAll = diffEl.querySelector('button[data-view="all"]') as HTMLButtonElement | null;
-            const setPressed = (one: boolean) => {
-                if (btnOne) btnOne.setAttribute('aria-pressed', one ? 'true' : 'false');
-                if (btnAll) btnAll.setAttribute('aria-pressed', one ? 'false' : 'true');
-            };
-            const renderAll = () => files.map((f, i) => {
-                const head = `<div class=\"hunk\"><div class=\"hline\"><div class=\"gutter\"></div><div class=\"code\"><button class=\"tbtn small\" data-toggle=\"${i}\" style=\"margin-right:6px\">▾</button>${escapeHtml(f.path)}</div></div></div>`;
-                const body = `<div class=\"file-body\" data-idx=\"${i}\">${renderHunksReadonly(f.lines)}</div>`;
-                return `<div class=\"file-block\" data-idx=\"${i}\">${head}${body}</div>`;
-            }).join('');
-            btnOne?.addEventListener('click', () => {
-                setPressed(true);
-                const active = sideEl.querySelector<HTMLElement>('.row.active');
-                const idx = Number(active?.getAttribute('data-idx') || '0');
-                (contentEl as HTMLElement).innerHTML = renderHunksReadonly(files[Math.max(0, Math.min(idx, files.length-1))].lines);
-                contentWrap?.scrollTo({ top: 0 });
-            });
-            btnAll?.addEventListener('click', () => {
-                setPressed(false);
-                (contentEl as HTMLElement).innerHTML = renderAll();
-                // Bind expand/collapse toggles
-                contentEl?.querySelectorAll<HTMLButtonElement>('button[data-toggle]').forEach(btn => {
-                    btn.addEventListener('click', (ev) => {
-                        ev.preventDefault();
-                        const idx = btn.getAttribute('data-toggle');
-                        const body = contentEl.querySelector<HTMLElement>(`.file-body[data-idx=\\"${idx}\\"]`);
-                        if (!body) return;
-                        const hidden = body.style.display === 'none';
-                        body.style.display = hidden ? '' : 'none';
-                        btn.textContent = hidden ? '▾' : '▸';
-                    });
-                });
-                contentWrap?.scrollTo({ top: 0 });
             });
         }
     } catch (e) {
