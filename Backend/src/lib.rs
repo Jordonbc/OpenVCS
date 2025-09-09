@@ -10,6 +10,7 @@ mod state;
 mod validate;
 mod settings;
 mod repo_settings;
+mod logging;
 
 #[cfg(feature = "with-git")]
 #[allow(unused_imports)]
@@ -57,18 +58,8 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app: &tauri::App<R>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    if std::env::var_os("RUST_LOG").is_none() {
-        // Show info globally; debug for your crates
-        std::env::set_var(
-            "RUST_LOG",
-            "info,openvcs_core=debug,openvcs_git=debug,openvcs_git_libgit2=debug"
-        );
-    }
-
-    // Pretty timestamps help
-    env_logger::Builder::from_default_env()
-        .format_timestamp_millis()
-        .init();
+    // Initialize logging
+    logging::init();
 
     // (Optional) prove the registry is populated at startup
     for b in backend_descriptor::list_backends() {
