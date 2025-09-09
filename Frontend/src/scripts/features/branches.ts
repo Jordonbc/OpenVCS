@@ -4,6 +4,7 @@ import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { state } from '../state/state';
 import { openModal } from '../ui/modals';
+import { buildCtxMenu } from '../lib/menu';
 import { renderList } from './repo';
 
 type Branch = { name: string; current?: boolean; kind?: { type?: string; remote?: string } };
@@ -96,6 +97,44 @@ export function bindBranchUI() {
     branchBtn?.addEventListener('click', (e) => {
         if (branchPop?.hidden) void openBranchPopover(); else closeBranchPopover();
         e.stopPropagation();
+    });
+
+    // Context menu on branch list entries
+    branchList?.addEventListener('contextmenu', async (ev) => {
+        const e = ev as MouseEvent;
+        const li = (e.target as HTMLElement).closest('li[data-branch]') as HTMLElement | null;
+        if (!li) return;
+        e.preventDefault();
+        const name = li.dataset.branch || '';
+        if (!name) return;
+        await loadBranches();
+        const x = e.clientX, y = e.clientY;
+        const cur = state.branch || '';
+        const b = (state.branches || []).find(br => br.name === name) as Branch | undefined;
+        const kind = b?.kind?.type?.toLowerCase() || 'local';
+        const items: { label: string; action: () => void }[] = [];
+        items.push({ label: 'Checkout', action: async () => {
+            try { if (TAURI.has) await TAURI.invoke('git_checkout_branch', { name }); await loadBranches(); notify(`Switched to ${name}`); renderList(); }
+            catch { notify('Checkout failed'); }
+        }});
+        items.push({ label: 'Merge into current…', action: async () => {
+            if (name === cur) { notify('Cannot merge a branch into itself'); return; }
+            const ok = window.confirm(`Merge '${name}' into '${cur}'?`);
+            if (!ok) return;
+            try { if (TAURI.has) await TAURI.invoke('git_merge_branch', { name }); notify(`Merged '${name}' into '${cur}'`); await Promise.allSettled([renderList(), loadBranches()]); }
+            catch { notify('Merge failed'); }
+        }});
+        if (kind !== 'remote') {
+            items.push({ label: '---', action: () => {} });
+            items.push({ label: 'Delete…', action: async () => {
+                if (name === cur) { notify('Cannot delete the current branch'); return; }
+                const ok = window.confirm(`Delete local branch '${name}'? This cannot be undone.`);
+                if (!ok) return;
+                try { if (TAURI.has) await TAURI.invoke('git_delete_branch', { name, force: false }); notify(`Deleted '${name}'`); await loadBranches(); }
+                catch { notify('Delete failed'); }
+            }});
+        }
+        buildCtxMenu(items, x, y);
     });
 
     document.addEventListener('click', (e) => {

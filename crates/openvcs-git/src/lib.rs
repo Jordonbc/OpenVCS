@@ -629,4 +629,21 @@ impl Vcs for GitSystem {
         Self::run_git(Some(&self.workdir), ["config", "--local", "user.name", name])?;
         Self::run_git(Some(&self.workdir), ["config", "--local", "user.email", email])
     }
+
+    fn delete_branch(&self, name: &str, force: bool) -> Result<()> {
+        // Guard: do not delete current branch
+        if let Ok(cur) = self.current_branch() {
+            if let Some(c) = cur { if c == name { return Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg: "cannot delete current branch".into() }); }}
+        }
+        if force {
+            Self::run_git(Some(&self.workdir), ["branch", "-D", name])
+        } else {
+            Self::run_git(Some(&self.workdir), ["branch", "-d", name])
+        }
+    }
+
+    fn merge_into_current(&self, name: &str) -> Result<()> {
+        // Perform a merge into the current branch. Let git promptless merge and return any conflicts as error output.
+        Self::run_git(Some(&self.workdir), ["merge", "--no-ff", name])
+    }
 }

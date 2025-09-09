@@ -424,6 +424,24 @@ pub fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(
 }
 
 #[tauri::command]
+pub fn git_delete_branch(state: State<'_, AppState>, name: String, force: Option<bool>) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() { return Err("Branch name cannot be empty".to_string()); }
+    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+    vcs.delete_branch(name, force.unwrap_or(false)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_merge_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() { return Err("Branch name cannot be empty".to_string()); }
+    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+    vcs.merge_into_current(name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn git_create_branch(
     state: State<'_, AppState>,
     name: String,

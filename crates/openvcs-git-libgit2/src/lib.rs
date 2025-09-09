@@ -241,4 +241,23 @@ impl Vcs for GitLibGit2 {
             Ok(())
         }).map_err(Self::map_err::<git2::Error>)
     }
+
+    fn delete_branch(&self, name: &str, _force: bool) -> Result<()> {
+        self.inner.with_repo(|repo| {
+            use git2 as g;
+            // Do not delete current branch
+            if let Ok(head) = repo.head() {
+                if head.is_branch() && head.shorthand() == Some(name) {
+                    return Err(g::Error::from_str("cannot delete current branch"));
+                }
+            }
+            let mut br = repo.find_branch(name, g::BranchType::Local)?;
+            br.delete()?;
+            Ok(())
+        }).map_err(Self::map_err::<git2::Error>)
+    }
+
+    fn merge_into_current(&self, _name: &str) -> Result<()> {
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
 }
