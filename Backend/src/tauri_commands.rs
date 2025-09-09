@@ -450,6 +450,16 @@ pub fn git_diff_file(state: State<'_, AppState>, path: String) -> Result<Vec<Str
     vcs.diff_file(&PathBuf::from(path)).map_err(|e| e.to_string())
 }
 
+/* ---------- git_diff_commit ---------- */
+#[tauri::command]
+pub fn git_diff_commit(state: State<'_, AppState>, id: String) -> Result<Vec<String>, String> {
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+    vcs.diff_commit(&id).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn git_discard_paths(state: State<'_, AppState>, paths: Vec<String>) -> Result<(), String> {
     use std::path::PathBuf;

@@ -520,6 +520,14 @@ impl Vcs for GitSystem {
         Ok(Vec::new())
     }
 
+    fn diff_commit(&self, rev: &str) -> Result<Vec<String>> {
+        // Show patch only; no commit header/body
+        let out = Self::run_git_capture(Some(&self.workdir), [
+            "show", "--no-color", "--unified=3", "--format=", rev
+        ])?;
+        Ok(out.trim_end().lines().map(|l| l.to_string()).collect())
+    }
+
     fn stage_patch(&self, patch: &str) -> Result<()> {
         // Apply patch to the index only; do not touch working tree
         // We rely on Git to validate and reject invalid hunks.

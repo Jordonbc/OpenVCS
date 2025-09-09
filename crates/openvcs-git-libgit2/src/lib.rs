@@ -208,6 +208,10 @@ impl Vcs for GitLibGit2 {
         self.inner.diff_file(path).map_err(Self::map_err)
     }
 
+    fn diff_commit(&self, rev: &str) -> Result<Vec<String>> {
+        self.inner.diff_commit(rev).map_err(Self::map_err)
+    }
+
     fn stage_patch(&self, _patch: &str) -> Result<()> {
         // Not implemented yet for libgit2 backend.
         Err(VcsError::Unsupported(GIT_LIBGIT2_ID))

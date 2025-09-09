@@ -83,6 +83,8 @@ pub trait Vcs: Send + Sync {
     /// 2) Fallback to index vs HEAD (staged)
     /// 3) Include untracked as additions
     fn diff_file(&self, path: &Path) -> Result<Vec<String>>;
+    /// Unified diff for a specific commit (vs its first parent, or empty tree if none).
+    fn diff_commit(&self, rev: &str) -> Result<Vec<String>>;
 
     /// Stage a unified-diff patch directly into the index (partial commit support).
     /// Backends may return `VcsError::Unsupported` if not implemented.

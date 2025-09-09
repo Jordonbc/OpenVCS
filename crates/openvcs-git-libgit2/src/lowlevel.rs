@@ -824,6 +824,29 @@ impl Git {
         })
     }
 
+    pub fn diff_commit(&self, rev: &str) -> Result<Vec<String>> {
+        self.with_repo(|repo| -> Result<Vec<String>> {
+            use git2 as g;
+            let oid = g::Oid::from_str(rev)?;
+            let commit = repo.find_commit(oid)?;
+            let tree = commit.tree()?;
+
+            // Parent (first) or empty tree for root commit
+            let parent_tree = if commit.parent_count() > 0 {
+                commit.parent(0)?.tree()?
+            } else {
+                let tb = repo.treebuilder(None)?;
+                let empty = tb.write()?;
+                repo.find_tree(empty)?
+            };
+
+            let mut opts = g::DiffOptions::new();
+            opts.context_lines(3);
+            let diff = repo.diff_tree_to_tree(Some(&parent_tree), Some(&tree), Some(&mut opts))?;
+            collect_patch_lines(&diff)
+        })
+    }
+
     pub fn diff_file(&self, any_path: &Path) -> Result<Vec<String>> {
         self.with_repo(|repo| -> Result<Vec<String>> {
             // Repo-relative path
