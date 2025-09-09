@@ -8,6 +8,7 @@ use crate::utilities::utilities;
 use crate::validate;
 
 use openvcs_core::{OnEvent, models::{BranchItem, StatusPayload, CommitItem}, Repo, BackendId, backend_id};
+use serde::Serialize;
 use openvcs_core::backend_descriptor::{get_backend, list_backends};
 use openvcs_core::models::{VcsEvent};
 use crate::settings::AppConfig;
@@ -371,6 +372,31 @@ pub fn git_log(
     };
 
     vcs.log_commits(&q).map_err(|e| e.to_string())
+}
+
+/* ---------- git_head_status ---------- */
+#[derive(Serialize)]
+pub struct HeadStatus {
+    pub detached: bool,
+    pub branch: Option<String>,
+    pub commit: Option<String>,
+}
+
+#[tauri::command]
+pub fn git_head_status(state: State<'_, AppState>) -> Result<HeadStatus, String> {
+    use openvcs_core::models::LogQuery;
+
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+
+    let branch = vcs.current_branch().map_err(|e| e.to_string())?;
+    let q = LogQuery { rev: Some("HEAD".into()), limit: 1, ..Default::default() };
+    let head = vcs.log_commits(&q).map_err(|e| e.to_string())?;
+    let commit = head.get(0).map(|c| c.id.clone());
+
+    Ok(HeadStatus { detached: branch.is_none(), branch, commit })
 }
 
 /* ---------- optional: branch ops used by your JS ---------- */

@@ -260,6 +260,49 @@ impl Vcs for GitSystem {
     }
 
     fn checkout_branch(&self, name: &str) -> Result<()> {
+        // 1) If local branch exists, just checkout
+        if Self::run_git_capture(
+            Some(&self.workdir),
+            ["rev-parse", "--verify", "--quiet", &format!("refs/heads/{name}")],
+        ).is_ok() {
+            return Self::run_git(Some(&self.workdir), ["checkout", name]);
+        }
+
+        // 2) If a matching remote branch exists, create a local tracking branch and checkout
+        let try_remote = |remote_ref: &str, local_name: &str| -> Result<bool> {
+            if Self::run_git_capture(
+                Some(&self.workdir),
+                ["rev-parse", "--verify", "--quiet", remote_ref],
+            ).is_ok() {
+                // If local already exists under the derived name, just checkout it.
+                if Self::run_git_capture(
+                    Some(&self.workdir),
+                    ["rev-parse", "--verify", "--quiet", &format!("refs/heads/{local_name}")],
+                ).is_ok() {
+                    Self::run_git(Some(&self.workdir), ["checkout", local_name])?;
+                } else {
+                    // Create a local tracking branch from the remote
+                    // Equivalent to: git checkout -b <local_name> --track <remote_ref_short>
+                    let short = if let Some((_, s)) = remote_ref.split_once("refs/remotes/") { s } else { remote_ref };
+                    Self::run_git(Some(&self.workdir), ["checkout", "-b", local_name, "--track", short])?;
+                }
+                return Ok(true);
+            }
+            Ok(false)
+        };
+
+        // name may be like "origin/feature" (remote) or just "feature"
+        if let Some((_remote, rest)) = name.split_once('/') {
+            // refs/remotes/<name>
+            let remote_ref = format!("refs/remotes/{name}");
+            if try_remote(&remote_ref, rest)? { return Ok(()); }
+        } else {
+            // Try origin/<name> by default
+            let remote_ref = format!("refs/remotes/origin/{name}");
+            if try_remote(&remote_ref, name)? { return Ok(()); }
+        }
+
+        // 3) Fallback to a direct checkout (may detach if it's a commit)
         Self::run_git(Some(&self.workdir), ["checkout", name])
     }
 

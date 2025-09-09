@@ -104,6 +104,7 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_list_branches,
         tauri_commands::git_status,
         tauri_commands::git_log,
+        tauri_commands::git_head_status,
         tauri_commands::git_checkout_branch,
         tauri_commands::git_create_branch,
         tauri_commands::git_current_branch,
