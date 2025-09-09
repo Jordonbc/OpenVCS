@@ -23,11 +23,12 @@ async function loadBranches() {
         const branches = await TAURI.invoke<Branch[]>('git_list_branches');
         state.branches = Array.isArray(branches) ? branches : [];
 
-        const cur = await TAURI.invoke<string>('git_current_branch').catch(() => state.branch || '');
-        state.branch = cur || state.branch || '';
-
-        if (branchName) branchName.textContent = state.branch || '—';
-        if (repoBranchEl) repoBranchEl.textContent = state.branch || '—';
+        const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status');
+        if (head?.branch) state.branch = head.branch;
+        const short = (head?.commit || '').slice(0, 7);
+        const label = head?.detached ? `Detached HEAD ${short ? '(' + short + ')' : ''}` : (state.branch || '—');
+        if (branchName) branchName.textContent = label;
+        if (repoBranchEl) repoBranchEl.textContent = label;
 
         renderBranches();
         setBranchUIEnabled(!!state.branch);

@@ -355,14 +355,14 @@ export async function hydrateBranches() {
     if (!TAURI.has) return;
     try {
         const list = await TAURI.invoke<any[]>('git_list_branches');
-        const current = await TAURI.invoke<string>('git_current_branch').catch(() => '');
+        const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status').catch(() => ({ detached: false } as any));
 
         const has = Array.isArray(list) && list.length > 0;
         state.hasRepo = state.hasRepo || has; // don’t flip to false if another hydrate confirms true
 
         if (has) {
             state.branches = list as any;
-            state.branch = current || (list.find((b: any) => b.current)?.name) || state.branch || 'main';
+            state.branch = (head as any)?.branch || (list.find((b: any) => b.current)?.name) || state.branch || 'main';
             window.dispatchEvent(new CustomEvent('app:branches-updated'));
         }
     } catch (e) {
