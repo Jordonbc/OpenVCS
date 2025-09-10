@@ -433,6 +433,17 @@ pub fn git_delete_branch(state: State<'_, AppState>, name: String, force: Option
 }
 
 #[tauri::command]
+pub fn git_rename_branch(state: State<'_, AppState>, old_name: String, new_name: String) -> Result<(), String> {
+    let old = old_name.trim();
+    let newn = new_name.trim();
+    if old.is_empty() || newn.is_empty() { return Err("Branch name cannot be empty".into()); }
+    if old == newn { return Ok(()); }
+    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+    vcs.rename_branch(old, newn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn git_merge_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let name = name.trim();
     if name.is_empty() { return Err("Branch name cannot be empty".to_string()); }

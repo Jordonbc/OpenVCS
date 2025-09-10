@@ -1,0 +1,28 @@
+<!-- Rename Branch modal -->
+<div class="modal" id="rename-branch-modal" aria-hidden="true">
+  <div class="backdrop"></div>
+  <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="rename-branch-title">
+    <div class="sheet-head">
+      <h3 id="rename-branch-title" style="margin:0">Rename Branch</h3>
+      <button class="tbtn" data-close aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <form id="rename-branch-form" class="panel-form" onsubmit="return false;">
+        <div class="row">
+          <label for="rename-branch-current">Current name</label>
+          <input id="rename-branch-current" type="text" readonly />
+        </div>
+        <div class="row">
+          <label for="rename-branch-name">New name</label>
+          <input id="rename-branch-name" type="text" placeholder="e.g. feature/new-name" />
+        </div>
+      </form>
+    </div>
+    <div class="sheet-actions" style="display:flex; gap:.5rem; justify-content:flex-end;">
+      <button class="tbtn" data-close type="button">Cancel</button>
+      <button class="tbtn primary" id="rename-branch-confirm" type="button" disabled>Rename</button>
+    </div>
+  </div>
+  
+</div>
+

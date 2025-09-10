@@ -4,6 +4,7 @@ import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { state } from '../state/state';
 import { openModal } from '../ui/modals';
+import { openRenameBranch } from './renameBranch';
 import { buildCtxMenu } from '../lib/menu';
 import { renderList } from './repo';
 
@@ -127,6 +128,7 @@ export function bindBranchUI() {
         }});
         if (kind !== 'remote') {
             items.push({ label: '---', action: () => {} });
+            items.push({ label: 'Rename…', action: () => openRenameBranch(name) });
             items.push({ label: wantForce ? 'Force delete…' : 'Delete…', action: async () => {
                 if (name === cur) { notify('Cannot delete the current branch'); return; }
                 const ok = window.confirm(`${wantForce ? 'Force delete' : 'Delete'} local branch '${name}'? This cannot be undone.`);
