@@ -112,6 +112,7 @@ export function bindBranchUI() {
         const cur = state.branch || '';
         const b = (state.branches || []).find(br => br.name === name) as Branch | undefined;
         const kind = b?.kind?.type?.toLowerCase() || 'local';
+        const wantForce = Boolean(e.shiftKey);
         const items: { label: string; action: () => void }[] = [];
         items.push({ label: 'Checkout', action: async () => {
             try { if (TAURI.has) await TAURI.invoke('git_checkout_branch', { name }); await loadBranches(); notify(`Switched to ${name}`); renderList(); }
@@ -126,12 +127,26 @@ export function bindBranchUI() {
         }});
         if (kind !== 'remote') {
             items.push({ label: '---', action: () => {} });
-            items.push({ label: 'Delete…', action: async () => {
+            items.push({ label: wantForce ? 'Force delete…' : 'Delete…', action: async () => {
                 if (name === cur) { notify('Cannot delete the current branch'); return; }
-                const ok = window.confirm(`Delete local branch '${name}'? This cannot be undone.`);
+                const ok = window.confirm(`${wantForce ? 'Force delete' : 'Delete'} local branch '${name}'? This cannot be undone.`);
                 if (!ok) return;
-                try { if (TAURI.has) await TAURI.invoke('git_delete_branch', { name, force: false }); notify(`Deleted '${name}'`); await loadBranches(); }
-                catch { notify('Delete failed'); }
+                try {
+                    if (TAURI.has) await TAURI.invoke('git_delete_branch', { name, force: wantForce });
+                    notify(`${wantForce ? 'Force-deleted' : 'Deleted'} '${name}'`);
+                    await loadBranches();
+                } catch (e) {
+                    const msg = String(e || '');
+                    if (wantForce) { notify(`Force delete failed${msg ? `: ${msg}` : ''}`); return; }
+                    // If not fully merged, offer force delete as a fallback
+                    const ok2 = window.confirm(`Delete failed${msg ? `: ${msg}` : ''}.\n\nForce delete '${name}' anyway? This cannot be undone.`);
+                    if (!ok2) { notify('Delete cancelled'); return; }
+                    try {
+                        if (TAURI.has) await TAURI.invoke('git_delete_branch', { name, force: true });
+                        notify(`Force-deleted '${name}'`);
+                        await loadBranches();
+                    } catch { notify('Force delete failed'); }
+                }
             }});
         }
         buildCtxMenu(items, x, y);
