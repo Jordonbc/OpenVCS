@@ -48,6 +48,15 @@
                     </div>
 
                     <div class="group">
+                        <label for="set-default-backend">Default Backend
+                            <span class="help-tip" title="Default VCS used for new repositories. Future-proof for multiple VCS.">?</span>
+                        </label>
+                        <select id="set-default-backend">
+                            <option value="git">Git</option>
+                        </select>
+                    </div>
+
+                    <div class="group">
                         <label for="set-update-channel">Update channel
                             <span class="help-tip" title="Stable is recommended. Beta/Nightly receive newer features sooner.">?</span>
                         </label>
@@ -79,7 +88,7 @@
                 <!-- Git -->
                 <form class="panel-form hidden" data-panel="git">
                     <div class="group">
-                        <label for="set-git-backend">Backend
+                        <label for="set-git-backend">Git Backend
                             <span class="help-tip" title="Choose Git implementation. System uses your installed git; Libgit2 uses embedded library.">?</span>
                         </label>
                         <select id="set-git-backend">

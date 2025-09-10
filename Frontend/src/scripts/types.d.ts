@@ -33,6 +33,7 @@ export interface GlobalSettings {
     general?: {
         theme?: 'system'|'dark'|'light';
         language?: string;
+        default_backend?: 'git'|string;
         update_channel?: string;
         reopen_last_repos?: boolean;
         checks_on_launch?: boolean;

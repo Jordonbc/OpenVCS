@@ -45,6 +45,7 @@ impl Default for AppConfig {
 pub struct General {
     #[serde(default)] pub theme: Theme,
     #[serde(default)] pub language: Language,
+    #[serde(default)] pub default_backend: DefaultBackend,
     #[serde(default)] pub update_channel: UpdateChannel,
     #[serde(default)] pub reopen_last_repos: bool,
     #[serde(default)] pub checks_on_launch: bool,
@@ -56,6 +57,7 @@ impl Default for General {
         Self {
             theme: Theme::System,
             language: Language::System,
+            default_backend: DefaultBackend::Git,
             update_channel: UpdateChannel::Stable,
             reopen_last_repos: true,
             checks_on_launch: true,
@@ -310,6 +312,11 @@ impl Default for UpdateChannel { fn default() -> Self { UpdateChannel::Stable } 
 #[serde(rename_all = "kebab-case")]
 pub enum GitBackend { System, Libgit2 }
 impl Default for GitBackend { fn default() -> Self { GitBackend::System } }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum DefaultBackend { Git }
+impl Default for DefaultBackend { fn default() -> Self { DefaultBackend::Git } }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
