@@ -96,6 +96,12 @@ pub trait Vcs: Send + Sync {
     /// Apply a reverse patch to discard selected hunks (should update index and worktree when possible).
     fn apply_reverse_patch(&self, patch: &str) -> Result<()>;
 
+    // branches
+    fn delete_branch(&self, name: &str, force: bool) -> Result<()>;
+    /// Merge the given branch into the current HEAD. Implementations may return
+    /// `VcsError::Unsupported` if not available.
+    fn merge_into_current(&self, name: &str) -> Result<()>;
+
     // recovery
     fn hard_reset_head(&self) -> Result<()>;
 
