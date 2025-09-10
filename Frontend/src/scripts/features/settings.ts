@@ -60,7 +60,7 @@ export function wireSettings() {
             const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
 
             cur.general = { theme: 'system', language: 'system', update_channel: 'stable', reopen_last_repos: true, checks_on_launch: true, telemetry: false, crash_reports: false };
-            cur.git = { backend: 'git-system', default_branch: 'main', auto_fetch: true, auto_fetch_minutes: 30, prune_on_fetch: true, watcher_debounce_ms: 300, large_repo_threshold_mb: 500, allow_hooks: 'ask', respect_core_autocrlf: true };
+            cur.git = { backend: 'system', default_branch: 'main', auto_fetch: true, auto_fetch_minutes: 30, prune_on_fetch: true, watcher_debounce_ms: 300, large_repo_threshold_mb: 500, allow_hooks: 'ask', respect_core_autocrlf: true };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, bandwidth_kbps: 0, require_lock_before_edit: false, background_fetch_on_checkout: true };
             cur.performance = { graph_node_cap: 5000, progressive_render: true, gpu_accel: true, index_warm_on_open: true, background_index_on_battery: false };
@@ -170,8 +170,12 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elChk   = get<HTMLInputElement>('#set-checks-on-launch'); if (elChk) elChk.checked = !!cfg.general?.checks_on_launch;
     const elRl    = get<HTMLInputElement>('#set-recents-limit'); if (elRl) elRl.value = String(cfg.ux?.recents_limit ?? 10);
 
-    const backend = toKebab(cfg.git?.backend);
-    const elGb = get<HTMLSelectElement>('#set-git-backend'); if (elGb) elGb.value = backend === 'libgit2' ? 'libgit2' : 'git-system';
+    const backend = toKebab(cfg.git?.backend) || 'system';
+    const elGb = get<HTMLSelectElement>('#set-git-backend');
+    if (elGb) {
+        // Map to enum string values used by backend settings
+        elGb.value = backend === 'libgit2' ? 'libgit2' : 'system';
+    }
     const elAf = get<HTMLInputElement>('#set-auto-fetch'); if (elAf) elAf.checked = !!cfg.git?.auto_fetch;
     const elAfm= get<HTMLInputElement>('#set-auto-fetch-minutes'); if (elAfm) elAfm.value = String(cfg.git?.auto_fetch_minutes ?? 0);
     const elPr = get<HTMLInputElement>('#set-prune-on-fetch'); if (elPr) elPr.checked = !!cfg.git?.prune_on_fetch;

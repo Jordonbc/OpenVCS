@@ -40,7 +40,7 @@ export interface GlobalSettings {
         crash_reports?: boolean;
     };
     git?: {
-        backend?: 'git-system'|'libgit2'|string;
+        backend?: 'system'|'libgit2'|string;
         default_branch?: string;
         auto_fetch?: boolean;
         auto_fetch_minutes?: number;
