@@ -32,14 +32,34 @@ fn build_file_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu
     let open_item  = MenuItem::with_id(app, "open_repo",  "Switch…", true, Some("Ctrl+R"))?;
     let prefs_item = MenuItem::with_id(app, "settings", "Preferences…", true, Some("Ctrl+P"))?;
 
-    menu::SubmenuBuilder::new(app, "File")
-        .item(&clone_item)
-        .item(&add_item)
-        .item(&open_item)
-        .separator()
-        .item(&menu::PredefinedMenuItem::quit(app, None)?)
-        .item(&prefs_item)
-        .build()
+    // macOS: keep native Quit in the App/File menu
+    #[cfg(target_os = "macos")]
+    {
+        return menu::SubmenuBuilder::new(app, "File")
+            .item(&clone_item)
+            .item(&add_item)
+            .item(&open_item)
+            .separator()
+            .item(&prefs_item)
+            .separator()
+            .item(&menu::PredefinedMenuItem::quit(app, None)?)
+            .build();
+    }
+
+    // Other platforms: add explicit "Exit" item
+    #[cfg(not(target_os = "macos"))]
+    {
+        let exit_item = MenuItem::with_id(app, "exit", "Exit", true, None::<&str>)?;
+        return menu::SubmenuBuilder::new(app, "File")
+            .item(&clone_item)
+            .item(&add_item)
+            .item(&open_item)
+            .separator()
+            .item(&prefs_item)
+            .separator()
+            .item(&exit_item)
+            .build();
+    }
 }
 
 /// ----- Edit -----
@@ -97,6 +117,10 @@ fn build_help_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu
 pub fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: MenuEvent) {
     let id = event.id().0.to_string();
     match id.as_str() {
+        "exit" => {
+            // Gracefully exit the application
+            app.exit(0);
+        }
         "docs" => {
             let _ = app.opener().open_url(WIKI_URL, None::<&str>);
         }
