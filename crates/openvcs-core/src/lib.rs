@@ -98,6 +98,8 @@ pub trait Vcs: Send + Sync {
 
     // branches
     fn delete_branch(&self, name: &str, force: bool) -> Result<()>;
+    /// Rename a local branch from `old` to `new`.
+    fn rename_branch(&self, old: &str, new: &str) -> Result<()>;
     /// Merge the given branch into the current HEAD. Implementations may return
     /// `VcsError::Unsupported` if not available.
     fn merge_into_current(&self, name: &str) -> Result<()>;

@@ -651,6 +651,16 @@ impl Vcs for GitSystem {
         }
     }
 
+    fn rename_branch(&self, old: &str, new: &str) -> Result<()> {
+        let old = old.trim();
+        let new = new.trim();
+        if old.is_empty() || new.is_empty() {
+            return Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg: "branch names cannot be empty".into() });
+        }
+        // Use git's builtin rename which preserves upstream/tracking when possible
+        Self::run_git(Some(&self.workdir), ["branch", "-m", old, new])
+    }
+
     fn merge_into_current(&self, name: &str) -> Result<()> {
         // Perform a merge into the current branch. Let git promptless merge and return any conflicts as error output.
         Self::run_git(Some(&self.workdir), ["merge", "--no-ff", name])

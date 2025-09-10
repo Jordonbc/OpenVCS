@@ -257,6 +257,15 @@ impl Vcs for GitLibGit2 {
         }).map_err(Self::map_err::<git2::Error>)
     }
 
+    fn rename_branch(&self, old: &str, new: &str) -> Result<()> {
+        self.inner.with_repo(|repo| {
+            use git2 as g;
+            let mut br = repo.find_branch(old, g::BranchType::Local)?;
+            br.rename(new, false)?; // do not force; let libgit2 report conflicts
+            Ok(())
+        }).map_err(Self::map_err::<git2::Error>)
+    }
+
     fn merge_into_current(&self, _name: &str) -> Result<()> {
         Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
     }

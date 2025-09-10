@@ -1,8 +1,11 @@
-use tauri::{async_runtime, menu, Emitter};
+use tauri::{async_runtime, menu, Emitter, Manager};
 use tauri::menu::{Menu, MenuBuilder, MenuEvent, MenuItem};
 use tauri_plugin_opener::OpenerExt;
 
 use crate::utilities::utilities;
+use crate::state::AppState;
+use std::fs::OpenOptions;
+use std::path::PathBuf;
 
 const WIKI_URL: &str = "https://github.com/jordonbc/OpenVCS/wiki";
 
@@ -29,14 +32,34 @@ fn build_file_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu
     let open_item  = MenuItem::with_id(app, "open_repo",  "Switch…", true, Some("Ctrl+R"))?;
     let prefs_item = MenuItem::with_id(app, "settings", "Preferences…", true, Some("Ctrl+P"))?;
 
-    menu::SubmenuBuilder::new(app, "File")
-        .item(&clone_item)
-        .item(&add_item)
-        .item(&open_item)
-        .separator()
-        .item(&menu::PredefinedMenuItem::quit(app, None)?)
-        .item(&prefs_item)
-        .build()
+    // macOS: keep native Quit in the App/File menu
+    #[cfg(target_os = "macos")]
+    {
+        return menu::SubmenuBuilder::new(app, "File")
+            .item(&clone_item)
+            .item(&add_item)
+            .item(&open_item)
+            .separator()
+            .item(&prefs_item)
+            .separator()
+            .item(&menu::PredefinedMenuItem::quit(app, None)?)
+            .build();
+    }
+
+    // Other platforms: add explicit "Exit" item
+    #[cfg(not(target_os = "macos"))]
+    {
+        let exit_item = MenuItem::with_id(app, "exit", "Exit", true, None::<&str>)?;
+        return menu::SubmenuBuilder::new(app, "File")
+            .item(&clone_item)
+            .item(&add_item)
+            .item(&open_item)
+            .separator()
+            .item(&prefs_item)
+            .separator()
+            .item(&exit_item)
+            .build();
+    }
 }
 
 /// ----- Edit -----
@@ -66,10 +89,15 @@ fn build_repository_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Resul
     let push_item   = MenuItem::with_id(app, "push",   "Push",   true, Some("Ctrl+P"))?;
     let commit_item = MenuItem::with_id(app, "commit", "Commit", true, Some("Ctrl+Enter"))?;
     let repo_settings_item = MenuItem::with_id(app, "repo-settings", "Repository Settings", true, None::<&str>)?;
+    let edit_gitignore_item = MenuItem::with_id(app, "repo-edit-gitignore", "Edit .gitignore", true, None::<&str>)?;
+    let edit_gitattributes_item = MenuItem::with_id(app, "repo-edit-gitattributes", "Edit .gitattributes", true, None::<&str>)?;
     menu::SubmenuBuilder::new(app, "Repository")
         .item(&fetch_item)
         .item(&push_item)
         .item(&commit_item)
+        .separator()
+        .item(&edit_gitignore_item)
+        .item(&edit_gitattributes_item)
         .item(&repo_settings_item)
         .build()
 }
@@ -89,8 +117,18 @@ fn build_help_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu
 pub fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: MenuEvent) {
     let id = event.id().0.to_string();
     match id.as_str() {
+        "exit" => {
+            // Gracefully exit the application
+            app.exit(0);
+        }
         "docs" => {
             let _ = app.opener().open_url(WIKI_URL, None::<&str>);
+        }
+        "repo-edit-gitignore" => {
+            open_repo_dotfile(app, ".gitignore");
+        }
+        "repo-edit-gitattributes" => {
+            open_repo_dotfile(app, ".gitattributes");
         }
         "add_repo" => {
             let app_cloned = app.clone();
@@ -118,4 +156,31 @@ pub fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: Me
             let _ = app.emit("menu", id);
         }
     }
+}
+
+/// Open or create a repository dotfile in the user's default editor.
+fn open_repo_dotfile<R: tauri::Runtime>(app: &tauri::AppHandle<R>, name: &str) {
+    // Resolve current repo path from managed state
+    let state = app.state::<AppState>();
+    let root = match state.current_repo() {
+        Some(repo) => repo.inner().workdir().to_path_buf(),
+        None => {
+            let _ = app.emit("ui:notify", "No repository selected");
+            return;
+        }
+    };
+
+    let mut path = PathBuf::from(root);
+    path.push(name);
+
+    // Ensure the file exists (create if missing)
+    if !path.exists() {
+        let _ = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&path);
+    }
+
+    // Open with system default editor/handler
+    let _ = app.opener().open_path(path.to_string_lossy().to_string(), None::<&str>);
 }
