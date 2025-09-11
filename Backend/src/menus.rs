@@ -136,13 +136,13 @@ pub fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: Me
 }
 
 /// Open or create a repository dotfile in the user's default editor.
-fn open_repo_dotfile<R: tauri::Runtime>(app: &tauri::AppHandle<R>, name: &str) {
+fn open_repo_dotfile<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>, name: &str) {
     // Resolve current repo path from managed state
-    let state = app.state::<AppState>();
+    let state = app_handle.state::<AppState>();
     let root = match state.current_repo() {
         Some(repo) => repo.inner().workdir().to_path_buf(),
         None => {
-            let _ = app.emit("ui:notify", "No repository selected");
+            let _ = app_handle.emit("ui:notify", "No repository selected");
             return;
         }
     };
@@ -159,5 +159,5 @@ fn open_repo_dotfile<R: tauri::Runtime>(app: &tauri::AppHandle<R>, name: &str) {
     }
 
     // Open with system default editor/handler
-    let _ = app.opener().open_path(path.to_string_lossy().to_string(), None::<&str>);
+    let _ = app_handle.opener().open_path(path.to_string_lossy().to_string(), None::<&str>);
 }
