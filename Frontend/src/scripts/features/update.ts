@@ -48,11 +48,12 @@ export async function showUpdateDialog(_data: any) {
     if (channel === 'stable') {
       if (newerThanCurrent(stableTag)) { show = true; pick = stable; }
     } else {
-      // Nightly: pick the most recent by published_at timestamp
+      // Nightly: pick the most recent by published_at timestamp and ensure it's newer than current
       const sDate = Date.parse(String(stable?.published_at || stable?.created_at || '')) || 0;
       const nDate = Date.parse(String(nightly?.published_at || nightly?.created_at || '')) || 0;
       pick = (nDate > sDate ? nightly : stable) || nightly || stable;
-      show = !!pick;
+      const pickTag = norm(pick?.tag_name || pick?.name || '');
+      show = newerThanCurrent(pickTag);
     }
 
     if (!show || !pick) { notify('Already up to date'); return; }
