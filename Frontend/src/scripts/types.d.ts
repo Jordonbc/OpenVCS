@@ -33,6 +33,7 @@ export interface GlobalSettings {
     general?: {
         theme?: 'system'|'dark'|'light';
         language?: string;
+        default_backend?: 'git'|string;
         update_channel?: string;
         reopen_last_repos?: boolean;
         checks_on_launch?: boolean;
@@ -40,13 +41,9 @@ export interface GlobalSettings {
         crash_reports?: boolean;
     };
     git?: {
-        backend?: 'git-system'|'libgit2'|string;
+        backend?: 'system'|'libgit2'|string;
         default_branch?: string;
-        auto_fetch?: boolean;
-        auto_fetch_minutes?: number;
         prune_on_fetch?: boolean;
-        watcher_debounce_ms?: number;
-        large_repo_threshold_mb?: number;
         allow_hooks?: string;
         respect_core_autocrlf?: boolean;
     };
@@ -63,16 +60,12 @@ export interface GlobalSettings {
     lfs?: {
         enabled?: boolean;
         concurrency?: number;
-        bandwidth_kbps?: number;
         require_lock_before_edit?: boolean;
         background_fetch_on_checkout?: boolean;
     };
     performance?: {
-        graph_node_cap?: number;
         progressive_render?: boolean;
         gpu_accel?: boolean;
-        index_warm_on_open?: boolean;
-        background_index_on_battery?: boolean;
     };
     ux?: {
         ui_scale?: number;

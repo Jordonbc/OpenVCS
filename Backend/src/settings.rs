@@ -45,6 +45,7 @@ impl Default for AppConfig {
 pub struct General {
     #[serde(default)] pub theme: Theme,
     #[serde(default)] pub language: Language,
+    #[serde(default)] pub default_backend: DefaultBackend,
     #[serde(default)] pub update_channel: UpdateChannel,
     #[serde(default)] pub reopen_last_repos: bool,
     #[serde(default)] pub checks_on_launch: bool,
@@ -56,6 +57,7 @@ impl Default for General {
         Self {
             theme: Theme::System,
             language: Language::System,
+            default_backend: DefaultBackend::Git,
             update_channel: UpdateChannel::Stable,
             reopen_last_repos: true,
             checks_on_launch: true,
@@ -70,11 +72,7 @@ pub struct Git {
     #[serde(default)] pub backend: GitBackend,
     /// Default branch name used when creating new repos or inferring defaults
     #[serde(default)] pub default_branch: String,
-    #[serde(default)] pub auto_fetch: bool,
-    #[serde(default)] pub auto_fetch_minutes: u32,
     #[serde(default)] pub prune_on_fetch: bool,
-    #[serde(default)] pub watcher_debounce_ms: u32,
-    #[serde(default)] pub large_repo_threshold_mb: u32,
     #[serde(default)] pub allow_hooks: HookPolicy,
     #[serde(default)] pub respect_core_autocrlf: bool,
 }
@@ -83,11 +81,7 @@ impl Default for Git {
         Self {
             backend: GitBackend::System,
             default_branch: "main".into(),
-            auto_fetch: true,
-            auto_fetch_minutes: 30,
             prune_on_fetch: true,
-            watcher_debounce_ms: 300,
-            large_repo_threshold_mb: 500,
             allow_hooks: HookPolicy::Ask,
             respect_core_autocrlf: true,
         }
@@ -148,7 +142,6 @@ impl Default for Diff {
 pub struct Lfs {
     #[serde(default)] pub enabled: bool,
     #[serde(default)] pub concurrency: u8,
-    #[serde(default)] pub bandwidth_kbps: u32, // 0 = unlimited
     #[serde(default)] pub require_lock_before_edit: bool,
     #[serde(default)] pub background_fetch_on_checkout: bool,
 }
@@ -157,7 +150,6 @@ impl Default for Lfs {
         Self {
             enabled: true,
             concurrency: 4,
-            bandwidth_kbps: 0,
             require_lock_before_edit: false,
             background_fetch_on_checkout: true,
         }
@@ -166,20 +158,16 @@ impl Default for Lfs {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Performance {
-    #[serde(default)] pub graph_node_cap: u32,
     #[serde(default)] pub progressive_render: bool,
     #[serde(default)] pub gpu_accel: bool,
-    #[serde(default)] pub index_warm_on_open: bool,
-    #[serde(default)] pub background_index_on_battery: bool,
+    
 }
 impl Default for Performance {
     fn default() -> Self {
         Self {
-            graph_node_cap: 5000,
             progressive_render: true,
             gpu_accel: true,
-            index_warm_on_open: true,
-            background_index_on_battery: false,
+            
         }
     }
 }
@@ -313,6 +301,11 @@ impl Default for GitBackend { fn default() -> Self { GitBackend::System } }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+pub enum DefaultBackend { Git }
+impl Default for DefaultBackend { fn default() -> Self { DefaultBackend::Git } }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
 pub enum HookPolicy { Deny, Ask, Allow }
 impl Default for HookPolicy { fn default() -> Self { HookPolicy::Ask } }
 
@@ -441,9 +434,6 @@ impl AppConfig {
         // General: nothing to clamp right now.
 
         // Git
-        self.git.auto_fetch_minutes = self.git.auto_fetch_minutes.clamp(1, 720);
-        self.git.watcher_debounce_ms = self.git.watcher_debounce_ms.clamp(50, 10_000);
-        self.git.large_repo_threshold_mb = self.git.large_repo_threshold_mb.clamp(10, 10_000);
 
         // Diff
         self.diff.tab_width = self.diff.tab_width.clamp(1, 16);
@@ -453,7 +443,6 @@ impl AppConfig {
         self.lfs.concurrency = self.lfs.concurrency.clamp(1, 16);
 
         // Performance
-        self.performance.graph_node_cap = self.performance.graph_node_cap.clamp(1000, 200_000);
 
         // Network
         self.network.http_low_speed_time_secs =

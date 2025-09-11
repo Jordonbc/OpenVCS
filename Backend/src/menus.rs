@@ -1,4 +1,5 @@
 use tauri::{async_runtime, menu, Emitter, Manager};
+use tauri_plugin_updater::UpdaterExt;
 use tauri::menu::{Menu, MenuBuilder, MenuEvent, MenuItem};
 use tauri_plugin_opener::OpenerExt;
 
@@ -12,13 +13,11 @@ const WIKI_URL: &str = "https://github.com/jordonbc/OpenVCS/wiki";
 /// Builds all submenus and attaches the composed menu to the app.
 pub fn build_and_attach_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
     let file_menu = build_file_menu(app)?;
-    let edit_menu = build_edit_menu(app)?;
-    let view_menu = build_view_menu(app)?;
     let repo_menu = build_repository_menu(app)?;
     let help_menu = build_help_menu(app)?;
 
     let menu: Menu<R> = MenuBuilder::new(app)
-        .items(&[&file_menu, &edit_menu, &view_menu, &repo_menu, &help_menu])
+        .items(&[&file_menu, &repo_menu, &help_menu])
         .build()?;
 
     app.set_menu(menu)?;
@@ -28,19 +27,19 @@ pub fn build_and_attach_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::R
 /// ----- File -----
 fn build_file_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu::Submenu<R>> {
     let clone_item = MenuItem::with_id(app, "clone_repo", "Clone…", true, Some("Ctrl+Shift+C"))?;
-    let add_item   = MenuItem::with_id(app, "add_repo",   "Add Existing…", true, Some("Ctrl+O"))?;
-    let open_item  = MenuItem::with_id(app, "open_repo",  "Switch…", true, Some("Ctrl+R"))?;
-    let prefs_item = MenuItem::with_id(app, "settings", "Preferences…", true, Some("Ctrl+P"))?;
+    let add_repo_item   = MenuItem::with_id(app, "add_repo",   "Add Existing…", true, Some("Ctrl+O"))?;
+    let open_repo_item  = MenuItem::with_id(app, "open_repo",  "Switch…", true, Some("Ctrl+R"))?;
+    let settings_item = MenuItem::with_id(app, "settings", "Preferences…", true, Some("Ctrl+P"))?;
 
     // macOS: keep native Quit in the App/File menu
     #[cfg(target_os = "macos")]
     {
         return menu::SubmenuBuilder::new(app, "File")
             .item(&clone_item)
-            .item(&add_item)
-            .item(&open_item)
+            .item(&add_repo_item)
+            .item(&open_repo_item)
             .separator()
-            .item(&prefs_item)
+            .item(&settings_item)
             .separator()
             .item(&menu::PredefinedMenuItem::quit(app, None)?)
             .build();
@@ -52,35 +51,14 @@ fn build_file_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu
         let exit_item = MenuItem::with_id(app, "exit", "Exit", true, None::<&str>)?;
         return menu::SubmenuBuilder::new(app, "File")
             .item(&clone_item)
-            .item(&add_item)
-            .item(&open_item)
+            .item(&add_repo_item)
+            .item(&open_repo_item)
             .separator()
-            .item(&prefs_item)
+            .item(&settings_item)
             .separator()
             .item(&exit_item)
             .build();
     }
-}
-
-/// ----- Edit -----
-fn build_edit_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu::Submenu<R>> {
-    menu::SubmenuBuilder::new(app, "Edit")
-        .item(&menu::PredefinedMenuItem::undo(app, None)?)
-        .item(&menu::PredefinedMenuItem::redo(app, None)?)
-        .separator()
-        .item(&menu::PredefinedMenuItem::cut(app, None)?)
-        .item(&menu::PredefinedMenuItem::copy(app, None)?)
-        .item(&menu::PredefinedMenuItem::paste(app, None)?)
-        .item(&menu::PredefinedMenuItem::select_all(app, None)?)
-        .build()
-}
-
-/// ----- View -----
-fn build_view_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu::Submenu<R>> {
-    let toggle_theme = MenuItem::with_id(app, "toggle_theme", "Toggle Theme", true, Some("Ctrl+J"))?;
-    menu::SubmenuBuilder::new(app, "View")
-        .item(&toggle_theme)
-        .build()
 }
 
 /// ----- Repository -----
@@ -105,9 +83,11 @@ fn build_repository_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Resul
 /// ----- Help -----
 fn build_help_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu::Submenu<R>> {
     let docs_item  = MenuItem::with_id(app, "docs",  "Documentation", true, None::<&str>)?;
+    let updates_item = MenuItem::with_id(app, "check_updates", "Check for Updates…", true, None::<&str>)?;
     let about_item = MenuItem::with_id(app, "about", "About",         true, None::<&str>)?;
     menu::SubmenuBuilder::new(app, "Help")
         .item(&docs_item)
+        .item(&updates_item)
         .item(&about_item)
         .build()
 }
@@ -151,6 +131,27 @@ pub fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: Me
             // Tell the webview to open the Settings modal
             let _ = app.emit("ui:open-repo-settings", ());
         }
+        "check_updates" => {
+            let app_cloned = app.clone();
+            async_runtime::spawn(async move {
+                match app_cloned.updater() {
+                    Ok(updater) => match updater.check().await {
+                        Ok(Some(_u)) => {
+                            let _ = app_cloned.emit("ui:update-available", serde_json::json!({"source":"updater"}));
+                        }
+                        Ok(None) => {
+                            let _ = app_cloned.emit("ui:notify", "Already up to date");
+                        }
+                        Err(_) => {
+                            let _ = app_cloned.emit("ui:notify", "Update check failed");
+                        }
+                    },
+                    Err(_) => {
+                        let _ = app_cloned.emit("ui:notify", "Updater unavailable");
+                    }
+                }
+            });
+        }
         _ => {
             // Fallback: forward other menu IDs if you already rely on this
             let _ = app.emit("menu", id);
@@ -159,13 +160,13 @@ pub fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: Me
 }
 
 /// Open or create a repository dotfile in the user's default editor.
-fn open_repo_dotfile<R: tauri::Runtime>(app: &tauri::AppHandle<R>, name: &str) {
+fn open_repo_dotfile<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>, name: &str) {
     // Resolve current repo path from managed state
-    let state = app.state::<AppState>();
+    let state = app_handle.state::<AppState>();
     let root = match state.current_repo() {
         Some(repo) => repo.inner().workdir().to_path_buf(),
         None => {
-            let _ = app.emit("ui:notify", "No repository selected");
+            let _ = app_handle.emit("ui:notify", "No repository selected");
             return;
         }
     };
@@ -182,5 +183,5 @@ fn open_repo_dotfile<R: tauri::Runtime>(app: &tauri::AppHandle<R>, name: &str) {
     }
 
     // Open with system default editor/handler
-    let _ = app.opener().open_path(path.to_string_lossy().to_string(), None::<&str>);
+    let _ = app_handle.opener().open_path(path.to_string_lossy().to_string(), None::<&str>);
 }

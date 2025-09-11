@@ -41,19 +41,27 @@
                         <label for="set-language">Language
                             <span class="help-tip" title="UI language for labels and messages.">?</span>
                         </label>
-                        <select id="set-language">
+                        <select id="set-language" disabled>
                             <option value="system">System</option>
                             <option value="en">English</option>
                         </select>
                     </div>
 
                     <div class="group">
+                        <label for="set-default-backend">Default Backend
+                            <span class="help-tip" title="Default VCS used for new repositories. Future-proof for multiple VCS.">?</span>
+                        </label>
+                        <select id="set-default-backend" disabled>
+                            <option value="git">Git</option>
+                        </select>
+                    </div>
+
+                    <div class="group">
                         <label for="set-update-channel">Update channel
-                            <span class="help-tip" title="Stable is recommended. Beta/Nightly receive newer features sooner.">?</span>
+                            <span class="help-tip" title="Stable is recommended. Nightly receives newer features sooner.">?</span>
                         </label>
                         <select id="set-update-channel">
                             <option value="stable">Stable</option>
-                            <option value="beta">Beta</option>
                             <option value="nightly">Nightly</option>
                         </select>
                     </div>
@@ -79,7 +87,7 @@
                 <!-- Git -->
                 <form class="panel-form hidden" data-panel="git">
                     <div class="group">
-                        <label for="set-git-backend">Backend
+                        <label for="set-git-backend">Git Backend
                             <span class="help-tip" title="Choose Git implementation. System uses your installed git; Libgit2 uses embedded library.">?</span>
                         </label>
                         <select id="set-git-backend">
@@ -88,43 +96,23 @@
                         </select>
                     </div>
 
-                    <div class="group" style="display:grid; grid-template-columns: 1fr auto; gap:.6rem;">
-                        <label for="set-auto-fetch">Auto fetch
-                            <span class="help-tip" title="Periodically fetch remote updates in the background.">?</span>
-                        </label>
-                        <label class="switch"><input type="checkbox" id="set-auto-fetch" /></label>
-
-                        <label for="set-auto-fetch-minutes">Interval (minutes)
-                            <span class="help-tip" title="How often to fetch when Auto fetch is enabled.">?</span>
-                        </label>
-                        <input id="set-auto-fetch-minutes" type="number" min="1" max="720" />
-                    </div>
+                    
 
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-prune-on-fetch" /> Prune on fetch
+                        <label class="checkbox"><input type="checkbox" id="set-prune-on-fetch" disabled /> Prune on fetch
                             <span class="help-tip" title="Remove remote-tracking branches that no longer exist on the server.">?</span>
                         </label>
                     </div>
 
-                    <div class="group">
-                        <label for="set-watcher-debounce-ms">File watcher debounce (ms)
-                            <span class="help-tip" title="Delay before reacting to file changes to avoid excessive refreshes.">?</span>
-                        </label>
-                        <input id="set-watcher-debounce-ms" type="number" min="50" max="10000" />
-                    </div>
+                    
 
-                    <div class="group">
-                        <label for="set-large-repo-threshold-mb">Large repo threshold (MB)
-                            <span class="help-tip" title="Repos larger than this may use optimized code paths to stay responsive.">?</span>
-                        </label>
-                        <input id="set-large-repo-threshold-mb" type="number" min="10" max="10000" />
-                    </div>
+                    
 
                     <div class="group">
                         <label for="set-hook-policy">Hooks
                             <span class="help-tip" title="Control whether project Git hooks are allowed to run.">?</span>
                         </label>
-                        <select id="set-hook-policy">
+                        <select id="set-hook-policy" disabled>
                             <option value="deny">Deny</option>
                             <option value="ask">Ask</option>
                             <option value="allow">Allow</option>
@@ -132,7 +120,7 @@
                     </div>
 
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-respect-autocrlf" /> Respect core.autocrlf
+                        <label class="checkbox"><input type="checkbox" id="set-respect-autocrlf" disabled /> Respect core.autocrlf
                             <span class="help-tip" title="Honor the repository's line-ending settings when reading/writing files.">?</span>
                         </label>
                     </div>
@@ -151,7 +139,7 @@
                         <label for="set-ignore-whitespace">Ignore whitespace
                             <span class="help-tip" title="Choose how diffs treat whitespace-only changes.">?</span>
                         </label>
-                        <select id="set-ignore-whitespace">
+                        <select id="set-ignore-whitespace" disabled>
                             <option value="none">None</option>
                             <option value="eol">End-of-line</option>
                             <option value="all">All</option>
@@ -162,17 +150,17 @@
                         <label for="set-max-file-size-mb">Max file size (MB)
                             <span class="help-tip" title="Skip syntax highlighting and expensive processing above this size.">?</span>
                         </label>
-                        <input id="set-max-file-size-mb" type="number" min="1" max="1024" />
+                        <input id="set-max-file-size-mb" type="number" min="1" max="1024" disabled />
                     </div>
 
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-intraline" /> Intraline highlight
+                        <label class="checkbox"><input type="checkbox" id="set-intraline" disabled /> Intraline highlight
                             <span class="help-tip" title="Highlight changed characters within changed lines.">?</span>
                         </label>
                     </div>
 
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-binary-placeholders" /> Show binary placeholders
+                        <label class="checkbox"><input type="checkbox" id="set-binary-placeholders" disabled /> Show binary placeholders
                             <span class="help-tip" title="Show a placeholder message for binary files in the diff view.">?</span>
                         </label>
                     </div>
@@ -181,7 +169,7 @@
                 <!-- LFS -->
                 <form class="panel-form hidden" data-panel="lfs">
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-lfs-enabled" /> Enable LFS integration
+                        <label class="checkbox"><input type="checkbox" id="set-lfs-enabled" disabled /> Enable LFS integration
                             <span class="help-tip" title="Support Git LFS for large files (download pointers as real files).">?</span>
                         </label>
                     </div>
@@ -189,21 +177,18 @@
                         <label for="set-lfs-concurrency">Concurrent transfers
                             <span class="help-tip" title="Number of parallel LFS uploads/downloads.">?</span>
                         </label>
-                        <input id="set-lfs-concurrency" type="number" min="1" max="16" />
+                        <input id="set-lfs-concurrency" type="number" min="1" max="16" disabled />
                     </div>
                     <div class="group">
-                        <label for="set-lfs-bandwidth">Bandwidth cap (kbps, 0=unlimited)
-                            <span class="help-tip" title="Limit LFS transfer speed; set 0 for no limit.">?</span>
-                        </label>
-                        <input id="set-lfs-bandwidth" type="number" min="0" max="1000000" />
+                        
                     </div>
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-lfs-require-lock" /> Require lock before edit
+                        <label class="checkbox"><input type="checkbox" id="set-lfs-require-lock" disabled /> Require lock before edit
                             <span class="help-tip" title="Prevent conflicting edits by requiring an LFS lock.">?</span>
                         </label>
                     </div>
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-lfs-bg-fetch" /> Background fetch on checkout
+                        <label class="checkbox"><input type="checkbox" id="set-lfs-bg-fetch" disabled /> Background fetch on checkout
                             <span class="help-tip" title="Fetch LFS objects automatically after switching branches.">?</span>
                         </label>
                     </div>
@@ -211,32 +196,18 @@
 
                 <!-- Performance -->
                 <form class="panel-form hidden" data-panel="performance">
+                    
                     <div class="group">
-                        <label for="set-graph-cap">Graph node cap
-                            <span class="help-tip" title="Maximum number of commits to render in the graph for performance.">?</span>
-                        </label>
-                        <input id="set-graph-cap" type="number" min="1000" max="200000" />
-                    </div>
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-progressive-render" /> Progressive render
+                        <label class="checkbox"><input type="checkbox" id="set-progressive-render" disabled /> Progressive render
                             <span class="help-tip" title="Render large views in chunks to keep the UI responsive.">?</span>
                         </label>
                     </div>
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-gpu-accel" /> GPU acceleration
+                        <label class="checkbox"><input type="checkbox" id="set-gpu-accel" disabled /> GPU acceleration
                             <span class="help-tip" title="Use GPU acceleration when available for smoother rendering.">?</span>
                         </label>
                     </div>
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-index-warm" /> Warm index on open
-                            <span class="help-tip" title="Preload Git index data when a repo is opened to speed up first operations.">?</span>
-                        </label>
-                    </div>
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-bg-index-on-battery" /> Background index on battery
-                            <span class="help-tip" title="Allow background indexing when on battery power (may reduce battery life).">?</span>
-                        </label>
-                    </div>
+                    
                 </form>
 
                 <!-- UX -->
@@ -254,7 +225,7 @@
                         <input id="set-font-mono" type="text" placeholder="monospace" />
                     </div>
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-vim-nav" /> Vim-style navigation
+                        <label class="checkbox"><input type="checkbox" id="set-vim-nav" disabled /> Vim-style navigation
                             <span class="help-tip" title="Enable h/j/k/l keys and other Vim-like shortcuts.">?</span>
                         </label>
                     </div>
@@ -262,7 +233,7 @@
                         <label for="set-cb-mode">Color-blind mode
                             <span class="help-tip" title="Adjust colors to improve visibility for various color vision types.">?</span>
                         </label>
-                        <select id="set-cb-mode">
+                        <select id="set-cb-mode" disabled>
                             <option value="none">None</option>
                             <option value="protanopia">Protanopia</option>
                             <option value="deuteranopia">Deuteranopia</option>

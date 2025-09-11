@@ -30,6 +30,19 @@ export function bindCommit() {
             // Build a combined patch when any file has partial hunks selected
             const partialFiles = Object.keys(hunksMap).filter(p => Array.isArray(hunksMap[p]) && hunksMap[p].length > 0);
 
+            // Guard: libgit2 backend does not support partial-hunk commit (stage_patch)
+            if (TAURI.has && partialFiles.length > 0) {
+                try {
+                    const cfg = await TAURI.invoke<any>('get_global_settings');
+                    const backend = String(cfg?.git?.backend || 'system');
+                    if (backend === 'libgit2') {
+                        notify('Partial-hunk commits are not supported with the Libgit2 backend. Commit full files or switch to System backend in Settings.');
+                        clearBusy('Ready');
+                        return;
+                    }
+                } catch {}
+            }
+
             // Build patch only from hunks; ignore selectedFiles for commit content per latest request
             let combinedPatch = '';
             for (const path of partialFiles) {

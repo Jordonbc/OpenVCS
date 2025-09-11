@@ -1,0 +1,24 @@
+<div class="modal" id="update-modal" aria-hidden="true">
+  <div class="backdrop" data-close></div>
+  <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="update-title">
+    <div class="sheet-head">
+      <h3 id="update-title" style="margin:0">Update Available</h3>
+      <button class="icon close" data-close aria-label="Close">✕</button>
+    </div>
+    <section class="sheet-body" style="display:flex; flex-direction:column; gap:.8rem;">
+      <div class="group">
+        <div id="update-version" class="meta">A new version is available.</div>
+      </div>
+      <div class="group" style="flex:1 1 auto; min-height:160px;">
+        <label class="meta">Changelog</label>
+        <div id="update-notes" style="white-space:pre-wrap; background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:.6rem; height:260px; overflow:auto;"></div>
+      </div>
+      <div class="sheet-actions">
+        <button class="tbtn" data-close type="button">Later</button>
+        <div style="flex:1"></div>
+        <button class="tbtn primary big" id="update-install" type="button">Install</button>
+      </div>
+    </section>
+  </div>
+</div>
+
