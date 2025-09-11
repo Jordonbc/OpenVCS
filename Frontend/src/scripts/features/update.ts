@@ -21,26 +21,54 @@ export function wireUpdate() {
   });
 }
 
-export async function showUpdateDialog(data: any) {
-  openModal('update-modal');
-  const modal = document.getElementById('update-modal') as HTMLElement | null;
-  if (!modal) return;
-  let version = inferString(data, ['version', 'target', 'tag', 'name']) || '';
-  let notes = inferString(data, ['notes', 'body', 'changelog', 'releaseNotes', 'content']) || '';
-  if (!version || !notes) {
-    try {
-      const res = await fetch('https://api.github.com/repos/Jordonbc/OpenVCS/releases/latest', { cache: 'no-store' });
-      if (res.ok) {
-        const j = await res.json();
-        version = version || String(j.tag_name || j.name || '');
-        notes = notes || String(j.body || '');
-      }
-    } catch {}
+export async function showUpdateDialog(_data: any) {
+  try {
+    if (!TAURI.has) return;
+    const cfg = await TAURI.invoke<any>('get_global_settings');
+    const about = await TAURI.invoke<any>('about_info');
+    const channel = String(cfg?.general?.update_channel || 'stable');
+    const current = String(about?.version || '').trim();
+
+    const fetchJson = async (url: string) => {
+      const r = await fetch(url, { cache: 'no-store' }); return r.ok ? r.json() : null;
+    };
+
+    const stable = await fetchJson('https://api.github.com/repos/Jordonbc/OpenVCS/releases/latest');
+    const nightly = await fetchJson('https://api.github.com/repos/Jordonbc/OpenVCS/releases/tags/openvcs-nightly');
+
+    const norm = (v: string) => String(v || '').replace(/^v/i, '').trim();
+    const stableTag = norm(stable?.tag_name || stable?.name || '');
+    const nightlyTag = norm(nightly?.tag_name || nightly?.name || '');
+
+    const newerThanCurrent = (v: string) => v && v !== '' && norm(current) !== norm(v);
+
+    let show = false;
+    let pick = null as any;
+
+    if (channel === 'stable') {
+      if (newerThanCurrent(stableTag)) { show = true; pick = stable; }
+    } else {
+      // Nightly: pick the most recent by published_at timestamp
+      const sDate = Date.parse(String(stable?.published_at || stable?.created_at || '')) || 0;
+      const nDate = Date.parse(String(nightly?.published_at || nightly?.created_at || '')) || 0;
+      pick = (nDate > sDate ? nightly : stable) || nightly || stable;
+      show = !!pick;
+    }
+
+    if (!show || !pick) { notify('Already up to date'); return; }
+
+    openModal('update-modal');
+    const modal = document.getElementById('update-modal') as HTMLElement | null;
+    if (!modal) return;
+    const verEl = modal.querySelector('#update-version');
+    const notesEl = modal.querySelector('#update-notes');
+    const v = pick?.tag_name || pick?.name || '';
+    const body = String(pick?.body || '').trim();
+    if (verEl) verEl.textContent = v ? `Version ${v}` : 'Update available';
+    if (notesEl) (notesEl as HTMLElement).textContent = body || '(No changelog provided)';
+  } catch {
+    notify('Update check failed');
   }
-  const verEl = modal.querySelector('#update-version');
-  const notesEl = modal.querySelector('#update-notes');
-  if (verEl) verEl.textContent = version ? `Version ${version}` : 'Update available';
-  if (notesEl) (notesEl as HTMLElement).textContent = (notes || '').trim() || '(No changelog provided)';
 }
 
 function inferString(obj: any, keys: string[]): string | undefined {

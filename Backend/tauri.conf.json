@@ -66,7 +66,8 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://github.com/Jordonbc/OpenVCS/releases/latest/download/latest.json"
+        "https://github.com/Jordonbc/OpenVCS/releases/latest/download/latest.json",
+        "https://github.com/Jordonbc/OpenVCS/releases/download/openvcs-nightly/latest.json"
       ],
       "dialog": false,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhBQzc3RDI3RTg4MDUzNzMKUldSelU0RG9KMzNIaWdNaFI3R1JoVzZOb0h4c2hNdFdCMTBneFQyamZkT1VKc2E0NjZhODB5WkQK"

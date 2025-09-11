@@ -114,7 +114,7 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         theme: (get<HTMLSelectElement>('#set-theme')?.value) as any,
         language: get<HTMLSelectElement>('#set-language')?.value,
         default_backend: (get<HTMLSelectElement>('#set-default-backend')?.value || 'git') as any,
-        update_channel: get<HTMLSelectElement>('#set-update-channel')?.value,
+        update_channel: (() => { const v = get<HTMLSelectElement>('#set-update-channel')?.value; return v === 'beta' ? 'nightly' : v; })(),
         reopen_last_repos: !!get<HTMLInputElement>('#set-reopen-last')?.checked,
         checks_on_launch: !!get<HTMLInputElement>('#set-checks-on-launch')?.checked,
     };
@@ -185,7 +185,10 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elTheme = get<HTMLSelectElement>('#set-theme'); if (elTheme) elTheme.value = toKebab(cfg.general?.theme);
     const elLang  = get<HTMLSelectElement>('#set-language'); if (elLang) elLang.value = toKebab(cfg.general?.language);
     const elDefBe = get<HTMLSelectElement>('#set-default-backend'); if (elDefBe) elDefBe.value = toKebab(cfg.general?.default_backend || 'git');
-    const elChan  = get<HTMLSelectElement>('#set-update-channel'); if (elChan) elChan.value = toKebab(cfg.general?.update_channel);
+    const elChan  = get<HTMLSelectElement>('#set-update-channel'); if (elChan) {
+        const v = toKebab(cfg.general?.update_channel);
+        elChan.value = (v === 'beta') ? 'nightly' : v;
+    }
     const elReo   = get<HTMLInputElement>('#set-reopen-last'); if (elReo) elReo.checked = !!cfg.general?.reopen_last_repos;
     const elChk   = get<HTMLInputElement>('#set-checks-on-launch'); if (elChk) elChk.checked = !!cfg.general?.checks_on_launch;
     const elRl    = get<HTMLInputElement>('#set-recents-limit'); if (elRl) elRl.value = String(cfg.ux?.recents_limit ?? 10);
