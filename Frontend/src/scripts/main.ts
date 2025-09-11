@@ -3,7 +3,7 @@ import { qs } from './lib/dom';
 import { notify } from './lib/notify';
 import { prefs, savePrefs, state } from './state/state';
 import {
-    bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme, toggleTheme,
+    bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
     bindLayoutActionState
 } from './ui/layout';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
@@ -107,7 +107,6 @@ function boot() {
             case 'clone_repo': openSheet('clone'); break;
             case 'add_repo':   openSheet('add');   break;
             case 'open_repo':  openSheet('switch');break;
-            case 'toggle_theme': toggleTheme(); break;
             case 'fetch': fetchBtn?.click(); break;
             case 'push':  pushBtn?.click();  break;
             case 'commit': commitBtn?.click(); break;
