@@ -72,8 +72,6 @@ pub struct Git {
     #[serde(default)] pub backend: GitBackend,
     /// Default branch name used when creating new repos or inferring defaults
     #[serde(default)] pub default_branch: String,
-    #[serde(default)] pub auto_fetch: bool,
-    #[serde(default)] pub auto_fetch_minutes: u32,
     #[serde(default)] pub prune_on_fetch: bool,
     #[serde(default)] pub watcher_debounce_ms: u32,
     #[serde(default)] pub large_repo_threshold_mb: u32,
@@ -85,8 +83,6 @@ impl Default for Git {
         Self {
             backend: GitBackend::System,
             default_branch: "main".into(),
-            auto_fetch: true,
-            auto_fetch_minutes: 30,
             prune_on_fetch: true,
             watcher_debounce_ms: 300,
             large_repo_threshold_mb: 500,
@@ -448,7 +444,6 @@ impl AppConfig {
         // General: nothing to clamp right now.
 
         // Git
-        self.git.auto_fetch_minutes = self.git.auto_fetch_minutes.clamp(1, 720);
         self.git.watcher_debounce_ms = self.git.watcher_debounce_ms.clamp(50, 10_000);
         self.git.large_repo_threshold_mb = self.git.large_repo_threshold_mb.clamp(10, 10_000);
 

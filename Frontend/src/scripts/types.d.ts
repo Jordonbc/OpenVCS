@@ -43,8 +43,6 @@ export interface GlobalSettings {
     git?: {
         backend?: 'system'|'libgit2'|string;
         default_branch?: string;
-        auto_fetch?: boolean;
-        auto_fetch_minutes?: number;
         prune_on_fetch?: boolean;
         watcher_debounce_ms?: number;
         large_repo_threshold_mb?: number;

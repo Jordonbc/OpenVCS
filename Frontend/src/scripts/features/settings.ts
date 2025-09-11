@@ -86,7 +86,7 @@ export function wireSettings() {
             const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
 
             cur.general = { theme: 'system', language: 'system', default_backend: 'git', update_channel: 'stable', reopen_last_repos: true, checks_on_launch: true, telemetry: false, crash_reports: false };
-            cur.git = { backend: 'system', default_branch: 'main', auto_fetch: true, auto_fetch_minutes: 30, prune_on_fetch: true, watcher_debounce_ms: 300, large_repo_threshold_mb: 500, allow_hooks: 'ask', respect_core_autocrlf: true };
+            cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, watcher_debounce_ms: 300, large_repo_threshold_mb: 500, allow_hooks: 'ask', respect_core_autocrlf: true };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, bandwidth_kbps: 0, require_lock_before_edit: false, background_fetch_on_checkout: true };
             cur.performance = { graph_node_cap: 5000, progressive_render: true, gpu_accel: true, index_warm_on_open: true, background_index_on_battery: false };
@@ -122,8 +122,6 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
     o.git = {
         ...o.git,
         backend: get<HTMLSelectElement>('#set-git-backend')?.value as any,
-        auto_fetch: !!get<HTMLInputElement>('#set-auto-fetch')?.checked,
-        auto_fetch_minutes: Number(get<HTMLInputElement>('#set-auto-fetch-minutes')?.value ?? 0),
         prune_on_fetch: !!get<HTMLInputElement>('#set-prune-on-fetch')?.checked,
         watcher_debounce_ms: Number(get<HTMLInputElement>('#set-watcher-debounce-ms')?.value ?? 0),
         large_repo_threshold_mb: Number(get<HTMLInputElement>('#set-large-repo-threshold-mb')?.value ?? 0),
@@ -204,8 +202,6 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
         // Map to enum string values used by backend settings
         elGb.value = backend === 'libgit2' ? 'libgit2' : 'system';
     }
-    const elAf = get<HTMLInputElement>('#set-auto-fetch'); if (elAf) elAf.checked = !!cfg.git?.auto_fetch;
-    const elAfm= get<HTMLInputElement>('#set-auto-fetch-minutes'); if (elAfm) elAfm.value = String(cfg.git?.auto_fetch_minutes ?? 0);
     const elPr = get<HTMLInputElement>('#set-prune-on-fetch'); if (elPr) elPr.checked = !!cfg.git?.prune_on_fetch;
     const elWd = get<HTMLInputElement>('#set-watcher-debounce-ms'); if (elWd) elWd.value = String(cfg.git?.watcher_debounce_ms ?? 0);
     const elLr = get<HTMLInputElement>('#set-large-repo-threshold-mb'); if (elLr) elLr.value = String(cfg.git?.large_repo_threshold_mb ?? 0);
