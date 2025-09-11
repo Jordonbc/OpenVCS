@@ -100,36 +100,44 @@ impl Vcs for GitLibGit2 {
     }
 
     fn open(path: &Path) -> Result<Self> {
+        debug!("git-libgit2: open {}", path.display());
         lowlevel::Git::open(path).map(|inner| Self { inner }).map_err(Self::map_err)
     }
 
     fn clone(url: &str, dest: &Path, _on: Option<OnEvent>) -> Result<Self> {
+        info!("git-libgit2: clone url={} dest={}", url, dest.display());
         lowlevel::Git::clone(url, dest).map(|inner| Self { inner }).map_err(Self::map_err)
     }
 
     fn workdir(&self) -> &Path { self.inner.workdir() }
 
     fn current_branch(&self) -> Result<Option<String>> {
+        trace!("git-libgit2: current_branch in {}", self.inner.workdir().display());
         self.inner.current_branch().map_err(Self::map_err)
     }
 
     fn local_branches(&self) -> Result<Vec<String>> {
+        trace!("git-libgit2: local_branches");
         self.inner.local_branches().map_err(Self::map_err)
     }
 
     fn create_branch(&self, name: &str, checkout: bool) -> Result<()> {
+        info!("git-libgit2: create_branch '{}' checkout={}", name, checkout);
         self.inner.create_branch(name, checkout).map_err(Self::map_err)
     }
 
     fn checkout_branch(&self, name: &str) -> Result<()> {
+        info!("git-libgit2: checkout_branch '{}'", name);
         self.inner.checkout_branch(name).map_err(Self::map_err)
     }
 
     fn ensure_remote(&self, name: &str, url: &str) -> Result<()> {
+        info!("git-libgit2: ensure_remote '{}' -> {}", name, url);
         self.inner.ensure_remote(name, url).map_err(Self::map_err)
     }
 
     fn list_remotes(&self) -> Result<Vec<(String, String)>> {
+        trace!("git-libgit2: list_remotes");
         // Prefer reading from the repository config: remote.<name>.url
         let mut out: Vec<(String, String)> = Vec::new();
         let res = self.inner.with_repo(|repo| {
@@ -149,16 +157,19 @@ impl Vcs for GitLibGit2 {
     }
 
     fn remove_remote(&self, name: &str) -> Result<()> {
+        info!("git-libgit2: remove_remote '{}'", name);
         self.inner.with_repo(|repo| repo.remote_delete(name)).map_err(Self::map_err)
     }
 
     fn fetch(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
+        info!("git-libgit2: fetch {} {}", remote, refspec);
         self.inner.fetch_with_progress(remote, refspec, Self::adapt_progress(on))
             .map(|_| ())
             .map_err(Self::map_err)
     }
 
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
+        info!("git-libgit2: push {} {}", remote, refspec);
         self.inner.push_refspec_with_progress(remote, refspec, Self::adapt_progress(on))
             .map_err(Self::map_err)
     }
@@ -167,16 +178,25 @@ impl Vcs for GitLibGit2 {
         // Use libgit2 path that fetches and performs a fast-forward when possible.
         // Progress is logged; we currently do not bridge per-line progress for this path.
         let upstream = format!("{}/{}", remote, branch);
+        info!("git-libgit2: pull_ff_only {}", upstream);
         self.inner.fast_forward(&upstream).map_err(Self::map_err)
     }
 
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String> {
+        info!(
+            "git-libgit2: commit message_len={} author='{} <{}>' paths={}",
+            message.len(), name, email, paths.len()
+        );
         self.inner.commit(message, name, email, paths)
             .map(|oid| oid.to_string())
             .map_err(Self::map_err)
     }
 
     fn commit_index(&self, message: &str, name: &str, email: &str) -> Result<String> {
+        info!(
+            "git-libgit2: commit_index message_len={} author='{} <{}>'",
+            message.len(), name, email
+        );
         self.inner.commit_index(message, name, email)
             .map(|oid| oid.to_string())
             .map_err(Self::map_err)
@@ -193,27 +213,33 @@ impl Vcs for GitLibGit2 {
     }
 
     fn hard_reset_head(&self) -> Result<()> {
+        warn!("git-libgit2: hard_reset_head");
         self.inner.hard_reset_head().map_err(Self::map_err)
     }
 
     fn log_commits(&self, q: &models::LogQuery) -> Result<Vec<models::CommitItem>> {
+        trace!("git-libgit2: log_commits skip={} limit={}", q.skip, q.limit);
         self.inner.log_commits(q).map_err(Self::map_err)
     }
 
     fn status_payload(&self) -> Result<models::StatusPayload> {
+        trace!("git-libgit2: status_payload");
         self.inner.status_payload().map_err(Self::map_err)
     }
 
     fn diff_file(&self, path: &Path) -> Result<Vec<String>> {
+        trace!("git-libgit2: diff_file {}", path.display());
         self.inner.diff_file(path).map_err(Self::map_err)
     }
 
     fn diff_commit(&self, rev: &str) -> Result<Vec<String>> {
+        trace!("git-libgit2: diff_commit {}", rev);
         self.inner.diff_commit(rev).map_err(Self::map_err)
     }
 
     fn stage_patch(&self, _patch: &str) -> Result<()> {
         // Not implemented yet for libgit2 backend.
+        warn!("git-libgit2: stage_patch requested but unsupported");
         Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
     }
 
