@@ -45,11 +45,37 @@ export function wireSettings() {
 
     settingsSave?.addEventListener('click', async () => {
         try {
+            const baseRaw = (modal as HTMLElement).dataset.currentCfg || '{}';
+            const base = JSON.parse(baseRaw || '{}');
+            const prevBackend: string = String(base?.git?.backend || 'system');
             const next = collectSettingsFromForm(modal);
-            if (TAURI.has) await TAURI.invoke('set_global_settings', { cfg: next });
-            notify('Settings saved');
+
+            if (TAURI.has) {
+                await TAURI.invoke('set_global_settings', { cfg: next });
+
+                // If backend changed, request a backend swap (reopens repo if open)
+                const newBackend: string = String(next?.git?.backend || 'system');
+                if (newBackend && newBackend !== prevBackend) {
+                    const backend_id = (newBackend === 'libgit2') ? 'git-libgit2' : 'git-system';
+                    try { await TAURI.invoke('set_backend_cmd', { backend_id }); } catch {}
+                }
+            }
+
+            // Apply visual prefs immediately (no restart): theme, tab width, UI scale, mono font
             const theme = next.general?.theme || 'system';
             document.documentElement.setAttribute('data-theme', theme);
+            try {
+                const root = document.documentElement;
+                const tabw = Number(next?.diff?.tab_width ?? 4);
+                if (tabw && isFinite(tabw)) root.style.setProperty('--tab-size', String(tabw));
+                const uiScale = Number(next?.ux?.ui_scale ?? 1);
+                if (uiScale && isFinite(uiScale)) root.style.setProperty('--ui-scale', String(uiScale));
+                const mono = String(next?.ux?.font_mono || '').trim();
+                if (mono) root.style.setProperty('--mono', mono);
+                else root.style.removeProperty('--mono');
+            } catch {}
+
+            notify('Settings saved');
             closeModal('settings-modal');
         } catch { notify('Failed to save settings'); }
     });

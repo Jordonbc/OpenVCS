@@ -21,7 +21,8 @@
   --control-muted:#a6aebb;
 
   font-family:var(--font);
-  font-size:15px;
+  /* Drive base UI scale from a CSS var (defaults to 1) */
+  font-size: calc(15px * var(--ui-scale, 1));
 }
 
 :root[data-theme="dark"] { color-scheme: dark; }
@@ -102,7 +103,7 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .hunk { padding:.25rem 0; }
 .hline { display:grid; grid-template-columns:56px 1fr; gap:.6rem; padding:.15rem .8rem; }
 .gutter { color:var(--muted); text-align:right; user-select:none; }
-.code { white-space:pre; }
+.code { white-space:pre; tab-size: var(--tab-size, 4); -moz-tab-size: var(--tab-size, 4); }
 .hline.add { background:rgba(38,162,105,.12); }
 .hline.del { background:rgba(192,28,40,.12); }
 
