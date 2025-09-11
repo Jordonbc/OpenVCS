@@ -30,6 +30,19 @@ export function bindCommit() {
             // Build a combined patch when any file has partial hunks selected
             const partialFiles = Object.keys(hunksMap).filter(p => Array.isArray(hunksMap[p]) && hunksMap[p].length > 0);
 
+            // Guard: libgit2 backend does not support partial-hunk commit (stage_patch)
+            if (TAURI.has && partialFiles.length > 0) {
+                try {
+                    const cfg = await TAURI.invoke<any>('get_global_settings');
+                    const backend = String(cfg?.git?.backend || 'system');
+                    if (backend === 'libgit2') {
+                        notify('Partial-hunk commits are not supported with the Libgit2 backend. Commit full files or switch to System backend in Settings.');
+                        clearBusy('Ready');
+                        return;
+                    }
+                } catch {}
+            }
+
             // Build patch only from hunks; ignore selectedFiles for commit content per latest request
             let combinedPatch = '';
             for (const path of partialFiles) {
@@ -70,6 +83,11 @@ export function bindCommit() {
 function buildPatchForSelectedHunks(path: string, lines: string[], hunkIndices: number[]): string {
     if (!Array.isArray(lines) || !lines.length || !hunkIndices.length) return '';
     const normPath = String(path).replace(/\\/g, '/');
+
+    // Identify prelude and hunks
+    const firstHunk = lines.findIndex(l => (l || '').startsWith('@@'));
+    const prelude = firstHunk >= 0 ? lines.slice(0, firstHunk) : [];
+
     // Locate all hunk starts
     const starts: number[] = [];
     for (let i = 0; i < lines.length; i++) {
@@ -78,10 +96,19 @@ function buildPatchForSelectedHunks(path: string, lines: string[], hunkIndices: 
     if (starts.length === 0) return '';
     starts.push(lines.length);
 
+    // Determine file action by inspecting original diff prelude
+    const isAdd = prelude.some(l => l.startsWith('--- /dev/null'));
+    const isDel = prelude.some(l => l.startsWith('+++ /dev/null'));
+
     // Compose minimal header (avoid carrying index/mode lines that can corrupt apply)
-    let out = `diff --git a/${normPath} b/${normPath}\n` +
-              `--- a/${normPath}\n` +
-              `+++ b/${normPath}\n`;
+    let out = `diff --git a/${normPath} b/${normPath}\n`;
+    if (isAdd) {
+        out += `--- /dev/null\n+++ b/${normPath}\n`;
+    } else if (isDel) {
+        out += `--- a/${normPath}\n+++ /dev/null\n`;
+    } else {
+        out += `--- a/${normPath}\n+++ b/${normPath}\n`;
+    }
 
     // Append selected hunks in order
     const sorted = [...hunkIndices].sort((a,b)=>a-b);

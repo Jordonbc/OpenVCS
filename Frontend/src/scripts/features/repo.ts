@@ -1,5 +1,6 @@
 // src/scripts/features/repo.ts
 import { qs, qsa, escapeHtml } from '../lib/dom';
+import { buildCtxMenu } from '../lib/menu';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { state, prefs, statusLabel, statusClass } from '../state/state';
@@ -136,8 +137,7 @@ export function renderList() {
       <input type="checkbox" class="pick" aria-label="Select file" ${picked ? 'checked' : ''} />
       <span class="status ${statusClass(f.status)}">${escapeHtml(f.status || '')}</span>
       <div class="file" title="${escapeHtml(f.path || '')}">${escapeHtml(f.path || '')}</div>
-      <span class="pick-mark" aria-hidden="true">✓</span>
-      <span class="badge">${statusLabel(f.status)}</span>`;
+      <span class="pick-mark" aria-hidden="true">✓</span>`;
         li.addEventListener('click', (e) => onFileClick(e as MouseEvent, f, i, files));
         li.addEventListener('mousedown', (e) => onFileMouseDown(e as MouseEvent, f, i, files, li));
         li.addEventListener('mouseenter', () => {
@@ -275,7 +275,7 @@ async function selectFile(file: { path: string }, index: number) {
     }
 }
 
-function selectHistory(commit: any, index: number) {
+async function selectHistory(commit: any, index: number) {
     if (!diffHeadPath || !diffEl) return;
     highlightRow(index);
     const id = (commit.id || '').slice(0,7);
@@ -285,7 +285,68 @@ function selectHistory(commit: any, index: number) {
       <div class="hline"><div class="gutter">commit</div><div class="code">${escapeHtml(commit.id || '')}</div></div>
       <div class="hline"><div class="gutter">Author</div><div class="code">${escapeHtml(commit.author || 'You <you@example.com>')}</div></div>
       <div class="hline"><div class="gutter">Message</div><div class="code">${escapeHtml(commit.msg || '')}</div></div>
-    </div>`;
+    </div>
+    <div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading diff…</div></div></div>`;
+
+    // Load commit diff and render below the header
+    try {
+        let lines: string[] = [];
+        if (TAURI.has && commit.id) {
+            lines = await TAURI.invoke<string[]>('git_diff_commit', { id: commit.id });
+        }
+        const files = parseCommitDiffByFile(lines || []);
+        if (files.length === 0) {
+            const diffHtml = renderHunksReadonly(lines || []);
+            const label = diffHtml ? `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Changes</div></div></div>` : '';
+            diffEl.innerHTML = `
+    <div class="hunk">
+      <div class="hline"><div class="gutter">commit</div><div class="code">${escapeHtml(commit.id || '')}</div></div>
+      <div class="hline"><div class="gutter">Author</div><div class="code">${escapeHtml(commit.author || 'You <you@example.com>')}</div></div>
+      <div class="hline"><div class="gutter">Message</div><div class="code">${escapeHtml(commit.msg || '')}</div></div>
+    </div>
+    ${label}${diffHtml || ''}`;
+            return;
+        }
+
+        // Build two-column layout: file list and selected file content
+        const sidebar = `<div class="commit-files" style="width: 280px; flex: 0 0 280px; border-right: 1px solid var(--panel-border, #333); overflow:auto;">
+          ${files.map((f, i) => {
+              const cls = i === 0 ? 'row active' : 'row';
+              const status = (f.status || '').toUpperCase();
+              return `<div class="${cls}" data-idx="${i}"><span class="status ${statusClass(status)}">${escapeHtml(status)}</span><div class="file" title="${escapeHtml(f.path)}">${escapeHtml(f.path)}</div></div>`;
+          }).join('')}
+        </div>`;
+        const right = `<div class="commit-right" style="flex:1; overflow:auto; padding-left: 8px; display:flex; flex-direction:column;"><div class="commit-content">${renderHunksReadonly(files[0].lines)}</div></div>`;
+
+        diffEl.innerHTML = `
+    <div class="hunk">
+      <div class="hline"><div class="gutter">commit</div><div class="code">${escapeHtml(commit.id || '')}</div></div>
+      <div class="hline"><div class="gutter">Author</div><div class="code">${escapeHtml(commit.author || 'You <you@example.com>')}</div></div>
+      <div class="hline"><div class="gutter">Message</div><div class="code">${escapeHtml(commit.msg || '')}</div></div>
+    </div>
+    <div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${files.length} file${files.length===1?'':'s'} changed</div></div></div>
+    <div class="commit-diff" style="display:flex; min-height: 240px; gap: 8px;">${sidebar}${right}</div>`;
+
+        // Sidebar interactions
+        const sideEl = diffEl.querySelector('.commit-files');
+        const contentEl = diffEl.querySelector('.commit-content');
+        if (sideEl && contentEl) {
+            sideEl.querySelectorAll<HTMLElement>('.row').forEach(row => {
+                row.addEventListener('click', () => {
+                    sideEl.querySelectorAll('.row').forEach(r => r.classList.remove('active'));
+                    row.classList.add('active');
+                    const idx = Number(row.getAttribute('data-idx') || '-1');
+                    if (idx >= 0 && idx < files.length) {
+                        (contentEl as HTMLElement).innerHTML = renderHunksReadonly(files[idx].lines);
+                    }
+                });
+            });
+        }
+    } catch (e) {
+        console.warn('git_diff_commit failed', e);
+        // Keep header; show error line
+        diffEl.innerHTML += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load diff</div></div></div>`;
+    }
 }
 
 /* ---------------- hydration ---------------- */
@@ -295,14 +356,14 @@ export async function hydrateBranches() {
     if (!TAURI.has) return;
     try {
         const list = await TAURI.invoke<any[]>('git_list_branches');
-        const current = await TAURI.invoke<string>('git_current_branch').catch(() => '');
+        const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status').catch(() => ({ detached: false } as any));
 
         const has = Array.isArray(list) && list.length > 0;
         state.hasRepo = state.hasRepo || has; // don’t flip to false if another hydrate confirms true
 
         if (has) {
             state.branches = list as any;
-            state.branch = current || (list.find((b: any) => b.current)?.name) || state.branch || 'main';
+            state.branch = (head as any)?.branch || (list.find((b: any) => b.current)?.name) || state.branch || 'main';
             window.dispatchEvent(new CustomEvent('app:branches-updated'));
         }
     } catch (e) {
@@ -381,10 +442,66 @@ function renderHunksWithSelection(lines: string[]) {
     return html;
 }
 
+function renderHunksReadonly(lines: string[]) {
+    if (!lines || !lines.length) return '';
+    let idx = lines.findIndex(l => l.startsWith('@@'));
+    const rest = idx >= 0 ? lines.slice(idx) : [];
+    const starts: number[] = [];
+    rest.forEach((l, i) => { if (l.startsWith('@@')) starts.push(i); });
+    starts.push(rest.length);
+    if (starts.length <= 1) {
+        return `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">No textual hunks to display</div></div></div>`;
+    }
+
+    let html = '';
+    for (let h = 0; h < starts.length - 1; h++) {
+        const s = starts[h];
+        const e = starts[h+1];
+        const hunkLines = rest.slice(s, e);
+        const offset = (idx >= 0 ? idx : 0) + s;
+        html += `<div class="hunk">${hunkLines.map((ln, i) => hline(ln, offset + i + 1)).join('')}</div>`;
+    }
+    return html;
+}
+
 function hline(ln: string, n: number) {
     const first = (typeof ln === 'string' ? ln[0] : ' ') || ' ';
     const t = first === '+' ? 'add' : first === '-' ? 'del' : '';
     return `<div class="hline ${t}"><div class="gutter">${n}</div><div class="code">${escapeHtml(String(ln))}</div></div>`;
+}
+
+// Group commit diff into per-file blocks based on `diff --git` markers.
+function parseCommitDiffByFile(lines: string[]): { path: string; status: string; lines: string[] }[] {
+    if (!Array.isArray(lines) || lines.length === 0) return [];
+    const files: { path: string; status: string; lines: string[] }[] = [];
+    let i = 0;
+    while (i < lines.length) {
+        const l = lines[i] || '';
+        if (l.startsWith('diff --git ')) {
+            const parts = l.split(' ');
+            const aPath = parts[2] || '';
+            const bPath = parts[3] || '';
+            const pathA = aPath.startsWith('a/') ? aPath.slice(2) : aPath;
+            const pathB = bPath.startsWith('b/') ? bPath.slice(2) : bPath;
+            const path = pathB || pathA;
+
+            // Collect until next file header or end
+            let j = i + 1;
+            while (j < lines.length && !String(lines[j]).startsWith('diff --git ')) j++;
+            const block = lines.slice(i, j);
+
+            const prelude = block.slice(0, Math.min(block.length, 10));
+            const isAdd = prelude.some(s => s.startsWith('new file mode') || s.startsWith('--- /dev/null'));
+            const isDel = prelude.some(s => s.startsWith('deleted file mode') || s.startsWith('+++ /dev/null'));
+            const status = isAdd ? 'A' : isDel ? 'D' : 'M';
+
+            files.push({ path, status, lines: block });
+            i = j;
+            continue;
+        }
+        i++;
+    }
+    return files;
 }
 
 function onFileClick(e: MouseEvent, file: { path: string }, index: number, visible: { path: string }[]) {
@@ -550,23 +667,6 @@ function updateDragRange(visible: { path: string }[]) {
     }
 }
 
-function buildCtxMenu(items: { label: string; action: () => void }[], x: number, y: number) {
-    // remove existing
-    document.querySelectorAll('.ctxmenu').forEach(el => el.remove());
-    const m = document.createElement('div');
-    m.className = 'ctxmenu';
-    m.style.left = `${x}px`;
-    m.style.top = `${y}px`;
-    items.forEach((it, idx) => {
-        if (it.label === '---') { const sep = document.createElement('div'); sep.className = 'sep'; m.appendChild(sep); return; }
-        const d = document.createElement('div'); d.className = 'item'; d.textContent = it.label;
-        d.addEventListener('click', () => { try { it.action(); } finally { m.remove(); } });
-        m.appendChild(d);
-    });
-    document.body.appendChild(m);
-    const close = () => m.remove();
-    setTimeout(() => { document.addEventListener('click', close, { once: true }); }, 0);
-}
 
 function onFileContextMenu(ev: MouseEvent, f: { path: string }) {
     ev.preventDefault();

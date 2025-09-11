@@ -1,10 +1,15 @@
 name: Nightly
+run-name: "OpenVCS Nightly • Run #${{ github.run_number }} • Dev @ ${{ github.sha }}"
 
 on:
   schedule:
     # 01:30 UTC daily (02:30 in London during BST)
     - cron: '30 1 * * *'
   workflow_dispatch:
+
+# Default to least privilege; override per-job as needed
+permissions:
+  contents: read
 
 jobs:
   check-changes:
@@ -61,7 +66,8 @@ jobs:
     needs: check-changes
     if: needs.check-changes.outputs.changed == 'true'
     permissions:
-      contents: write
+      contents: write      # create/delete release + tag
+      actions: write       # use GitHub Actions cache (rust-cache / sccache)
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: 'true'
@@ -82,6 +88,47 @@ jobs:
           ref: Dev
           fetch-depth: 0
           lfs: true
+
+      - name: Compute metadata (date, short SHA, compare, changelog)
+        id: meta
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const short = context.sha.substring(0, 7);
+            const date = new Date().toISOString().slice(0, 10); // UTC date
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const basehead = 'openvcs-nightly...Dev';
+            let compare_url = `${context.serverUrl}/${owner}/${repo}/compare/${basehead}`;
+            let commit_url = `${context.serverUrl}/${owner}/${repo}/commit/${context.sha}`;
+            let changelog = '';
+
+            try {
+              const res = await github.rest.repos.compareCommitsWithBasehead({ owner, repo, basehead });
+              const commits = res?.data?.commits ?? [];
+              if (commits.length === 0) {
+                changelog = `No changes detected.`;
+              } else {
+                // Include all commits since last nightly tag -> Dev
+                const items = commits.map(c => {
+                  const sha = (c.sha || '').substring(0, 7);
+                  const msg = (c.commit?.message || '').split('\n')[0];
+                  const author = c.author?.login || c.commit?.author?.name || 'unknown';
+                  return `- ${sha} ${msg} (@${author})`;
+                });
+                changelog = items.join('\n');
+              }
+            } catch (e) {
+              // Likely first nightly (tag missing) or compare failed for another reason
+              changelog = 'First nightly or previous tag unavailable; showing recent commits at Dev.';
+              compare_url = `${context.serverUrl}/${owner}/${repo}/tree/Dev`;
+            }
+
+            core.setOutput('short_sha', short);
+            core.setOutput('date', date);
+            core.setOutput('compare_url', compare_url);
+            core.setOutput('commit_url', commit_url);
+            core.setOutput('changelog', changelog);
 
       # ---------- Frontend ----------
       - name: Setup Node
@@ -141,16 +188,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FRONTEND_SKIP_BUILD: '1'
+          OPENVCS_UPDATE_CHANNEL: nightly
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: Backend
           tagName: openvcs-nightly
-          releaseName: "OpenVCS Nightly #${{ github.run_number }}"
+          releaseName: "OpenVCS Nightly ${{ steps.meta.outputs.date }} (dev@${{ steps.meta.outputs.short_sha }})"
           releaseBody: |
-            Automated nightly from Dev.
+            Nightly build from Dev branch.
+            Date (UTC): ${{ steps.meta.outputs.date }}
+            Compare: ${{ steps.meta.outputs.compare_url }}
             Since: ${{ needs.check-changes.outputs.since_sha }}
             Ahead (relevant commits): ${{ needs.check-changes.outputs.ahead_count }}
-            Commit: ${{ github.sha }}
+            Commit: ${{ github.sha }} (dev@${{ steps.meta.outputs.short_sha }})
             Runner: ${{ runner.os }} • Run #${{ github.run_number }}
+
+            Changes since last nightly:
+            ${{ steps.meta.outputs.changelog }}
           releaseDraft: false
           prerelease: true
           args: ${{ matrix.args }}

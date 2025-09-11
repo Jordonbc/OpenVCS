@@ -83,6 +83,8 @@ pub trait Vcs: Send + Sync {
     /// 2) Fallback to index vs HEAD (staged)
     /// 3) Include untracked as additions
     fn diff_file(&self, path: &Path) -> Result<Vec<String>>;
+    /// Unified diff for a specific commit (vs its first parent, or empty tree if none).
+    fn diff_commit(&self, rev: &str) -> Result<Vec<String>>;
 
     /// Stage a unified-diff patch directly into the index (partial commit support).
     /// Backends may return `VcsError::Unsupported` if not implemented.
@@ -93,6 +95,14 @@ pub trait Vcs: Send + Sync {
 
     /// Apply a reverse patch to discard selected hunks (should update index and worktree when possible).
     fn apply_reverse_patch(&self, patch: &str) -> Result<()>;
+
+    // branches
+    fn delete_branch(&self, name: &str, force: bool) -> Result<()>;
+    /// Rename a local branch from `old` to `new`.
+    fn rename_branch(&self, old: &str, new: &str) -> Result<()>;
+    /// Merge the given branch into the current HEAD. Implementations may return
+    /// `VcsError::Unsupported` if not available.
+    fn merge_into_current(&self, name: &str) -> Result<()>;
 
     // recovery
     fn hard_reset_head(&self) -> Result<()>;

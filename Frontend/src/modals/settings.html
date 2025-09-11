@@ -17,6 +17,7 @@
                     <li><button class="seg-btn" data-section="lfs">LFS</button></li>
                     <li><button class="seg-btn" data-section="performance">Performance</button></li>
                     <li><button class="seg-btn" data-section="ux">UX</button></li>
+                    <li><button class="seg-btn" data-section="logging">Logging</button></li>
                     <!-- You can add: integrations, advanced, experimental, logging, network later -->
                 </ul>
             </nav>
@@ -26,7 +27,9 @@
                 <!-- General -->
                 <form class="panel-form" data-panel="general">
                     <div class="group">
-                        <label for="set-theme">Theme</label>
+                        <label for="set-theme">Theme
+                            <span class="help-tip" title="Choose app appearance: System follows OS theme.">?</span>
+                        </label>
                         <select id="set-theme">
                             <option value="system">System</option>
                             <option value="light">Light</option>
@@ -35,18 +38,30 @@
                     </div>
 
                     <div class="group">
-                        <label for="set-language">Language</label>
-                        <select id="set-language">
+                        <label for="set-language">Language
+                            <span class="help-tip" title="UI language for labels and messages.">?</span>
+                        </label>
+                        <select id="set-language" disabled>
                             <option value="system">System</option>
                             <option value="en">English</option>
                         </select>
                     </div>
 
                     <div class="group">
-                        <label for="set-update-channel">Update channel</label>
+                        <label for="set-default-backend">Default Backend
+                            <span class="help-tip" title="Default VCS used for new repositories. Future-proof for multiple VCS.">?</span>
+                        </label>
+                        <select id="set-default-backend" disabled>
+                            <option value="git">Git</option>
+                        </select>
+                    </div>
+
+                    <div class="group">
+                        <label for="set-update-channel">Update channel
+                            <span class="help-tip" title="Stable is recommended. Nightly receives newer features sooner.">?</span>
+                        </label>
                         <select id="set-update-channel">
                             <option value="stable">Stable</option>
-                            <option value="beta">Beta</option>
                             <option value="nightly">Nightly</option>
                         </select>
                     </div>
@@ -55,6 +70,7 @@
                         <label class="checkbox">
                             <input type="checkbox" id="set-reopen-last" />
                             Reopen last repositories on startup
+                            <span class="help-tip" title="Automatically opens the most recent repo when the app starts.">?</span>
                         </label>
                     </div>
 
@@ -62,6 +78,7 @@
                         <label class="checkbox">
                             <input type="checkbox" id="set-checks-on-launch" />
                             Check for updates on launch
+                            <span class="help-tip" title="Checks for a newer version at startup.">?</span>
                         </label>
                     </div>
 
@@ -70,38 +87,32 @@
                 <!-- Git -->
                 <form class="panel-form hidden" data-panel="git">
                     <div class="group">
-                        <label for="set-git-backend">Backend</label>
+                        <label for="set-git-backend">Git Backend
+                            <span class="help-tip" title="Choose Git implementation. System uses your installed git; Libgit2 uses embedded library.">?</span>
+                        </label>
                         <select id="set-git-backend">
                             <option value="system">System</option>
                             <option value="libgit2">Libgit2</option>
                         </select>
                     </div>
 
-                    <div class="group" style="display:grid; grid-template-columns: 1fr auto; gap:.6rem;">
-                        <label for="set-auto-fetch">Auto fetch</label>
-                        <label class="switch"><input type="checkbox" id="set-auto-fetch" /></label>
-
-                        <label for="set-auto-fetch-minutes">Interval (minutes)</label>
-                        <input id="set-auto-fetch-minutes" type="number" min="1" max="720" />
-                    </div>
+                    
 
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-prune-on-fetch" /> Prune on fetch</label>
+                        <label class="checkbox"><input type="checkbox" id="set-prune-on-fetch" disabled /> Prune on fetch
+                            <span class="help-tip" title="Remove remote-tracking branches that no longer exist on the server.">?</span>
+                        </label>
                     </div>
 
-                    <div class="group">
-                        <label for="set-watcher-debounce-ms">File watcher debounce (ms)</label>
-                        <input id="set-watcher-debounce-ms" type="number" min="50" max="10000" />
-                    </div>
+                    
+
+                    
 
                     <div class="group">
-                        <label for="set-large-repo-threshold-mb">Large repo threshold (MB)</label>
-                        <input id="set-large-repo-threshold-mb" type="number" min="10" max="10000" />
-                    </div>
-
-                    <div class="group">
-                        <label for="set-hook-policy">Hooks</label>
-                        <select id="set-hook-policy">
+                        <label for="set-hook-policy">Hooks
+                            <span class="help-tip" title="Control whether project Git hooks are allowed to run.">?</span>
+                        </label>
+                        <select id="set-hook-policy" disabled>
                             <option value="deny">Deny</option>
                             <option value="ask">Ask</option>
                             <option value="allow">Allow</option>
@@ -109,20 +120,26 @@
                     </div>
 
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-respect-autocrlf" /> Respect core.autocrlf</label>
+                        <label class="checkbox"><input type="checkbox" id="set-respect-autocrlf" disabled /> Respect core.autocrlf
+                            <span class="help-tip" title="Honor the repository's line-ending settings when reading/writing files.">?</span>
+                        </label>
                     </div>
                 </form>
 
                 <!-- Diff -->
                 <form class="panel-form hidden" data-panel="diff">
                     <div class="group">
-                        <label for="set-tab-width">Tab width</label>
+                        <label for="set-tab-width">Tab width
+                            <span class="help-tip" title="Number of spaces used to render a tab character in diffs.">?</span>
+                        </label>
                         <input id="set-tab-width" type="number" min="1" max="16" />
                     </div>
 
                     <div class="group">
-                        <label for="set-ignore-whitespace">Ignore whitespace</label>
-                        <select id="set-ignore-whitespace">
+                        <label for="set-ignore-whitespace">Ignore whitespace
+                            <span class="help-tip" title="Choose how diffs treat whitespace-only changes.">?</span>
+                        </label>
+                        <select id="set-ignore-whitespace" disabled>
                             <option value="none">None</option>
                             <option value="eol">End-of-line</option>
                             <option value="all">All</option>
@@ -130,76 +147,93 @@
                     </div>
 
                     <div class="group">
-                        <label for="set-max-file-size-mb">Max file size (MB)</label>
-                        <input id="set-max-file-size-mb" type="number" min="1" max="1024" />
+                        <label for="set-max-file-size-mb">Max file size (MB)
+                            <span class="help-tip" title="Skip syntax highlighting and expensive processing above this size.">?</span>
+                        </label>
+                        <input id="set-max-file-size-mb" type="number" min="1" max="1024" disabled />
                     </div>
 
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-intraline" /> Intraline highlight</label>
+                        <label class="checkbox"><input type="checkbox" id="set-intraline" disabled /> Intraline highlight
+                            <span class="help-tip" title="Highlight changed characters within changed lines.">?</span>
+                        </label>
                     </div>
 
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-binary-placeholders" /> Show binary placeholders</label>
+                        <label class="checkbox"><input type="checkbox" id="set-binary-placeholders" disabled /> Show binary placeholders
+                            <span class="help-tip" title="Show a placeholder message for binary files in the diff view.">?</span>
+                        </label>
                     </div>
                 </form>
 
                 <!-- LFS -->
                 <form class="panel-form hidden" data-panel="lfs">
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-lfs-enabled" /> Enable LFS integration</label>
+                        <label class="checkbox"><input type="checkbox" id="set-lfs-enabled" disabled /> Enable LFS integration
+                            <span class="help-tip" title="Support Git LFS for large files (download pointers as real files).">?</span>
+                        </label>
                     </div>
                     <div class="group">
-                        <label for="set-lfs-concurrency">Concurrent transfers</label>
-                        <input id="set-lfs-concurrency" type="number" min="1" max="16" />
+                        <label for="set-lfs-concurrency">Concurrent transfers
+                            <span class="help-tip" title="Number of parallel LFS uploads/downloads.">?</span>
+                        </label>
+                        <input id="set-lfs-concurrency" type="number" min="1" max="16" disabled />
                     </div>
                     <div class="group">
-                        <label for="set-lfs-bandwidth">Bandwidth cap (kbps, 0=unlimited)</label>
-                        <input id="set-lfs-bandwidth" type="number" min="0" max="1000000" />
+                        
                     </div>
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-lfs-require-lock" /> Require lock before edit</label>
+                        <label class="checkbox"><input type="checkbox" id="set-lfs-require-lock" disabled /> Require lock before edit
+                            <span class="help-tip" title="Prevent conflicting edits by requiring an LFS lock.">?</span>
+                        </label>
                     </div>
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-lfs-bg-fetch" /> Background fetch on checkout</label>
+                        <label class="checkbox"><input type="checkbox" id="set-lfs-bg-fetch" disabled /> Background fetch on checkout
+                            <span class="help-tip" title="Fetch LFS objects automatically after switching branches.">?</span>
+                        </label>
                     </div>
                 </form>
 
                 <!-- Performance -->
                 <form class="panel-form hidden" data-panel="performance">
+                    
                     <div class="group">
-                        <label for="set-graph-cap">Graph node cap</label>
-                        <input id="set-graph-cap" type="number" min="1000" max="200000" />
+                        <label class="checkbox"><input type="checkbox" id="set-progressive-render" disabled /> Progressive render
+                            <span class="help-tip" title="Render large views in chunks to keep the UI responsive.">?</span>
+                        </label>
                     </div>
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-progressive-render" /> Progressive render</label>
+                        <label class="checkbox"><input type="checkbox" id="set-gpu-accel" disabled /> GPU acceleration
+                            <span class="help-tip" title="Use GPU acceleration when available for smoother rendering.">?</span>
+                        </label>
                     </div>
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-gpu-accel" /> GPU acceleration</label>
-                    </div>
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-index-warm" /> Warm index on open</label>
-                    </div>
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-bg-index-on-battery" /> Background index on battery</label>
-                    </div>
+                    
                 </form>
 
                 <!-- UX -->
                 <form class="panel-form hidden" data-panel="ux">
                     <div class="group">
-                        <label for="set-ui-scale">UI scale</label>
+                        <label for="set-ui-scale">UI scale
+                            <span class="help-tip" title="Adjust overall UI size. Useful for HiDPI or accessibility.">?</span>
+                        </label>
                         <input id="set-ui-scale" type="number" step="0.05" min="0.75" max="2.0" />
                     </div>
                     <div class="group">
-                        <label for="set-font-mono">Monospace font</label>
+                        <label for="set-font-mono">Monospace font
+                            <span class="help-tip" title="Font used in code and diff views. Leave empty for system default.">?</span>
+                        </label>
                         <input id="set-font-mono" type="text" placeholder="monospace" />
                     </div>
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-vim-nav" /> Vim-style navigation</label>
+                        <label class="checkbox"><input type="checkbox" id="set-vim-nav" disabled /> Vim-style navigation
+                            <span class="help-tip" title="Enable h/j/k/l keys and other Vim-like shortcuts.">?</span>
+                        </label>
                     </div>
                     <div class="group">
-                        <label for="set-cb-mode">Color-blind mode</label>
-                        <select id="set-cb-mode">
+                        <label for="set-cb-mode">Color-blind mode
+                            <span class="help-tip" title="Adjust colors to improve visibility for various color vision types.">?</span>
+                        </label>
+                        <select id="set-cb-mode" disabled>
                             <option value="none">None</option>
                             <option value="protanopia">Protanopia</option>
                             <option value="deuteranopia">Deuteranopia</option>
@@ -207,8 +241,32 @@
                         </select>
                     </div>
                     <div class="group">
-                        <label for="set-recents-limit">Recent repositories to keep</label>
+                        <label for="set-recents-limit">Recent repositories to keep
+                            <span class="help-tip" title="How many recent repositories to keep in the quick list.">?</span>
+                        </label>
                         <input id="set-recents-limit" type="number" min="1" max="100" value="10" />
+                    </div>
+                </form>
+
+                <!-- Logging -->
+                <form class="panel-form hidden" data-panel="logging">
+                    <div class="group">
+                        <label for="set-log-level">Log level
+                            <span class="help-tip" title="Controls how verbose logging is (Trace > Debug > Info > Warn > Error). Changes take effect after restarting the app.">?</span>
+                        </label>
+                        <select id="set-log-level">
+                            <option value="trace">Trace</option>
+                            <option value="debug">Debug</option>
+                            <option value="info">Info</option>
+                            <option value="warn">Warn</option>
+                            <option value="error">Error</option>
+                        </select>
+                    </div>
+                    <div class="group">
+                        <label for="set-log-keep">Logs to keep
+                            <span class="help-tip" title="Number of archived log files to retain after rotation. Changes take effect after restarting the app.">?</span>
+                        </label>
+                        <input id="set-log-keep" type="number" min="1" max="100" value="10" />
                     </div>
                 </form>
 

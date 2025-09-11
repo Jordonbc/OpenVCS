@@ -1,6 +1,7 @@
 use tauri::{Emitter, Manager};
 use std::sync::Arc;
-use openvcs_core::{backend_descriptor, backend_id, BackendId};
+use openvcs_core::{backend_id, BackendId};
+use tauri_plugin_updater::UpdaterExt;
 
 mod utilities;
 mod tauri_commands;
@@ -10,6 +11,7 @@ mod state;
 mod validate;
 mod settings;
 mod repo_settings;
+mod logging;
 
 #[cfg(feature = "with-git")]
 #[allow(unused_imports)]
@@ -23,32 +25,32 @@ pub const GIT_SYSTEM_ID: BackendId = backend_id!("git-system");
 
 /// Attempt to reopen the most recent repository at startup if the
 /// global setting `general.reopen_last_repos` is enabled.
-fn try_reopen_last_repo<R: tauri::Runtime>(app: &tauri::App<R>) {
+fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
     use openvcs_core::{backend_descriptor::get_backend, Repo};
     use std::path::Path;
 
-    let state = app.state::<state::AppState>();
-    let cfg = state.config();
-    if !cfg.general.reopen_last_repos { return; }
+    let state = app_handle.state::<state::AppState>();
+    let app_config = state.config();
+    if !app_config.general.reopen_last_repos { return; }
 
     let recents = state.recents();
     if let Some(path) = recents.into_iter().find(|p| p.exists()) {
-        let backend: BackendId = match cfg.git.backend {
+        let backend: BackendId = match app_config.git.backend {
             settings::GitBackend::System => GIT_SYSTEM_ID,
             settings::GitBackend::Libgit2 => backend_id!("libgit2"),
         };
 
         let path_str = path.to_string_lossy().to_string();
         match get_backend(&backend) {
-            Some(desc) => match (desc.open)(Path::new(&path_str)) {
-                Ok(handle) => {
-                    let repo = Arc::new(Repo::new(handle));
-                    state.set_current_repo(repo);
-                    if let Err(e) = app.emit("repo:selected", &path_str) {
-                        log::warn!("startup reopen: failed to emit repo:selected: {}", e);
+            Some(description) => match (description.open)(Path::new(&path)) {
+                Ok(backend_handle) => {
+                    let existing_repo = Arc::new(Repo::new(backend_handle));
+                    state.set_current_repo(existing_repo);
+                    if let Err(error) = app_handle.emit("repo:selected", &path_str) {
+                        log::warn!("startup reopen: failed to emit repo:selected: {}", error);
                     }
                 }
-                Err(e) => log::warn!("startup reopen: failed to open repo: {}", e),
+                Err(error) => log::warn!("startup reopen: failed to open repo: {}", error),
             },
             None => log::warn!("startup reopen: unknown backend `{}`", backend),
         }
@@ -57,22 +59,17 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app: &tauri::App<R>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    if std::env::var_os("RUST_LOG").is_none() {
-        // Show info globally; debug for your crates
-        std::env::set_var(
-            "RUST_LOG",
-            "info,openvcs_core=debug,openvcs_git=debug,openvcs_git_libgit2=debug"
-        );
-    }
+    
+    // Initialize logging
+    logging::init();
 
-    // Pretty timestamps help
-    env_logger::Builder::from_default_env()
-        .format_timestamp_millis()
-        .init();
+    {
+        use openvcs_core::backend_descriptor;
 
-    // (Optional) prove the registry is populated at startup
-    for b in backend_descriptor::list_backends() {
-        log::info!("backend loaded: {} ({})", b.id, b.name);
+        // (Optional) prove the registry is populated at startup
+        for backend in backend_descriptor::list_backends() {
+            log::info!("backend loaded: {} ({})", backend.id, backend.name);
+        }
     }
 
     workarounds::apply_linux_nvidia_workaround();
@@ -85,7 +82,26 @@ pub fn run() {
             menus::build_and_attach_menu(app)?;
 
             // On startup, optionally reopen the last repository if enabled in settings.
-            try_reopen_last_repo(app);
+            try_reopen_last_repo(&app.handle());
+
+            // Optionally check for updates on launch and show custom dialog when available.
+            let app_handle = app.handle().clone();
+            let check_updates = {
+                let s = app_handle.state::<state::AppState>();
+                s.config().general.checks_on_launch
+            };
+            if check_updates {
+                tauri::async_runtime::spawn(async move {
+                    if let Ok(updater) = app_handle.updater() {
+                        match updater.check().await {
+                            Ok(Some(_u)) => {
+                                let _ = app_handle.emit("ui:update-available", serde_json::json!({"source":"startup"}));
+                            }
+                            _ => {}
+                        }
+                    }
+                });
+            }
 
             Ok(())
         })
@@ -93,6 +109,7 @@ pub fn run() {
         .on_menu_event(menus::handle_menu_event::<_>)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(build_invoke_handler::<_>())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -113,13 +130,18 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_list_branches,
         tauri_commands::git_status,
         tauri_commands::git_log,
+        tauri_commands::git_head_status,
         tauri_commands::git_checkout_branch,
         tauri_commands::git_create_branch,
+        tauri_commands::git_rename_branch,
         tauri_commands::git_current_branch,
         tauri_commands::get_repo_summary,
         tauri_commands::open_repo,
         tauri_commands::clone_repo,
         tauri_commands::git_diff_file,
+        tauri_commands::git_delete_branch,
+        tauri_commands::git_merge_branch,
+        tauri_commands::git_diff_commit,
         tauri_commands::commit_changes,
         tauri_commands::commit_selected,
         tauri_commands::commit_patch,
@@ -133,6 +155,7 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::set_global_settings,
         tauri_commands::get_repo_settings,
         tauri_commands::set_repo_settings,
+        tauri_commands::updater_install_now,
     ]
 }
 

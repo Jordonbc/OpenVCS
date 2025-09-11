@@ -54,18 +54,27 @@ impl GitSystem {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
+        let argv: Vec<String> = args.into_iter().map(|s| s.as_ref().to_string()).collect();
+        log::trace!(
+            "git(run): cwd={}, argv=[{}]",
+            cwd.map(|p| p.display().to_string()).unwrap_or_else(|| ".".into()),
+            argv.join(" ")
+        );
+
         let mut cmd = Command::new(GIT_COMMAND_NAME);
         if let Some(c) = cwd { cmd.current_dir(c); }
         let status = cmd
-            .args(args.into_iter().map(|s| s.as_ref().to_string()))
+            .args(&argv)
             // Disable interactive terminal prompts; rely on ssh-agent or fail fast
             .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
             .env("GIT_TERMINAL_PROMPT", "0")
             .status()
             .map_err(VcsError::Io)?;
         if status.success() {
+            log::trace!("git(run): exit=0");
             Ok(())
         } else {
+            log::debug!("git(run): exit={}", status);
             Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg: format!("git exited with {status}") })
         }
     }
@@ -75,22 +84,60 @@ impl GitSystem {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
+        let argv: Vec<String> = args.into_iter().map(|s| s.as_ref().to_string()).collect();
+        log::trace!(
+            "git(capture): cwd={}, argv=[{}]",
+            cwd.map(|p| p.display().to_string()).unwrap_or_else(|| ".".into()),
+            argv.join(" ")
+        );
+
         let mut cmd = Command::new(GIT_COMMAND_NAME);
         if let Some(c) = cwd { cmd.current_dir(c); }
         let out = cmd
-            .args(args.into_iter().map(|s| s.as_ref().to_string()))
+            .args(&argv)
             .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(VcsError::Io)?;
         if out.status.success() {
-            Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+            let s = String::from_utf8_lossy(&out.stdout).into_owned();
+            log::trace!("git(capture): exit=0, stdout_bytes={}", s.len());
+            Ok(s)
         } else {
+            let err = String::from_utf8_lossy(&out.stderr).into_owned();
+            log::debug!("git(capture): exit={}, stderr_bytes={}", out.status, err.len());
             Err(VcsError::Backend {
                 backend: GIT_SYSTEM_ID,
-                msg: String::from_utf8_lossy(&out.stderr).into_owned(),
+                msg: err,
             })
         }
+    }
+
+    // Capture stdout even if the process exits with a non-zero status.
+    // Useful for commands like `git diff --no-index` which may return 1 when differences are found.
+    fn run_git_capture_any_exit<I, S>(cwd: Option<&Path>, args: I) -> Result<String>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let argv: Vec<String> = args.into_iter().map(|s| s.as_ref().to_string()).collect();
+        log::trace!(
+            "git(capture-any): cwd={}, argv=[{}]",
+            cwd.map(|p| p.display().to_string()).unwrap_or_else(|| ".".into()),
+            argv.join(" ")
+        );
+
+        let mut cmd = Command::new(GIT_COMMAND_NAME);
+        if let Some(c) = cwd { cmd.current_dir(c); }
+        let out = cmd
+            .args(&argv)
+            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()
+            .map_err(VcsError::Io)?;
+        let s = String::from_utf8_lossy(&out.stdout).into_owned();
+        log::trace!("git(capture-any): exit={}, stdout_bytes={}", out.status, s.len());
+        Ok(s)
     }
 
     fn run_git_with_input<I, S>(cwd: Option<&Path>, args: I, input: &str) -> Result<()>
@@ -122,6 +169,12 @@ impl GitSystem {
     }
 
     fn run_git_streaming<const N: usize>(cwd: &Path, args: [&str; N], on: Option<OnEvent>) -> Result<()> {
+        log::trace!(
+            "git(stream): cwd={}, argv=[{}]",
+            cwd.display(),
+            args.join(" ")
+        );
+
         let mut cmd = Command::new(GIT_COMMAND_NAME);
         cmd.current_dir(cwd)
             .args(args)
@@ -153,8 +206,10 @@ impl GitSystem {
 
         let status = child.wait().map_err(VcsError::Io)?;
         if status.success() {
+            log::trace!("git(stream): exit=0");
             Ok(())
         } else {
+            log::debug!("git(stream): exit={}", status);
             Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg: format!("git exited with {status}") })
         }
     }
@@ -168,12 +223,14 @@ impl Vcs for GitSystem {
     }
 
     fn open(path: &Path) -> Result<Self> {
+        log::debug!("git-system: open {}", path.display());
         let top = Self::run_git_capture(None, ["-C", Self::path_str(path)?, "rev-parse", "--show-toplevel"])?;
         Ok(Self { workdir: PathBuf::from(top.trim()) })
     }
 
     fn clone(url: &str, dest: &Path, on: Option<OnEvent>) -> Result<Self> {
         // Use current process CWD for clone; git will create `dest`.
+        log::info!("git-system: clone url={} dest={}", url, dest.display());
         Self::run_git_streaming(Path::new("."), ["clone", "--progress", url, Self::path_str(dest)?], on)?;
         Self::open(dest)
     }
@@ -181,12 +238,14 @@ impl Vcs for GitSystem {
     fn workdir(&self) -> &Path { &self.workdir }
 
     fn current_branch(&self) -> Result<Option<String>> {
+        log::trace!("git-system: current_branch in {}", self.workdir.display());
         let out = Self::run_git_capture(Some(&self.workdir), ["rev-parse", "--abbrev-ref", "HEAD"])?;
         let s = out.trim();
         Ok(if s == "HEAD" { None } else { Some(s.to_string()) })
     }
 
     fn branches(&self) -> Result<Vec<BranchItem>> {
+        log::trace!("git-system: branches in {}", self.workdir.display());
         // name, short, head flag
         let out = Self::run_git_capture(
             Some(&self.workdir),
@@ -242,6 +301,49 @@ impl Vcs for GitSystem {
     }
 
     fn checkout_branch(&self, name: &str) -> Result<()> {
+        // 1) If local branch exists, just checkout
+        if Self::run_git_capture(
+            Some(&self.workdir),
+            ["rev-parse", "--verify", "--quiet", &format!("refs/heads/{name}")],
+        ).is_ok() {
+            return Self::run_git(Some(&self.workdir), ["checkout", name]);
+        }
+
+        // 2) If a matching remote branch exists, create a local tracking branch and checkout
+        let try_remote = |remote_ref: &str, local_name: &str| -> Result<bool> {
+            if Self::run_git_capture(
+                Some(&self.workdir),
+                ["rev-parse", "--verify", "--quiet", remote_ref],
+            ).is_ok() {
+                // If local already exists under the derived name, just checkout it.
+                if Self::run_git_capture(
+                    Some(&self.workdir),
+                    ["rev-parse", "--verify", "--quiet", &format!("refs/heads/{local_name}")],
+                ).is_ok() {
+                    Self::run_git(Some(&self.workdir), ["checkout", local_name])?;
+                } else {
+                    // Create a local tracking branch from the remote
+                    // Equivalent to: git checkout -b <local_name> --track <remote_ref_short>
+                    let short = if let Some((_, s)) = remote_ref.split_once("refs/remotes/") { s } else { remote_ref };
+                    Self::run_git(Some(&self.workdir), ["checkout", "-b", local_name, "--track", short])?;
+                }
+                return Ok(true);
+            }
+            Ok(false)
+        };
+
+        // name may be like "origin/feature" (remote) or just "feature"
+        if let Some((_remote, rest)) = name.split_once('/') {
+            // refs/remotes/<name>
+            let remote_ref = format!("refs/remotes/{name}");
+            if try_remote(&remote_ref, rest)? { return Ok(()); }
+        } else {
+            // Try origin/<name> by default
+            let remote_ref = format!("refs/remotes/origin/{name}");
+            if try_remote(&remote_ref, name)? { return Ok(()); }
+        }
+
+        // 3) Fallback to a direct checkout (may detach if it's a commit)
         Self::run_git(Some(&self.workdir), ["checkout", name])
     }
 
@@ -255,6 +357,7 @@ impl Vcs for GitSystem {
     }
 
     fn list_remotes(&self) -> Result<Vec<(String, String)>> {
+        log::trace!("git-system: list_remotes");
         // List names first, then resolve fetch URL for each
         let out = Self::run_git_capture(Some(&self.workdir), ["remote"])?;
         let mut items = Vec::new();
@@ -269,15 +372,18 @@ impl Vcs for GitSystem {
     }
 
     fn remove_remote(&self, name: &str) -> Result<()> {
+        log::info!("git-system: remove_remote '{}'", name);
         // git remote remove exits nonzero if missing; treat that as Backend error
         Self::run_git(Some(&self.workdir), ["remote", "remove", name])
     }
 
     fn fetch(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
+        log::info!("git-system: fetch {} {}", remote, refspec);
         Self::run_git_streaming(&self.workdir, ["fetch", "--progress", remote, refspec], on)
     }
 
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
+        log::info!("git-system: push {} {}", remote, refspec);
         Self::run_git_streaming(&self.workdir, ["push", "--progress", remote, refspec], on)
     }
 
@@ -285,6 +391,7 @@ impl Vcs for GitSystem {
         // Prefer a single pull with ff-only for simplicity and to surface server messages
         // Equivalent to: git fetch <remote> <branch>; git merge --ff-only <remote>/<branch>
         // Using streaming to forward progress to the UI when available.
+        log::info!("git-system: pull --ff-only {} {}", remote, branch);
         Self::run_git_streaming(
             &self.workdir,
             ["pull", "--ff-only", "--no-rebase", remote, branch],
@@ -293,6 +400,10 @@ impl Vcs for GitSystem {
     }
 
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String> {
+        log::info!(
+            "git-system: commit message_len={} author='{} <{}>' paths={}",
+            message.len(), name, email, paths.len()
+        );
         Self::run_git(Some(&self.workdir), ["config", "user.name", name])?;
         Self::run_git(Some(&self.workdir), ["config", "user.email", email])?;
         if paths.is_empty() {
@@ -311,6 +422,10 @@ impl Vcs for GitSystem {
 
     fn commit_index(&self, message: &str, name: &str, email: &str) -> Result<String> {
         // Set identity and commit whatever is currently staged in the index.
+        log::info!(
+            "git-system: commit_index message_len={} author='{} <{}>'",
+            message.len(), name, email
+        );
         Self::run_git(Some(&self.workdir), ["config", "user.name", name])?;
         Self::run_git(Some(&self.workdir), ["config", "user.email", email])?;
         Self::run_git(Some(&self.workdir), ["commit", "-m", message, "--no-edit"])?;
@@ -322,15 +437,19 @@ impl Vcs for GitSystem {
         let out = Self::run_git_capture(Some(&self.workdir), ["status", "--porcelain=v2"])?;
         let mut s = StatusSummary::default();
         for line in out.lines() {
-            if line.starts_with("1 ") {
+            if line.starts_with("? ") {
+                // Untracked file (porcelain v2)
+                s.untracked += 1;
+            } else if line.starts_with("1 ") {
+                // Ordinary changed entry: "1 XY ... <path>"
                 let code = &line[2..4];
                 match code {
-                    "??" => s.untracked += 1,
                     " M" | " T" | " D" | "MM" | "MT" | "MD" | "AM" | "AT" => s.modified += 1,
                     "M " | "T " | "A " => s.staged += 1,
                     _ => {}
                 }
             } else if line.starts_with("u ") {
+                // Unmerged/conflicted entry
                 s.conflicted += 1;
             }
         }
@@ -343,23 +462,35 @@ impl Vcs for GitSystem {
         let mut files = Vec::<FileEntry>::new();
 
         for line in out.lines() {
-            if line.starts_with("1 ") {
-                // "1 XY ... <path>"
+            if line.starts_with("? ") {
+                // Untracked; token after "?" is the path
+                if let Some(path) = line.split_whitespace().last() {
+                    files.push(FileEntry { path: path.to_string(), status: "A".into(), hunks: Vec::new() });
+                }
+            } else if line.starts_with("1 ") {
+                // Ordinary changed entry: "1 XY ... <path>"
                 let xy = &line[2..4];
-                let status = match xy {
-                    "??" => "A",
-                    " M" | "M " | "MM" | " T" | "T " => "M",
-                    " D" | "D " => "D",
-                    _ => "R?",
+                let x = xy.chars().nth(0).unwrap_or(' ');
+                let y = xy.chars().nth(1).unwrap_or(' ');
+                let is_mod = |c: char| c == 'M' || c == 'T';
+                let status = if x == 'A' || y == 'A' {
+                    "A"
+                } else if x == 'D' || y == 'D' {
+                    "D"
+                } else if is_mod(x) || is_mod(y) {
+                    "M"
+                } else {
+                    // Default to Modified for any other ordinary change combo
+                    "M"
                 }.to_string();
 
                 if let Some(path) = line.split_whitespace().last() {
                     files.push(FileEntry { path: path.to_string(), status, hunks: Vec::new() });
                 }
             } else if line.starts_with("2 ") {
-                // rename record; use new path
+                // Rename/copy record; mark as rename and use new path
                 if let Some(path) = line.split_whitespace().last() {
-                    files.push(FileEntry { path: path.to_string(), status: "R?".into(), hunks: Vec::new() });
+                    files.push(FileEntry { path: path.to_string(), status: "R".into(), hunks: Vec::new() });
                 }
             } else if line.starts_with("u ") {
                 // conflicted; last token is path
@@ -450,6 +581,7 @@ impl Vcs for GitSystem {
     }
 
     fn diff_file(&self, path: &Path) -> Result<Vec<String>> {
+        log::trace!("git-system: diff_file {}", path.display());
         let p = Self::path_str(path)?;
         // Prefer *unstaged* first
         let out = Self::run_git_capture(Some(&self.workdir), [
@@ -473,7 +605,7 @@ impl Vcs for GitSystem {
         // Only if the file exists, otherwise return empty
         let abs = if path.is_absolute() { path.to_path_buf() } else { self.workdir.join(path) };
         if abs.exists() {
-            let out_noindex = Self::run_git_capture(Some(&self.workdir), [
+            let out_noindex = Self::run_git_capture_any_exit(Some(&self.workdir), [
                 "diff", "--no-color", "--unified=3", "--no-index", "--",
                 "/dev/null", Self::path_str(&abs)?
             ])?;
@@ -486,20 +618,40 @@ impl Vcs for GitSystem {
         Ok(Vec::new())
     }
 
+    fn diff_commit(&self, rev: &str) -> Result<Vec<String>> {
+        log::trace!("git-system: diff_commit {}", rev);
+        // Show patch only; no commit header/body
+        let out = Self::run_git_capture(Some(&self.workdir), [
+            "show", "--no-color", "--unified=3", "--format=", rev
+        ])?;
+        Ok(out.trim_end().lines().map(|l| l.to_string()).collect())
+    }
+
     fn stage_patch(&self, patch: &str) -> Result<()> {
-        // Apply patch to the index only; do not touch working tree
-        // We rely on Git to validate and reject invalid hunks.
-        // Use --cached to stage and --allow-empty for files that might not exist yet in index.
-        // Use -p1 to strip the leading "a/" and "b/" path components present in unified diffs
-        // generated by `git diff`. Keep --cached so we only stage to the index.
-        Self::run_git_with_input(
+        log::debug!("git-system: stage_patch bytes={}", patch.len());
+        // Apply patch to the index only; do not touch working tree.
+        // Be tolerant to minor context shifts and try a three-way merge when needed.
+        // - `--cached`: stage changes to the index only
+        // - `--3way`: attempt a 3-way merge if the patch does not apply cleanly
+        // - `-p1`: strip leading a/ and b/ introduced by unified diffs
+        // - `--whitespace=nowarn`: do not reject because of whitespace-only issues
+        if let Err(_) = Self::run_git_with_input(
             Some(&self.workdir),
-            ["apply", "--cached", "--unidiff-zero", "-p1", "-"],
+            ["apply", "--cached", "--3way", "--whitespace=nowarn", "-p1", "-"],
             patch,
-        )
+        ) {
+            // Some patches may not include a/ b/ prefixes; retry without stripping
+            Self::run_git_with_input(
+                Some(&self.workdir),
+                ["apply", "--cached", "--3way", "--whitespace=nowarn", "-p0", "-"],
+                patch,
+            )?
+        }
+        Ok(())
     }
 
     fn discard_paths(&self, paths: &[PathBuf]) -> Result<()> {
+        log::debug!("git-system: discard_paths count={}", paths.len());
         if paths.is_empty() { return Ok(()); }
         let mut args: Vec<String> = vec!["restore".into(), "--staged".into(), "--worktree".into(), "--source=HEAD".into(), "--".into()];
         for p in paths {
@@ -515,6 +667,7 @@ impl Vcs for GitSystem {
     }
 
     fn apply_reverse_patch(&self, patch: &str) -> Result<()> {
+        log::debug!("git-system: apply_reverse_patch bytes={}", patch.len());
         Self::run_git_with_input(
             Some(&self.workdir),
             ["apply", "--reverse", "--index", "--unidiff-zero", "-p1", "-"],
@@ -523,10 +676,12 @@ impl Vcs for GitSystem {
     }
 
     fn hard_reset_head(&self) -> Result<()> {
+        log::warn!("git-system: hard_reset_head on {}", self.workdir.display());
         Self::run_git(Some(&self.workdir), ["reset", "--hard", "HEAD"])
     }
 
     fn get_identity(&self) -> Result<Option<(String, String)>> {
+        log::trace!("git-system: get_identity");
         // Prefer repo context, but allow Git's normal precedence (local → global → system)
         let name = match Self::run_git_capture(Some(&self.workdir), ["config", "--get", "user.name"]) {
             Ok(s) => s.trim().to_string(),
@@ -541,7 +696,38 @@ impl Vcs for GitSystem {
     }
 
     fn set_identity_local(&self, name: &str, email: &str) -> Result<()> {
+        log::debug!("git-system: set_identity_local name='{}' email='{}'", name, email);
         Self::run_git(Some(&self.workdir), ["config", "--local", "user.name", name])?;
         Self::run_git(Some(&self.workdir), ["config", "--local", "user.email", email])
+    }
+
+    fn delete_branch(&self, name: &str, force: bool) -> Result<()> {
+        log::info!("git-system: delete_branch '{}' force={}", name, force);
+        // Guard: do not delete current branch
+        if let Ok(cur) = self.current_branch() {
+            if let Some(c) = cur { if c == name { return Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg: "cannot delete current branch".into() }); }}
+        }
+        if force {
+            Self::run_git(Some(&self.workdir), ["branch", "-D", name])
+        } else {
+            Self::run_git(Some(&self.workdir), ["branch", "-d", name])
+        }
+    }
+
+    fn rename_branch(&self, old: &str, new: &str) -> Result<()> {
+        log::info!("git-system: rename_branch '{}' -> '{}'", old, new);
+        let old = old.trim();
+        let new = new.trim();
+        if old.is_empty() || new.is_empty() {
+            return Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg: "branch names cannot be empty".into() });
+        }
+        // Use git's builtin rename which preserves upstream/tracking when possible
+        Self::run_git(Some(&self.workdir), ["branch", "-m", old, new])
+    }
+
+    fn merge_into_current(&self, name: &str) -> Result<()> {
+        // Perform a merge into the current branch. Let git promptless merge and return any conflicts as error output.
+        log::info!("git-system: merge_into_current '{}'", name);
+        Self::run_git(Some(&self.workdir), ["merge", "--no-ff", name])
     }
 }

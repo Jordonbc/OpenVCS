@@ -45,26 +45,7 @@ export async function openAbout(): Promise<void> {
         if (aboutLicenses) {
             const rawRepo = info?.repository || "";
             const repo = rawRepo.replace(/\.git$/, "").replace(/\/+$/, "");
-            let licenseUrl = "#";
-            if (repo) {
-                try {
-                    const u = new URL(repo);
-                    const host = u.host.toLowerCase();
-                    if (host.includes("github.com")) {
-                        licenseUrl = `${repo}/blob/HEAD/LICENSE`;
-                    } else if (host.includes("gitlab.com")) {
-                        licenseUrl = `${repo}/-/blob/HEAD/LICENSE`;
-                    } else if (host.includes("bitbucket.org")) {
-                        licenseUrl = `${repo}/src/HEAD/LICENSE`;
-                    } else {
-                        // Generic fallback that often works (e.g., some forges)
-                        licenseUrl = `${repo}/blob/HEAD/LICENSE`;
-                    }
-                } catch {
-                    // If repo isn't a full URL, still attempt a sensible default
-                    licenseUrl = `${repo}/blob/HEAD/LICENSE`;
-                }
-            }
+            const licenseUrl = repo ? `${repo}/blob/HEAD/LICENSE` : "#";
             aboutLicenses.href = licenseUrl;
             aboutLicenses.toggleAttribute("disabled", !repo);
         }

@@ -3,7 +3,7 @@ import { qs } from './lib/dom';
 import { notify } from './lib/notify';
 import { prefs, savePrefs, state } from './state/state';
 import {
-    bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme, toggleTheme,
+    bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
     bindLayoutActionState
 } from './ui/layout';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
@@ -13,6 +13,7 @@ import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
 import { openModal } from './ui/modals';
 import { openSettings, loadSettingsIntoForm } from './features/settings';
+import { showUpdateDialog } from './features/update';
 import { openRepoSettings } from './features/repoSettings';
 
 // Title bar actions
@@ -30,6 +31,16 @@ function boot() {
             .then((cfg) => {
                 const t = cfg?.general?.theme as ('dark'|'light'|'system'|undefined);
                 setTheme(t || prefs.theme);
+                // Apply additional visual prefs: tab width, UI scale, monospace font
+                try {
+                    const root = document.documentElement;
+                    const tabw = Number(cfg?.diff?.tab_width ?? 4);
+                    if (tabw && isFinite(tabw)) root.style.setProperty('--tab-size', String(tabw));
+                    const uiScale = Number(cfg?.ux?.ui_scale ?? 1);
+                    if (uiScale && isFinite(uiScale)) root.style.setProperty('--ui-scale', String(uiScale));
+                    const mono = String(cfg?.ux?.font_mono || '').trim();
+                    if (mono) root.style.setProperty('--mono', mono);
+                } catch { /* best-effort */ }
             })
             .catch(() => setTheme(prefs.theme));
     } else {
@@ -107,7 +118,6 @@ function boot() {
             case 'clone_repo': openSheet('clone'); break;
             case 'add_repo':   openSheet('add');   break;
             case 'open_repo':  openSheet('switch');break;
-            case 'toggle_theme': toggleTheme(); break;
             case 'fetch': fetchBtn?.click(); break;
             case 'push':  pushBtn?.click();  break;
             case 'commit': commitBtn?.click(); break;
@@ -171,6 +181,16 @@ function boot() {
       })
       .catch(() => {});
   }
+
+  // generic notifications from backend
+  TAURI.listen?.('ui:notify', ({ payload }) => {
+      try { notify(String((payload as any) ?? '')); } catch {}
+  });
+
+    // update available payload from backend -> open modal with notes
+    TAURI.listen?.('ui:update-available', ({ payload }) => {
+        showUpdateDialog(payload);
+    });
 
     // app focus throttle + refresh
     (function () {

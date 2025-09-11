@@ -8,10 +8,12 @@ use crate::utilities::utilities;
 use crate::validate;
 
 use openvcs_core::{OnEvent, models::{BranchItem, StatusPayload, CommitItem}, Repo, BackendId, backend_id};
+use serde::Serialize;
 use openvcs_core::backend_descriptor::{get_backend, list_backends};
 use openvcs_core::models::{VcsEvent};
 use crate::settings::AppConfig;
 use crate::repo_settings::RepoConfig;
+use tauri_plugin_updater::UpdaterExt;
 
 #[derive(serde::Serialize)]
 struct RepoSelectedPayload {
@@ -373,6 +375,31 @@ pub fn git_log(
     vcs.log_commits(&q).map_err(|e| e.to_string())
 }
 
+/* ---------- git_head_status ---------- */
+#[derive(Serialize)]
+pub struct HeadStatus {
+    pub detached: bool,
+    pub branch: Option<String>,
+    pub commit: Option<String>,
+}
+
+#[tauri::command]
+pub fn git_head_status(state: State<'_, AppState>) -> Result<HeadStatus, String> {
+    use openvcs_core::models::LogQuery;
+
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+
+    let branch = vcs.current_branch().map_err(|e| e.to_string())?;
+    let q = LogQuery { rev: Some("HEAD".into()), limit: 1, ..Default::default() };
+    let head = vcs.log_commits(&q).map_err(|e| e.to_string())?;
+    let commit = head.get(0).map(|c| c.id.clone());
+
+    Ok(HeadStatus { detached: branch.is_none(), branch, commit })
+}
+
 /* ---------- optional: branch ops used by your JS ---------- */
 #[tauri::command]
 pub fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
@@ -395,6 +422,35 @@ pub fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(
 
     info!("git_checkout_branch: successfully checked out '{branch}'");
     Ok(())
+}
+
+#[tauri::command]
+pub fn git_delete_branch(state: State<'_, AppState>, name: String, force: Option<bool>) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() { return Err("Branch name cannot be empty".to_string()); }
+    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+    vcs.delete_branch(name, force.unwrap_or(false)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_rename_branch(state: State<'_, AppState>, old_name: String, new_name: String) -> Result<(), String> {
+    let old = old_name.trim();
+    let newn = new_name.trim();
+    if old.is_empty() || newn.is_empty() { return Err("Branch name cannot be empty".into()); }
+    if old == newn { return Ok(()); }
+    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+    vcs.rename_branch(old, newn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_merge_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() { return Err("Branch name cannot be empty".to_string()); }
+    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+    vcs.merge_into_current(name).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -448,6 +504,16 @@ pub fn git_diff_file(state: State<'_, AppState>, path: String) -> Result<Vec<Str
 
     // Allow either absolute or repo-relative; backend handles stripping
     vcs.diff_file(&PathBuf::from(path)).map_err(|e| e.to_string())
+}
+
+/* ---------- git_diff_commit ---------- */
+#[tauri::command]
+pub fn git_diff_commit(state: State<'_, AppState>, id: String) -> Result<Vec<String>, String> {
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+    vcs.diff_commit(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -984,4 +1050,29 @@ pub fn set_repo_settings(
         }
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn updater_install_now<R: Runtime>(window: Window<R>) -> Result<(), String> {
+    let app = window.app_handle();
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    match updater.check().await.map_err(|e| e.to_string())? {
+        Some(update) => {
+            let app2 = app.clone();
+            update
+                .download_and_install(
+                    |received, total| {
+                        let payload = serde_json::json!({ "kind": "progress", "received": received, "total": total });
+                        let _ = app2.emit("update:progress", payload);
+                    },
+                    || {
+                        let _ = app2.emit("update:progress", serde_json::json!({ "kind": "downloaded" }));
+                    },
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        None => Ok(()),
+    }
 }

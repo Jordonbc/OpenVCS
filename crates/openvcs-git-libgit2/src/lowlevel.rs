@@ -226,35 +226,74 @@ impl Git {
     }
 
     pub fn checkout_branch(&self, name: &str) -> Result<()> {
+        use git2 as g;
         info!("checking out branch '{name}'");
 
         self.with_repo(|repo| {
-            let (obj, reference) = repo
-                .revparse_ext(&format!("refs/heads/{name}"))
-                .map_err(|_| {
-                    error!("branch '{name}' not found");
-                    GitError::NoSuchBranch(name.into())
-                })?;
+            // Helper: checkout by full ref if present
+            let checkout_ref = |repo: &g::Repository, full_ref: &str| -> Result<()> {
+                let (obj, reference) = repo.revparse_ext(full_ref)?;
+                repo.checkout_tree(&obj, None)?;
+                if let Some(r) = reference {
+                    repo.set_head(r.name().unwrap())?;
+                } else {
+                    repo.set_head_detached(obj.id())?;
+                }
+                Ok(())
+            };
 
-            repo.checkout_tree(&obj, None).map_err(|e| {
-                error!("failed to checkout tree for branch '{name}': {e}");
-                e
-            })?;
-
-            if let Some(r) = reference {
-                repo.set_head(r.name().unwrap()).map_err(|e| {
-                    error!("failed to set HEAD for branch '{name}': {e}");
-                    e
-                })?;
-            } else {
-                repo.set_head_detached(obj.id()).map_err(|e| {
-                    error!("failed to set detached HEAD for branch '{name}': {e}");
-                    e
-                })?;
+            // 1) Local branch exists?
+            if repo.find_branch(name, g::BranchType::Local).is_ok() {
+                checkout_ref(repo, &format!("refs/heads/{name}"))?;
+                info!("checked out existing local branch '{name}'");
+                return Ok(());
             }
 
-            info!("successfully checked out branch '{name}'");
-            Ok(())
+            // 2) Remote branch name like "origin/feature"
+            let mut tried_remote = false;
+            if name.contains('/') {
+                if repo.find_branch(name, g::BranchType::Remote).is_ok() {
+                    tried_remote = true;
+                    let local = name.split('/').last().unwrap_or(name);
+                    if repo.find_branch(local, g::BranchType::Local).is_err() {
+                        // Create local branch at the remote target
+                        let rb = repo.find_branch(name, g::BranchType::Remote)?;
+                        let target = rb.get().target().ok_or_else(|| g::Error::from_str("remote branch has no target"))?;
+                        let commit = repo.find_commit(target)?;
+                        repo.branch(local, &commit, false)?;
+                        // Set upstream to remote
+                        let mut lb = repo.find_branch(local, g::BranchType::Local)?;
+                        lb.set_upstream(Some(name))?;
+                    }
+                    checkout_ref(repo, &format!("refs/heads/{}", local))?;
+                    info!("created and checked out tracking branch '{}' for remote '{}'", local, name);
+                    return Ok(());
+                }
+            }
+
+            // 3) Try default remote "origin/<name>"
+            if !tried_remote {
+                let remote_short = format!("origin/{name}");
+                if repo.find_branch(&remote_short, g::BranchType::Remote).is_ok() {
+                    let local = name;
+                    if repo.find_branch(local, g::BranchType::Local).is_err() {
+                        let rb = repo.find_branch(&remote_short, g::BranchType::Remote)?;
+                        let target = rb.get().target().ok_or_else(|| g::Error::from_str("remote branch has no target"))?;
+                        let commit = repo.find_commit(target)?;
+                        repo.branch(local, &commit, false)?;
+                        let mut lb = repo.find_branch(local, g::BranchType::Local)?;
+                        lb.set_upstream(Some(&remote_short))?;
+                    }
+                    checkout_ref(repo, &format!("refs/heads/{local}"))?;
+                    info!("created and checked out tracking branch '{}' for remote '{}'", local, remote_short);
+                    return Ok(());
+                }
+            }
+
+            // 4) Fallback to local ref (may detach if it's a commit)
+            checkout_ref(repo, &format!("refs/heads/{name}"))
+                .or_else(|_| checkout_ref(repo, name))
+                .map_err(|_| GitError::NoSuchBranch(name.into()))
         })
     }
 
@@ -821,6 +860,29 @@ impl Git {
             };
 
             Ok(StatusPayload { files, ahead, behind })
+        })
+    }
+
+    pub fn diff_commit(&self, rev: &str) -> Result<Vec<String>> {
+        self.with_repo(|repo| -> Result<Vec<String>> {
+            use git2 as g;
+            let oid = g::Oid::from_str(rev)?;
+            let commit = repo.find_commit(oid)?;
+            let tree = commit.tree()?;
+
+            // Parent (first) or empty tree for root commit
+            let parent_tree = if commit.parent_count() > 0 {
+                commit.parent(0)?.tree()?
+            } else {
+                let tb = repo.treebuilder(None)?;
+                let empty = tb.write()?;
+                repo.find_tree(empty)?
+            };
+
+            let mut opts = g::DiffOptions::new();
+            opts.context_lines(3);
+            let diff = repo.diff_tree_to_tree(Some(&parent_tree), Some(&tree), Some(&mut opts))?;
+            collect_patch_lines(&diff)
         })
     }
 
