@@ -44,8 +44,6 @@ export interface GlobalSettings {
         backend?: 'system'|'libgit2'|string;
         default_branch?: string;
         prune_on_fetch?: boolean;
-        watcher_debounce_ms?: number;
-        large_repo_threshold_mb?: number;
         allow_hooks?: string;
         respect_core_autocrlf?: boolean;
     };
@@ -62,16 +60,12 @@ export interface GlobalSettings {
     lfs?: {
         enabled?: boolean;
         concurrency?: number;
-        bandwidth_kbps?: number;
         require_lock_before_edit?: boolean;
         background_fetch_on_checkout?: boolean;
     };
     performance?: {
-        graph_node_cap?: number;
         progressive_render?: boolean;
         gpu_accel?: boolean;
-        index_warm_on_open?: boolean;
-        background_index_on_battery?: boolean;
     };
     ux?: {
         ui_scale?: number;

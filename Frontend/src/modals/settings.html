@@ -105,19 +105,9 @@
                         </label>
                     </div>
 
-                    <div class="group">
-                        <label for="set-watcher-debounce-ms">File watcher debounce (ms)
-                            <span class="help-tip" title="Delay before reacting to file changes to avoid excessive refreshes.">?</span>
-                        </label>
-                        <input id="set-watcher-debounce-ms" type="number" min="50" max="10000" disabled />
-                    </div>
+                    
 
-                    <div class="group">
-                        <label for="set-large-repo-threshold-mb">Large repo threshold (MB)
-                            <span class="help-tip" title="Repos larger than this may use optimized code paths to stay responsive.">?</span>
-                        </label>
-                        <input id="set-large-repo-threshold-mb" type="number" min="10" max="10000" disabled />
-                    </div>
+                    
 
                     <div class="group">
                         <label for="set-hook-policy">Hooks
@@ -191,10 +181,7 @@
                         <input id="set-lfs-concurrency" type="number" min="1" max="16" disabled />
                     </div>
                     <div class="group">
-                        <label for="set-lfs-bandwidth">Bandwidth cap (kbps, 0=unlimited)
-                            <span class="help-tip" title="Limit LFS transfer speed; set 0 for no limit.">?</span>
-                        </label>
-                        <input id="set-lfs-bandwidth" type="number" min="0" max="1000000" disabled />
+                        
                     </div>
                     <div class="group">
                         <label class="checkbox"><input type="checkbox" id="set-lfs-require-lock" disabled /> Require lock before edit
@@ -210,12 +197,7 @@
 
                 <!-- Performance -->
                 <form class="panel-form hidden" data-panel="performance">
-                    <div class="group">
-                        <label for="set-graph-cap">Graph node cap
-                            <span class="help-tip" title="Maximum number of commits to render in the graph for performance.">?</span>
-                        </label>
-                        <input id="set-graph-cap" type="number" min="1000" max="200000" disabled />
-                    </div>
+                    
                     <div class="group">
                         <label class="checkbox"><input type="checkbox" id="set-progressive-render" disabled /> Progressive render
                             <span class="help-tip" title="Render large views in chunks to keep the UI responsive.">?</span>
@@ -226,16 +208,7 @@
                             <span class="help-tip" title="Use GPU acceleration when available for smoother rendering.">?</span>
                         </label>
                     </div>
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-index-warm" disabled /> Warm index on open
-                            <span class="help-tip" title="Preload Git index data when a repo is opened to speed up first operations.">?</span>
-                        </label>
-                    </div>
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-bg-index-on-battery" disabled /> Background index on battery
-                            <span class="help-tip" title="Allow background indexing when on battery power (may reduce battery life).">?</span>
-                        </label>
-                    </div>
+                    
                 </form>
 
                 <!-- UX -->
