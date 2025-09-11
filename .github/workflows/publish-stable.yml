@@ -76,6 +76,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # We already built the Frontend; tell Backend/Tauri to skip any beforeBuildCommand
           FRONTEND_SKIP_BUILD: '1'
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_PRIVATE_KEY_PASSWORD }}
         with:
           # Point the action at your Tauri project (Backend/)
           projectPath: Backend

@@ -13,6 +13,7 @@ use openvcs_core::backend_descriptor::{get_backend, list_backends};
 use openvcs_core::models::{VcsEvent};
 use crate::settings::AppConfig;
 use crate::repo_settings::RepoConfig;
+use tauri_plugin_updater::UpdaterExt;
 
 #[derive(serde::Serialize)]
 struct RepoSelectedPayload {
@@ -1049,4 +1050,29 @@ pub fn set_repo_settings(
         }
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn updater_install_now<R: Runtime>(window: Window<R>) -> Result<(), String> {
+    let app = window.app_handle();
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    match updater.check().await.map_err(|e| e.to_string())? {
+        Some(update) => {
+            let app2 = app.clone();
+            update
+                .download_and_install(
+                    |received, total| {
+                        let payload = serde_json::json!({ "kind": "progress", "received": received, "total": total });
+                        let _ = app2.emit("update:progress", payload);
+                    },
+                    || {
+                        let _ = app2.emit("update:progress", serde_json::json!({ "kind": "downloaded" }));
+                    },
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        None => Ok(()),
+    }
 }

@@ -1,6 +1,7 @@
 use tauri::{Emitter, Manager};
 use std::sync::Arc;
 use openvcs_core::{backend_id, BackendId};
+use tauri_plugin_updater::UpdaterExt;
 
 mod utilities;
 mod tauri_commands;
@@ -83,12 +84,32 @@ pub fn run() {
             // On startup, optionally reopen the last repository if enabled in settings.
             try_reopen_last_repo(&app.handle());
 
+            // Optionally check for updates on launch and show custom dialog when available.
+            let app_handle = app.handle().clone();
+            let check_updates = {
+                let s = app_handle.state::<state::AppState>();
+                s.config().general.checks_on_launch
+            };
+            if check_updates {
+                tauri::async_runtime::spawn(async move {
+                    if let Ok(updater) = app_handle.updater() {
+                        match updater.check().await {
+                            Ok(Some(_u)) => {
+                                let _ = app_handle.emit("ui:update-available", serde_json::json!({"source":"startup"}));
+                            }
+                            _ => {}
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .on_window_event(handle_window_event::<_>)
         .on_menu_event(menus::handle_menu_event::<_>)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(build_invoke_handler::<_>())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -134,6 +155,7 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::set_global_settings,
         tauri_commands::get_repo_settings,
         tauri_commands::set_repo_settings,
+        tauri_commands::updater_install_now,
     ]
 }
 

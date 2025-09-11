@@ -13,6 +13,7 @@ import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
 import { openModal } from './ui/modals';
 import { openSettings, loadSettingsIntoForm } from './features/settings';
+import { showUpdateDialog } from './features/update';
 import { openRepoSettings } from './features/repoSettings';
 
 // Title bar actions
@@ -180,6 +181,16 @@ function boot() {
       })
       .catch(() => {});
   }
+
+  // generic notifications from backend
+  TAURI.listen?.('ui:notify', ({ payload }) => {
+      try { notify(String((payload as any) ?? '')); } catch {}
+  });
+
+    // update available payload from backend -> open modal with notes
+    TAURI.listen?.('ui:update-available', ({ payload }) => {
+        showUpdateDialog(payload);
+    });
 
     // app focus throttle + refresh
     (function () {

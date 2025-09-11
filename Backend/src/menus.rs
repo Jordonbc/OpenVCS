@@ -1,4 +1,5 @@
 use tauri::{async_runtime, menu, Emitter, Manager};
+use tauri_plugin_updater::UpdaterExt;
 use tauri::menu::{Menu, MenuBuilder, MenuEvent, MenuItem};
 use tauri_plugin_opener::OpenerExt;
 
@@ -82,9 +83,11 @@ fn build_repository_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Resul
 /// ----- Help -----
 fn build_help_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu::Submenu<R>> {
     let docs_item  = MenuItem::with_id(app, "docs",  "Documentation", true, None::<&str>)?;
+    let updates_item = MenuItem::with_id(app, "check_updates", "Check for Updates…", true, None::<&str>)?;
     let about_item = MenuItem::with_id(app, "about", "About",         true, None::<&str>)?;
     menu::SubmenuBuilder::new(app, "Help")
         .item(&docs_item)
+        .item(&updates_item)
         .item(&about_item)
         .build()
 }
@@ -127,6 +130,27 @@ pub fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: Me
         "repo-settings" => {
             // Tell the webview to open the Settings modal
             let _ = app.emit("ui:open-repo-settings", ());
+        }
+        "check_updates" => {
+            let app_cloned = app.clone();
+            async_runtime::spawn(async move {
+                match app_cloned.updater() {
+                    Ok(updater) => match updater.check().await {
+                        Ok(Some(_u)) => {
+                            let _ = app_cloned.emit("ui:update-available", serde_json::json!({"source":"updater"}));
+                        }
+                        Ok(None) => {
+                            let _ = app_cloned.emit("ui:notify", "Already up to date");
+                        }
+                        Err(_) => {
+                            let _ = app_cloned.emit("ui:notify", "Update check failed");
+                        }
+                    },
+                    Err(_) => {
+                        let _ = app_cloned.emit("ui:notify", "Updater unavailable");
+                    }
+                }
+            });
         }
         _ => {
             // Fallback: forward other menu IDs if you already rely on this
