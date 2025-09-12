@@ -895,3 +895,4 @@ function formatTimeAgo(isoMaybe: string): string {
         return (isoMaybe || '').trim();
     }
 }
+            // Default-select all hunks and all changed lines for the current file
