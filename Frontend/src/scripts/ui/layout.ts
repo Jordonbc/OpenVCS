@@ -128,13 +128,15 @@ export function refreshRepoActions() {
     if (summary) summary.disabled = !(repoOn && changesOn);
     if (desc)    desc.disabled    = !(repoOn && changesOn);
 
-    // Commit button requires: repo + changes + non-empty summary + explicit selection (files or hunks)
+    // Commit button requires: repo + changes + non-empty summary + explicit selection (files, hunks, or per-line)
     const summaryFilled = (summary?.value.trim().length ?? 0) > 0;
-    // Require either selected hunks or selected files (commit UI selection)
+    // Require either selected hunks, selected lines, or selected files (commit UI selection)
     const hunksSelected = Object.keys((state as any).selectedHunksByFile || {})
         .some((k) => Array.isArray((state as any).selectedHunksByFile[k]) && (state as any).selectedHunksByFile[k].length > 0);
+    const linesSelected = Object.keys((state as any).selectedLinesByFile || {})
+        .some((k) => !!(state as any).selectedLinesByFile[k] && Object.keys((state as any).selectedLinesByFile[k] || {}).length > 0);
     const filesSelected = !!((state as any).selectedFiles && (state as any).selectedFiles.size > 0);
-    if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && (hunksSelected || filesSelected));
+    if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && (hunksSelected || linesSelected || filesSelected));
 
     // Optional hygiene: if changes disappear, clear any stale text so the next enablement starts clean
     if (!changesOn) {

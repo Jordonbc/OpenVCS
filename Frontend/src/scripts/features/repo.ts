@@ -872,19 +872,51 @@ function bindHunkToggles(root: HTMLElement) {
 
 function syncFileCheckboxWithHunks() {
     if (!state.currentFile) return;
-    const total = allHunkIndices(state.currentDiff).length;
-    const sel = (state.selectedHunks || []).length;
-    if (total === 0) {
+    const totalHunks = allHunkIndices(state.currentDiff).length;
+    const selHunks = (state.selectedHunks || []).length;
+
+    if (totalHunks === 0) {
         updateListCheckboxForPath(state.currentFile, false, false);
         state.selectedFiles.delete(state.currentFile);
         return;
     }
-    if (sel === 0) {
-        updateListCheckboxForPath(state.currentFile, false, false);
-        state.selectedFiles.delete(state.currentFile);
-    } else if (sel === total) {
+
+    // Consider per-line partial selections for this file
+    const rec: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
+    // Build per-hunk change-line counts from current diff
+    const lines = state.currentDiff || [];
+    const first = lines.findIndex(l => (l || '').startsWith('@@'));
+    const rest = first >= 0 ? lines.slice(first) : [];
+    const starts: number[] = [];
+    for (let i = 0; i < rest.length; i++) { if ((rest[i] || '').startsWith('@@')) starts.push(i); }
+    starts.push(rest.length);
+    const changeCounts: number[] = [];
+    for (let h = 0; h < Math.max(0, starts.length - 1); h++) {
+        const s = starts[h];
+        const e = starts[h + 1];
+        const block = rest.slice(s + 1, e); // skip header
+        const cnt = block.reduce((acc, ln) => {
+            const ch = (ln || '')[0] || ' ';
+            return acc + ((ch === '+' || ch === '-') ? 1 : 0);
+        }, 0);
+        changeCounts[h] = cnt;
+    }
+
+    const hasAnyLineSel = Object.keys(rec).length > 0;
+    const hasPartialLineSel = Object.keys(rec).some(k => {
+        const h = Number(k);
+        const chosen = Array.isArray(rec[h]) ? rec[h].length : 0;
+        const total = changeCounts[h] || 0;
+        return chosen > 0 && chosen < total;
+    });
+
+    // Determine file checkbox state
+    if (selHunks === totalHunks && !hasPartialLineSel) {
         updateListCheckboxForPath(state.currentFile, true, false);
         state.selectedFiles.add(state.currentFile);
+    } else if (selHunks === 0 && !hasAnyLineSel) {
+        updateListCheckboxForPath(state.currentFile, false, false);
+        state.selectedFiles.delete(state.currentFile);
     } else {
         updateListCheckboxForPath(state.currentFile, false, true);
         state.selectedFiles.delete(state.currentFile);
