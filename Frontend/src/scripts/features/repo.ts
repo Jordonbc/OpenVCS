@@ -89,6 +89,7 @@ export function renderList() {
             listEl.appendChild(info);
         }
 
+        const aheadIds: Set<string> = (state as any).aheadIds || new Set<string>();
         commits.forEach((c, i) => {
             const li = document.createElement('li');
             li.className = 'row commit';
@@ -96,27 +97,36 @@ export function renderList() {
             const whenRaw = String(c.meta || '').split('•')[0].trim();
             const rel = formatTimeAgo(whenRaw);
             const exact = (c.meta || '').trim();
-            const statusTag = i < ahead ? `<span class="tag up" title="Not on remote yet">↑ outgoing</span>` : '';
+            const isAhead = !!(c?.id && (aheadIds.size > 0 ? aheadIds.has(c.id) : (i < ahead)));
+            const statusTag = isAhead ? `<span class=\"tag up\" title=\"Not on remote yet\">↑ outgoing</span>` : '';
             li.innerHTML = `
         <span class="badge hash" title="${escapeHtml(c.id || '')}">${escapeHtml(short)}</span>
         <div class="file" title="${escapeHtml(c.msg || '')}">${escapeHtml(c.msg || '(no message)')}</div>
         ${statusTag}
         <span class="badge time" title="${escapeHtml(exact)}">${escapeHtml(rel)}</span>`;
             li.addEventListener('click', () => selectHistory(c, i));
-            // Right-click unpushed commit → Undo to this commit (soft reset to its parent)
+            // Right-click commit → context menu (includes Undo when unpushed)
             li.addEventListener('contextmenu', (ev) => {
                 ev.preventDefault();
-                if (i >= ahead) return; // only for ahead (unpushed) commits
                 const x = (ev as MouseEvent).clientX, y = (ev as MouseEvent).clientY;
-                const items = [
-                    { label: 'Undo to this commit', action: async () => {
+                const items: any[] = [];
+                // Always offer copy hash for discoverability so menu shows
+                items.push({ label: 'Copy hash', action: async () => {
+                    try {
+                        await navigator.clipboard.writeText(c.id || '');
+                        notify('Hash copied');
+                    } catch { /* ignore */ }
+                }});
+                if (isAhead) {
+                    items.push('---');
+                    items.push({ label: 'Undo to this commit', action: async () => {
                         if (!TAURI.has) return;
                         try {
                             await TAURI.invoke('git_undo_to_commit', { id: c.id });
                             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                         } catch { notify('Undo failed'); }
-                    } }
-                ];
+                    }});
+                }
                 buildCtxMenu(items as any, x, y);
             });
             listEl.appendChild(li);
@@ -440,6 +450,19 @@ export async function hydrateCommits() {
         const list = await TAURI.invoke<any[]>('git_log', { limit: 100 });
         state.hasRepo = true;
         state.commits = Array.isArray(list) ? (list as any) : [];
+        const aheadCount = Number((state as any).ahead || 0);
+        if (aheadCount > 0) {
+            try {
+                const aheadList = await TAURI.invoke<any[]>('git_log', { limit: 1000, rev: '@{upstream}..HEAD' });
+                const ids = new Set<string>();
+                (aheadList || []).forEach((c: any) => { if (c?.id) ids.add(String(c.id)); });
+                (state as any).aheadIds = ids;
+            } catch {
+                (state as any).aheadIds = new Set<string>();
+            }
+        } else {
+            (state as any).aheadIds = new Set<string>();
+        }
         if (prefs.tab === 'history') renderList();
     } catch (e) {
         console.warn('hydrateCommits failed', e);

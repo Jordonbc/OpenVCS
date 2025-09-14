@@ -500,13 +500,25 @@ impl Vcs for GitSystem {
             }
         }
 
-        // ahead/behind: @{upstream}...HEAD
+        // ahead/behind: prefer @{upstream}...HEAD; fall back to origin/<branch> when upstream is unset
         let (mut behind, mut ahead) = (0u32, 0u32);
         if let Ok(ab) = Self::run_git_capture(Some(&self.workdir), ["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]) {
             let mut parts = ab.split_whitespace();
             if let (Some(b), Some(a)) = (parts.next(), parts.next()) {
                 behind = b.parse().unwrap_or(0);
                 ahead  = a.parse().unwrap_or(0);
+            }
+        } else if let Ok(Some(cur)) = self.current_branch() {
+            let remote_ref = format!("refs/remotes/origin/{cur}");
+            // Only compute if the remote ref exists
+            if Self::run_git_capture(Some(&self.workdir), ["rev-parse", "--verify", "--quiet", &remote_ref]).is_ok() {
+                if let Ok(ab) = Self::run_git_capture(Some(&self.workdir), ["rev-list", "--left-right", "--count", &format!("{remote_ref}...HEAD")]) {
+                    let mut parts = ab.split_whitespace();
+                    if let (Some(b), Some(a)) = (parts.next(), parts.next()) {
+                        behind = b.parse().unwrap_or(0);
+                        ahead  = a.parse().unwrap_or(0);
+                    }
+                }
             }
         }
 
