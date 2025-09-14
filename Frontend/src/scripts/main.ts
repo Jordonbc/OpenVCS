@@ -22,6 +22,7 @@ const pushBtn  = qs<HTMLButtonElement>('#push-btn');
 const cloneBtn = qs<HTMLButtonElement>('#clone-btn');
 const repoSwitch = qs<HTMLButtonElement>('#repo-switch');
 const commitBtn = qs<HTMLButtonElement>('#commit-btn');
+const undoBtn   = qs<HTMLButtonElement>('#undo-btn');
 
 function boot() {
     // theme & basic layout
@@ -100,6 +101,21 @@ function boot() {
     });
     cloneBtn?.addEventListener('click', () => openSheet('clone'));
     repoSwitch?.addEventListener('click', () => openSheet('switch'));
+
+    undoBtn?.addEventListener('click', async () => {
+        const statusEl = document.getElementById('status');
+        const setBusy = (msg: string) => {
+            if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
+        };
+        const clearBusy = () => { if (statusEl) statusEl.classList.remove('busy'); };
+        try {
+            if (!TAURI.has) return;
+            setBusy('Undoing…');
+            await TAURI.invoke('git_undo_since_push', {});
+            notify('Undid unpushed commits');
+            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+        } catch { notify('Undo failed'); } finally { clearBusy(); }
+    });
 
 
     // initial UI

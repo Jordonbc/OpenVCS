@@ -103,6 +103,22 @@ export function renderList() {
         ${statusTag}
         <span class="badge time" title="${escapeHtml(exact)}">${escapeHtml(rel)}</span>`;
             li.addEventListener('click', () => selectHistory(c, i));
+            // Right-click unpushed commit → Undo to this commit (soft reset to its parent)
+            li.addEventListener('contextmenu', (ev) => {
+                ev.preventDefault();
+                if (i >= ahead) return; // only for ahead (unpushed) commits
+                const x = (ev as MouseEvent).clientX, y = (ev as MouseEvent).clientY;
+                const items = [
+                    { label: 'Undo to this commit', action: async () => {
+                        if (!TAURI.has) return;
+                        try {
+                            await TAURI.invoke('git_undo_to_commit', { id: c.id });
+                            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                        } catch { notify('Undo failed'); }
+                    } }
+                ];
+                buildCtxMenu(items as any, x, y);
+            });
             listEl.appendChild(li);
         });
         selectHistory(commits[0], 0);

@@ -106,6 +106,8 @@ pub trait Vcs: Send + Sync {
 
     // recovery
     fn hard_reset_head(&self) -> Result<()>;
+    /// Soft-reset HEAD to the given revision, keeping changes in the index and working tree.
+    fn reset_soft_to(&self, _rev: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
 
     // config
     /// Read repository-local identity (user.name, user.email). Returns None if missing.

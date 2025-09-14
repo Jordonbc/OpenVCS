@@ -151,6 +151,8 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_fetch,
         tauri_commands::git_pull,
         tauri_commands::git_push,
+        tauri_commands::git_undo_since_push,
+        tauri_commands::git_undo_to_commit,
         tauri_commands::get_global_settings,
         tauri_commands::set_global_settings,
         tauri_commands::get_repo_settings,

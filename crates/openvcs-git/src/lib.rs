@@ -680,6 +680,11 @@ impl Vcs for GitSystem {
         Self::run_git(Some(&self.workdir), ["reset", "--hard", "HEAD"])
     }
 
+    fn reset_soft_to(&self, rev: &str) -> Result<()> {
+        log::info!("git-system: reset_soft_to {}", rev);
+        Self::run_git(Some(&self.workdir), ["reset", "--soft", rev])
+    }
+
     fn get_identity(&self) -> Result<Option<(String, String)>> {
         log::trace!("git-system: get_identity");
         // Prefer repo context, but allow Git's normal precedence (local → global → system)

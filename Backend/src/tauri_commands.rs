@@ -917,6 +917,77 @@ pub async fn git_push<R: Runtime>(
     Ok(())
 }
 
+/* ---------- undo (soft reset) ---------- */
+#[tauri::command]
+pub async fn git_undo_since_push<R: Runtime>(
+    window: Window<R>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    info!("git_undo_since_push called");
+
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?
+        .clone();
+
+    let app_for_worker = window.app_handle().clone();
+
+    async_runtime::spawn_blocking(move || -> Result<(), String> {
+        // Quick check: anything to undo?
+        let status = repo.inner().status_payload().map_err(|e| e.to_string())?;
+        if status.ahead == 0 {
+            return Err("Nothing to undo (no unpushed commits)".into());
+        }
+        let on = progress_bridge(app_for_worker);
+        on(VcsEvent::Info("Undoing unpushed commits (soft reset to upstream)…"));
+        // Reset to upstream ref; backend may error if upstream is missing.
+        repo.inner().reset_soft_to("@{upstream}").map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("git_undo_since_push task failed: {e}"))??;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn git_undo_to_commit<R: Runtime>(
+    window: Window<R>,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    info!("git_undo_to_commit called for {id}");
+
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?
+        .clone();
+
+    let app_for_worker = window.app_handle().clone();
+
+    async_runtime::spawn_blocking(move || -> Result<(), String> {
+        // Build a list of ahead commits to ensure the target is unpushed
+        let mut q = openvcs_core::models::LogQuery::head(1000);
+        q.rev = Some("@{upstream}..HEAD".to_string());
+        let ahead = repo.inner().log_commits(&q).map_err(|e| e.to_string())?;
+        let target = id.trim();
+        let target_in_ahead = ahead.iter().any(|c| c.id.starts_with(target));
+        if !target_in_ahead {
+            return Err("Selected commit is not ahead of upstream".into());
+        }
+        let on = progress_bridge(app_for_worker);
+        on(VcsEvent::Info("Undoing to selected commit (soft reset)…"));
+        // Reset to parent of the selected commit, dropping it and any newer commits
+        let rev = format!("{}^", target);
+        repo.inner().reset_soft_to(&rev).map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("git_undo_to_commit task failed: {e}"))??;
+
+    Ok(())
+}
+
 #[tauri::command]
 pub fn list_backends_cmd() -> Vec<(String, String)> {
     info!("list_backends_cmd called");
