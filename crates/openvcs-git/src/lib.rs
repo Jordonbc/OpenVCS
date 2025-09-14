@@ -643,7 +643,6 @@ impl Vcs for GitSystem {
             // Some patches may not include a/ b/ prefixes; retry without stripping
             Self::run_git_with_input(
                 Some(&self.workdir),
-                ["apply", "--cached", "--3way", "--whitespace=nowarn", "-p0", "-"],
                 patch,
             )?
         }
