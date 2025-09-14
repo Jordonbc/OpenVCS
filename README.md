@@ -20,7 +20,7 @@ OpenVCS is a new and upcoming cross‑platform version control client built with
 
 - 🐧 **Linux‑first** (primary target)
 - 🪟 **Windows** builds supported
-- 🍏 **macOS** planned/experimental (community interest welcome)
+- 🍏 **macOS** not currently planned (community interest welcome)
 
 ## Features (Planned & In‑Progress)
 
