@@ -154,6 +154,17 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 /* Use accent for focus/hover, success for checked to reinforce inclusion meaning */
 .row input.pick:checked, .pick-hunk:checked{ background:rgba(38,162,105,1); border-color:rgba(38,162,105,1); box-shadow:0 0 0 2px rgba(38,162,105,.18); }
 .row input.pick:indeterminate{ background:linear-gradient(0deg, rgba(38,162,105,1), rgba(38,162,105,1)); opacity:.7; }
+/* Show partial selection state for hunk checkbox */
+.pick-hunk:indeterminate{ background:linear-gradient(0deg, rgba(38,162,105,1), rgba(38,162,105,1)); opacity:.7; }
+
+/* Line selection checkboxes (in gutter) */
+.pick-line{
+    appearance:none; -webkit-appearance:none; width:12px; height:12px;
+    border:1px solid var(--border); border-radius:2px; background:transparent; display:inline-block;
+}
+.pick-line:checked{ background:rgba(38,162,105,1); border-color:rgba(38,162,105,1); box-shadow:0 0 0 2px rgba(38,162,105,.18); }
+.pick-line:hover{ border-color:var(--accent); }
+.pick-toggle{ display:inline-flex; align-items:center; justify-content:center; gap:.25rem; }
 .row input.pick:hover, .pick-hunk:hover{ border-color:var(--accent); }
 .pick-toggle{ display:inline-flex; align-items:center; justify-content:center; }
 .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }

@@ -28,6 +28,7 @@ export const state = {
     currentDiff: [] as string[],
     selectedHunks: [] as number[],  // indices of selected hunks for current file
     selectedHunksByFile: {} as Record<string, number[]>,
+    selectedLinesByFile: {} as Record<string, Record<number, number[]>>, // file -> hunkIdx -> line indices
     diffSelectedFiles: new Set<string>(), // files included in multi-file diff viewer
     // Optional: track the current repo path if you want to show it anywhere
     // repoPath: '' as string,

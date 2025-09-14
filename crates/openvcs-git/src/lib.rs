@@ -637,13 +637,13 @@ impl Vcs for GitSystem {
         // - `--whitespace=nowarn`: do not reject because of whitespace-only issues
         if let Err(_) = Self::run_git_with_input(
             Some(&self.workdir),
-            ["apply", "--cached", "--3way", "--whitespace=nowarn", "-p1", "-"],
+            ["apply", "--cached", "--3way", "--unidiff-zero", "--whitespace=nowarn", "-p1", "-"],
             patch,
         ) {
             // Some patches may not include a/ b/ prefixes; retry without stripping
             Self::run_git_with_input(
                 Some(&self.workdir),
-                ["apply", "--cached", "--3way", "--whitespace=nowarn", "-p0", "-"],
+                ["apply", "--cached", "--3way", "--unidiff-zero", "--whitespace=nowarn", "-p0", "-"],
                 patch,
             )?
         }
