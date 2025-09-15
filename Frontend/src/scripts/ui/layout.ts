@@ -118,8 +118,8 @@ export function refreshRepoActions() {
     const summary  = qs<HTMLInputElement>('#commit-summary');
     const desc     = qs<HTMLTextAreaElement>('#commit-desc');
     const commit   = qs<HTMLButtonElement>('#commit-btn');
-    const undoBtn  = qs<HTMLButtonElement>('#undo-btn');
-    const undoPop  = document.getElementById('undo-pop') as HTMLButtonElement | null;
+    const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
+    const undoLeftWrap = document.getElementById('left-foot') as HTMLElement | null;
 
     // Repo-scoped actions
     if (fetchBtn)  fetchBtn.disabled  = !repoOn;
@@ -140,15 +140,11 @@ export function refreshRepoActions() {
     const filesSelected = !!((state as any).selectedFiles && (state as any).selectedFiles.size > 0);
     if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && (hunksSelected || linesSelected || filesSelected));
 
-    // Undo button is enabled when repo is open and there are unpushed commits
+    // Left-panel undo visibility (under files list)
     const ahead = Number((state as any).ahead || 0);
-    if (undoBtn) undoBtn.disabled = !(repoOn && ahead > 0);
-    // Floating bottom-left undo pop-up visibility (Changes tab only) with animation
-    if (undoPop) {
-        const show = repoOn && ahead > 0 && prefs.tab === 'changes';
-        const container = undoPop.parentElement as HTMLElement | null;
-        if (container) container.classList.toggle('show', show);
-    }
+    const showUndo = repoOn && ahead > 0 && prefs.tab === 'changes';
+    if (undoLeftWrap) undoLeftWrap.classList.toggle('show', showUndo);
+    if (undoLeftBtn) (undoLeftBtn as HTMLButtonElement).disabled = !showUndo;
 
     // Optional hygiene: if changes disappear, clear any stale text so the next enablement starts clean
     if (!changesOn) {

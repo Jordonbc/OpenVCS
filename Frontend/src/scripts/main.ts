@@ -22,8 +22,7 @@ const pushBtn  = qs<HTMLButtonElement>('#push-btn');
 const cloneBtn = qs<HTMLButtonElement>('#clone-btn');
 const repoSwitch = qs<HTMLButtonElement>('#repo-switch');
 const commitBtn = qs<HTMLButtonElement>('#commit-btn');
-let undoBtn   = qs<HTMLButtonElement>('#undo-btn');
-let undoPop   = document.getElementById('undo-pop') as HTMLButtonElement | null;
+const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
 
 function boot() {
     // theme & basic layout
@@ -103,54 +102,13 @@ function boot() {
     cloneBtn?.addEventListener('click', () => openSheet('clone'));
     repoSwitch?.addEventListener('click', () => openSheet('switch'));
 
-    // Ensure Undo button exists in the commit actions area (older HTML may not have it)
-    if (!undoBtn) {
-        const actions = document.querySelector('#commit .actions');
-        if (actions) {
-            const btn = document.createElement('button');
-            btn.id = 'undo-btn';
-            btn.className = 'btn';
-            btn.title = 'Undo unpushed commits';
-            btn.textContent = 'Undo';
-            (btn as HTMLButtonElement).disabled = true;
-            actions.insertBefore(btn, actions.firstChild);
-            undoBtn = btn as HTMLButtonElement;
-            // Recompute enable/disable state now that the button exists
-            try { refreshRepoActions(); } catch {}
-        }
-    }
+    // No dynamic undo insertion; the inline button lives in the commit panel
 
-    // Create floating bottom-left Undo pop-up
-    if (!undoPop) {
-        const pop = document.createElement('div');
-        pop.className = 'undo-pop';
-        const pb = document.createElement('button');
-        pb.className = 'btn';
-        pb.id = 'undo-pop';
-        pb.textContent = 'Undo last commit';
-        pop.appendChild(pb);
-        document.body.appendChild(pop);
-        undoPop = pb as HTMLButtonElement;
-    }
-
-    undoBtn?.addEventListener('click', async () => {
+    undoLeftBtn?.addEventListener('click', async () => {
         const statusEl = document.getElementById('status');
         const setBusy = (msg: string) => {
             if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
         };
-        const clearBusy = () => { if (statusEl) statusEl.classList.remove('busy'); };
-        try {
-            if (!TAURI.has) return;
-            setBusy('Undoing…');
-            await TAURI.invoke('git_undo_since_push', {});
-            notify('Undid unpushed commits');
-            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
-        } catch { notify('Undo failed'); } finally { clearBusy(); }
-    });
-
-    undoPop?.addEventListener('click', async () => {
-        const statusEl = document.getElementById('status');
-        const setBusy = (msg: string) => { if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); } };
         const clearBusy = () => { if (statusEl) statusEl.classList.remove('busy'); };
         try {
             if (!TAURI.has) return;
