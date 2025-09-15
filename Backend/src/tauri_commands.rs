@@ -827,6 +827,36 @@ pub fn git_fetch<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> R
 }
 
 #[tauri::command]
+pub fn git_fetch_all<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
+    info!("git_fetch_all called");
+
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let vcs = repo.inner();
+
+    let app = window.app_handle().clone();
+    let on = Some(progress_bridge(app));
+
+    // Fetch all remotes with all refs
+    let remotes = vcs.list_remotes().map_err(|e| {
+        error!("Failed to list remotes: {e}");
+        e.to_string()
+    })?;
+
+    for (r, _url) in remotes.into_iter() {
+        info!("Fetching all refs from remote '{r}'");
+        // empty refspec means all
+        if let Err(e) = vcs.fetch(&r, "", on.clone()) {
+            error!("Fetch failed for remote '{r}': {e}");
+            return Err(e.to_string());
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn git_pull<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
     info!("git_pull called");
 
