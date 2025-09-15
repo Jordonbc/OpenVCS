@@ -89,6 +89,17 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     display:flex; flex-direction:column; gap:.25rem;
     flex:1 1 auto; min-height:0; overflow:auto;
 }
+.left-foot{
+    flex:0 0 auto;
+    padding:0 .5rem; border-top:1px solid transparent;
+    display:flex; align-items:center; justify-content:flex-start;
+    gap:.5rem;
+    overflow:hidden; max-height:0;
+    transform: translateY(12px); opacity:0;
+    transition: max-height .25s ease, transform .25s ease, opacity .2s ease, padding .25s ease, border-top-color .25s ease;
+}
+.left-foot.show{ max-height:56px; padding:.5rem; border-top-color:var(--border); transform: translateY(0); opacity:1; }
+.left-foot .btn{ flex:1 1 auto; width:100%; justify-content:center; }
 .row{
     display:flex; align-items:center; gap:.6rem;
     padding:.5rem .6rem; border-radius:var(--r-md);
@@ -183,6 +194,8 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
   -moz-user-select: none !important;
   -ms-user-select: none !important;
 }
+
+/* (Removed floating undo pop-up; inline button is used) */
 
 /* Check mark indicator at end of row when picked */
 .pick-mark{ margin-left:auto; color:rgba(38,162,105,1); opacity:0; transition:opacity .15s; font-weight:600; }

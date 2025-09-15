@@ -118,6 +118,8 @@ export function refreshRepoActions() {
     const summary  = qs<HTMLInputElement>('#commit-summary');
     const desc     = qs<HTMLTextAreaElement>('#commit-desc');
     const commit   = qs<HTMLButtonElement>('#commit-btn');
+    const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
+    const undoLeftWrap = document.getElementById('left-foot') as HTMLElement | null;
 
     // Repo-scoped actions
     if (fetchBtn)  fetchBtn.disabled  = !repoOn;
@@ -137,6 +139,12 @@ export function refreshRepoActions() {
         .some((k) => !!(state as any).selectedLinesByFile[k] && Object.keys((state as any).selectedLinesByFile[k] || {}).length > 0);
     const filesSelected = !!((state as any).selectedFiles && (state as any).selectedFiles.size > 0);
     if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && (hunksSelected || linesSelected || filesSelected));
+
+    // Left-panel undo visibility (under files list)
+    const ahead = Number((state as any).ahead || 0);
+    const showUndo = repoOn && ahead > 0 && prefs.tab === 'changes';
+    if (undoLeftWrap) undoLeftWrap.classList.toggle('show', showUndo);
+    if (undoLeftBtn) (undoLeftBtn as HTMLButtonElement).disabled = !showUndo;
 
     // Optional hygiene: if changes disappear, clear any stale text so the next enablement starts clean
     if (!changesOn) {

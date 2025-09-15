@@ -21,6 +21,7 @@ export const state = {
     commits: [] as CommitItem[],    // recent commits
     ahead: 0 as number,             // commits ahead of upstream
     behind: 0 as number,            // commits behind upstream
+    aheadIds: new Set<string>() as Set<string>, // IDs of commits ahead of upstream
     defaultSelectAll: true as boolean, // by default select all files/hunks until user toggles
     // Selection state
     selectedFiles: new Set<string>(),

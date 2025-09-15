@@ -217,6 +217,12 @@ impl Vcs for GitLibGit2 {
         self.inner.hard_reset_head().map_err(Self::map_err)
     }
 
+    fn reset_soft_to(&self, _rev: &str) -> Result<()> {
+        // Not implemented yet for libgit2 backend.
+        warn!("git-libgit2: reset_soft_to requested but unsupported");
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
+
     fn log_commits(&self, q: &models::LogQuery) -> Result<Vec<models::CommitItem>> {
         trace!("git-libgit2: log_commits skip={} limit={}", q.skip, q.limit);
         self.inner.log_commits(q).map_err(Self::map_err)
