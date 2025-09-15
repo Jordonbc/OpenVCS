@@ -8,10 +8,14 @@ import { closeModal, hydrate, openModal } from '../ui/modals';
 type StashSuccessHandler = (message: string | undefined) => void | Promise<void>;
 
 let onSuccess: StashSuccessHandler | null = null;
+let overridePaths: string[] | null = null;
+let includeUntracked = true;
 
 export interface OpenStashOptions {
     defaultMessage?: string;
     onSuccess?: StashSuccessHandler;
+    paths?: string[];
+    includeUntracked?: boolean;
 }
 
 function getModal(): HTMLElement | null {
@@ -20,6 +24,15 @@ function getModal(): HTMLElement | null {
 
 function getFiles() {
     const files = Array.isArray(state.files) ? state.files : [];
+    if (overridePaths && overridePaths.length) {
+        return overridePaths.map((path) => {
+            const match = files.find((f) => String(f?.path || '') === path);
+            return {
+                path,
+                status: String(match?.status || ''),
+            };
+        });
+    }
     return files.map((f) => ({
         path: String(f?.path || ''),
         status: String(f?.status || ''),
@@ -88,7 +101,9 @@ export function wireStashConfirm() {
         confirmBtn.textContent = 'Stashing…';
         try {
             if (!TAURI.has) return;
-            await TAURI.invoke('git_stash_push', { message, includeUntracked: true });
+            const payload: Record<string, unknown> = { message, includeUntracked };
+            if (overridePaths && overridePaths.length) payload.paths = overridePaths;
+            await TAURI.invoke('git_stash_push', payload);
             notify('Created stash');
             closeModal('stash-confirm-modal');
             if (typeof onSuccess === 'function') {
@@ -119,6 +134,8 @@ export function wireStashConfirm() {
 
 export function openStashConfirm(options?: OpenStashOptions) {
     onSuccess = options?.onSuccess ?? null;
+    overridePaths = Array.isArray(options?.paths) && options?.paths.length ? options?.paths.slice() : null;
+    includeUntracked = options?.includeUntracked ?? true;
     hydrate('stash-confirm-modal');
     wireStashConfirm();
 

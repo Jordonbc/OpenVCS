@@ -726,7 +726,17 @@ function parseCommitDiffByFile(lines: string[]): { path: string; status: string;
 }
 
 function onFileClick(e: MouseEvent, file: { path: string }, index: number, visible: { path: string }[]) {
-    if (suppressNextClick) { suppressNextClick = false; return; }
+    if (suppressNextClick) {
+        suppressNextClick = false;
+        if (state.diffSelectedFiles && state.diffSelectedFiles.size > 1) {
+            highlightRow(index);
+            renderCombinedDiff(Array.from(state.diffSelectedFiles));
+        } else {
+            clearDiffSelection();
+            selectFile(file, index);
+        }
+        return;
+    }
     const isToggle = e.ctrlKey || e.metaKey;
     const isRange = e.shiftKey && lastClickedIndex >= 0;
 
@@ -773,16 +783,26 @@ function onFileClick(e: MouseEvent, file: { path: string }, index: number, visib
 
 function onFileMouseDown(e: MouseEvent, file: { path: string }, index: number, visible: { path: string }[], li: HTMLElement) {
     if (e.button !== 0) return; // left only
+    const mode = e.shiftKey ? 'diff' : (e.ctrlKey || e.metaKey) ? 'commit' : null;
+    if (mode === null) {
+        // Plain click → let the click handler run without drag side-effects
+        dragMode = null;
+        isDragSelecting = false;
+        dragMoved = false;
+        dragVisited.clear();
+        return;
+    }
+
     e.preventDefault(); // avoid starting native selection
+    dragMode = mode;
     dragMoved = false;
     isDragSelecting = true;
     dragVisited.clear();
     document.body.classList.add('drag-selecting');
     // Clear any current selection
     try { const sel = window.getSelection?.(); sel && sel.removeAllRanges(); } catch {}
-    // Decide mode based on modifiers
-    dragMode = e.shiftKey ? 'diff' : (e.ctrlKey || e.metaKey) ? 'commit' : null;
     if (dragMode === 'diff') {
+        clearActiveRows();
         dragTargetState = true;
         dragStartIndex = index; dragCurrentIndex = index;
         dragPreDiff = new Set(state.diffSelectedFiles);
@@ -892,8 +912,26 @@ function updateDragRange(visible: { path: string }[]) {
 function onFileContextMenu(ev: MouseEvent, f: { path: string }) {
     ev.preventDefault();
     const x = ev.clientX, y = ev.clientY;
-    const hasSelectedFiles = state.selectedFiles && state.selectedFiles.size > 0;
+    const totalFiles = Array.isArray(state.files) ? state.files.length : 0;
+    const selectedPaths = Array.from(state.selectedFiles || []);
+    const hasManualSelection = (!state.defaultSelectAll) || (selectedPaths.length > 0 && selectedPaths.length !== totalFiles);
+    const manualSelection = hasManualSelection ? selectedPaths : [];
+    const clickedInSelection = manualSelection.includes(f.path);
+    const hasMultiSelection = manualSelection.length > 1 && clickedInSelection;
+    const hasSingleSelection = manualSelection.length === 1 && clickedInSelection;
     const items: { label: string; action: () => void }[] = [];
+    const openStashForPaths = (paths: string[], defaultMessage: string) => {
+        if (!paths.length) return;
+        openStashConfirm({
+            defaultMessage,
+            includeUntracked: false,
+            paths,
+            onSuccess: async () => {
+                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                renderList();
+            },
+        });
+    };
     items.push({ label: 'Discard changes', action: async () => {
         if (!TAURI.has) return;
         const ok = window.confirm(`Discard all changes in \n${f.path}? This cannot be undone.`);
@@ -901,48 +939,26 @@ function onFileContextMenu(ev: MouseEvent, f: { path: string }) {
         try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
         catch { notify('Discard failed'); }
     }});
-    if (hasSelectedFiles) {
+    if (hasManualSelection && clickedInSelection) {
         items.push({ label: 'Discard selected files', action: async () => {
             if (!TAURI.has) return;
-            const paths = Array.from(state.selectedFiles);
+            const paths = manualSelection.slice();
             const ok = window.confirm(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
             if (!ok) return;
             try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
             catch { notify('Discard failed'); }
         }});
-        items.push({ label: 'Create stash from selection…', action: async () => {
-            if (!TAURI.has) return;
-            const paths = Array.from(state.selectedFiles);
-            if (paths.length === 0) return;
-            const preview = paths.slice(0, 10).join('\n');
-            const more = paths.length > 10 ? `\n… and ${paths.length - 10} more` : '';
-            const confirmMsg = `Create a stash with the following ${paths.length} file(s)?\n\n${preview}${more}`;
-            const ok = window.confirm(confirmMsg);
-            if (!ok) return;
-            const name = window.prompt('Stash message', 'WIP selection') ?? 'WIP selection';
-            try {
-                await TAURI.invoke('git_stash_push', { message: name, includeUntracked: false, paths });
-                notify('Created stash from selection');
-                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
-                renderList();
-            } catch { notify('Failed to create stash'); }
-        }});
+        if (hasMultiSelection) {
+            items.push({ label: 'Create stash from selection…', action: () => {
+                openStashForPaths(manualSelection.slice(), 'WIP selection');
+            }});
+        }
     }
-    // Offer a single-file stash when no multi-selection
-    if (!hasSelectedFiles) {
-        items.push({ label: 'Create stash for this file…', action: async () => {
-            if (!TAURI.has) return;
-            const ok = window.confirm(`Create a stash with changes in:\n\n${f.path}?`);
-            if (!ok) return;
-            const name = window.prompt('Stash message', `WIP ${f.path}`) ?? `WIP ${f.path}`;
-            try {
-                await TAURI.invoke('git_stash_push', { message: name, includeUntracked: false, paths: [f.path] });
-                notify('Created stash from file');
-                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
-                renderList();
-            } catch { notify('Failed to create stash'); }
-        }});
-    }
+    const singleTarget = hasSingleSelection ? manualSelection[0] : f.path;
+    const defaultMsg = `WIP ${singleTarget}`;
+    items.push({ label: 'Create stash for this file…', action: () => {
+        openStashForPaths([singleTarget], defaultMsg);
+    }});
     buildCtxMenu(items, x, y);
 }
 
@@ -1199,6 +1215,7 @@ function updateListCheckboxForPath(path: string, checked: boolean, indeterminate
 
 async function renderCombinedDiff(paths: string[]) {
     if (!diffHeadPath || !diffEl) return;
+    clearActiveRows();
     const files = Array.from(new Set(paths)).filter(Boolean);
     diffHeadPath.textContent = `Multiple files (${files.length})`;
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
@@ -1223,6 +1240,12 @@ function clearDiffSelection() {
         const rows = listEl.querySelectorAll<HTMLElement>('li.row.diffsel');
         rows.forEach(r => r.classList.remove('diffsel'));
     }
+}
+
+function clearActiveRows() {
+    if (!listEl) return;
+    const rows = listEl.querySelectorAll<HTMLElement>('li.row.active');
+    rows.forEach(r => r.classList.remove('active'));
 }
 
 function updateCommitButton() {
