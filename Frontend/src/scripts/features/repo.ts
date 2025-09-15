@@ -4,6 +4,7 @@ import { buildCtxMenu } from '../lib/menu';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { state, prefs, statusLabel, statusClass } from '../state/state';
+import { refreshRepoActions } from '../ui/layout';
 import { openStashConfirm } from './stashConfirm';
 
 const filterInput   = qs<HTMLInputElement>('#filter');
@@ -11,6 +12,9 @@ const selectAllBox  = qs<HTMLInputElement>('#select-all');
 const listEl        = qs<HTMLElement>('#file-list');
 const countEl       = qs<HTMLElement>('#changes-count');
 const leftFootEl    = qs<HTMLElement>('#left-foot');
+const undoLeftBtn   = leftFootEl?.querySelector<HTMLButtonElement>('#undo-left-btn') ?? null;
+let stashFootEl: HTMLElement | null = null;
+let stashFootBound = false;
 
 const diffHeadPath  = qs<HTMLElement>('#diff-path');
 const diffEl        = qs<HTMLElement>('#diff');
@@ -67,6 +71,10 @@ export function renderList() {
     else listEl.classList.remove('commit-list');
     const q = filterInput.value.trim().toLowerCase();
     updateCommitButton();
+
+    if (isStash) showStashFooter();
+    else hideStashFooter();
+    refreshRepoActions();
 
     if (isHistory) {
         const commits = (state.commits || []).filter(c =>
@@ -144,67 +152,11 @@ export function renderList() {
         const items = stash.filter((s: any) => !q || (s.msg || '').toLowerCase().includes(q) || (s.selector || '').includes(q));
         countEl.textContent = `${items.length} stash${items.length === 1 ? '' : 'es'}`;
 
-        // Render footer controls specific to Stash
-        if (leftFootEl) {
-            leftFootEl.innerHTML = `
-              <button class="btn" id="stash-create-btn" title="Stash current changes">Create Stash</button>
-              <button class="btn" id="stash-apply-btn" disabled>Apply</button>
-              <button class="btn" id="stash-pop-btn" disabled>Pop</button>
-              <button class="btn" id="stash-drop-btn" disabled>Drop</button>
-            `;
-        }
-
         const enableActionButtons = (enabled: boolean) => {
             const a = qs<HTMLButtonElement>('#stash-apply-btn'); if (a) a.disabled = !enabled;
             const p = qs<HTMLButtonElement>('#stash-pop-btn'); if (p) p.disabled = !enabled;
             const d = qs<HTMLButtonElement>('#stash-drop-btn'); if (d) d.disabled = !enabled;
         };
-
-        // Bind footer actions
-        qs<HTMLButtonElement>('#stash-create-btn')?.addEventListener('click', () => {
-            openStashConfirm({
-                onSuccess: async () => {
-                    await Promise.allSettled([hydrateStatus(), hydrateStash()]);
-                    renderList();
-                },
-            });
-        });
-        qs<HTMLButtonElement>('#stash-apply-btn')?.addEventListener('click', async () => {
-            const selector = getActiveStashSelector();
-            if (!selector) return;
-            try {
-                if (!TAURI.has) return;
-                await TAURI.invoke('git_stash_apply', { selector });
-                notify('Applied stash');
-                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
-                renderList();
-            } catch (e) { console.warn('git_stash_apply failed', e); notify('Failed to apply stash'); }
-        });
-        qs<HTMLButtonElement>('#stash-pop-btn')?.addEventListener('click', async () => {
-            const selector = getActiveStashSelector();
-            if (!selector) return;
-            try {
-                if (!TAURI.has) return;
-                await TAURI.invoke('git_stash_pop', { selector });
-                notify('Popped stash');
-                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
-                renderList();
-            } catch (e) { console.warn('git_stash_pop failed', e); notify('Failed to pop stash'); }
-        });
-        qs<HTMLButtonElement>('#stash-drop-btn')?.addEventListener('click', async () => {
-            const selector = getActiveStashSelector();
-            if (!selector) return;
-            const ok = window.confirm(`Drop ${selector}? This cannot be undone.`);
-            if (!ok) return;
-            try {
-                if (!TAURI.has) return;
-                await TAURI.invoke('git_stash_drop', { selector });
-                notify('Dropped stash');
-                state.currentStash = '';
-                await Promise.allSettled([hydrateStash()]);
-                renderList();
-            } catch (e) { console.warn('git_stash_drop failed', e); notify('Failed to drop stash'); }
-        });
 
         if (!items.length) {
             listEl.innerHTML = `<li class="row" aria-disabled="true"><div class="file">No stashes.</div></li>`;
@@ -692,6 +644,101 @@ function hline(ln: string, n: number) {
     const first = (typeof ln === 'string' ? ln[0] : ' ') || ' ';
     const t = first === '+' ? 'add' : first === '-' ? 'del' : '';
     return `<div class="hline ${t}"><div class="gutter">${n}</div><div class="code">${escapeHtml(String(ln))}</div></div>`;
+}
+
+function showStashFooter() {
+    if (!leftFootEl) return;
+    const foot = ensureStashFooterControls();
+    if (!foot) return;
+    leftFootEl.dataset.mode = 'stash';
+    leftFootEl.classList.add('show');
+    if (undoLeftBtn) undoLeftBtn.style.display = 'none';
+    foot.classList.add('show');
+}
+
+function hideStashFooter() {
+    if (!leftFootEl) return;
+    if (leftFootEl.dataset.mode === 'stash') {
+        leftFootEl.classList.remove('show');
+        leftFootEl.dataset.mode = '';
+    }
+    if (undoLeftBtn) undoLeftBtn.style.display = '';
+    if (stashFootEl) stashFootEl.classList.remove('show');
+}
+
+function ensureStashFooterControls(): HTMLElement | null {
+    if (!leftFootEl) return null;
+    if (!stashFootEl) {
+        stashFootEl = document.createElement('div');
+        stashFootEl.id = 'stash-foot-controls';
+        stashFootEl.className = 'stash-foot';
+        stashFootEl.innerHTML = `
+          <button class="btn" id="stash-create-btn" title="Stash current changes">Create Stash</button>
+          <button class="btn" id="stash-apply-btn" disabled>Apply</button>
+          <button class="btn" id="stash-pop-btn" disabled>Pop</button>
+          <button class="btn" id="stash-drop-btn" disabled>Drop</button>
+        `;
+        leftFootEl.appendChild(stashFootEl);
+    }
+    if (!stashFootBound && stashFootEl) {
+        wireStashFooterButtons(stashFootEl);
+        stashFootBound = true;
+    }
+    return stashFootEl;
+}
+
+function wireStashFooterButtons(container: HTMLElement) {
+    const createBtn = container.querySelector<HTMLButtonElement>('#stash-create-btn');
+    createBtn?.addEventListener('click', () => {
+        openStashConfirm({
+            onSuccess: async () => {
+                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                renderList();
+            },
+        });
+    });
+
+    const applyBtn = container.querySelector<HTMLButtonElement>('#stash-apply-btn');
+    applyBtn?.addEventListener('click', async () => {
+        const selector = getActiveStashSelector();
+        if (!selector) return;
+        try {
+            if (!TAURI.has) return;
+            await TAURI.invoke('git_stash_apply', { selector });
+            notify('Applied stash');
+            await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+            renderList();
+        } catch (e) { console.warn('git_stash_apply failed', e); notify('Failed to apply stash'); }
+    });
+
+    const popBtn = container.querySelector<HTMLButtonElement>('#stash-pop-btn');
+    popBtn?.addEventListener('click', async () => {
+        const selector = getActiveStashSelector();
+        if (!selector) return;
+        try {
+            if (!TAURI.has) return;
+            await TAURI.invoke('git_stash_pop', { selector });
+            notify('Popped stash');
+            await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+            renderList();
+        } catch (e) { console.warn('git_stash_pop failed', e); notify('Failed to pop stash'); }
+    });
+
+    const dropBtn = container.querySelector<HTMLButtonElement>('#stash-drop-btn');
+    dropBtn?.addEventListener('click', async () => {
+        const selector = getActiveStashSelector();
+        if (!selector) return;
+        const ok = window.confirm(`Drop ${selector}? This cannot be undone.`);
+        if (!ok) return;
+        try {
+            if (!TAURI.has) return;
+            await TAURI.invoke('git_stash_drop', { selector });
+            notify('Dropped stash');
+            state.currentStash = '';
+            await Promise.allSettled([hydrateStash()]);
+            renderList();
+        } catch (e) { console.warn('git_stash_drop failed', e); notify('Failed to drop stash'); }
+    });
 }
 
 // Group commit diff into per-file blocks based on `diff --git` markers.

@@ -147,7 +147,8 @@ export function refreshRepoActions() {
     // Left-panel undo visibility (under files list)
     const ahead = Number((state as any).ahead || 0);
     const showUndo = repoOn && ahead > 0 && prefs.tab === 'changes';
-    if (undoLeftWrap) undoLeftWrap.classList.toggle('show', showUndo);
+    const stashMode = undoLeftWrap?.dataset.mode === 'stash';
+    if (undoLeftWrap) undoLeftWrap.classList.toggle('show', stashMode || showUndo);
     if (undoLeftBtn) (undoLeftBtn as HTMLButtonElement).disabled = !showUndo;
 
     // Optional hygiene: if changes disappear, clear any stale text so the next enablement starts clean
