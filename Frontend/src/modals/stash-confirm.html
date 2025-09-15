@@ -1,0 +1,35 @@
+<!-- Stash confirm modal -->
+<div class="modal" id="stash-confirm-modal" aria-hidden="true">
+  <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="stash-confirm-title">
+    <div class="sheet-head">
+      <div>
+        <h3 id="stash-confirm-title" style="margin:0">Create Stash</h3>
+        <p class="hint" id="stash-confirm-hint" style="margin:.25rem 0 0;">Review message and files before stashing.</p>
+      </div>
+      <button class="tbtn" data-close type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <form class="panel-form" onsubmit="return false;">
+        <div class="group">
+          <label for="stash-message">Message</label>
+          <input id="stash-message" type="text" placeholder="e.g. WIP on feature" />
+        </div>
+        <div class="group" aria-live="polite">
+          <div class="input-row" style="justify-content:space-between; align-items:center;">
+            <label for="stash-file-list" style="margin:0;">Files to stash</label>
+            <span class="badge" id="stash-file-count"></span>
+          </div>
+          <div class="stash-files" id="stash-file-container" role="region">
+            <ul id="stash-file-list"></ul>
+            <p class="hint" id="stash-empty" hidden>No changes to stash.</p>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="sheet-actions">
+      <button class="tbtn" data-close type="button">Cancel</button>
+      <button class="tbtn primary" id="stash-confirm-btn" type="button">Stash</button>
+    </div>
+  </div>
+  <div class="backdrop" data-close></div>
+</div>

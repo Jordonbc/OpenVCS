@@ -4,6 +4,7 @@ import { buildCtxMenu } from '../lib/menu';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { state, prefs, statusLabel, statusClass } from '../state/state';
+import { openStashConfirm } from './stashConfirm';
 
 const filterInput   = qs<HTMLInputElement>('#filter');
 const selectAllBox  = qs<HTMLInputElement>('#select-all');
@@ -160,18 +161,13 @@ export function renderList() {
         };
 
         // Bind footer actions
-        qs<HTMLButtonElement>('#stash-create-btn')?.addEventListener('click', async () => {
-            const msg = window.prompt('Stash message', 'WIP') ?? undefined;
-            try {
-                if (!TAURI.has) return;
-                await TAURI.invoke('git_stash_push', { message: msg, includeUntracked: true });
-                notify('Created stash');
-                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
-                renderList();
-            } catch (e) {
-                console.warn('git_stash_push failed', e);
-                notify('Failed to create stash');
-            }
+        qs<HTMLButtonElement>('#stash-create-btn')?.addEventListener('click', () => {
+            openStashConfirm({
+                onSuccess: async () => {
+                    await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                    renderList();
+                },
+            });
         });
         qs<HTMLButtonElement>('#stash-apply-btn')?.addEventListener('click', async () => {
             if (!state.currentStash) return;

@@ -12,6 +12,8 @@ import renameBranchHtml from "@modals/rename-branch.html?raw";
 import { wireRenameBranch } from "../features/renameBranch";
 import updateHtml from "@modals/update.html?raw";
 import { wireUpdate } from "../features/update";
+import stashConfirmHtml from "@modals/stash-confirm.html?raw";
+import { wireStashConfirm } from "../features/stashConfirm";
 
 // Lazy fragments (only those NOT present at load)
 const FRAGMENTS: Record<string, string> = {
@@ -22,6 +24,7 @@ const FRAGMENTS: Record<string, string> = {
     "new-branch-modal": newBranchHtml,
     "rename-branch-modal": renameBranchHtml,
     "update-modal": updateHtml,
+    "stash-confirm-modal": stashConfirmHtml,
 };
 
 const loaded = new Set<string>();
@@ -61,6 +64,7 @@ export function hydrate(id: string): void {
     if (id === "new-branch-modal") wireNewBranch();
     if (id === "rename-branch-modal") wireRenameBranch();
     if (id === "update-modal") wireUpdate();
+    if (id === "stash-confirm-modal") wireStashConfirm();
 }
 
 export function openModal(id: string): void {
