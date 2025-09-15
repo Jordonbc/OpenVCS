@@ -149,6 +149,7 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_discard_paths,
         tauri_commands::git_discard_patch,
         tauri_commands::git_fetch,
+        tauri_commands::git_fetch_all,
         tauri_commands::git_pull,
         tauri_commands::git_push,
         tauri_commands::git_undo_since_push,
@@ -161,12 +162,6 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
     ]
 }
 
-fn handle_window_event<R: tauri::Runtime>(win: &tauri::Window<R>, event: &tauri::WindowEvent) {
-    match event {
-        tauri::WindowEvent::Focused(true) => {
-            // Fire a custom event to the frontend
-            let _ = win.emit("app:focus", ());
-        }
-        _ => {}
-    }
+fn handle_window_event<R: tauri::Runtime>(_win: &tauri::Window<R>, _event: &tauri::WindowEvent) {
+    // Frontend now handles focus via window/visibility events; no backend emit needed.
 }

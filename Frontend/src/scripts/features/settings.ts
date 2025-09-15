@@ -86,7 +86,7 @@ export function wireSettings() {
             const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
 
             cur.general = { theme: 'system', language: 'system', default_backend: 'git', update_channel: 'stable', reopen_last_repos: true, checks_on_launch: true, telemetry: false, crash_reports: false };
-            cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, allow_hooks: 'ask', respect_core_autocrlf: true };
+            cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, fetch_on_focus: true, allow_hooks: 'ask', respect_core_autocrlf: true };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
             cur.performance = { progressive_render: true, gpu_accel: true };
@@ -123,6 +123,7 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         ...o.git,
         backend: get<HTMLSelectElement>('#set-git-backend')?.value as any,
         prune_on_fetch: !!get<HTMLInputElement>('#set-prune-on-fetch')?.checked,
+        fetch_on_focus: !!get<HTMLInputElement>('#set-fetch-on-focus')?.checked,
         allow_hooks: get<HTMLSelectElement>('#set-hook-policy')?.value,
         respect_core_autocrlf: !!get<HTMLInputElement>('#set-respect-autocrlf')?.checked,
     };
@@ -200,6 +201,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
         elGb.value = backend === 'libgit2' ? 'libgit2' : 'system';
     }
     const elPr = get<HTMLInputElement>('#set-prune-on-fetch'); if (elPr) elPr.checked = !!cfg.git?.prune_on_fetch;
+    const elFoF = get<HTMLInputElement>('#set-fetch-on-focus'); if (elFoF) elFoF.checked = !!cfg.git?.fetch_on_focus;
     
     const elHp = get<HTMLSelectElement>('#set-hook-policy'); if (elHp) elHp.value = toKebab(cfg.git?.allow_hooks);
     const elRc = get<HTMLInputElement>('#set-respect-autocrlf'); if (elRc) elRc.checked = !!cfg.git?.respect_core_autocrlf;

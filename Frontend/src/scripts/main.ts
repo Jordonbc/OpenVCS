@@ -58,8 +58,8 @@ function boot() {
     bindLayoutActionState()
     bindRepoHotkeys(commitBtn || null, openSheet);
 
-    // title actions
-    fetchBtn?.addEventListener('click', async () => {
+    // shared fetch-or-pull routine (used by button and focus)
+    async function fetchOnly() {
         const statusEl = document.getElementById('status');
         const setBusy = (msg: string) => {
             if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
@@ -67,25 +67,17 @@ function boot() {
         const clearBusy = () => { if (statusEl) statusEl.classList.remove('busy'); };
         try {
             if (!TAURI.has) return;
-            const hasLocalChanges = Array.isArray(state.files) && state.files.length > 0;
-            const ahead = (state as any).ahead || 0;
-            const behind = (state as any).behind || 0;
-            const canFastForward = !hasLocalChanges && ahead === 0;
-
-            if (canFastForward) {
-                setBusy('Pulling…');
-                await TAURI.invoke('git_pull', {});
-                notify(behind > 0 ? 'Pulled (fast-forward)' : 'Already up to date');
-            } else {
-                setBusy('Fetching…');
-                await TAURI.invoke('git_fetch', {});
-                notify('Fetched');
-            }
+            setBusy('Fetching…');
+            await TAURI.invoke('git_fetch', {});
+            notify('Fetched');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
         } catch {
-            notify('Fetch/Pull failed');
+            notify('Fetch failed');
         } finally { clearBusy(); }
-    });
+    }
+
+    // title actions
+    fetchBtn?.addEventListener('click', fetchOnly);
     pushBtn?.addEventListener('click', async () => {
         const statusEl = document.getElementById('status');
         const setBusy = (msg: string) => {
@@ -210,24 +202,30 @@ function boot() {
         showUpdateDialog(payload);
     });
 
-    // app focus throttle + refresh
-    (function () {
-        let cooling = false;
-        const COOL_MS = 350;
-
-        async function refreshAll() {
-            const statusEl = document.getElementById('status');
-            if (statusEl) statusEl.textContent = 'Refreshing…';
-            await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits()]);
-            if (statusEl) statusEl.textContent = 'Ready';
+    // App focus: handle entirely in TS (no backend event)
+    async function onFocus() {
+        let doFetch = false;
+        if (TAURI.has) {
+            try {
+                const cfg = await TAURI.invoke<any>('get_global_settings');
+                doFetch = cfg?.git?.fetch_on_focus !== false; // default true when unset
+            } catch {}
         }
+        if (doFetch) {
+            try {
+                await TAURI.invoke('git_fetch_all', {});
+                notify('Fetched all remotes');
+            } catch {
+                await fetchOnly();
+            }
+        }
+        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits()]);
+    }
 
-        TAURI.listen?.('app:focus', () => {
-            if (cooling) return;
-            cooling = true;
-            refreshAll().finally(() => setTimeout(() => (cooling = false), COOL_MS));
-        });
-    })();
+    window.addEventListener('focus', () => { onFocus().catch(() => {}); });
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') onFocus().catch(() => {});
+    });
 
     // open settings via event
       TAURI.listen?.('ui:open-settings', () => openModal('settings-modal'));
