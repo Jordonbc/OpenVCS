@@ -382,7 +382,24 @@ pub fn git_stash_list(state: State<'_, AppState>) -> Result<Vec<StashItem>, Stri
     let repo = state
         .current_repo()
         .ok_or_else(|| "No repository selected".to_string())?;
-    repo.inner().stash_list().map_err(|e| e.to_string())
+    match repo.inner().stash_list() {
+        Ok(items) => {
+            info!("git_stash_list: count={}", items.len());
+            for item in &items {
+                info!(
+                    "git_stash_list: selector='{}' msg='{}' meta='{}'",
+                    item.selector,
+                    item.msg,
+                    item.meta
+                );
+            }
+            Ok(items)
+        }
+        Err(e) => {
+            error!("git_stash_list: failed: {}", e);
+            Err(e.to_string())
+        }
+    }
 }
 
 #[tauri::command]
@@ -422,7 +439,18 @@ pub fn git_stash_drop(state: State<'_, AppState>, selector: Option<String>) -> R
     let repo = state
         .current_repo()
         .ok_or_else(|| "No repository selected".to_string())?;
-    repo.inner().stash_drop(selector.unwrap_or_default().as_str()).map_err(|e| e.to_string())
+    let selector = selector.unwrap_or_default();
+    info!("git_stash_drop: selector='{}'", selector);
+    match repo.inner().stash_drop(selector.as_str()) {
+        Ok(()) => {
+            info!("git_stash_drop: success selector='{}'", selector);
+            Ok(())
+        }
+        Err(e) => {
+            error!("git_stash_drop: failed selector='{}': {}", selector, e);
+            Err(e.to_string())
+        }
+    }
 }
 
 #[tauri::command]

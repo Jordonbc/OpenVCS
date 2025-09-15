@@ -170,32 +170,35 @@ export function renderList() {
             });
         });
         qs<HTMLButtonElement>('#stash-apply-btn')?.addEventListener('click', async () => {
-            if (!state.currentStash) return;
+            const selector = getActiveStashSelector();
+            if (!selector) return;
             try {
                 if (!TAURI.has) return;
-                await TAURI.invoke('git_stash_apply', { selector: state.currentStash });
+                await TAURI.invoke('git_stash_apply', { selector });
                 notify('Applied stash');
                 await Promise.allSettled([hydrateStatus(), hydrateStash()]);
                 renderList();
             } catch (e) { console.warn('git_stash_apply failed', e); notify('Failed to apply stash'); }
         });
         qs<HTMLButtonElement>('#stash-pop-btn')?.addEventListener('click', async () => {
-            if (!state.currentStash) return;
+            const selector = getActiveStashSelector();
+            if (!selector) return;
             try {
                 if (!TAURI.has) return;
-                await TAURI.invoke('git_stash_pop', { selector: state.currentStash });
+                await TAURI.invoke('git_stash_pop', { selector });
                 notify('Popped stash');
                 await Promise.allSettled([hydrateStatus(), hydrateStash()]);
                 renderList();
             } catch (e) { console.warn('git_stash_pop failed', e); notify('Failed to pop stash'); }
         });
         qs<HTMLButtonElement>('#stash-drop-btn')?.addEventListener('click', async () => {
-            if (!state.currentStash) return;
-            const ok = window.confirm(`Drop ${state.currentStash}? This cannot be undone.`);
+            const selector = getActiveStashSelector();
+            if (!selector) return;
+            const ok = window.confirm(`Drop ${selector}? This cannot be undone.`);
             if (!ok) return;
             try {
                 if (!TAURI.has) return;
-                await TAURI.invoke('git_stash_drop', { selector: state.currentStash });
+                await TAURI.invoke('git_stash_drop', { selector });
                 notify('Dropped stash');
                 state.currentStash = '';
                 await Promise.allSettled([hydrateStash()]);
@@ -215,8 +218,8 @@ export function renderList() {
             const li = document.createElement('li');
             li.className = 'row commit';
             const sel = s.selector || '';
-            const short = sel.replace('stash@{', '').replace('}', '');
             const exact = (s.meta || '').trim();
+            li.dataset.selector = sel;
             li.innerHTML = `
         <div class="file" title="${escapeHtml(s.msg || '')}">${escapeHtml(s.msg || '(no message)')}</div>
         <span class="badge time" title="${escapeHtml(exact)}">${escapeHtml(exact)}</span>`;
@@ -227,24 +230,25 @@ export function renderList() {
                 enableActionButtons(true);
                 const mev = ev as MouseEvent;
                 const x = mev.clientX, y = mev.clientY;
+                const target = sel;
                 const items: { label: string; action: () => void }[] = [];
                 items.push({ label: 'Apply stash', action: async () => {
                     try {
                         if (!TAURI.has) return;
-                        await TAURI.invoke('git_stash_apply', { selector: state.currentStash });
+                        await TAURI.invoke('git_stash_apply', { selector: target });
                         notify('Applied stash');
                         await Promise.allSettled([hydrateStatus(), hydrateStash()]);
                         renderList();
                     } catch { notify('Failed to apply stash'); }
                 }});
                 items.push({ label: 'Delete stash', action: async () => {
-                    const ok = window.confirm(`Delete ${state.currentStash}? This cannot be undone.`);
+                    const ok = window.confirm(`Delete ${target}? This cannot be undone.`);
                     if (!ok) return;
                     try {
                         if (!TAURI.has) return;
-                        await TAURI.invoke('git_stash_drop', { selector: state.currentStash });
+                        await TAURI.invoke('git_stash_drop', { selector: target });
                         notify('Deleted stash');
-                        state.currentStash = '';
+                        if (state.currentStash === target) state.currentStash = '';
                         await Promise.allSettled([hydrateStash()]);
                         renderList();
                     } catch { notify('Failed to delete stash'); }
@@ -1258,6 +1262,14 @@ function updateCommitButton() {
         .some((k) => !!(state as any).selectedLinesByFile[k] && Object.keys((state as any).selectedLinesByFile[k] || {}).length > 0);
     const filesSelected = !!(state.selectedFiles && state.selectedFiles.size > 0);
     btn.disabled = !(summaryFilled && (hunksSelected || linesSelected || filesSelected));
+}
+
+function getActiveStashSelector(): string {
+    if (state.currentStash) return state.currentStash;
+    const active = listEl?.querySelector<HTMLElement>('li.row.commit.active');
+    const sel = active?.dataset.selector || '';
+    if (sel) state.currentStash = sel;
+    return sel;
 }
 
 // Convert an ISO/RFC3339 datetime string into a short relative phrase.

@@ -770,9 +770,10 @@ impl Vcs for GitSystem {
     // ---------------- stash ----------------
     fn stash_list(&self) -> Result<Vec<StashItem>> {
         // Format: %gd (stash@{0}) %cs (date) %s (subject)
+        // %gd gives stash@{N}; %cI is the committer date in strict ISO format.
         let out = Self::run_git_capture(Some(&self.workdir), [
-            "stash", "list", "--date=iso-strict",
-            "--pretty=format:%gd%x00%cs%x00%s",
+            "stash", "list",
+            "--pretty=format:%gd%x00%cI%x00%s",
         ])?;
         let mut items = Vec::new();
         for line in out.lines() {
