@@ -218,7 +218,6 @@ export function renderList() {
             const short = sel.replace('stash@{', '').replace('}', '');
             const exact = (s.meta || '').trim();
             li.innerHTML = `
-        <span class="badge hash" title="${escapeHtml(sel)}">${escapeHtml(short)}</span>
         <div class="file" title="${escapeHtml(s.msg || '')}">${escapeHtml(s.msg || '(no message)')}</div>
         <span class="badge time" title="${escapeHtml(exact)}">${escapeHtml(exact)}</span>`;
             li.addEventListener('click', () => selectStash(s, i));
@@ -445,7 +444,7 @@ async function selectStash(item: { selector: string; msg?: string; meta?: string
     if (!diffHeadPath || !diffEl) return;
     highlightRow(index);
     state.currentStash = item.selector;
-    const title = `${item.selector} — ${item.msg || ''}`.trim();
+    const title = (item.msg || '').trim();
     diffHeadPath.textContent = title || item.selector;
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
     try {
