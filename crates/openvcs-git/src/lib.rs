@@ -7,7 +7,7 @@ use std::{
 };
 use openvcs_core::backend_descriptor::{BackendDescriptor, BACKENDS};
 use openvcs_core::backend_id::BackendId;
-use openvcs_core::models::{BranchItem, BranchKind, Capabilities, CommitItem, FileEntry, LogQuery, OnEvent, StatusPayload, StatusSummary, VcsEvent};
+use openvcs_core::models::{BranchItem, BranchKind, Capabilities, CommitItem, FileEntry, LogQuery, OnEvent, StatusPayload, StatusSummary, VcsEvent, StashItem};
 /* ============================ registry wiring ============================ */
 
 pub const GIT_SYSTEM_ID: BackendId = backend_id!("git-system");
@@ -765,5 +765,56 @@ impl Vcs for GitSystem {
         // Perform a merge into the current branch. Let git promptless merge and return any conflicts as error output.
         log::info!("git-system: merge_into_current '{}'", name);
         Self::run_git(Some(&self.workdir), ["merge", "--no-ff", name])
+    }
+
+    // ---------------- stash ----------------
+    fn stash_list(&self) -> Result<Vec<StashItem>> {
+        // Format: %gd (stash@{0}) %cs (date) %s (subject)
+        let out = Self::run_git_capture(Some(&self.workdir), [
+            "stash", "list", "--date=iso-strict",
+            "--pretty=format:%gd%x00%cs%x00%s",
+        ])?;
+        let mut items = Vec::new();
+        for line in out.lines() {
+            if line.trim().is_empty() { continue; }
+            let mut parts = line.split('\0');
+            let sel = parts.next().unwrap_or("").trim().to_string();
+            let date = parts.next().unwrap_or("").trim().to_string();
+            let msg  = parts.next().unwrap_or("").trim().to_string();
+            if sel.is_empty() { continue; }
+            items.push(StashItem { selector: sel, msg, meta: date });
+        }
+        Ok(items)
+    }
+
+    fn stash_push(&self, message: &str, include_untracked: bool, paths: &[PathBuf]) -> Result<()> {
+        let mut args: Vec<String> = vec!["stash".into(), "push".into(), "-m".into(), message.into()];
+        if include_untracked { args.push("-u".into()); }
+        if !paths.is_empty() {
+            args.push("--".into());
+            for p in paths { args.push(Self::path_str(p)?.to_string()); }
+        }
+        Self::run_git(Some(&self.workdir), args)
+    }
+
+    fn stash_apply(&self, selector: &str) -> Result<()> {
+        let sel = if selector.trim().is_empty() { "stash@{0}" } else { selector };
+        Self::run_git(Some(&self.workdir), ["stash", "apply", sel])
+    }
+
+    fn stash_pop(&self, selector: &str) -> Result<()> {
+        let sel = if selector.trim().is_empty() { "stash@{0}" } else { selector };
+        Self::run_git(Some(&self.workdir), ["stash", "pop", sel])
+    }
+
+    fn stash_drop(&self, selector: &str) -> Result<()> {
+        let sel = if selector.trim().is_empty() { "stash@{0}" } else { selector };
+        Self::run_git(Some(&self.workdir), ["stash", "drop", sel])
+    }
+
+    fn stash_show(&self, selector: &str) -> Result<Vec<String>> {
+        let sel = if selector.trim().is_empty() { "stash@{0}" } else { selector };
+        let s = Self::run_git_capture_any_exit(Some(&self.workdir), ["stash", "show", "-p", sel])?;
+        Ok(s.lines().map(|l| l.to_string()).collect())
     }
 }

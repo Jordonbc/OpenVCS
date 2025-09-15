@@ -45,14 +45,18 @@ export function toggleTheme() {
     }
 }
 
-export function setTab(tab: 'changes'|'history') {
+export function setTab(tab: 'changes'|'history'|'stash') {
     prefs.tab = tab; savePrefs();
     tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    if (commitBox) commitBox.style.display = tab === 'history' ? 'none' : 'grid';
-    if (diffHeadPath) setText(diffHeadPath, tab === 'history' ? 'Commit details' : 'Select a file to view changes');
+    const hideCommit = (tab === 'history' || tab === 'stash');
+    if (commitBox) commitBox.style.display = hideCommit ? 'none' : 'grid';
+    if (diffHeadPath) setText(diffHeadPath,
+        tab === 'history' ? 'Commit details'
+      : tab === 'stash'   ? 'Stash details'
+                          : 'Select a file to view changes');
 }
 
-export function bindTabs(onChange: (t: 'changes'|'history') => void) {
+export function bindTabs(onChange: (t: 'changes'|'history'|'stash') => void) {
     tabs.forEach(btn => btn.addEventListener('click', () => onChange((btn.dataset.tab as any) ?? 'changes')));
 }
 

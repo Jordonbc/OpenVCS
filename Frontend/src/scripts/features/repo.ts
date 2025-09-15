@@ -9,6 +9,7 @@ const filterInput   = qs<HTMLInputElement>('#filter');
 const selectAllBox  = qs<HTMLInputElement>('#select-all');
 const listEl        = qs<HTMLElement>('#file-list');
 const countEl       = qs<HTMLElement>('#changes-count');
+const leftFootEl    = qs<HTMLElement>('#left-foot');
 
 const diffHeadPath  = qs<HTMLElement>('#diff-path');
 const diffEl        = qs<HTMLElement>('#diff');
@@ -59,8 +60,9 @@ export function renderList() {
 
     listEl.innerHTML = '';
     const isHistory = prefs.tab === 'history';
-    // Toggle list styling for history vs changes
-    if (isHistory) listEl.classList.add('commit-list');
+    const isStash = prefs.tab === 'stash';
+    // Toggle list styling for history/stash vs changes
+    if (isHistory || isStash) listEl.classList.add('commit-list');
     else listEl.classList.remove('commit-list');
     const q = filterInput.value.trim().toLowerCase();
     updateCommitButton();
@@ -132,6 +134,131 @@ export function renderList() {
             listEl.appendChild(li);
         });
         selectHistory(commits[0], 0);
+        return;
+    }
+
+    // Stash tab rendering
+    if (isStash) {
+        const stash = ((state as any).stash || []) as any[];
+        const items = stash.filter((s: any) => !q || (s.msg || '').toLowerCase().includes(q) || (s.selector || '').includes(q));
+        countEl.textContent = `${items.length} stash${items.length === 1 ? '' : 'es'}`;
+
+        // Render footer controls specific to Stash
+        if (leftFootEl) {
+            leftFootEl.innerHTML = `
+              <button class="btn" id="stash-create-btn" title="Stash current changes">Create Stash</button>
+              <button class="btn" id="stash-apply-btn" disabled>Apply</button>
+              <button class="btn" id="stash-pop-btn" disabled>Pop</button>
+              <button class="btn" id="stash-drop-btn" disabled>Drop</button>
+            `;
+        }
+
+        const enableActionButtons = (enabled: boolean) => {
+            const a = qs<HTMLButtonElement>('#stash-apply-btn'); if (a) a.disabled = !enabled;
+            const p = qs<HTMLButtonElement>('#stash-pop-btn'); if (p) p.disabled = !enabled;
+            const d = qs<HTMLButtonElement>('#stash-drop-btn'); if (d) d.disabled = !enabled;
+        };
+
+        // Bind footer actions
+        qs<HTMLButtonElement>('#stash-create-btn')?.addEventListener('click', async () => {
+            const msg = window.prompt('Stash message', 'WIP') ?? undefined;
+            try {
+                if (!TAURI.has) return;
+                await TAURI.invoke('git_stash_push', { message: msg, includeUntracked: true });
+                notify('Created stash');
+                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                renderList();
+            } catch (e) {
+                console.warn('git_stash_push failed', e);
+                notify('Failed to create stash');
+            }
+        });
+        qs<HTMLButtonElement>('#stash-apply-btn')?.addEventListener('click', async () => {
+            if (!state.currentStash) return;
+            try {
+                if (!TAURI.has) return;
+                await TAURI.invoke('git_stash_apply', { selector: state.currentStash });
+                notify('Applied stash');
+                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                renderList();
+            } catch (e) { console.warn('git_stash_apply failed', e); notify('Failed to apply stash'); }
+        });
+        qs<HTMLButtonElement>('#stash-pop-btn')?.addEventListener('click', async () => {
+            if (!state.currentStash) return;
+            try {
+                if (!TAURI.has) return;
+                await TAURI.invoke('git_stash_pop', { selector: state.currentStash });
+                notify('Popped stash');
+                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                renderList();
+            } catch (e) { console.warn('git_stash_pop failed', e); notify('Failed to pop stash'); }
+        });
+        qs<HTMLButtonElement>('#stash-drop-btn')?.addEventListener('click', async () => {
+            if (!state.currentStash) return;
+            const ok = window.confirm(`Drop ${state.currentStash}? This cannot be undone.`);
+            if (!ok) return;
+            try {
+                if (!TAURI.has) return;
+                await TAURI.invoke('git_stash_drop', { selector: state.currentStash });
+                notify('Dropped stash');
+                state.currentStash = '';
+                await Promise.allSettled([hydrateStash()]);
+                renderList();
+            } catch (e) { console.warn('git_stash_drop failed', e); notify('Failed to drop stash'); }
+        });
+
+        if (!items.length) {
+            listEl.innerHTML = `<li class="row" aria-disabled="true"><div class="file">No stashes.</div></li>`;
+            diffHeadPath.textContent = 'Stash details';
+            diffEl.innerHTML = '';
+            enableActionButtons(false);
+            return;
+        }
+
+        items.forEach((s: any, i: number) => {
+            const li = document.createElement('li');
+            li.className = 'row commit';
+            const sel = s.selector || '';
+            const short = sel.replace('stash@{', '').replace('}', '');
+            const exact = (s.meta || '').trim();
+            li.innerHTML = `
+        <span class="badge hash" title="${escapeHtml(sel)}">${escapeHtml(short)}</span>
+        <div class="file" title="${escapeHtml(s.msg || '')}">${escapeHtml(s.msg || '(no message)')}</div>
+        <span class="badge time" title="${escapeHtml(exact)}">${escapeHtml(exact)}</span>`;
+            li.addEventListener('click', () => selectStash(s, i));
+            li.addEventListener('contextmenu', (ev) => {
+                ev.preventDefault();
+                state.currentStash = sel;
+                enableActionButtons(true);
+                const mev = ev as MouseEvent;
+                const x = mev.clientX, y = mev.clientY;
+                const items: { label: string; action: () => void }[] = [];
+                items.push({ label: 'Apply stash', action: async () => {
+                    try {
+                        if (!TAURI.has) return;
+                        await TAURI.invoke('git_stash_apply', { selector: state.currentStash });
+                        notify('Applied stash');
+                        await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                        renderList();
+                    } catch { notify('Failed to apply stash'); }
+                }});
+                items.push({ label: 'Delete stash', action: async () => {
+                    const ok = window.confirm(`Delete ${state.currentStash}? This cannot be undone.`);
+                    if (!ok) return;
+                    try {
+                        if (!TAURI.has) return;
+                        await TAURI.invoke('git_stash_drop', { selector: state.currentStash });
+                        notify('Deleted stash');
+                        state.currentStash = '';
+                        await Promise.allSettled([hydrateStash()]);
+                        renderList();
+                    } catch { notify('Failed to delete stash'); }
+                }});
+                buildCtxMenu(items as any, x, y);
+            });
+            listEl.appendChild(li);
+        });
+        selectStash(items[0], 0);
         return;
     }
 
@@ -318,6 +445,29 @@ async function selectFile(file: { path: string }, index: number) {
     }
 }
 
+async function selectStash(item: { selector: string; msg?: string; meta?: string }, index: number) {
+    if (!diffHeadPath || !diffEl) return;
+    highlightRow(index);
+    state.currentStash = item.selector;
+    const title = `${item.selector} — ${item.msg || ''}`.trim();
+    diffHeadPath.textContent = title || item.selector;
+    diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
+    try {
+        let lines: string[] = [];
+        if (TAURI.has && item.selector) {
+            lines = await TAURI.invoke<string[]>('git_stash_show', { selector: item.selector });
+        }
+        const a = qs<HTMLButtonElement>('#stash-apply-btn'); if (a) a.disabled = false;
+        const p = qs<HTMLButtonElement>('#stash-pop-btn'); if (p) p.disabled = false;
+        const d = qs<HTMLButtonElement>('#stash-drop-btn'); if (d) d.disabled = false;
+        state.currentDiff = lines || [];
+        diffEl.innerHTML = renderHunksReadonly(state.currentDiff);
+    } catch (e) {
+        console.warn('git_stash_show failed', e);
+        diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load stash diff</div></div></div>';
+    }
+}
+
 async function selectHistory(commit: any, index: number) {
     if (!diffHeadPath || !diffEl) return;
     highlightRow(index);
@@ -467,6 +617,18 @@ export async function hydrateCommits() {
     } catch (e) {
         console.warn('hydrateCommits failed', e);
         state.commits = [];
+    }
+}
+
+export async function hydrateStash() {
+    if (!TAURI.has) return;
+    try {
+        const list = await TAURI.invoke<any[]>('git_stash_list');
+        (state as any).stash = Array.isArray(list) ? (list as any) : [];
+        if (prefs.tab === 'stash') renderList();
+    } catch (e) {
+        console.warn('hydrateStash failed', e);
+        (state as any).stash = [];
     }
 }
 
@@ -751,6 +913,38 @@ function onFileContextMenu(ev: MouseEvent, f: { path: string }) {
             if (!ok) return;
             try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
             catch { notify('Discard failed'); }
+        }});
+        items.push({ label: 'Create stash from selection…', action: async () => {
+            if (!TAURI.has) return;
+            const paths = Array.from(state.selectedFiles);
+            if (paths.length === 0) return;
+            const preview = paths.slice(0, 10).join('\n');
+            const more = paths.length > 10 ? `\n… and ${paths.length - 10} more` : '';
+            const confirmMsg = `Create a stash with the following ${paths.length} file(s)?\n\n${preview}${more}`;
+            const ok = window.confirm(confirmMsg);
+            if (!ok) return;
+            const name = window.prompt('Stash message', 'WIP selection') ?? 'WIP selection';
+            try {
+                await TAURI.invoke('git_stash_push', { message: name, includeUntracked: false, paths });
+                notify('Created stash from selection');
+                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                renderList();
+            } catch { notify('Failed to create stash'); }
+        }});
+    }
+    // Offer a single-file stash when no multi-selection
+    if (!hasSelectedFiles) {
+        items.push({ label: 'Create stash for this file…', action: async () => {
+            if (!TAURI.has) return;
+            const ok = window.confirm(`Create a stash with changes in:\n\n${f.path}?`);
+            if (!ok) return;
+            const name = window.prompt('Stash message', `WIP ${f.path}`) ?? `WIP ${f.path}`;
+            try {
+                await TAURI.invoke('git_stash_push', { message: name, includeUntracked: false, paths: [f.path] });
+                notify('Created stash from file');
+                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                renderList();
+            } catch { notify('Failed to create stash'); }
         }});
     }
     buildCtxMenu(items, x, y);

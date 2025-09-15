@@ -7,7 +7,7 @@ use crate::state::AppState;
 use crate::utilities::utilities;
 use crate::validate;
 
-use openvcs_core::{OnEvent, models::{BranchItem, StatusPayload, CommitItem}, Repo, BackendId, backend_id};
+use openvcs_core::{OnEvent, models::{BranchItem, StatusPayload, CommitItem, StashItem}, Repo, BackendId, backend_id};
 use serde::Serialize;
 use openvcs_core::backend_descriptor::{get_backend, list_backends};
 use openvcs_core::models::{VcsEvent};
@@ -374,6 +374,63 @@ pub fn git_log(
     };
 
     vcs.log_commits(&q).map_err(|e| e.to_string())
+}
+
+/* ---------- stash ---------- */
+#[tauri::command]
+pub fn git_stash_list(state: State<'_, AppState>) -> Result<Vec<StashItem>, String> {
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    repo.inner().stash_list().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_stash_push(
+    state: State<'_, AppState>,
+    message: Option<String>,
+    include_untracked: Option<bool>,
+    paths: Option<Vec<String>>,
+) -> Result<(), String> {
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let msg = message.unwrap_or_else(|| "WIP".to_string());
+    let iu = include_untracked.unwrap_or(true);
+    let pathbufs: Vec<std::path::PathBuf> = paths.unwrap_or_default().into_iter().map(|s| s.into()).collect();
+    repo.inner().stash_push(&msg, iu, &pathbufs).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_stash_apply(state: State<'_, AppState>, selector: Option<String>) -> Result<(), String> {
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    repo.inner().stash_apply(selector.unwrap_or_default().as_str()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_stash_pop(state: State<'_, AppState>, selector: Option<String>) -> Result<(), String> {
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    repo.inner().stash_pop(selector.unwrap_or_default().as_str()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_stash_drop(state: State<'_, AppState>, selector: Option<String>) -> Result<(), String> {
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    repo.inner().stash_drop(selector.unwrap_or_default().as_str()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_stash_show(state: State<'_, AppState>, selector: Option<String>) -> Result<Vec<String>, String> {
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    repo.inner().stash_show(selector.unwrap_or_default().as_str()).map_err(|e| e.to_string())
 }
 
 /* ---------- git_head_status ---------- */

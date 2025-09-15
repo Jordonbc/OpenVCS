@@ -7,7 +7,7 @@ import {
     bindLayoutActionState
 } from './ui/layout';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
-import { bindRepoHotkeys, bindFilter, renderList, hydrateBranches, hydrateStatus, hydrateCommits } from './features/repo';
+import { bindRepoHotkeys, bindFilter, renderList, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash } from './features/repo';
 import { bindBranchUI } from './features/branches';
 import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
@@ -121,6 +121,7 @@ function boot() {
     hydrateBranches().then(() => setRepoHeader());
     hydrateStatus();
     hydrateCommits();
+    hydrateStash();
 
     // menu routing
     TAURI.listen?.('menu', ({ payload: id }) => {
@@ -219,7 +220,7 @@ function boot() {
                 await fetchOnly();
             }
         }
-        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits()]);
+            await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash()]);
     }
 
     window.addEventListener('focus', () => { onFocus().catch(() => {}); });

@@ -51,6 +51,17 @@ pub struct CommitItem {
     pub author: String,
 }
 
+/// A single stash entry (backend-agnostic)
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct StashItem {
+    /// Selector like `stash@{0}` that can be used in commands.
+    pub selector: String,
+    /// Short message/subject.
+    pub msg: String,
+    /// Free-form metadata (date, branch, etc.).
+    pub meta: String,
+}
+
 /// Query for commit history. Keep this VCS-agnostic and stable.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
 pub struct LogQuery {
