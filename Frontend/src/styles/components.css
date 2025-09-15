@@ -184,6 +184,30 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
   -ms-user-select: none !important;
 }
 
+/* Floating Undo pop-up (bottom-left) */
+.undo-pop{
+    position:fixed; left:12px; bottom:16px; z-index:1000;
+    transform: translateX(-120%);
+    opacity: 0;
+    transition: transform .25s ease, opacity .25s ease;
+    pointer-events: none; /* disabled when hidden */
+}
+.undo-pop.show{
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+.undo-pop .btn{
+    padding:.36rem .8rem;
+    border-radius:8px;
+    font-size:.9rem;
+    background: var(--surface);
+    border:1px solid var(--border);
+    color: var(--text);
+    box-shadow: 0 6px 18px rgba(0,0,0,.22);
+}
+.undo-pop .btn:hover{ border-color: var(--accent); }
+
 /* Check mark indicator at end of row when picked */
 .pick-mark{ margin-left:auto; color:rgba(38,162,105,1); opacity:0; transition:opacity .15s; font-weight:600; }
 .row.picked .pick-mark{ opacity:1; }

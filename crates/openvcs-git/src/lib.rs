@@ -500,7 +500,7 @@ impl Vcs for GitSystem {
             }
         }
 
-        // ahead/behind: prefer @{upstream}...HEAD; fall back to origin/<branch> when upstream is unset
+        // ahead/behind: prefer @{upstream}...HEAD; fall back to discovered upstream short, then origin/<branch>
         let (mut behind, mut ahead) = (0u32, 0u32);
         if let Ok(ab) = Self::run_git_capture(Some(&self.workdir), ["rev-list", "--left-right", "--count", "@{upstream}...HEAD"]) {
             let mut parts = ab.split_whitespace();
@@ -509,14 +509,33 @@ impl Vcs for GitSystem {
                 ahead  = a.parse().unwrap_or(0);
             }
         } else if let Ok(Some(cur)) = self.current_branch() {
-            let remote_ref = format!("refs/remotes/origin/{cur}");
-            // Only compute if the remote ref exists
-            if Self::run_git_capture(Some(&self.workdir), ["rev-parse", "--verify", "--quiet", &remote_ref]).is_ok() {
-                if let Ok(ab) = Self::run_git_capture(Some(&self.workdir), ["rev-list", "--left-right", "--count", &format!("{remote_ref}...HEAD")]) {
-                    let mut parts = ab.split_whitespace();
-                    if let (Some(b), Some(a)) = (parts.next(), parts.next()) {
-                        behind = b.parse().unwrap_or(0);
-                        ahead  = a.parse().unwrap_or(0);
+            // Try to resolve a generic upstream short name for this branch (e.g., "origin/main")
+            if let Ok(up_short) = Self::run_git_capture(Some(&self.workdir), [
+                "for-each-ref", "--format=%(upstream:short)", &format!("refs/heads/{cur}")
+            ]) {
+                let up = up_short.trim();
+                if !up.is_empty() {
+                    if let Ok(ab) = Self::run_git_capture(Some(&self.workdir), ["rev-list", "--left-right", "--count", &format!("{up}...HEAD")]) {
+                        let mut parts = ab.split_whitespace();
+                        if let (Some(b), Some(a)) = (parts.next(), parts.next()) {
+                            behind = b.parse().unwrap_or(0);
+                            ahead  = a.parse().unwrap_or(0);
+                        }
+                    }
+                }
+            }
+            // Final fallback: origin/<branch>
+            if ahead == 0 && behind == 0 {
+                let remote_short = format!("origin/{cur}");
+                if Self::run_git_capture(Some(&self.workdir), ["rev-parse", "--verify", "--quiet", &remote_short]).is_ok() ||
+                   Self::run_git_capture(Some(&self.workdir), ["rev-parse", "--verify", "--quiet", &format!("refs/remotes/{remote_short}")]).is_ok()
+                {
+                    if let Ok(ab) = Self::run_git_capture(Some(&self.workdir), ["rev-list", "--left-right", "--count", &format!("{remote_short}...HEAD")]) {
+                        let mut parts = ab.split_whitespace();
+                        if let (Some(b), Some(a)) = (parts.next(), parts.next()) {
+                            behind = b.parse().unwrap_or(0);
+                            ahead  = a.parse().unwrap_or(0);
+                        }
                     }
                 }
             }
