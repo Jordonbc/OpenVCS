@@ -70,6 +70,7 @@ pub struct Git {
     /// Default branch name used when creating new repos or inferring defaults
     #[serde(default)] pub default_branch: String,
     #[serde(default)] pub prune_on_fetch: bool,
+    #[serde(default)] pub fetch_on_focus: bool,
     #[serde(default)] pub allow_hooks: HookPolicy,
     #[serde(default)] pub respect_core_autocrlf: bool,
 }
@@ -79,6 +80,7 @@ impl Default for Git {
             backend: GitBackend::System,
             default_branch: "main".into(),
             prune_on_fetch: true,
+            fetch_on_focus: true,
             allow_hooks: HookPolicy::Ask,
             respect_core_autocrlf: true,
         }
