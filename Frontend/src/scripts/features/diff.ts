@@ -105,9 +105,16 @@ function buildPatchForSelectedHunks(path: string, lines: string[], hunkIndices: 
     // Determine file action by inspecting original diff prelude
     const isAdd = prelude.some(l => l.startsWith('--- /dev/null'));
     const isDel = prelude.some(l => l.startsWith('+++ /dev/null'));
+    const headerExtras = prelude.filter((l) =>
+        !!l &&
+        !l.startsWith('diff --git') &&
+        !l.startsWith('--- ') &&
+        !l.startsWith('+++ ')
+    );
 
-    // Compose minimal header (avoid carrying index/mode lines that can corrupt apply)
+    // Compose header and preserve any mode/index metadata Git included
     let out = `diff --git a/${normPath} b/${normPath}\n`;
+    if (headerExtras.length) out += headerExtras.join('\n') + '\n';
     if (isAdd) {
         out += `--- /dev/null\n+++ b/${normPath}\n`;
     } else if (isDel) {
@@ -142,8 +149,15 @@ function buildPatchForSelected(path: string, lines: string[], hunkIndices: numbe
 
     const isAdd = prelude.some(l => l.startsWith('--- /dev/null'));
     const isDel = prelude.some(l => l.startsWith('+++ /dev/null'));
+    const headerExtras = prelude.filter((l) =>
+        !!l &&
+        !l.startsWith('diff --git') &&
+        !l.startsWith('--- ') &&
+        !l.startsWith('+++ ')
+    );
 
     let out = `diff --git a/${normPath} b/${normPath}\n`;
+    if (headerExtras.length) out += headerExtras.join('\n') + '\n';
     if (isAdd) out += `--- /dev/null\n+++ b/${normPath}\n`;
     else if (isDel) out += `--- a/${normPath}\n+++ /dev/null\n`;
     else out += `--- a/${normPath}\n+++ b/${normPath}\n`;

@@ -114,6 +114,20 @@ pub trait Vcs: Send + Sync {
     fn get_identity(&self) -> Result<Option<(String, String)>>;
     /// Set repository-local identity (user.name, user.email).
     fn set_identity_local(&self, name: &str, email: &str) -> Result<()>;
+
+    // stash
+    /// List available stash entries (most-recent first).
+    fn stash_list(&self) -> Result<Vec<models::StashItem>> { Err(VcsError::Unsupported(self.id())) }
+    /// Create a stash entry. If `paths` is non-empty, only those paths are stashed.
+    fn stash_push(&self, _message: &str, _include_untracked: bool, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    /// Apply a stash entry without dropping it.
+    fn stash_apply(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    /// Pop (apply and drop) a stash entry.
+    fn stash_pop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    /// Drop a stash entry.
+    fn stash_drop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    /// Show a unified diff for a stash entry.
+    fn stash_show(&self, _selector: &str) -> Result<Vec<String>> { Err(VcsError::Unsupported(self.id())) }
 }
 
 /// A concrete repository handle that owns a chosen backend instance.

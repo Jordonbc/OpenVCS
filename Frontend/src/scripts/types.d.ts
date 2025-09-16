@@ -23,10 +23,16 @@ export interface CommitItem {
     author?: string;
 }
 
+export interface StashItem {
+    selector: string; // e.g., "stash@{0}"
+    msg?: string;
+    meta?: string;    // date string
+}
+
 export interface AppPrefs {
     theme: 'dark' | 'light';
     leftW: number;   // px
-    tab: 'changes' | 'history';
+    tab: 'changes' | 'history' | 'stash';
 }
 
 export interface GlobalSettings {

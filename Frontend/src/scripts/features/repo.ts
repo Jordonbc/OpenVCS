@@ -4,11 +4,17 @@ import { buildCtxMenu } from '../lib/menu';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { state, prefs, statusLabel, statusClass } from '../state/state';
+import { refreshRepoActions } from '../ui/layout';
+import { openStashConfirm } from './stashConfirm';
 
 const filterInput   = qs<HTMLInputElement>('#filter');
 const selectAllBox  = qs<HTMLInputElement>('#select-all');
 const listEl        = qs<HTMLElement>('#file-list');
 const countEl       = qs<HTMLElement>('#changes-count');
+const leftFootEl    = qs<HTMLElement>('#left-foot');
+const undoLeftBtn   = leftFootEl?.querySelector<HTMLButtonElement>('#undo-left-btn') ?? null;
+let stashFootEl: HTMLElement | null = null;
+let stashFootBound = false;
 
 const diffHeadPath  = qs<HTMLElement>('#diff-path');
 const diffEl        = qs<HTMLElement>('#diff');
@@ -59,11 +65,16 @@ export function renderList() {
 
     listEl.innerHTML = '';
     const isHistory = prefs.tab === 'history';
-    // Toggle list styling for history vs changes
-    if (isHistory) listEl.classList.add('commit-list');
+    const isStash = prefs.tab === 'stash';
+    // Toggle list styling for history/stash vs changes
+    if (isHistory || isStash) listEl.classList.add('commit-list');
     else listEl.classList.remove('commit-list');
     const q = filterInput.value.trim().toLowerCase();
     updateCommitButton();
+
+    if (isStash) showStashFooter();
+    else hideStashFooter();
+    refreshRepoActions();
 
     if (isHistory) {
         const commits = (state.commits || []).filter(c =>
@@ -132,6 +143,73 @@ export function renderList() {
             listEl.appendChild(li);
         });
         selectHistory(commits[0], 0);
+        return;
+    }
+
+    // Stash tab rendering
+    if (isStash) {
+        const stash = ((state as any).stash || []) as any[];
+        const items = stash.filter((s: any) => !q || (s.msg || '').toLowerCase().includes(q) || (s.selector || '').includes(q));
+        countEl.textContent = `${items.length} stash${items.length === 1 ? '' : 'es'}`;
+
+        const enableActionButtons = (enabled: boolean) => {
+            const a = qs<HTMLButtonElement>('#stash-apply-btn'); if (a) a.disabled = !enabled;
+            const p = qs<HTMLButtonElement>('#stash-pop-btn'); if (p) p.disabled = !enabled;
+            const d = qs<HTMLButtonElement>('#stash-drop-btn'); if (d) d.disabled = !enabled;
+        };
+
+        if (!items.length) {
+            listEl.innerHTML = `<li class="row" aria-disabled="true"><div class="file">No stashes.</div></li>`;
+            diffHeadPath.textContent = 'Stash details';
+            diffEl.innerHTML = '';
+            enableActionButtons(false);
+            return;
+        }
+
+        items.forEach((s: any, i: number) => {
+            const li = document.createElement('li');
+            li.className = 'row commit';
+            const sel = s.selector || '';
+            const exact = (s.meta || '').trim();
+            li.dataset.selector = sel;
+            li.innerHTML = `
+        <div class="file" title="${escapeHtml(s.msg || '')}">${escapeHtml(s.msg || '(no message)')}</div>
+        <span class="badge time" title="${escapeHtml(exact)}">${escapeHtml(exact)}</span>`;
+            li.addEventListener('click', () => selectStash(s, i));
+            li.addEventListener('contextmenu', (ev) => {
+                ev.preventDefault();
+                state.currentStash = sel;
+                enableActionButtons(true);
+                const mev = ev as MouseEvent;
+                const x = mev.clientX, y = mev.clientY;
+                const target = sel;
+                const items: { label: string; action: () => void }[] = [];
+                items.push({ label: 'Apply stash', action: async () => {
+                    try {
+                        if (!TAURI.has) return;
+                        await TAURI.invoke('git_stash_apply', { selector: target });
+                        notify('Applied stash');
+                        await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                        renderList();
+                    } catch { notify('Failed to apply stash'); }
+                }});
+                items.push({ label: 'Delete stash', action: async () => {
+                    const ok = window.confirm(`Delete ${target}? This cannot be undone.`);
+                    if (!ok) return;
+                    try {
+                        if (!TAURI.has) return;
+                        await TAURI.invoke('git_stash_drop', { selector: target });
+                        notify('Deleted stash');
+                        if (state.currentStash === target) state.currentStash = '';
+                        await Promise.allSettled([hydrateStash()]);
+                        renderList();
+                    } catch { notify('Failed to delete stash'); }
+                }});
+                buildCtxMenu(items as any, x, y);
+            });
+            listEl.appendChild(li);
+        });
+        selectStash(items[0], 0);
         return;
     }
 
@@ -318,6 +396,29 @@ async function selectFile(file: { path: string }, index: number) {
     }
 }
 
+async function selectStash(item: { selector: string; msg?: string; meta?: string }, index: number) {
+    if (!diffHeadPath || !diffEl) return;
+    highlightRow(index);
+    state.currentStash = item.selector;
+    const title = (item.msg || '').trim();
+    diffHeadPath.textContent = title || item.selector;
+    diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
+    try {
+        let lines: string[] = [];
+        if (TAURI.has && item.selector) {
+            lines = await TAURI.invoke<string[]>('git_stash_show', { selector: item.selector });
+        }
+        const a = qs<HTMLButtonElement>('#stash-apply-btn'); if (a) a.disabled = false;
+        const p = qs<HTMLButtonElement>('#stash-pop-btn'); if (p) p.disabled = false;
+        const d = qs<HTMLButtonElement>('#stash-drop-btn'); if (d) d.disabled = false;
+        state.currentDiff = lines || [];
+        diffEl.innerHTML = renderHunksReadonly(state.currentDiff);
+    } catch (e) {
+        console.warn('git_stash_show failed', e);
+        diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load stash diff</div></div></div>';
+    }
+}
+
 async function selectHistory(commit: any, index: number) {
     if (!diffHeadPath || !diffEl) return;
     highlightRow(index);
@@ -470,6 +571,18 @@ export async function hydrateCommits() {
     }
 }
 
+export async function hydrateStash() {
+    if (!TAURI.has) return;
+    try {
+        const list = await TAURI.invoke<any[]>('git_stash_list');
+        (state as any).stash = Array.isArray(list) ? (list as any) : [];
+        if (prefs.tab === 'stash') renderList();
+    } catch (e) {
+        console.warn('hydrateStash failed', e);
+        (state as any).stash = [];
+    }
+}
+
 function renderHunksWithSelection(lines: string[]) {
     if (!lines || !lines.length) return '';
     // Find hunks; hide prelude lines like 'diff --git' / 'index ...' / '---' / '+++'
@@ -533,6 +646,101 @@ function hline(ln: string, n: number) {
     return `<div class="hline ${t}"><div class="gutter">${n}</div><div class="code">${escapeHtml(String(ln))}</div></div>`;
 }
 
+function showStashFooter() {
+    if (!leftFootEl) return;
+    const foot = ensureStashFooterControls();
+    if (!foot) return;
+    leftFootEl.dataset.mode = 'stash';
+    leftFootEl.classList.add('show');
+    if (undoLeftBtn) undoLeftBtn.style.display = 'none';
+    foot.classList.add('show');
+}
+
+function hideStashFooter() {
+    if (!leftFootEl) return;
+    if (leftFootEl.dataset.mode === 'stash') {
+        leftFootEl.classList.remove('show');
+        leftFootEl.dataset.mode = '';
+    }
+    if (undoLeftBtn) undoLeftBtn.style.display = '';
+    if (stashFootEl) stashFootEl.classList.remove('show');
+}
+
+function ensureStashFooterControls(): HTMLElement | null {
+    if (!leftFootEl) return null;
+    if (!stashFootEl) {
+        stashFootEl = document.createElement('div');
+        stashFootEl.id = 'stash-foot-controls';
+        stashFootEl.className = 'stash-foot';
+        stashFootEl.innerHTML = `
+          <button class="btn" id="stash-create-btn" title="Stash current changes">Create Stash</button>
+          <button class="btn" id="stash-apply-btn" disabled>Apply</button>
+          <button class="btn" id="stash-pop-btn" disabled>Pop</button>
+          <button class="btn" id="stash-drop-btn" disabled>Drop</button>
+        `;
+        leftFootEl.appendChild(stashFootEl);
+    }
+    if (!stashFootBound && stashFootEl) {
+        wireStashFooterButtons(stashFootEl);
+        stashFootBound = true;
+    }
+    return stashFootEl;
+}
+
+function wireStashFooterButtons(container: HTMLElement) {
+    const createBtn = container.querySelector<HTMLButtonElement>('#stash-create-btn');
+    createBtn?.addEventListener('click', () => {
+        openStashConfirm({
+            onSuccess: async () => {
+                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                renderList();
+            },
+        });
+    });
+
+    const applyBtn = container.querySelector<HTMLButtonElement>('#stash-apply-btn');
+    applyBtn?.addEventListener('click', async () => {
+        const selector = getActiveStashSelector();
+        if (!selector) return;
+        try {
+            if (!TAURI.has) return;
+            await TAURI.invoke('git_stash_apply', { selector });
+            notify('Applied stash');
+            await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+            renderList();
+        } catch (e) { console.warn('git_stash_apply failed', e); notify('Failed to apply stash'); }
+    });
+
+    const popBtn = container.querySelector<HTMLButtonElement>('#stash-pop-btn');
+    popBtn?.addEventListener('click', async () => {
+        const selector = getActiveStashSelector();
+        if (!selector) return;
+        try {
+            if (!TAURI.has) return;
+            await TAURI.invoke('git_stash_pop', { selector });
+            notify('Popped stash');
+            await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+            renderList();
+        } catch (e) { console.warn('git_stash_pop failed', e); notify('Failed to pop stash'); }
+    });
+
+    const dropBtn = container.querySelector<HTMLButtonElement>('#stash-drop-btn');
+    dropBtn?.addEventListener('click', async () => {
+        const selector = getActiveStashSelector();
+        if (!selector) return;
+        const ok = window.confirm(`Drop ${selector}? This cannot be undone.`);
+        if (!ok) return;
+        try {
+            if (!TAURI.has) return;
+            await TAURI.invoke('git_stash_drop', { selector });
+            notify('Dropped stash');
+            state.currentStash = '';
+            await Promise.allSettled([hydrateStash()]);
+            renderList();
+        } catch (e) { console.warn('git_stash_drop failed', e); notify('Failed to drop stash'); }
+    });
+}
+
 // Group commit diff into per-file blocks based on `diff --git` markers.
 function parseCommitDiffByFile(lines: string[]): { path: string; status: string; lines: string[] }[] {
     if (!Array.isArray(lines) || lines.length === 0) return [];
@@ -568,7 +776,17 @@ function parseCommitDiffByFile(lines: string[]): { path: string; status: string;
 }
 
 function onFileClick(e: MouseEvent, file: { path: string }, index: number, visible: { path: string }[]) {
-    if (suppressNextClick) { suppressNextClick = false; return; }
+    if (suppressNextClick) {
+        suppressNextClick = false;
+        if (state.diffSelectedFiles && state.diffSelectedFiles.size > 1) {
+            highlightRow(index);
+            renderCombinedDiff(Array.from(state.diffSelectedFiles));
+        } else {
+            clearDiffSelection();
+            selectFile(file, index);
+        }
+        return;
+    }
     const isToggle = e.ctrlKey || e.metaKey;
     const isRange = e.shiftKey && lastClickedIndex >= 0;
 
@@ -615,16 +833,26 @@ function onFileClick(e: MouseEvent, file: { path: string }, index: number, visib
 
 function onFileMouseDown(e: MouseEvent, file: { path: string }, index: number, visible: { path: string }[], li: HTMLElement) {
     if (e.button !== 0) return; // left only
+    const mode = e.shiftKey ? 'diff' : (e.ctrlKey || e.metaKey) ? 'commit' : null;
+    if (mode === null) {
+        // Plain click → let the click handler run without drag side-effects
+        dragMode = null;
+        isDragSelecting = false;
+        dragMoved = false;
+        dragVisited.clear();
+        return;
+    }
+
     e.preventDefault(); // avoid starting native selection
+    dragMode = mode;
     dragMoved = false;
     isDragSelecting = true;
     dragVisited.clear();
     document.body.classList.add('drag-selecting');
     // Clear any current selection
     try { const sel = window.getSelection?.(); sel && sel.removeAllRanges(); } catch {}
-    // Decide mode based on modifiers
-    dragMode = e.shiftKey ? 'diff' : (e.ctrlKey || e.metaKey) ? 'commit' : null;
     if (dragMode === 'diff') {
+        clearActiveRows();
         dragTargetState = true;
         dragStartIndex = index; dragCurrentIndex = index;
         dragPreDiff = new Set(state.diffSelectedFiles);
@@ -734,8 +962,26 @@ function updateDragRange(visible: { path: string }[]) {
 function onFileContextMenu(ev: MouseEvent, f: { path: string }) {
     ev.preventDefault();
     const x = ev.clientX, y = ev.clientY;
-    const hasSelectedFiles = state.selectedFiles && state.selectedFiles.size > 0;
+    const totalFiles = Array.isArray(state.files) ? state.files.length : 0;
+    const selectedPaths = Array.from(state.selectedFiles || []);
+    const hasManualSelection = (!state.defaultSelectAll) || (selectedPaths.length > 0 && selectedPaths.length !== totalFiles);
+    const manualSelection = hasManualSelection ? selectedPaths : [];
+    const clickedInSelection = manualSelection.includes(f.path);
+    const hasMultiSelection = manualSelection.length > 1 && clickedInSelection;
+    const hasSingleSelection = manualSelection.length === 1 && clickedInSelection;
     const items: { label: string; action: () => void }[] = [];
+    const openStashForPaths = (paths: string[], defaultMessage: string) => {
+        if (!paths.length) return;
+        openStashConfirm({
+            defaultMessage,
+            includeUntracked: false,
+            paths,
+            onSuccess: async () => {
+                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                renderList();
+            },
+        });
+    };
     items.push({ label: 'Discard changes', action: async () => {
         if (!TAURI.has) return;
         const ok = window.confirm(`Discard all changes in \n${f.path}? This cannot be undone.`);
@@ -743,16 +989,26 @@ function onFileContextMenu(ev: MouseEvent, f: { path: string }) {
         try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
         catch { notify('Discard failed'); }
     }});
-    if (hasSelectedFiles) {
+    if (hasManualSelection && clickedInSelection) {
         items.push({ label: 'Discard selected files', action: async () => {
             if (!TAURI.has) return;
-            const paths = Array.from(state.selectedFiles);
+            const paths = manualSelection.slice();
             const ok = window.confirm(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
             if (!ok) return;
             try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
             catch { notify('Discard failed'); }
         }});
+        if (hasMultiSelection) {
+            items.push({ label: 'Create stash from selection…', action: () => {
+                openStashForPaths(manualSelection.slice(), 'WIP selection');
+            }});
+        }
     }
+    const singleTarget = hasSingleSelection ? manualSelection[0] : f.path;
+    const defaultMsg = `WIP ${singleTarget}`;
+    items.push({ label: 'Create stash for this file…', action: () => {
+        openStashForPaths([singleTarget], defaultMsg);
+    }});
     buildCtxMenu(items, x, y);
 }
 
@@ -1009,6 +1265,7 @@ function updateListCheckboxForPath(path: string, checked: boolean, indeterminate
 
 async function renderCombinedDiff(paths: string[]) {
     if (!diffHeadPath || !diffEl) return;
+    clearActiveRows();
     const files = Array.from(new Set(paths)).filter(Boolean);
     diffHeadPath.textContent = `Multiple files (${files.length})`;
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
@@ -1035,6 +1292,12 @@ function clearDiffSelection() {
     }
 }
 
+function clearActiveRows() {
+    if (!listEl) return;
+    const rows = listEl.querySelectorAll<HTMLElement>('li.row.active');
+    rows.forEach(r => r.classList.remove('active'));
+}
+
 function updateCommitButton() {
     const btn = document.getElementById('commit-btn') as HTMLButtonElement | null;
     if (!btn) return;
@@ -1046,6 +1309,14 @@ function updateCommitButton() {
         .some((k) => !!(state as any).selectedLinesByFile[k] && Object.keys((state as any).selectedLinesByFile[k] || {}).length > 0);
     const filesSelected = !!(state.selectedFiles && state.selectedFiles.size > 0);
     btn.disabled = !(summaryFilled && (hunksSelected || linesSelected || filesSelected));
+}
+
+function getActiveStashSelector(): string {
+    if (state.currentStash) return state.currentStash;
+    const active = listEl?.querySelector<HTMLElement>('li.row.commit.active');
+    const sel = active?.dataset.selector || '';
+    if (sel) state.currentStash = sel;
+    return sel;
 }
 
 // Convert an ISO/RFC3339 datetime string into a short relative phrase.

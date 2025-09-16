@@ -100,6 +100,8 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 }
 .left-foot.show{ max-height:56px; padding:.5rem; border-top-color:var(--border); transform: translateY(0); opacity:1; }
 .left-foot .btn{ flex:1 1 auto; width:100%; justify-content:center; }
+.left-foot .stash-foot{ display:none; width:100%; gap:.5rem; }
+.left-foot .stash-foot.show{ display:flex; }
 .row{
     display:flex; align-items:center; gap:.6rem;
     padding:.5rem .6rem; border-radius:var(--r-md);

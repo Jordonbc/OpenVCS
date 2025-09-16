@@ -5,7 +5,7 @@ use log::{debug, error, info, trace, warn};
 use openvcs_core::*;
 use openvcs_core::backend_descriptor::{BackendDescriptor, BACKENDS};
 use openvcs_core::backend_id::BackendId;
-use openvcs_core::models::{Capabilities, OnEvent, StatusSummary, VcsEvent};
+use openvcs_core::models::{Capabilities, OnEvent, StatusSummary, VcsEvent, StashItem};
 
 pub const GIT_LIBGIT2_ID: BackendId = backend_id!("git-libgit2");
 
@@ -301,4 +301,12 @@ impl Vcs for GitLibGit2 {
     fn merge_into_current(&self, _name: &str) -> Result<()> {
         Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
     }
+
+    // stash (unsupported in this backend for now)
+    fn stash_list(&self) -> Result<Vec<StashItem>> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn stash_push(&self, _message: &str, _include_untracked: bool, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn stash_apply(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn stash_pop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn stash_drop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn stash_show(&self, _selector: &str) -> Result<Vec<String>> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
 }

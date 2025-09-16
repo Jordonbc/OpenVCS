@@ -1,5 +1,5 @@
 // src/state/state.ts
-import type { AppPrefs, Branch, CommitItem, FileStatus } from '../types';
+import type { AppPrefs, Branch, CommitItem, FileStatus, StashItem } from '../types';
 
 export const defaultPrefs: AppPrefs = {
     theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
@@ -19,6 +19,7 @@ export const state = {
     branches: [] as Branch[],       // list of branches
     files: [] as FileStatus[],      // working tree status
     commits: [] as CommitItem[],    // recent commits
+    stash: [] as StashItem[],       // stash entries
     ahead: 0 as number,             // commits ahead of upstream
     behind: 0 as number,            // commits behind upstream
     aheadIds: new Set<string>() as Set<string>, // IDs of commits ahead of upstream
@@ -27,6 +28,7 @@ export const state = {
     selectedFiles: new Set<string>(),
     currentFile: '' as string,
     currentDiff: [] as string[],
+    currentStash: '' as string,     // selector of selected stash
     selectedHunks: [] as number[],  // indices of selected hunks for current file
     selectedHunksByFile: {} as Record<string, number[]>,
     selectedLinesByFile: {} as Record<string, Record<number, number[]>>, // file -> hunkIdx -> line indices

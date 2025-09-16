@@ -1,0 +1,75 @@
+/* src/styles/modal/stash-confirm.css */
+
+#stash-confirm-modal .dialog.sheet {
+    width: clamp(420px, 92vw, 520px);
+    max-height: min(70vh, 520px);
+    display: flex;
+    flex-direction: column;
+}
+
+#stash-confirm-modal .sheet-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+
+#stash-confirm-modal .panel-form {
+    display: grid;
+    gap: 1.1rem;
+}
+
+#stash-confirm-modal #stash-file-container {
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    max-height: 260px;
+    overflow: auto;
+    padding: .35rem;
+}
+
+#stash-confirm-modal #stash-file-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: .25rem;
+}
+
+#stash-confirm-modal #stash-file-list li {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .45rem .55rem;
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: .92rem;
+}
+
+#stash-confirm-modal #stash-file-list li .path {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#stash-confirm-modal #stash-file-list li .status {
+    font-size: .75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    min-width: 68px;
+}
+
+#stash-confirm-modal .sheet-actions {
+    margin-top: auto;
+    display: flex;
+    justify-content: flex-end;
+    gap: .5rem;
+    padding: .5rem;
+    border-top: 1px solid var(--border);
+}
+
+#stash-confirm-modal #stash-empty {
+    margin: .5rem;
+}

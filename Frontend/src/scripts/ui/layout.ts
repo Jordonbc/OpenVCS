@@ -45,14 +45,18 @@ export function toggleTheme() {
     }
 }
 
-export function setTab(tab: 'changes'|'history') {
+export function setTab(tab: 'changes'|'history'|'stash') {
     prefs.tab = tab; savePrefs();
     tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    if (commitBox) commitBox.style.display = tab === 'history' ? 'none' : 'grid';
-    if (diffHeadPath) setText(diffHeadPath, tab === 'history' ? 'Commit details' : 'Select a file to view changes');
+    const hideCommit = (tab === 'history' || tab === 'stash');
+    if (commitBox) commitBox.style.display = hideCommit ? 'none' : 'grid';
+    if (diffHeadPath) setText(diffHeadPath,
+        tab === 'history' ? 'Commit details'
+      : tab === 'stash'   ? 'Stash details'
+                          : 'Select a file to view changes');
 }
 
-export function bindTabs(onChange: (t: 'changes'|'history') => void) {
+export function bindTabs(onChange: (t: 'changes'|'history'|'stash') => void) {
     tabs.forEach(btn => btn.addEventListener('click', () => onChange((btn.dataset.tab as any) ?? 'changes')));
 }
 
@@ -143,7 +147,8 @@ export function refreshRepoActions() {
     // Left-panel undo visibility (under files list)
     const ahead = Number((state as any).ahead || 0);
     const showUndo = repoOn && ahead > 0 && prefs.tab === 'changes';
-    if (undoLeftWrap) undoLeftWrap.classList.toggle('show', showUndo);
+    const stashMode = undoLeftWrap?.dataset.mode === 'stash';
+    if (undoLeftWrap) undoLeftWrap.classList.toggle('show', stashMode || showUndo);
     if (undoLeftBtn) (undoLeftBtn as HTMLButtonElement).disabled = !showUndo;
 
     // Optional hygiene: if changes disappear, clear any stale text so the next enablement starts clean
