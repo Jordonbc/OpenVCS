@@ -42,6 +42,23 @@ struct ProgressPayload {
     message: String
 }
 
+fn current_repo_or_err(state: &State<'_, AppState>) -> Result<Arc<Repo>, String> {
+    state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())
+        .map(|repo| Arc::clone(&repo))
+}
+
+async fn run_repo_task<T, F>(label: &'static str, repo: Arc<Repo>, task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce(Arc<Repo>) -> Result<T, String> + Send + 'static,
+{
+    async_runtime::spawn_blocking(move || task(repo))
+        .await
+        .map_err(|e| format!("{label} task failed: {e}"))?
+}
+
 fn lfs_config(state: &State<'_, AppState>) -> Lfs {
     state.with_config(|cfg| cfg.lfs.clone())
 }
@@ -151,12 +168,15 @@ pub async fn add_repo_internal<R: Runtime>(
         error!("{m}");
         m
     })?;
-
-    let handle = (desc.open)(Path::new(&path)).map_err(|e| {
-        let m = format!("Failed to open repo with backend `{backend_id}`: {e}");
-        error!("{m}");
-        m
-    })?;
+    let open_path = path.clone();
+    let handle = async_runtime::spawn_blocking(move || (desc.open)(Path::new(&open_path)))
+        .await
+        .map_err(|e| format!("add_repo task failed: {e}"))?
+        .map_err(|e| {
+            let m = format!("Failed to open repo with backend `{backend_id}`: {e}");
+            error!("{m}");
+            m
+        })?;
 
     let repo = Arc::new(Repo::new(handle));
     state.set_current_repo(repo);
@@ -198,10 +218,18 @@ pub async fn clone_repo<R: Runtime>(
     // Ensure parent exists
     fs::create_dir_all(&dest).map_err(|e| format!("Failed to create dest: {e}"))?;
 
-    // Clone via the backend, with progress bridge
-    let on = Some(progress_bridge(window.app_handle().clone()));
-    info!("clone_repo: cloning via backend {} into {}", be, target.display());
-    (desc.clone_repo)(&url, &target, on).map_err(|e| format!("Clone failed: {e}"))?;
+    let clone_url = url.clone();
+    let clone_target = target.clone();
+    let be_label = be.as_ref().to_string();
+    let app_handle = window.app_handle().clone();
+    async_runtime::spawn_blocking(move || {
+        let on = Some(progress_bridge(app_handle));
+        info!("clone_repo: cloning via backend {} into {}", be_label, clone_target.display());
+        (desc.clone_repo)(&clone_url, &clone_target, on)
+    })
+    .await
+    .map_err(|e| format!("clone_repo task failed: {e}"))?
+    .map_err(|e| format!("Clone failed: {e}"))?;
 
     // Open the freshly cloned repo and set it current
     add_repo_internal(window, state, target.to_string_lossy().to_string(), be).await
@@ -272,248 +300,242 @@ fn infer_repo_dir_from_url(url: &str) -> String {
 
 /* ---------- list_branches ---------- */
 #[tauri::command]
-pub fn git_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
+pub async fn git_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
     use openvcs_core::models::{BranchItem, BranchKind};
     use std::collections::HashSet;
 
-    info!("list_branches: fetching unified branches via Vcs::branches()");
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_list_branches", repo, move |repo| {
+        info!("list_branches: fetching unified branches via Vcs::branches()");
+        let vcs = repo.inner();
+        debug!("list_branches: workdir={}", vcs.workdir().display());
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
+        let mut items = vcs
+            .branches()
+            .map_err(|e| {
+                error!("list_branches: branches() failed: {e:?}");
+                e.to_string()
+            })?;
 
-    debug!("list_branches: workdir={}", vcs.workdir().display());
+        let current_local = vcs
+            .current_branch()
+            .map_err(|e| {
+                error!("list_branches: current_branch failed: {e:?}");
+                e.to_string()
+            })?;
 
-    // Ask backend for unified branches and current branch name
-    let mut items = vcs
-        .branches()
-        .map_err(|e| {
-            error!("list_branches: branches() failed: {e:?}");
-            e.to_string()
-        })?;
-
-    let current_local = vcs
-        .current_branch()
-        .map_err(|e| {
-            error!("list_branches: current_branch failed: {e:?}");
-            e.to_string()
-        })?;
-
-    // Helper: infer kind from full_ref if backend returned Unknown
-    fn infer_kind(full_ref: &str) -> BranchKind {
-        if let Some(rest) = full_ref.strip_prefix("refs/heads/") {
-            let _ = rest;
-            BranchKind::Local
-        } else if let Some(rest) = full_ref.strip_prefix("refs/remotes/") {
-            if let Some((remote, _name)) = rest.split_once('/') {
-                return BranchKind::Remote { remote: remote.to_string() };
-            }
-            BranchKind::Remote { remote: String::from("unknown") }
-        } else {
-            BranchKind::Unknown
-        }
-    }
-
-    // Sanitize, infer kind where Unknown, and enforce a single "current"
-    let current_name = current_local.as_deref();
-
-    // Deduplicate by full_ref (stable identity)
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut out: Vec<BranchItem> = Vec::with_capacity(items.len());
-
-    for mut it in items.drain(..) {
-        // Trim + validate
-        it.name = it.name.trim().to_string();
-        it.full_ref = it.full_ref.trim().to_string();
-
-        if it.name.is_empty() || it.full_ref.is_empty() {
-            warn!("list_branches: dropping branch with empty name/full_ref: {:?}", it);
-            continue;
-        }
-
-        // Infer kind if Unknown (keeps backend’s explicit Local/Remote as-is)
-        if matches!(it.kind, BranchKind::Unknown) {
-            it.kind = infer_kind(&it.full_ref);
-        }
-
-        // Reconcile "current": only locals can be current
-        it.current = match (&it.kind, current_name) {
-            (BranchKind::Local, Some(curr)) => it.name == *curr,
-            _ => false,
-        };
-
-        // Dedup by full_ref (first wins)
-        if !seen.insert(it.full_ref.clone()) {
-            debug!("list_branches: dedup duplicate ref {}", it.full_ref);
-            continue;
-        }
-
-        out.push(it);
-    }
-
-    // Sort: current → local → remote → unknown, then by name
-    out.sort_by(|a, b| {
-        let bucket = |x: &BranchItem| {
-            if x.current {
-                0
-            } else {
-                match x.kind {
-                    BranchKind::Local => 1,
-                    BranchKind::Remote { .. } => 2,
-                    BranchKind::Unknown => 3,
+        fn infer_kind(full_ref: &str) -> BranchKind {
+            if let Some(rest) = full_ref.strip_prefix("refs/heads/") {
+                let _ = rest;
+                BranchKind::Local
+            } else if let Some(rest) = full_ref.strip_prefix("refs/remotes/") {
+                if let Some((remote, _name)) = rest.split_once('/') {
+                    return BranchKind::Remote { remote: remote.to_string() };
                 }
+                BranchKind::Remote { remote: String::from("unknown") }
+            } else {
+                BranchKind::Unknown
             }
-        };
-        bucket(a).cmp(&bucket(b)).then_with(|| a.name.cmp(&b.name))
-    });
+        }
 
-    debug!(
-        "list_branches: current_local={:?}, returned={}",
-        current_local,
-        out.len()
-    );
+        let current_name = current_local.as_deref();
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut out: Vec<BranchItem> = Vec::with_capacity(items.len());
 
-    Ok(out)
+        for mut it in items.drain(..) {
+            it.name = it.name.trim().to_string();
+            it.full_ref = it.full_ref.trim().to_string();
+
+            if it.name.is_empty() || it.full_ref.is_empty() {
+                warn!("list_branches: dropping branch with empty name/full_ref: {:?}", it);
+                continue;
+            }
+
+            if matches!(it.kind, BranchKind::Unknown) {
+                it.kind = infer_kind(&it.full_ref);
+            }
+
+            it.current = match (&it.kind, current_name) {
+                (BranchKind::Local, Some(curr)) => it.name == *curr,
+                _ => false,
+            };
+
+            if !seen.insert(it.full_ref.clone()) {
+                debug!("list_branches: dedup duplicate ref {}", it.full_ref);
+                continue;
+            }
+
+            out.push(it);
+        }
+
+        out.sort_by(|a, b| {
+            let bucket = |x: &BranchItem| {
+                if x.current {
+                    0
+                } else {
+                    match x.kind {
+                        BranchKind::Local => 1,
+                        BranchKind::Remote { .. } => 2,
+                        BranchKind::Unknown => 3,
+                    }
+                }
+            };
+            bucket(a).cmp(&bucket(b)).then_with(|| a.name.cmp(&b.name))
+        });
+
+        debug!(
+            "list_branches: current_local={:?}, returned={}",
+            current_local,
+            out.len()
+        );
+
+        Ok(out)
+    }).await
 }
 
 /* ---------- git_status ---------- */
 #[tauri::command]
-pub fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, String> {
-    info!("git_status: fetching repo status");
+pub async fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, String> {
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_status", repo, move |repo| {
+        info!("git_status: fetching repo status");
+        let payload = repo.inner().status_payload().map_err(|e| {
+            error!("git_status: failed to compute status: {e}");
+            e.to_string()
+        })?;
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
+        debug!(
+            "git_status: files={}, ahead={}, behind={}",
+            payload.files.len(),
+            payload.ahead,
+            payload.behind
+        );
 
-    let payload = vcs.status_payload().map_err(|e| {
-        error!("git_status: failed to compute status: {e}");
-        e.to_string()
-    })?;
-
-    debug!(
-        "git_status: files={}, ahead={}, behind={}",
-        payload.files.len(),
-        payload.ahead,
-        payload.behind
-    );
-
-    Ok(payload)
+        Ok(payload)
+    })
+    .await
 }
 
 /* ---------- git_log ---------- */
 #[tauri::command]
-pub fn git_log(
+pub async fn git_log(
     state: State<'_, AppState>,
     limit: Option<usize>,
     rev: Option<String>,
 ) -> Result<Vec<CommitItem>, String> {
     use openvcs_core::models::LogQuery;
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_log", repo, move |repo| {
+        let q = LogQuery {
+            rev,
+            path: None,
+            since_utc: None,
+            until_utc: None,
+            author_contains: None,
+            skip: 0,
+            limit: (limit.unwrap_or(100)).min(1000) as u32,
+            topo_order: true,
+            include_merges: true,
+        };
 
-    let q = LogQuery {
-        rev: rev,
-        path: None,
-        since_utc: None,
-        until_utc: None,
-        author_contains: None,
-        skip: 0,
-        limit: (limit.unwrap_or(100)).min(1000) as u32,
-        topo_order: true,
-        include_merges: true,
-    };
-
-    vcs.log_commits(&q).map_err(|e| e.to_string())
+        repo.inner().log_commits(&q).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /* ---------- stash ---------- */
 #[tauri::command]
-pub fn git_stash_list(state: State<'_, AppState>) -> Result<Vec<StashItem>, String> {
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    match repo.inner().stash_list() {
-        Ok(items) => {
-            info!("git_stash_list: count={}", items.len());
-            for item in &items {
-                info!(
-                    "git_stash_list: selector='{}' msg='{}' meta='{}'",
-                    item.selector,
-                    item.msg,
-                    item.meta
-                );
+pub async fn git_stash_list(state: State<'_, AppState>) -> Result<Vec<StashItem>, String> {
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_stash_list", repo, move |repo| {
+        match repo.inner().stash_list() {
+            Ok(items) => {
+                info!("git_stash_list: count={}", items.len());
+                for item in &items {
+                    info!(
+                        "git_stash_list: selector='{}' msg='{}' meta='{}'",
+                        item.selector,
+                        item.msg,
+                        item.meta
+                    );
+                }
+                Ok(items)
             }
-            Ok(items)
+            Err(e) => {
+                error!("git_stash_list: failed: {}", e);
+                Err(e.to_string())
+            }
         }
-        Err(e) => {
-            error!("git_stash_list: failed: {}", e);
-            Err(e.to_string())
-        }
-    }
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_stash_push(
+pub async fn git_stash_push(
     state: State<'_, AppState>,
     message: Option<String>,
     include_untracked: Option<bool>,
     paths: Option<Vec<String>>,
 ) -> Result<(), String> {
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
+    let repo = current_repo_or_err(&state)?;
     let msg = message.unwrap_or_else(|| "WIP".to_string());
     let iu = include_untracked.unwrap_or(true);
     let pathbufs: Vec<std::path::PathBuf> = paths.unwrap_or_default().into_iter().map(|s| s.into()).collect();
-    repo.inner().stash_push(&msg, iu, &pathbufs).map_err(|e| e.to_string())
+    run_repo_task("git_stash_push", repo, move |repo| {
+        repo.inner().stash_push(&msg, iu, &pathbufs).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_stash_apply(state: State<'_, AppState>, selector: Option<String>) -> Result<(), String> {
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    repo.inner().stash_apply(selector.unwrap_or_default().as_str()).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn git_stash_pop(state: State<'_, AppState>, selector: Option<String>) -> Result<(), String> {
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    repo.inner().stash_pop(selector.unwrap_or_default().as_str()).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn git_stash_drop(state: State<'_, AppState>, selector: Option<String>) -> Result<(), String> {
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
+pub async fn git_stash_apply(state: State<'_, AppState>, selector: Option<String>) -> Result<(), String> {
+    let repo = current_repo_or_err(&state)?;
     let selector = selector.unwrap_or_default();
-    info!("git_stash_drop: selector='{}'", selector);
-    match repo.inner().stash_drop(selector.as_str()) {
-        Ok(()) => {
-            info!("git_stash_drop: success selector='{}'", selector);
-            Ok(())
-        }
-        Err(e) => {
-            error!("git_stash_drop: failed selector='{}': {}", selector, e);
-            Err(e.to_string())
-        }
-    }
+    run_repo_task("git_stash_apply", repo, move |repo| {
+        repo.inner().stash_apply(selector.as_str()).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_stash_show(state: State<'_, AppState>, selector: Option<String>) -> Result<Vec<String>, String> {
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    repo.inner().stash_show(selector.unwrap_or_default().as_str()).map_err(|e| e.to_string())
+pub async fn git_stash_pop(state: State<'_, AppState>, selector: Option<String>) -> Result<(), String> {
+    let repo = current_repo_or_err(&state)?;
+    let selector = selector.unwrap_or_default();
+    run_repo_task("git_stash_pop", repo, move |repo| {
+        repo.inner().stash_pop(selector.as_str()).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_stash_drop(state: State<'_, AppState>, selector: Option<String>) -> Result<(), String> {
+    let repo = current_repo_or_err(&state)?;
+    let selector = selector.unwrap_or_default();
+    run_repo_task("git_stash_drop", repo, move |repo| {
+        info!("git_stash_drop: selector='{}'", selector);
+        match repo.inner().stash_drop(selector.as_str()) {
+            Ok(()) => {
+                info!("git_stash_drop: success selector='{}'", selector);
+                Ok(())
+            }
+            Err(e) => {
+                error!("git_stash_drop: failed selector='{}': {}", selector, e);
+                Err(e.to_string())
+            }
+        }
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_stash_show(state: State<'_, AppState>, selector: Option<String>) -> Result<Vec<String>, String> {
+    let repo = current_repo_or_err(&state)?;
+    let selector = selector.unwrap_or_default();
+    run_repo_task("git_stash_show", repo, move |repo| {
+        repo.inner().stash_show(selector.as_str()).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /* ---------- git_head_status ---------- */
@@ -525,25 +547,24 @@ pub struct HeadStatus {
 }
 
 #[tauri::command]
-pub fn git_head_status(state: State<'_, AppState>) -> Result<HeadStatus, String> {
+pub async fn git_head_status(state: State<'_, AppState>) -> Result<HeadStatus, String> {
     use openvcs_core::models::LogQuery;
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_head_status", repo, move |repo| {
+        let branch = repo.inner().current_branch().map_err(|e| e.to_string())?;
+        let q = LogQuery { rev: Some("HEAD".into()), limit: 1, ..Default::default() };
+        let head = repo.inner().log_commits(&q).map_err(|e| e.to_string())?;
+        let commit = head.get(0).map(|c| c.id.clone());
 
-    let branch = vcs.current_branch().map_err(|e| e.to_string())?;
-    let q = LogQuery { rev: Some("HEAD".into()), limit: 1, ..Default::default() };
-    let head = vcs.log_commits(&q).map_err(|e| e.to_string())?;
-    let commit = head.get(0).map(|c| c.id.clone());
-
-    Ok(HeadStatus { detached: branch.is_none(), branch, commit })
+        Ok(HeadStatus { detached: branch.is_none(), branch, commit })
+    })
+    .await
 }
 
 /* ---------- optional: branch ops used by your JS ---------- */
 #[tauri::command]
-pub fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
+pub async fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let branch = name.trim();
     if branch.is_empty() {
         return Err("Branch name cannot be empty".to_string());
@@ -551,51 +572,62 @@ pub fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(
 
     info!("git_checkout_branch: attempting to checkout '{branch}'");
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
+    let repo = current_repo_or_err(&state)?;
+    let branch = branch.to_string();
+    run_repo_task("git_checkout_branch", repo, move |repo| {
+        repo.inner().checkout_branch(&branch).map_err(|e| {
+            error!("git_checkout_branch: failed to checkout '{}': {e}", branch);
+            e.to_string()
+        })?;
 
-    vcs.checkout_branch(branch).map_err(|e| {
-        error!("git_checkout_branch: failed to checkout '{branch}': {e}");
-        e.to_string()
-    })?;
-
-    info!("git_checkout_branch: successfully checked out '{branch}'");
-    Ok(())
+        info!("git_checkout_branch: successfully checked out '{}'", branch);
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_delete_branch(state: State<'_, AppState>, name: String, force: Option<bool>) -> Result<(), String> {
+pub async fn git_delete_branch(state: State<'_, AppState>, name: String, force: Option<bool>) -> Result<(), String> {
     let name = name.trim();
     if name.is_empty() { return Err("Branch name cannot be empty".to_string()); }
-    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
-    vcs.delete_branch(name, force.unwrap_or(false)).map_err(|e| e.to_string())
+    let repo = current_repo_or_err(&state)?;
+    let force = force.unwrap_or(false);
+    let branch = name.to_string();
+    run_repo_task("git_delete_branch", repo, move |repo| {
+        repo.inner().delete_branch(&branch, force).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_rename_branch(state: State<'_, AppState>, old_name: String, new_name: String) -> Result<(), String> {
+pub async fn git_rename_branch(state: State<'_, AppState>, old_name: String, new_name: String) -> Result<(), String> {
     let old = old_name.trim();
     let newn = new_name.trim();
     if old.is_empty() || newn.is_empty() { return Err("Branch name cannot be empty".into()); }
     if old == newn { return Ok(()); }
-    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
-    vcs.rename_branch(old, newn).map_err(|e| e.to_string())
+    let repo = current_repo_or_err(&state)?;
+    let old = old.to_string();
+    let newn = newn.to_string();
+    run_repo_task("git_rename_branch", repo, move |repo| {
+        repo.inner().rename_branch(&old, &newn).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_merge_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
+pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let name = name.trim();
     if name.is_empty() { return Err("Branch name cannot be empty".to_string()); }
-    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
-    vcs.merge_into_current(name).map_err(|e| e.to_string())
+    let repo = current_repo_or_err(&state)?;
+    let branch = name.to_string();
+    run_repo_task("git_merge_branch", repo, move |repo| {
+        repo.inner().merge_into_current(&branch).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_create_branch(
+pub async fn git_create_branch(
     state: State<'_, AppState>,
     name: String,
     from: Option<String>,
@@ -606,69 +638,78 @@ pub fn git_create_branch(
         name, from, checkout
     );
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
+    let repo = current_repo_or_err(&state)?;
+    let checkout_flag = checkout.unwrap_or(false);
+    let branch_name = name.clone();
+    let from_branch = from.map(|s| s.to_string());
+    run_repo_task("git_create_branch", repo, move |repo| {
+        let vcs = repo.inner();
 
-    // If a base branch is provided, check it out first.
-    if let Some(from) = from {
-        match vcs.checkout_branch(&from) {
-            Ok(_) => info!("git_create_branch: successfully checked out base branch '{from}'"),
-            Err(e) => {
-                error!(
-                    "git_create_branch: failed to checkout base branch '{from}': {e}"
-                );
-                return Err(format!("base branch not found or cannot checkout: {e}"));
+        if let Some(from) = from_branch.as_ref() {
+            match vcs.checkout_branch(from) {
+                Ok(_) => info!("git_create_branch: successfully checked out base branch '{from}'"),
+                Err(e) => {
+                    error!(
+                        "git_create_branch: failed to checkout base branch '{from}': {e}"
+                    );
+                    return Err(format!("base branch not found or cannot checkout: {e}"));
+                }
             }
         }
-    }
 
-    vcs.create_branch(&name, checkout.unwrap_or(false))
-        .map_err(|e| {
-            error!("git_create_branch: failed to create branch '{name}': {e}");
-            e.to_string()
-        })?;
+        vcs.create_branch(&branch_name, checkout_flag)
+            .map_err(|e| {
+                error!("git_create_branch: failed to create branch '{branch_name}': {e}");
+                e.to_string()
+            })?;
 
-    info!("git_create_branch: successfully created branch '{name}'");
-    Ok(())
+        info!("git_create_branch: successfully created branch '{branch_name}'");
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_diff_file(state: State<'_, AppState>, path: String) -> Result<Vec<String>, String> {
+pub async fn git_diff_file(state: State<'_, AppState>, path: String) -> Result<Vec<String>, String> {
     use std::path::PathBuf;
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
-
-    // Allow either absolute or repo-relative; backend handles stripping
-    vcs.diff_file(&PathBuf::from(path)).map_err(|e| e.to_string())
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_diff_file", repo, move |repo| {
+        repo.inner()
+            .diff_file(&PathBuf::from(path))
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /* ---------- git_diff_commit ---------- */
 #[tauri::command]
-pub fn git_diff_commit(state: State<'_, AppState>, id: String) -> Result<Vec<String>, String> {
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
-    vcs.diff_commit(&id).map_err(|e| e.to_string())
+pub async fn git_diff_commit(state: State<'_, AppState>, id: String) -> Result<Vec<String>, String> {
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_diff_commit", repo, move |repo| {
+        repo.inner().diff_commit(&id).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_discard_paths(state: State<'_, AppState>, paths: Vec<String>) -> Result<(), String> {
+pub async fn git_discard_paths(state: State<'_, AppState>, paths: Vec<String>) -> Result<(), String> {
     use std::path::PathBuf;
-    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
-    let pb: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    repo.inner().discard_paths(&pb).map_err(|e| e.to_string())
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_discard_paths", repo, move |repo| {
+        let pb: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        repo.inner().discard_paths(&pb).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_discard_patch(state: State<'_, AppState>, patch: String) -> Result<(), String> {
-    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
-    repo.inner().apply_reverse_patch(&patch).map_err(|e| e.to_string())
+pub async fn git_discard_patch(state: State<'_, AppState>, patch: String) -> Result<(), String> {
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_discard_patch", repo, move |repo| {
+        repo.inner().apply_reverse_patch(&patch).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[derive(serde::Serialize)]
@@ -679,18 +720,20 @@ pub struct RepoSummary {
 }
 
 #[tauri::command]
-pub fn get_repo_summary(state: State<'_, AppState>) -> Result<RepoSummary, String> {
-    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
+pub async fn get_repo_summary(state: State<'_, AppState>) -> Result<RepoSummary, String> {
+    let repo = current_repo_or_err(&state)?;
+    let (path, current) = run_repo_task("get_repo_summary", repo, move |repo| {
+        let vcs = repo.inner();
+        let path = vcs.workdir().to_string_lossy().to_string();
+        let current = vcs
+            .current_branch()
+            .map_err(|e| e.to_string())?
+            .unwrap_or_else(|| "HEAD".into());
+        Ok::<_, String>((path, current))
+    })
+    .await?;
 
-    let path = vcs.workdir().to_string_lossy().to_string();
-
-    let branches = vcs.branches().map_err(|e| e.to_string())?;
-    let current = vcs.current_branch().map_err(|e| e.to_string())?
-        .unwrap_or_else(|| "HEAD".into());
-
-    // Reuse your existing normalization by calling the tauri command directly:
-    let normalized = git_list_branches(state)?;
+    let normalized = git_list_branches(state).await?;
 
     Ok(RepoSummary {
         path,
@@ -700,12 +743,15 @@ pub fn get_repo_summary(state: State<'_, AppState>) -> Result<RepoSummary, Strin
 }
 
 #[tauri::command]
-pub fn git_current_branch(state: State<'_, AppState>) -> Result<String, String> {
-    let repo = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
-    repo.inner()
-        .current_branch()
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Detached HEAD".to_string())
+pub async fn git_current_branch(state: State<'_, AppState>) -> Result<String, String> {
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_current_branch", repo, move |repo| {
+        repo.inner()
+            .current_branch()
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "Detached HEAD".to_string())
+    })
+    .await
 }
 
 
@@ -929,36 +975,35 @@ pub async fn commit_patch_and_files<R: Runtime>(
     .map_err(|e| format!("commit_patch_and_files task failed: {e}"))?
 }
 #[tauri::command]
-pub fn git_fetch<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
-    info!("git_fetch called");
-
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
-
+pub async fn git_fetch<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let on = Some(progress_bridge(app));
+    let current = run_repo_task("git_fetch", repo, move |repo| {
+        info!("git_fetch called");
+        let on = Some(progress_bridge(app));
+        let current = repo
+            .inner()
+            .current_branch()
+            .map_err(|e| {
+                error!("Failed to get current branch: {e}");
+                e.to_string()
+            })?
+            .ok_or_else(|| {
+                warn!("Detached HEAD detected, cannot determine upstream branch");
+                "Detached HEAD; cannot determine upstream".to_string()
+            })?;
 
-    let current = vcs
-        .current_branch()
-        .map_err(|e| {
-            error!("Failed to get current branch: {e}");
+        info!("Fetching branch '{current}' from origin");
+        repo.inner().fetch("origin", &current, on).map_err(|e| {
+            error!("Fetch failed for branch '{current}': {e}");
             e.to_string()
-        })?
-        .ok_or_else(|| {
-            warn!("Detached HEAD detected, cannot determine upstream branch");
-            "Detached HEAD; cannot determine upstream".to_string()
         })?;
 
-    info!("Fetching branch '{current}' from origin");
+        info!("Fetch completed successfully for branch '{current}'");
+        Ok(current)
+    })
+    .await?;
 
-    vcs.fetch("origin", &current, on).map_err(|e| {
-        error!("Fetch failed for branch '{current}': {e}");
-        e.to_string()
-    })?;
-
-    info!("Fetch completed successfully for branch '{current}'");
     let _ = window.app_handle().emit(
         "git-progress",
         ProgressPayload { message: format!("Fetch complete ({current})") }
@@ -967,66 +1012,59 @@ pub fn git_fetch<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> R
 }
 
 #[tauri::command]
-pub fn git_fetch_all<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
-    info!("git_fetch_all called");
-
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
-
+pub async fn git_fetch_all<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let on = Some(progress_bridge(app));
+    run_repo_task("git_fetch_all", repo, move |repo| {
+        info!("git_fetch_all called");
+        let on = Some(progress_bridge(app));
+        let remotes = repo.inner().list_remotes().map_err(|e| {
+            error!("Failed to list remotes: {e}");
+            e.to_string()
+        })?;
 
-    // Fetch all remotes with all refs
-    let remotes = vcs.list_remotes().map_err(|e| {
-        error!("Failed to list remotes: {e}");
-        e.to_string()
-    })?;
-
-    for (r, _url) in remotes.into_iter() {
-        info!("Fetching all refs from remote '{r}'");
-        // empty refspec means all
-        if let Err(e) = vcs.fetch(&r, "", on.clone()) {
-            error!("Fetch failed for remote '{r}': {e}");
-            return Err(e.to_string());
+        for (r, _url) in remotes.into_iter() {
+            info!("Fetching all refs from remote '{r}'");
+            if let Err(e) = repo.inner().fetch(&r, "", on.clone()) {
+                error!("Fetch failed for remote '{r}': {e}");
+                return Err(e.to_string());
+            }
         }
-    }
-
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_pull<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
-    info!("git_pull called");
-
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let vcs = repo.inner();
-
+pub async fn git_pull<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
+    let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let on = Some(progress_bridge(app));
+    let current = run_repo_task("git_pull", repo, move |repo| {
+        info!("git_pull called");
+        let on = Some(progress_bridge(app));
+        let current = repo
+            .inner()
+            .current_branch()
+            .map_err(|e| {
+                error!("Failed to get current branch: {e}");
+                e.to_string()
+            })?
+            .ok_or_else(|| {
+                warn!("Detached HEAD detected, cannot determine upstream branch for pull");
+                "Detached HEAD; cannot determine upstream".to_string()
+            })?;
 
-    let current = vcs
-        .current_branch()
-        .map_err(|e| {
-            error!("Failed to get current branch: {e}");
+        info!("Fast-forward pulling branch '{current}' from origin");
+        repo.inner().pull_ff_only("origin", &current, on).map_err(|e| {
+            error!("Pull (ff-only) failed for branch '{current}': {e}");
             e.to_string()
-        })?
-        .ok_or_else(|| {
-            warn!("Detached HEAD detected, cannot determine upstream branch for pull");
-            "Detached HEAD; cannot determine upstream".to_string()
         })?;
 
-    info!("Fast-forward pulling branch '{current}' from origin");
+        info!("Pull (ff-only) completed successfully for branch '{current}'");
+        Ok(current)
+    })
+    .await?;
 
-    vcs.pull_ff_only("origin", &current, on).map_err(|e| {
-        error!("Pull (ff-only) failed for branch '{current}': {e}");
-        e.to_string()
-    })?;
-
-    info!("Pull (ff-only) completed successfully for branch '{current}'");
     let _ = window.app_handle().emit(
         "git-progress",
         ProgressPayload { message: format!("Pull complete ({current})") }
@@ -1035,72 +1073,72 @@ pub fn git_pull<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Re
 }
 
 #[tauri::command]
-pub fn git_lfs_fetch_all(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn git_lfs_fetch_all(state: State<'_, AppState>) -> Result<(), String> {
     info!("git_lfs_fetch_all called");
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-
     let cfg = lfs_config(&state);
     if !cfg.enabled {
         return Err("Git LFS integration is disabled".into());
     }
 
-    let _guard = LfsEnvGuard::apply(&cfg);
-    repo.inner().lfs_fetch().map_err(|e| e.to_string())
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_lfs_fetch_all", repo, move |repo| {
+        let _guard = LfsEnvGuard::apply(&cfg);
+        repo.inner().lfs_fetch().map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_lfs_pull(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn git_lfs_pull(state: State<'_, AppState>) -> Result<(), String> {
     info!("git_lfs_pull called");
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-
     let cfg = lfs_config(&state);
     if !cfg.enabled {
         return Err("Git LFS integration is disabled".into());
     }
 
-    let _guard = LfsEnvGuard::apply(&cfg);
-    repo.inner().lfs_pull().map_err(|e| e.to_string())
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_lfs_pull", repo, move |repo| {
+        let _guard = LfsEnvGuard::apply(&cfg);
+        repo.inner().lfs_pull().map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_lfs_prune(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn git_lfs_prune(state: State<'_, AppState>) -> Result<(), String> {
     info!("git_lfs_prune called");
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-
     let cfg = lfs_config(&state);
     if !cfg.enabled {
         return Err("Git LFS integration is disabled".into());
     }
 
-    let _guard = LfsEnvGuard::apply(&cfg);
-    repo.inner().lfs_prune().map_err(|e| e.to_string())
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_lfs_prune", repo, move |repo| {
+        let _guard = LfsEnvGuard::apply(&cfg);
+        repo.inner().lfs_prune().map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn git_lfs_track_paths(state: State<'_, AppState>, paths: Vec<String>) -> Result<(), String> {
+pub async fn git_lfs_track_paths(state: State<'_, AppState>, paths: Vec<String>) -> Result<(), String> {
     info!("git_lfs_track_paths called (count={})", paths.len());
     if paths.is_empty() {
         return Ok(());
     }
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-
     let cfg = lfs_config(&state);
     if !cfg.enabled {
         return Err("Git LFS integration is disabled".into());
     }
 
-    let _guard = LfsEnvGuard::apply(&cfg);
-    let list: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    repo.inner().lfs_track(&list).map_err(|e| e.to_string())
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_lfs_track_paths", repo, move |repo| {
+        let _guard = LfsEnvGuard::apply(&cfg);
+        let list: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        repo.inner().lfs_track(&list).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1108,20 +1146,14 @@ pub async fn git_push<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    info!("git_push called");
+    let repo = current_repo_or_err(&state)?;
+    let app = window.app_handle().clone();
+    let current = run_repo_task("git_push", repo, move |repo| {
+        info!("git_push called");
+        let on = Some(progress_bridge(app));
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?
-        .clone();
-
-    let app_for_worker = window.app_handle().clone();
-    let app_for_final  = window.app_handle().clone();
-
-    async_runtime::spawn_blocking(move || -> Result<(), String> {
-        let on = Some(progress_bridge(app_for_worker));
-
-        let current = repo.inner()
+        let current = repo
+            .inner()
             .current_branch()
             .map_err(|e| {
                 error!("Failed to determine current branch: {e}");
@@ -1135,25 +1167,24 @@ pub async fn git_push<R: Runtime>(
         let refspec = format!("refs/heads/{0}:refs/heads/{0}", current);
         info!("Pushing branch '{current}' with refspec '{refspec}'");
 
-        repo.inner()
+        repo
+            .inner()
             .push("origin", &refspec, on)
             .map_err(|e| {
                 error!("Push failed for branch '{current}': {e}");
                 e.to_string()
-            })
-    })
-        .await
-        .map_err(|e| {
-            error!("Join error in git_push task: {e}");
-            e.to_string()
-        })??;
+            })?;
 
-    let _ = app_for_final.emit(
+        info!("Push completed successfully for '{current}'");
+        Ok(current)
+    })
+    .await?;
+
+    let _ = window.app_handle().emit(
         "git-progress",
-        ProgressPayload { message: "Push complete".into() }
+        ProgressPayload { message: format!("Push complete ({current})") }
     );
 
-    info!("Push completed successfully.");
     Ok(())
 }
 
@@ -1165,27 +1196,22 @@ pub async fn git_undo_since_push<R: Runtime>(
 ) -> Result<(), String> {
     info!("git_undo_since_push called");
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?
-        .clone();
-
-    let app_for_worker = window.app_handle().clone();
-
-    async_runtime::spawn_blocking(move || -> Result<(), String> {
-        // Quick check: anything to undo?
+    let repo = current_repo_or_err(&state)?;
+    let app = window.app_handle().clone();
+    run_repo_task("git_undo_since_push", repo, move |repo| {
         let status = repo.inner().status_payload().map_err(|e| e.to_string())?;
         if status.ahead == 0 {
             return Err("Nothing to undo (no unpushed commits)".into());
         }
-        let on = progress_bridge(app_for_worker);
+        let on = progress_bridge(app);
         on(VcsEvent::Info("Undoing unpushed commits (soft reset)…"));
-        // Try upstream first
         match repo.inner().reset_soft_to("@{upstream}") {
             Ok(_) => Ok(()),
             Err(_e) => {
-                // Fallback: origin/<current-branch>
-                let cur = repo.inner().current_branch().map_err(|e| e.to_string())?
+                let cur = repo
+                    .inner()
+                    .current_branch()
+                    .map_err(|e| e.to_string())?
                     .ok_or_else(|| "Detached HEAD; cannot resolve upstream".to_string())?;
                 let remote_short = format!("origin/{}", cur);
                 repo.inner().reset_soft_to(&remote_short).map_err(|e| e.to_string())
@@ -1193,9 +1219,6 @@ pub async fn git_undo_since_push<R: Runtime>(
         }
     })
     .await
-    .map_err(|e| format!("git_undo_since_push task failed: {e}"))??;
-
-    Ok(())
 }
 
 #[tauri::command]
@@ -1206,15 +1229,9 @@ pub async fn git_undo_to_commit<R: Runtime>(
 ) -> Result<(), String> {
     info!("git_undo_to_commit called for {id}");
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?
-        .clone();
-
-    let app_for_worker = window.app_handle().clone();
-
-    async_runtime::spawn_blocking(move || -> Result<(), String> {
-        // Try to compute ahead commits; handle missing upstreams gracefully
+    let repo = current_repo_or_err(&state)?;
+    let app = window.app_handle().clone();
+    run_repo_task("git_undo_to_commit", repo, move |repo| {
         let mut ahead_list: Vec<CommitItem> = Vec::new();
         {
             let mut q = openvcs_core::models::LogQuery::head(1000);
@@ -1225,7 +1242,9 @@ pub async fn git_undo_to_commit<R: Runtime>(
                     if let Some(cur) = repo.inner().current_branch().map_err(|e| e.to_string())? {
                         let mut q2 = openvcs_core::models::LogQuery::head(1000);
                         q2.rev = Some(format!("origin/{}..HEAD", cur));
-                        if let Ok(list) = repo.inner().log_commits(&q2) { ahead_list = list; }
+                        if let Ok(list) = repo.inner().log_commits(&q2) {
+                            ahead_list = list;
+                        }
                     }
                 }
             }
@@ -1239,17 +1258,13 @@ pub async fn git_undo_to_commit<R: Runtime>(
             }
         }
 
-        let on = progress_bridge(app_for_worker);
+        let on = progress_bridge(app);
         on(VcsEvent::Info("Undoing to selected commit (soft reset)…"));
-        // Reset to parent of the selected commit, dropping it and any newer commits
         let rev = format!("{}^", target);
         repo.inner().reset_soft_to(&rev).map_err(|e| e.to_string())?;
         Ok(())
     })
     .await
-    .map_err(|e| format!("git_undo_to_commit task failed: {e}"))??;
-
-    Ok(())
 }
 
 #[tauri::command]
@@ -1269,7 +1284,7 @@ pub fn list_backends_cmd() -> Vec<(String, String)> {
 }
 
 #[tauri::command]
-pub fn set_backend_cmd(state: State<'_, AppState>, backend_id: BackendId) -> Result<(), String> {
+pub async fn set_backend_cmd(state: State<'_, AppState>, backend_id: BackendId) -> Result<(), String> {
     info!("set_backend_cmd: requested backend = {}", backend_id);
 
     let desc = match get_backend(&backend_id) {
@@ -1289,26 +1304,28 @@ pub fn set_backend_cmd(state: State<'_, AppState>, backend_id: BackendId) -> Res
             backend_id
         );
 
-        match (desc.open)(Path::new(&path)) {
-            Ok(handle) => {
-                let new_repo = Arc::new(Repo::new(handle));
-                state.set_current_repo(new_repo);
-                info!(
-                    "set_backend_cmd: repo reopened with backend `{}` (path={})",
-                    backend_id,
-                    path.display()
-                );
-            }
-            Err(e) => {
+        let open_path = path.clone();
+        let backend_label = backend_id.as_ref().to_string();
+        let handle = async_runtime::spawn_blocking(move || (desc.open)(Path::new(&open_path)))
+            .await
+            .map_err(|e| format!("set_backend_cmd task failed: {e}"))?
+            .map_err(|e| {
                 error!(
                     "set_backend_cmd: failed to reopen repo '{}' with backend `{}`: {}",
                     path.display(),
-                    backend_id,
+                    backend_label,
                     e
                 );
-                return Err(format!("Failed to reopen repo with `{backend_id}`: {e}"));
-            }
-        }
+                format!("Failed to reopen repo with `{backend_label}`: {e}")
+            })?;
+
+        let new_repo = Arc::new(Repo::new(handle));
+        state.set_current_repo(new_repo);
+        info!(
+            "set_backend_cmd: repo reopened with backend `{}` (path={})",
+            backend_label,
+            path.display()
+        );
     } else {
         // No repo open; nothing to reopen. Succeed silently.
         info!("set_backend_cmd: no repo open; will use `{}` when opening a repo", backend_id);
@@ -1331,31 +1348,38 @@ pub fn set_global_settings(
 }
 
 #[tauri::command]
-pub fn get_repo_settings(state: State<'_, AppState>) -> Result<RepoConfig, String> {
+pub async fn get_repo_settings(state: State<'_, AppState>) -> Result<RepoConfig, String> {
     let mut cfg = state.repo_config();
     // If a repo is open, enrich settings from actual Git config
     if let Some(repo) = state.current_repo() {
-        let vcs = repo.inner();
-        // identity (repository-local)
-        match vcs.get_identity() {
-            Ok(Some((name, email))) => {
-                cfg.user_name = Some(name);
-                cfg.user_email = Some(email);
-            }
-            Ok(None) => { /* leave as-is */ }
-            Err(e) => {
-                warn!("get_repo_settings: get_identity failed: {e}");
-            }
-        }
-
-        // remotes: capture 'origin' URL if present
-        match vcs.list_remotes() {
-            Ok(list) => {
-                if let Some((_, url)) = list.into_iter().find(|(n, _)| n == "origin") {
-                    cfg.origin_url = Some(url);
+        let (identity, origin) = run_repo_task("get_repo_settings", repo, move |repo| {
+            let identity = match repo.inner().get_identity() {
+                Ok(Some((name, email))) => Some((name, email)),
+                Ok(None) => None,
+                Err(e) => {
+                    warn!("get_repo_settings: get_identity failed: {e}");
+                    None
                 }
-            }
-            Err(e) => warn!("get_repo_settings: list_remotes failed: {e}"),
+            };
+
+            let origin = match repo.inner().list_remotes() {
+                Ok(list) => list.into_iter().find(|(n, _)| n == "origin").map(|(_, url)| url),
+                Err(e) => {
+                    warn!("get_repo_settings: list_remotes failed: {e}");
+                    None
+                }
+            };
+
+            Ok::<_, String>((identity, origin))
+        })
+        .await?;
+
+        if let Some((name, email)) = identity {
+            cfg.user_name = Some(name);
+            cfg.user_email = Some(email);
+        }
+        if let Some(url) = origin {
+            cfg.origin_url = Some(url);
         }
     }
 
@@ -1363,26 +1387,26 @@ pub fn get_repo_settings(state: State<'_, AppState>) -> Result<RepoConfig, Strin
 }
 
 #[tauri::command]
-pub fn set_repo_settings(
+pub async fn set_repo_settings(
     state: State<'_, AppState>,
     cfg: RepoConfig,
 ) -> Result<(), String> {
-    // Persist repo-specific cache (none currently persisted beyond identity/remote)
+    let cfg_clone = cfg.clone();
     state.set_repo_config(RepoConfig { ..cfg.clone() })?;
 
-    // Apply to Git if a repo is open
     if let Some(repo) = state.current_repo() {
-        let vcs = repo.inner();
-        // Identity: set when both present
-        if let (Some(name), Some(email)) = (cfg.user_name.as_deref(), cfg.user_email.as_deref()) {
-            vcs.set_identity_local(name, email).map_err(|e| e.to_string())?;
-        }
-        // Origin remote URL
-        if let Some(url) = cfg.origin_url.as_deref() {
-            if !url.trim().is_empty() {
-                vcs.ensure_remote("origin", url).map_err(|e| e.to_string())?;
+        run_repo_task("set_repo_settings", repo, move |repo| {
+            if let (Some(name), Some(email)) = (cfg_clone.user_name.as_deref(), cfg_clone.user_email.as_deref()) {
+                repo.inner().set_identity_local(name, email).map_err(|e| e.to_string())?;
             }
-        }
+            if let Some(url) = cfg_clone.origin_url.as_deref() {
+                if !url.trim().is_empty() {
+                    repo.inner().ensure_remote("origin", url).map_err(|e| e.to_string())?;
+                }
+            }
+            Ok(())
+        })
+        .await?;
     }
     Ok(())
 }
