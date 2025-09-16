@@ -74,6 +74,7 @@ Run commands from the **workspace root** unless stated otherwise.
 
 - Small PRs with clear scope preferred.
 - Larger changes: open an issue first and tag as `proposal`.
+- Use apply_patch function to propose and make edits.
 
 ---
 
