@@ -58,26 +58,60 @@ function boot() {
     bindLayoutActionState()
     bindRepoHotkeys(commitBtn || null, openSheet);
 
-    // shared fetch-or-pull routine (used by button and focus)
-    async function fetchOnly() {
+    function statusController() {
         const statusEl = document.getElementById('status');
-        const setBusy = (msg: string) => {
-            if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
+        return {
+            setBusy(msg: string) {
+                if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
+            },
+            clearBusy() {
+                if (statusEl) statusEl.classList.remove('busy');
+            }
         };
-        const clearBusy = () => { if (statusEl) statusEl.classList.remove('busy'); };
+    }
+
+    async function fetchAllRemotesOnly(options: { hydrate?: boolean; status?: ReturnType<typeof statusController>; keepBusy?: boolean } = {}) {
+        if (!TAURI.has) return false;
+        const { hydrate = true, status, keepBusy = false } = options;
+        const ctl = status ?? statusController();
+        let success = false;
         try {
-            if (!TAURI.has) return;
-            setBusy('Fetching…');
-            await TAURI.invoke('git_fetch', {});
-            notify('Fetched');
-            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+            ctl.setBusy('Fetching…');
+            await TAURI.invoke('git_fetch_all', {});
+            notify('Fetched all remotes');
+            if (hydrate) {
+                await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+            }
+            success = true;
         } catch {
             notify('Fetch failed');
-        } finally { clearBusy(); }
+        } finally {
+            if (!keepBusy) ctl.clearBusy();
+        }
+        return success;
+    }
+
+    async function fetchAndPull() {
+        if (!TAURI.has) return;
+        const ctl = statusController();
+        const fetched = await fetchAllRemotesOnly({ hydrate: false, status: ctl, keepBusy: true });
+        if (!fetched) { ctl.clearBusy(); return; }
+
+        try {
+            ctl.setBusy('Pulling…');
+            await TAURI.invoke('git_pull', {});
+            notify('Pulled latest changes');
+        } catch {
+            notify('Pull failed');
+        } finally {
+            ctl.clearBusy();
+        }
+
+        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash()]);
     }
 
     // title actions
-    fetchBtn?.addEventListener('click', fetchOnly);
+    fetchBtn?.addEventListener('click', fetchAndPull);
     pushBtn?.addEventListener('click', async () => {
         const statusEl = document.getElementById('status');
         const setBusy = (msg: string) => {
@@ -235,14 +269,9 @@ function boot() {
             } catch {}
         }
         if (doFetch) {
-            try {
-                await TAURI.invoke('git_fetch_all', {});
-                notify('Fetched all remotes');
-            } catch {
-                await fetchOnly();
-            }
+            await fetchAllRemotesOnly({ hydrate: false });
         }
-            await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash()]);
+        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash()]);
     }
 
     window.addEventListener('focus', () => { onFocus().catch(() => {}); });
