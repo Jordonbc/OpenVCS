@@ -818,4 +818,44 @@ impl Vcs for GitSystem {
         let s = Self::run_git_capture_any_exit(Some(&self.workdir), ["stash", "show", "-p", sel])?;
         Ok(s.lines().map(|l| l.to_string()).collect())
     }
+
+    fn lfs_fetch(&self) -> Result<()> {
+        log::info!(
+            "git-system: lfs_fetch in {}",
+            self.workdir.display()
+        );
+        Self::run_git(Some(&self.workdir), ["lfs", "fetch", "--all"])
+    }
+
+    fn lfs_pull(&self) -> Result<()> {
+        log::info!(
+            "git-system: lfs_pull in {}",
+            self.workdir.display()
+        );
+        Self::run_git(Some(&self.workdir), ["lfs", "pull"])
+    }
+
+    fn lfs_prune(&self) -> Result<()> {
+        log::info!(
+            "git-system: lfs_prune in {}",
+            self.workdir.display()
+        );
+        Self::run_git(Some(&self.workdir), ["lfs", "prune"])
+    }
+
+    fn lfs_track(&self, paths: &[PathBuf]) -> Result<()> {
+        if paths.is_empty() {
+            return Ok(());
+        }
+        log::info!(
+            "git-system: lfs_track count={} in {}",
+            paths.len(),
+            self.workdir.display()
+        );
+        let mut args: Vec<String> = vec!["lfs".into(), "track".into(), "--".into()];
+        for p in paths {
+            args.push(Self::path_str(p)?.to_string());
+        }
+        Self::run_git(Some(&self.workdir), args)
+    }
 }

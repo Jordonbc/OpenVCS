@@ -1,4 +1,4 @@
-export type CtxItem = { label: string; action: () => void };
+export type CtxItem = { label: string; action?: () => void | Promise<void> };
 
 /**
  * Render a lightweight context menu at the given screen coordinates.
@@ -21,11 +21,19 @@ export function buildCtxMenu(items: CtxItem[], x: number, y: number) {
     const d = document.createElement('div');
     d.className = 'item';
     d.textContent = it.label;
-    d.addEventListener('click', () => { try { it.action(); } finally { m.remove(); } });
+    d.addEventListener('click', () => {
+      try {
+        const result = it.action?.();
+        if (result && typeof (result as Promise<void>).then === 'function') {
+          (result as Promise<void>).catch(() => {});
+        }
+      } finally {
+        m.remove();
+      }
+    });
     m.appendChild(d);
   });
   document.body.appendChild(m);
   const close = () => m.remove();
   setTimeout(() => { document.addEventListener('click', close, { once: true }); }, 0);
 }
-

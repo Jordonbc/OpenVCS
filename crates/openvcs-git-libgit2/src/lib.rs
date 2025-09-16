@@ -309,4 +309,9 @@ impl Vcs for GitLibGit2 {
     fn stash_pop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
     fn stash_drop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
     fn stash_show(&self, _selector: &str) -> Result<Vec<String>> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+
+    fn lfs_fetch(&self) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn lfs_pull(&self) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn lfs_prune(&self) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn lfs_track(&self, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
 }
