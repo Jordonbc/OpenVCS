@@ -128,6 +128,12 @@ pub trait Vcs: Send + Sync {
     fn stash_drop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
     /// Show a unified diff for a stash entry.
     fn stash_show(&self, _selector: &str) -> Result<Vec<String>> { Err(VcsError::Unsupported(self.id())) }
+
+    // git-lfs helpers (backends may return Unsupported if not applicable)
+    fn lfs_fetch(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn lfs_pull(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn lfs_prune(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn lfs_track(&self, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
 }
 
 /// A concrete repository handle that owns a chosen backend instance.

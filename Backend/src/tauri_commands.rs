@@ -11,7 +11,7 @@ use openvcs_core::{OnEvent, models::{BranchItem, StatusPayload, CommitItem, Stas
 use serde::Serialize;
 use openvcs_core::backend_descriptor::{get_backend, list_backends};
 use openvcs_core::models::{VcsEvent};
-use crate::settings::AppConfig;
+use crate::settings::{AppConfig, Lfs};
 use crate::repo_settings::RepoConfig;
 use tauri_plugin_updater::UpdaterExt;
 
@@ -40,6 +40,61 @@ fn progress_bridge<R: Runtime>(app: tauri::AppHandle<R>) -> OnEvent {
 #[derive(serde::Serialize, Clone)]
 struct ProgressPayload {
     message: String
+}
+
+fn lfs_config(state: &State<'_, AppState>) -> Lfs {
+    state.with_config(|cfg| cfg.lfs.clone())
+}
+
+struct LfsEnvGuard {
+    originals: Vec<(&'static str, Option<String>)>,
+}
+
+impl LfsEnvGuard {
+    fn capture(key: &'static str) -> Option<String> {
+        std::env::var(key).ok()
+    }
+
+    fn set(key: &'static str, value: Option<String>, originals: &mut Vec<(&'static str, Option<String>)>) {
+        originals.push((key, Self::capture(key)));
+        match value {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
+    }
+
+    fn apply(cfg: &Lfs) -> Self {
+        let mut originals = Vec::new();
+
+        // Concurrency controls parallel transfers; always set when enabled.
+        Self::set(
+            "GIT_LFS_CONCURRENCY",
+            Some(cfg.concurrency.clamp(1, 16).to_string()),
+            &mut originals,
+        );
+
+        // Require lock → respect read-only enforcement so accidental edits are blocked.
+        let lock_env = if cfg.require_lock_before_edit { Some("1".to_string()) } else { None };
+        Self::set("GIT_LFS_SET_LOCKED_FILES_READONLY", lock_env, &mut originals);
+
+        // Background fetch flag toggles smudge behaviour. When disabled, skip smudge to avoid slow checkouts.
+        let skip_smudge = if cfg.background_fetch_on_checkout { None } else { Some("1".to_string()) };
+        Self::set("GIT_LFS_SKIP_SMUDGE", skip_smudge, &mut originals);
+
+        Self { originals }
+    }
+}
+
+impl Drop for LfsEnvGuard {
+    fn drop(&mut self) {
+        for (key, val) in self.originals.drain(..).rev() {
+            if let Some(v) = val {
+                std::env::set_var(key, v);
+            } else {
+                std::env::remove_var(key);
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -977,6 +1032,75 @@ pub fn git_pull<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Re
         ProgressPayload { message: format!("Pull complete ({current})") }
     );
     Ok(())
+}
+
+#[tauri::command]
+pub fn git_lfs_fetch_all(state: State<'_, AppState>) -> Result<(), String> {
+    info!("git_lfs_fetch_all called");
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+
+    let cfg = lfs_config(&state);
+    if !cfg.enabled {
+        return Err("Git LFS integration is disabled".into());
+    }
+
+    let _guard = LfsEnvGuard::apply(&cfg);
+    repo.inner().lfs_fetch().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_lfs_pull(state: State<'_, AppState>) -> Result<(), String> {
+    info!("git_lfs_pull called");
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+
+    let cfg = lfs_config(&state);
+    if !cfg.enabled {
+        return Err("Git LFS integration is disabled".into());
+    }
+
+    let _guard = LfsEnvGuard::apply(&cfg);
+    repo.inner().lfs_pull().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_lfs_prune(state: State<'_, AppState>) -> Result<(), String> {
+    info!("git_lfs_prune called");
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+
+    let cfg = lfs_config(&state);
+    if !cfg.enabled {
+        return Err("Git LFS integration is disabled".into());
+    }
+
+    let _guard = LfsEnvGuard::apply(&cfg);
+    repo.inner().lfs_prune().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn git_lfs_track_paths(state: State<'_, AppState>, paths: Vec<String>) -> Result<(), String> {
+    info!("git_lfs_track_paths called (count={})", paths.len());
+    if paths.is_empty() {
+        return Ok(());
+    }
+
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+
+    let cfg = lfs_config(&state);
+    if !cfg.enabled {
+        return Err("Git LFS integration is disabled".into());
+    }
+
+    let _guard = LfsEnvGuard::apply(&cfg);
+    let list: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    repo.inner().lfs_track(&list).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

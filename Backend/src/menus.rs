@@ -14,10 +14,11 @@ const WIKI_URL: &str = "https://github.com/jordonbc/OpenVCS/wiki";
 pub fn build_and_attach_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
     let file_menu = build_file_menu(app)?;
     let repo_menu = build_repository_menu(app)?;
+    let lfs_menu = build_lfs_menu(app)?;
     let help_menu = build_help_menu(app)?;
 
     let menu: Menu<R> = MenuBuilder::new(app)
-        .items(&[&file_menu, &repo_menu, &help_menu])
+        .items(&[&file_menu, &repo_menu, &lfs_menu, &help_menu])
         .build()?;
 
     app.set_menu(menu)?;
@@ -80,6 +81,22 @@ fn build_repository_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Resul
         .build()
 }
 
+/// ----- LFS -----
+fn build_lfs_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu::Submenu<R>> {
+    let pull_item = MenuItem::with_id(app, "lfs-pull-all", "Download LFS Files", true, None::<&str>)?;
+    let fetch_item = MenuItem::with_id(app, "lfs-fetch-all", "Fetch LFS", true, None::<&str>)?;
+    let prune_item = MenuItem::with_id(app, "lfs-prune", "Prune LFS Cache", true, None::<&str>)?;
+    let settings_item = MenuItem::with_id(app, "lfs-settings", "LFS Preferences…", true, None::<&str>)?;
+
+    menu::SubmenuBuilder::new(app, "LFS")
+        .item(&pull_item)
+        .item(&fetch_item)
+        .item(&prune_item)
+        .separator()
+        .item(&settings_item)
+        .build()
+}
+
 /// ----- Help -----
 fn build_help_menu<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<menu::Submenu<R>> {
     let docs_item  = MenuItem::with_id(app, "docs",  "Documentation", true, None::<&str>)?;
@@ -109,6 +126,18 @@ pub fn handle_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: Me
         }
         "repo-edit-gitattributes" => {
             open_repo_dotfile(app, ".gitattributes");
+        }
+        "lfs-pull-all" => {
+            let _ = app.emit("menu", "lfs-pull-all");
+        }
+        "lfs-fetch-all" => {
+            let _ = app.emit("menu", "lfs-fetch-all");
+        }
+        "lfs-prune" => {
+            let _ = app.emit("menu", "lfs-prune");
+        }
+        "lfs-settings" => {
+            let _ = app.emit("ui:open-settings", serde_json::json!({"section":"lfs"}));
         }
         "add_repo" => {
             let app_cloned = app.clone();

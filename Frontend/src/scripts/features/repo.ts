@@ -1,6 +1,6 @@
 // src/scripts/features/repo.ts
 import { qs, qsa, escapeHtml } from '../lib/dom';
-import { buildCtxMenu } from '../lib/menu';
+import { buildCtxMenu, CtxItem } from '../lib/menu';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { state, prefs, statusLabel, statusClass } from '../state/state';
@@ -120,7 +120,7 @@ export function renderList() {
             li.addEventListener('contextmenu', (ev) => {
                 ev.preventDefault();
                 const x = (ev as MouseEvent).clientX, y = (ev as MouseEvent).clientY;
-                const items: any[] = [];
+                const items: CtxItem[] = [];
                 // Always offer copy hash for discoverability so menu shows
                 items.push({ label: 'Copy hash', action: async () => {
                     try {
@@ -129,7 +129,7 @@ export function renderList() {
                     } catch { /* ignore */ }
                 }});
                 if (isAhead) {
-                    items.push('---');
+                    items.push({ label: '---' });
                     items.push({ label: 'Undo to this commit', action: async () => {
                         if (!TAURI.has) return;
                         try {
@@ -138,7 +138,7 @@ export function renderList() {
                         } catch { notify('Undo failed'); }
                     }});
                 }
-                buildCtxMenu(items as any, x, y);
+                buildCtxMenu(items, x, y);
             });
             listEl.appendChild(li);
         });
@@ -183,7 +183,7 @@ export function renderList() {
                 const mev = ev as MouseEvent;
                 const x = mev.clientX, y = mev.clientY;
                 const target = sel;
-                const items: { label: string; action: () => void }[] = [];
+                const items: CtxItem[] = [];
                 items.push({ label: 'Apply stash', action: async () => {
                     try {
                         if (!TAURI.has) return;
@@ -205,7 +205,7 @@ export function renderList() {
                         renderList();
                     } catch { notify('Failed to delete stash'); }
                 }});
-                buildCtxMenu(items as any, x, y);
+                buildCtxMenu(items, x, y);
             });
             listEl.appendChild(li);
         });
@@ -969,7 +969,7 @@ function onFileContextMenu(ev: MouseEvent, f: { path: string }) {
     const clickedInSelection = manualSelection.includes(f.path);
     const hasMultiSelection = manualSelection.length > 1 && clickedInSelection;
     const hasSingleSelection = manualSelection.length === 1 && clickedInSelection;
-    const items: { label: string; action: () => void }[] = [];
+    const items: CtxItem[] = [];
     const openStashForPaths = (paths: string[], defaultMessage: string) => {
         if (!paths.length) return;
         openStashConfirm({
@@ -1008,6 +1008,24 @@ function onFileContextMenu(ev: MouseEvent, f: { path: string }) {
     const defaultMsg = `WIP ${singleTarget}`;
     items.push({ label: 'Create stash for this file…', action: () => {
         openStashForPaths([singleTarget], defaultMsg);
+    }});
+    items.push({ label: '---' });
+    items.push({ label: 'Track with Git LFS', action: () => {
+        if (!TAURI.has) {
+            notify('Git LFS is available in the desktop app');
+            return;
+        }
+        const targets = (hasManualSelection && clickedInSelection ? manualSelection.slice() : [f.path]).filter(Boolean);
+        if (!targets.length) return;
+        (async () => {
+            try {
+                await TAURI.invoke('git_lfs_track_paths', { paths: targets });
+                notify(targets.length > 1 ? 'Tracked files with Git LFS' : 'Tracked file with Git LFS');
+                await Promise.allSettled([hydrateStatus()]);
+            } catch {
+                notify('Git LFS track failed');
+            }
+        })();
     }});
     buildCtxMenu(items, x, y);
 }

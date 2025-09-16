@@ -5,7 +5,7 @@ import { notify } from '../lib/notify';
 import { state } from '../state/state';
 import { openModal } from '../ui/modals';
 import { openRenameBranch } from './renameBranch';
-import { buildCtxMenu } from '../lib/menu';
+import { buildCtxMenu, CtxItem } from '../lib/menu';
 import { renderList } from './repo';
 
 type Branch = { name: string; current?: boolean; kind?: { type?: string; remote?: string } };
@@ -114,7 +114,7 @@ export function bindBranchUI() {
         const b = (state.branches || []).find(br => br.name === name) as Branch | undefined;
         const kind = b?.kind?.type?.toLowerCase() || 'local';
         const wantForce = Boolean(e.shiftKey);
-        const items: { label: string; action: () => void }[] = [];
+        const items: CtxItem[] = [];
         items.push({ label: 'Checkout', action: async () => {
             try { if (TAURI.has) await TAURI.invoke('git_checkout_branch', { name }); await loadBranches(); notify(`Switched to ${name}`); renderList(); }
             catch { notify('Checkout failed'); }
@@ -127,7 +127,7 @@ export function bindBranchUI() {
             catch { notify('Merge failed'); }
         }});
         if (kind !== 'remote') {
-            items.push({ label: '---', action: () => {} });
+            items.push({ label: '---' });
             items.push({ label: 'Rename…', action: () => openRenameBranch(name) });
             items.push({ label: wantForce ? 'Force delete…' : 'Delete…', action: async () => {
                 if (name === cur) { notify('Cannot delete the current branch'); return; }

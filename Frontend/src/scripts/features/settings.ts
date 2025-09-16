@@ -4,7 +4,26 @@ import { toKebab } from '../lib/dom';
 import { notify } from '../lib/notify';
 import type { GlobalSettings } from '../types';
 
-export function openSettings(){ openModal('settings-modal'); }
+export function openSettings(section?: string){
+    openModal('settings-modal');
+    if (section) {
+        const modal = document.getElementById('settings-modal') as HTMLElement | null;
+        if (modal) activateSection(modal, section);
+    }
+}
+
+function activateSection(modal: HTMLElement, section: string) {
+    const nav = modal.querySelector('#settings-nav');
+    const panels = modal.querySelector('#settings-panels');
+    if (!nav || !panels) return;
+    const btn = nav.querySelector<HTMLElement>(`[data-section="${section}"]`);
+    nav.querySelectorAll<HTMLElement>('.seg-btn').forEach(b => {
+        b.classList.toggle('active', b === btn);
+    });
+    panels.querySelectorAll<HTMLElement>('.panel-form').forEach(p => {
+        p.classList.toggle('hidden', p.getAttribute('data-panel') !== section);
+    });
+}
 
 export function wireSettings() {
     const modal = document.getElementById('settings-modal') as HTMLElement | null;
@@ -26,13 +45,22 @@ export function wireSettings() {
         nav.addEventListener('click', (e) => {
             const btn = (e.target as HTMLElement).closest('[data-section]') as HTMLElement | null;
             if (!btn) return;
-            nav.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b === btn));
-            const target = btn.getAttribute('data-section');
-            panels.querySelectorAll<HTMLElement>('.panel-form').forEach(p => {
-                p.classList.toggle('hidden', p.getAttribute('data-panel') !== target);
-            });
+            const target = btn.getAttribute('data-section') || undefined;
+            if (!target) return;
+            activateSection(modal, target);
         });
     }
+
+    const lfsToggle = modal.querySelector<HTMLInputElement>('#set-lfs-enabled');
+    const lfsDependents = ['#set-lfs-concurrency', '#set-lfs-require-lock', '#set-lfs-bg-fetch']
+        .map(sel => modal.querySelector<HTMLInputElement>(sel))
+        .filter((el): el is HTMLInputElement => !!el);
+    const updateLfsDependentState = () => {
+        const enabled = !!lfsToggle?.checked;
+        lfsDependents.forEach(input => input.disabled = !enabled);
+    };
+    updateLfsDependentState();
+    lfsToggle?.addEventListener('change', updateLfsDependentState);
 
     const setThemeSel = modal.querySelector('#set-theme') as HTMLSelectElement | null;
     setThemeSel?.addEventListener('change', () => {
@@ -137,10 +165,12 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         show_binary_placeholders: !!get<HTMLInputElement>('#set-binary-placeholders')?.checked,
     };
 
+    const rawConc = Number(get<HTMLInputElement>('#set-lfs-concurrency')?.value ?? 0);
+    const conc = rawConc && isFinite(rawConc) ? Math.max(1, Math.min(16, rawConc)) : 4;
     o.lfs = {
         ...o.lfs,
         enabled: !!get<HTMLInputElement>('#set-lfs-enabled')?.checked,
-        concurrency: Number(get<HTMLInputElement>('#set-lfs-concurrency')?.value ?? 0),
+        concurrency: conc,
         require_lock_before_edit: !!get<HTMLInputElement>('#set-lfs-require-lock')?.checked,
         background_fetch_on_checkout: !!get<HTMLInputElement>('#set-lfs-bg-fetch')?.checked,
     };
@@ -217,6 +247,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     
     const elLl = get<HTMLInputElement>('#set-lfs-require-lock'); if (elLl) elLl.checked = !!cfg.lfs?.require_lock_before_edit;
     const elBg = get<HTMLInputElement>('#set-lfs-bg-fetch'); if (elBg) elBg.checked = !!cfg.lfs?.background_fetch_on_checkout;
+    elLe?.dispatchEvent(new Event('change'));
 
     const elPrg= get<HTMLInputElement>('#set-progressive-render'); if (elPrg) elPrg.checked = !!cfg.performance?.progressive_render;
     const elGpu= get<HTMLInputElement>('#set-gpu-accel'); if (elGpu) elGpu.checked = !!cfg.performance?.gpu_accel;

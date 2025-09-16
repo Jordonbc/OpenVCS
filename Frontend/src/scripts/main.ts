@@ -124,7 +124,25 @@ function boot() {
     hydrateStash();
 
     // menu routing
-    TAURI.listen?.('menu', ({ payload: id }) => {
+    async function runLfsCommand(cmd: string, okMsg: string, errMsg: string) {
+        if (!TAURI.has) {
+            notify('Git LFS actions require the desktop app');
+            return;
+        }
+        try {
+            await TAURI.invoke(cmd);
+            notify(okMsg);
+            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+        } catch (err) {
+            const msg = String(err || '').trim();
+            const friendly = msg.includes('unsupported backend')
+                ? 'The current backend does not support Git LFS'
+                : (msg || errMsg);
+            notify(friendly);
+        }
+    }
+
+    TAURI.listen?.('menu', async ({ payload: id }) => {
         switch (id) {
             case 'clone_repo': openSheet('clone'); break;
             case 'add_repo':   openSheet('add');   break;
@@ -135,6 +153,10 @@ function boot() {
             case 'docs': notify('Open docs…'); break;
             case 'about': openAbout(); break;
             case 'settings': openSettings(); break;
+            case 'lfs-settings': openSettings('lfs'); break;
+            case 'lfs-fetch-all': await runLfsCommand('git_lfs_fetch_all', 'Fetched Git LFS objects', 'Git LFS fetch failed'); break;
+            case 'lfs-pull-all': await runLfsCommand('git_lfs_pull', 'Pulled Git LFS objects', 'Git LFS pull failed'); break;
+            case 'lfs-prune': await runLfsCommand('git_lfs_prune', 'Pruned Git LFS cache', 'Git LFS prune failed'); break;
         }
     });
 
@@ -229,7 +251,12 @@ function boot() {
     });
 
     // open settings via event
-      TAURI.listen?.('ui:open-settings', () => openModal('settings-modal'));
+      TAURI.listen?.('ui:open-settings', ({ payload }) => {
+          const section = typeof payload === 'string'
+              ? String(payload)
+              : (payload && typeof payload === 'object' ? (payload as any).section : undefined);
+          openSettings(section);
+      });
       TAURI.listen?.('ui:open-about', () => openAbout());
       TAURI.listen?.('ui:open-repo-settings', () => openRepoSettings());
   }
