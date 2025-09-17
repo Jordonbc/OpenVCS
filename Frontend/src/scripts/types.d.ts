@@ -106,6 +106,11 @@ export interface ThemePayload {
         light?: string | null;
         dark?: string | null;
     };
+    markup?: {
+        head?: string | null;
+        body?: string | null;
+    };
+    scripts?: string[];
 }
 
 export interface RepoSettings {

@@ -48,10 +48,26 @@ pub struct ThemeStyles {
     pub dark: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct ThemeMarkup {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub head: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+}
+
+fn markup_is_empty(markup: &ThemeMarkup) -> bool {
+    markup.head.is_none() && markup.body.is_none()
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ThemePayload {
     pub summary: ThemeSummary,
     pub styles: ThemeStyles,
+    #[serde(skip_serializing_if = "markup_is_empty")]
+    pub markup: ThemeMarkup,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub scripts: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -66,6 +82,10 @@ struct RawThemeManifest {
     author: Option<String>,
     #[serde(default)]
     styles: RawThemeStyles,
+    #[serde(default)]
+    markup: RawThemeMarkup,
+    #[serde(default)]
+    scripts: Vec<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -78,6 +98,14 @@ struct RawThemeStyles {
     light: Vec<String>,
     #[serde(default, deserialize_with = "string_or_vec")]
     dark: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RawThemeMarkup {
+    #[serde(default, deserialize_with = "string_or_vec")]
+    head: Vec<String>,
+    #[serde(default, deserialize_with = "string_or_vec")]
+    body: Vec<String>,
 }
 
 fn string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
@@ -169,6 +197,8 @@ pub fn default_theme_payload() -> ThemePayload {
     ThemePayload {
         summary: default_theme_summary(),
         styles: ThemeStyles::default(),
+        markup: ThemeMarkup::default(),
+        scripts: Vec::new(),
     }
 }
 
@@ -199,6 +229,35 @@ pub fn list_themes() -> Vec<ThemeSummary> {
                         "themes: duplicate theme id `{}` ignored (file {})",
                         id_trimmed, display
                     );
+                    continue;
+                }
+                seen.insert(norm);
+
+                summaries.push(ThemeSummary {
+                    id: id_trimmed.to_string(),
+                    name: manifest.name.trim().to_string(),
+                    description: clean_opt(manifest.description),
+                    version: clean_opt(manifest.version),
+                    author: clean_opt(manifest.author),
+                    source: ThemeSource::BuiltIn,
+                });
+            }
+            Err(err) => warn!("themes: failed to read {}: {}", display, err),
+        }
+    }
+
+    for dir in BUILT_IN_THEMES_DIR.dirs() {
+        let display = dir_display_name(dir);
+        match read_manifest_from_dir(&display, dir) {
+            Ok(manifest) => {
+                let id_trimmed = manifest.id.trim();
+                if id_trimmed.is_empty() {
+                    warn!("themes: theme {} ignored due to empty id", display);
+                    continue;
+                }
+                let norm = id_trimmed.to_ascii_lowercase();
+                if seen.contains(&norm) {
+                    warn!("themes: duplicate theme id `{}` ignored (dir {})", id_trimmed, display);
                     continue;
                 }
                 seen.insert(norm);
@@ -292,6 +351,18 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
         }
     }
 
+    for dir in BUILT_IN_THEMES_DIR.dirs() {
+        let display = dir_display_name(dir);
+        match read_manifest_from_dir(&display, dir) {
+            Ok(manifest) => {
+                if manifest.id.trim().eq_ignore_ascii_case(requested) {
+                    return build_theme_payload_from_dir(&display, dir, manifest, ThemeSource::BuiltIn);
+                }
+            }
+            Err(err) => warn!("themes: failed to read {}: {}", display, err),
+        }
+    }
+
     let dir = themes_dir();
     ensure_dir(&dir);
 
@@ -334,6 +405,27 @@ where
     let mut archive =
         ZipArchive::new(reader).map_err(|err| format!("read zip {}: {}", name, err))?;
     read_manifest_from_archive(name, &mut archive)
+}
+
+fn dir_display_name(dir: &Dir<'_>) -> String {
+    dir.path().display().to_string()
+}
+
+fn read_manifest_from_dir(name: &str, dir: &Dir<'_>) -> Result<RawThemeManifest, String> {
+    let manifest_file = dir
+        .get_file(MANIFEST_NAME)
+        .ok_or_else(|| format!("theme {} is missing {MANIFEST_NAME}", name))?;
+    let text = std::str::from_utf8(manifest_file.contents())
+        .map_err(|err| format!("parse manifest in {}: {}", name, err))?;
+    let manifest: RawThemeManifest = serde_json::from_str(text)
+        .map_err(|err| format!("parse manifest in {}: {}", name, err))?;
+    if manifest.id.trim().is_empty() {
+        return Err(format!("theme {} has an empty id", name));
+    }
+    if manifest.name.trim().is_empty() {
+        return Err(format!("theme {} has an empty name", name));
+    }
+    Ok(manifest)
 }
 
 fn read_manifest_from_archive<R>(
@@ -397,7 +489,7 @@ fn build_theme_payload_from_reader<R>(
 where
     R: Read + Seek,
 {
-    let styles = read_styles_from_reader(name, reader, &manifest)?;
+    let (styles, markup, scripts) = read_assets_from_reader(name, reader, &manifest)?;
     let summary = ThemeSummary {
         id: manifest.id.trim().to_string(),
         name: manifest.name.trim().to_string(),
@@ -407,27 +499,56 @@ where
         source,
     };
 
-    Ok(ThemePayload { summary, styles })
+    Ok(ThemePayload {
+        summary,
+        styles,
+        markup,
+        scripts,
+    })
 }
 
-fn read_styles_from_reader<R>(
+fn build_theme_payload_from_dir(
+    name: &str,
+    dir: &Dir<'_>,
+    manifest: RawThemeManifest,
+    source: ThemeSource,
+) -> Result<ThemePayload, String> {
+    let (styles, markup, scripts) = read_assets_from_dir(name, dir, &manifest)?;
+    let summary = ThemeSummary {
+        id: manifest.id.trim().to_string(),
+        name: manifest.name.trim().to_string(),
+        description: clean_opt(manifest.description),
+        version: clean_opt(manifest.version),
+        author: clean_opt(manifest.author),
+        source,
+    };
+
+    Ok(ThemePayload {
+        summary,
+        styles,
+        markup,
+        scripts,
+    })
+}
+
+fn read_assets_from_reader<R>(
     name: &str,
     reader: R,
     manifest: &RawThemeManifest,
-) -> Result<ThemeStyles, String>
+) -> Result<(ThemeStyles, ThemeMarkup, Vec<String>), String>
 where
     R: Read + Seek,
 {
     let mut archive =
         ZipArchive::new(reader).map_err(|err| format!("read zip {}: {}", name, err))?;
-    read_styles_from_archive(name, &mut archive, manifest)
+    read_assets_from_archive(name, &mut archive, manifest)
 }
 
-fn read_styles_from_archive<R>(
+fn read_assets_from_archive<R>(
     name: &str,
     archive: &mut ZipArchive<R>,
     manifest: &RawThemeManifest,
-) -> Result<ThemeStyles, String>
+) -> Result<(ThemeStyles, ThemeMarkup, Vec<String>), String>
 where
     R: Read + Seek,
 {
@@ -435,13 +556,43 @@ where
     let system = read_css_set(name, archive, &manifest.styles.system)?;
     let light = read_css_set(name, archive, &manifest.styles.light)?;
     let dark = read_css_set(name, archive, &manifest.styles.dark)?;
+    let markup = read_markup_sets(name, archive, &manifest.markup)?;
+    let scripts = read_script_set(name, archive, &manifest.scripts)?;
 
-    Ok(ThemeStyles {
-        global,
-        system,
-        light,
-        dark,
-    })
+    Ok((
+        ThemeStyles {
+            global,
+            system,
+            light,
+            dark,
+        },
+        markup,
+        scripts,
+    ))
+}
+
+fn read_assets_from_dir(
+    name: &str,
+    dir: &Dir<'_>,
+    manifest: &RawThemeManifest,
+) -> Result<(ThemeStyles, ThemeMarkup, Vec<String>), String> {
+    let global = read_css_set_from_dir(name, dir, &manifest.styles.global)?;
+    let system = read_css_set_from_dir(name, dir, &manifest.styles.system)?;
+    let light = read_css_set_from_dir(name, dir, &manifest.styles.light)?;
+    let dark = read_css_set_from_dir(name, dir, &manifest.styles.dark)?;
+    let markup = read_markup_from_dir(name, dir, &manifest.markup)?;
+    let scripts = read_scripts_from_dir(name, dir, &manifest.scripts)?;
+
+    Ok((
+        ThemeStyles {
+            global,
+            system,
+            light,
+            dark,
+        },
+        markup,
+        scripts,
+    ))
 }
 
 fn read_css_set<R>(
@@ -487,4 +638,129 @@ where
     } else {
         Some(combined)
     })
+}
+
+fn read_markup_sets<R>(
+    display: &str,
+    archive: &mut ZipArchive<R>,
+    markup: &RawThemeMarkup,
+) -> Result<ThemeMarkup, String>
+where
+    R: Read + Seek,
+{
+    Ok(ThemeMarkup {
+        head: read_css_set(display, archive, &markup.head)?,
+        body: read_css_set(display, archive, &markup.body)?,
+    })
+}
+
+fn read_script_set<R>(
+    display: &str,
+    archive: &mut ZipArchive<R>,
+    files: &[String],
+) -> Result<Vec<String>, String>
+where
+    R: Read + Seek,
+{
+    if files.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut scripts = Vec::new();
+    for name in files {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let mut entry = archive
+            .by_name(trimmed)
+            .map_err(|err| format!("missing `{}` in {}: {}", trimmed, display, err))?;
+
+        let mut buf = String::new();
+        entry
+            .read_to_string(&mut buf)
+            .map_err(|err| format!("read `{}` in {}: {}", trimmed, display, err))?;
+
+        if !buf.trim().is_empty() {
+            scripts.push(buf);
+        }
+    }
+
+    Ok(scripts)
+}
+
+fn read_css_set_from_dir(
+    display: &str,
+    dir: &Dir<'_>,
+    files: &[String],
+) -> Result<Option<String>, String> {
+    if files.is_empty() {
+        return Ok(None);
+    }
+
+    let mut combined = String::new();
+    for name in files {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let text = read_text_file_from_dir(dir, display, trimmed)?;
+        if !text.trim().is_empty() {
+            if !combined.is_empty() && !combined.ends_with('\n') {
+                combined.push('\n');
+            }
+            combined.push_str(&text);
+            if !combined.ends_with('\n') {
+                combined.push('\n');
+            }
+        }
+    }
+
+    Ok(if combined.trim().is_empty() { None } else { Some(combined) })
+}
+
+fn read_markup_from_dir(
+    display: &str,
+    dir: &Dir<'_>,
+    markup: &RawThemeMarkup,
+) -> Result<ThemeMarkup, String> {
+    Ok(ThemeMarkup {
+        head: read_css_set_from_dir(display, dir, &markup.head)?,
+        body: read_css_set_from_dir(display, dir, &markup.body)?,
+    })
+}
+
+fn read_scripts_from_dir(
+    display: &str,
+    dir: &Dir<'_>,
+    files: &[String],
+) -> Result<Vec<String>, String> {
+    if files.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut scripts = Vec::new();
+    for name in files {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let text = read_text_file_from_dir(dir, display, trimmed)?;
+        if !text.trim().is_empty() {
+            scripts.push(text);
+        }
+    }
+
+    Ok(scripts)
+}
+
+fn read_text_file_from_dir(dir: &Dir<'_>, display: &str, name: &str) -> Result<String, String> {
+    let target_path = dir.path().join(name.trim_start_matches("./"));
+    let file = dir
+        .get_file(&target_path)
+        .ok_or_else(|| format!("missing `{}` in {}", name, display))?;
+    let bytes = file.contents();
+    let text = std::str::from_utf8(bytes)
+        .map_err(|err| format!("read `{}` in {}: {}", name, display, err))?;
+    Ok(text.to_string())
 }

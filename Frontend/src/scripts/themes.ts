@@ -6,11 +6,18 @@ export const DEFAULT_THEME_ID = 'default';
 
 const GLOBAL_STYLE_ID = 'openvcs-theme-global';
 const MODE_STYLE_ID = 'openvcs-theme-mode';
+const THEME_PACK_ATTR = 'data-theme-pack';
+
+const HEAD_MARKUP_NODES: ChildNode[] = [];
+const BODY_MARKUP_NODES: ChildNode[] = [];
+const THEME_SCRIPT_NODES: HTMLScriptElement[] = [];
 
 let availableThemes: ThemeSummary[] = [defaultSummary()];
 let fetchedThemes = false;
 let activeThemeId = DEFAULT_THEME_ID;
 let activeStyles: ThemePayload['styles'] | null = null;
+let activeMarkup: ThemePayload['markup'] | null = null;
+let activeScripts: string[] = [];
 let currentMode: 'system' | 'light' | 'dark' = 'system';
 
 function defaultSummary(): ThemeSummary {
@@ -55,14 +62,81 @@ function setStyleContent(id: string, css: string | null | undefined) {
     target.textContent = text;
 }
 
+function syncThemePackAttr() {
+    const root = document.documentElement;
+    if (!root) return;
+    const current = (activeThemeId || DEFAULT_THEME_ID).trim().toLowerCase();
+    if (!current || current === DEFAULT_THEME_ID) {
+        root.removeAttribute(THEME_PACK_ATTR);
+        return;
+    }
+    root.setAttribute(THEME_PACK_ATTR, current);
+}
+
+function applyMarkupNodes() {
+    const markup = activeMarkup ?? null;
+    const headHtml = markup?.head ?? null;
+    const bodyHtml = markup?.body ?? null;
+    setMarkupForTarget(document.head, HEAD_MARKUP_NODES, headHtml);
+    setMarkupForTarget(document.body, BODY_MARKUP_NODES, bodyHtml);
+}
+
+function setMarkupForTarget(target: ParentNode | null, store: ChildNode[], html: string | null | undefined) {
+    const parent = target ?? null;
+    if (!parent) return;
+    clearNodes(store);
+    const text = typeof html === 'string' ? html.trim() : '';
+    if (!text) return;
+    const template = document.createElement('template');
+    template.innerHTML = text;
+    const nodes = Array.from(template.content.childNodes);
+    for (const node of nodes) {
+        parent.appendChild(node);
+    }
+    store.push(...nodes);
+}
+
+function applyScriptNodes() {
+    while (THEME_SCRIPT_NODES.length) {
+        const node = THEME_SCRIPT_NODES.pop();
+        node?.parentNode?.removeChild(node);
+    }
+
+    const scripts = Array.isArray(activeScripts) ? activeScripts : [];
+    if (!scripts.length) return;
+    const head = document.head;
+    if (!head) return;
+
+    scripts.forEach((code, index) => {
+        if (typeof code !== 'string' || !code.trim()) return;
+        const script = document.createElement('script');
+        script.type = 'module';
+        script.dataset.themePack = activeThemeId;
+        script.setAttribute('data-theme-script-index', String(index));
+        script.textContent = code;
+        head.appendChild(script);
+        THEME_SCRIPT_NODES.push(script);
+    });
+}
+
+function clearNodes(store: ChildNode[]) {
+    while (store.length) {
+        const node = store.pop();
+        node?.parentNode?.removeChild(node);
+    }
+}
+
 function applyModeStyles(mode: 'system' | 'light' | 'dark') {
     currentMode = mode;
+    syncThemePackAttr();
     const styles = activeStyles;
     const globalCss = styles?.global ?? null;
     setStyleContent(GLOBAL_STYLE_ID, globalCss);
 
     const selected = selectModeCss(styles, mode);
     setStyleContent(MODE_STYLE_ID, selected);
+    applyMarkupNodes();
+    applyScriptNodes();
 }
 
 function selectModeCss(styles: ThemePayload['styles'] | null, mode: 'system' | 'light' | 'dark'): string {
@@ -145,6 +219,8 @@ export async function selectThemePack(
     if (!TAURI.has || target.toLowerCase() === DEFAULT_THEME_ID) {
         activeThemeId = DEFAULT_THEME_ID;
         activeStyles = null;
+        activeMarkup = null;
+        activeScripts = [];
         applyModeStyles(desiredMode);
         return;
     }
@@ -156,11 +232,15 @@ export async function selectThemePack(
         }
         activeThemeId = String(payload.summary?.id || target);
         activeStyles = payload.styles ?? null;
+        activeMarkup = payload.markup ?? null;
+        activeScripts = Array.isArray(payload.scripts) ? payload.scripts : [];
         applyModeStyles(desiredMode);
     } catch (error) {
         console.warn('load_theme failed', error);
         activeThemeId = DEFAULT_THEME_ID;
         activeStyles = null;
+        activeMarkup = null;
+        activeScripts = [];
         applyModeStyles(desiredMode);
         if (!opts.silent) {
             notify('Theme failed to load. Reverted to the default theme.');
