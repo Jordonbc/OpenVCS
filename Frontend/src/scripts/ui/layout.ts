@@ -2,6 +2,7 @@ import { qs, qsa, setText } from '../lib/dom';
 import { prefs, savePrefs, state, hasRepo, hasChanges } from '../state/state';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
+import { setAppearanceMode } from '../themes';
 
 const workGrid = qs<HTMLElement>('.work');
 const resizer  = qs<HTMLElement>('#resizer');
@@ -15,10 +16,16 @@ const repoBranchEl = qs<HTMLElement>('#repo-branch');
 const aheadBehindEl = qs<HTMLElement>('#ahead-behind');
 
 export function setTheme(theme: 'dark'|'light'|'system') {
-    document.documentElement.setAttribute('data-theme', theme);
+    const root = document.documentElement;
+    if (theme === 'system') {
+        root.removeAttribute('data-theme');
+    } else {
+        root.setAttribute('data-theme', theme);
+    }
     // (optional) mirror into settings select if present
     const sel = document.querySelector<HTMLSelectElement>('#settings-modal #set-theme');
     if (sel) sel.value = theme;
+    setAppearanceMode(theme);
     // Track effective theme in-memory (native settings persist it)
     prefs.theme = theme === 'system'
         ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')

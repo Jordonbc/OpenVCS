@@ -15,6 +15,7 @@ import { openModal } from './ui/modals';
 import { openSettings, loadSettingsIntoForm } from './features/settings';
 import { showUpdateDialog } from './features/update';
 import { openRepoSettings } from './features/repoSettings';
+import { DEFAULT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
 
 // Title bar actions
 const fetchBtn = qs<HTMLButtonElement>('#fetch-btn');
@@ -28,11 +29,19 @@ function boot() {
     // theme & basic layout
     // Prefer native settings for theme; fall back to current in-memory default
     if (TAURI.has) {
-        TAURI.invoke<any>('get_global_settings')
-            .then((cfg) => {
-                const t = cfg?.general?.theme as ('dark'|'light'|'system'|undefined);
-                setTheme(t || prefs.theme);
-                // Apply additional visual prefs: tab width, UI scale, monospace font
+        (async () => {
+            try {
+                const cfg = await TAURI.invoke<any>('get_global_settings');
+                const themeMode = cfg?.general?.theme as ('dark'|'light'|'system'|undefined);
+                const modeForPack = themeMode ?? 'system';
+                const themePack = String(cfg?.general?.theme_pack || DEFAULT_THEME_ID);
+                try { await refreshAvailableThemes(); } catch { /* best effort */ }
+                try {
+                    await selectThemePack(themePack, { silent: true, mode: modeForPack });
+                } catch {
+                    await selectThemePack(DEFAULT_THEME_ID, { silent: true, mode: modeForPack });
+                }
+                setTheme(themeMode || prefs.theme);
                 try {
                     const root = document.documentElement;
                     const tabw = Number(cfg?.diff?.tab_width ?? 4);
@@ -42,8 +51,11 @@ function boot() {
                     const mono = String(cfg?.ux?.font_mono || '').trim();
                     if (mono) root.style.setProperty('--mono', mono);
                 } catch { /* best-effort */ }
-            })
-            .catch(() => setTheme(prefs.theme));
+            } catch {
+                try { await selectThemePack(DEFAULT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
+                setTheme(prefs.theme);
+            }
+        })();
     } else {
         setTheme(prefs.theme);
     }

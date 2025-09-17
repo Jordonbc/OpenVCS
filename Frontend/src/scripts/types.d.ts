@@ -38,6 +38,7 @@ export interface AppPrefs {
 export interface GlobalSettings {
     general?: {
         theme?: 'system'|'dark'|'light';
+        theme_pack?: string;
         language?: string;
         default_backend?: 'git'|string;
         update_channel?: string;
@@ -85,6 +86,25 @@ export interface GlobalSettings {
         level?: 'trace'|'debug'|'info'|'warn'|'error'|string;
         live_viewer?: boolean;
         retain_archives?: number;
+    };
+}
+
+export interface ThemeSummary {
+    id: string;
+    name: string;
+    description?: string;
+    version?: string;
+    author?: string;
+    source?: 'built-in' | 'user' | string;
+}
+
+export interface ThemePayload {
+    summary: ThemeSummary;
+    styles: {
+        global?: string | null;
+        system?: string | null;
+        light?: string | null;
+        dark?: string | null;
     };
 }
 
