@@ -23,6 +23,36 @@ function themeTooltip(id: string): string {
     return details.join('\n') || THEME_PACK_HINT;
 }
 
+async function rebuildThemePackOptions(
+    selectEl: HTMLSelectElement,
+    opts: { desiredId?: string | null; forceReload?: boolean } = {},
+) {
+    const { desiredId, forceReload } = opts;
+    if (forceReload) {
+        try {
+            await refreshAvailableThemes();
+        } catch {
+            // ignore refresh errors; fallback to whatever themes are cached
+        }
+    }
+
+    const themes = getAvailableThemes();
+    const desired = (desiredId ?? selectEl.value ?? DEFAULT_THEME_ID).toLowerCase();
+
+    selectEl.innerHTML = '';
+    for (const theme of themes) {
+        const opt = document.createElement('option');
+        opt.value = theme.id;
+        opt.textContent = themeOptionLabel(theme);
+        opt.title = themeTooltip(theme.id);
+        selectEl.appendChild(opt);
+    }
+
+    const match = themes.find((t) => t.id.toLowerCase() === desired);
+    selectEl.value = match ? match.id : DEFAULT_THEME_ID;
+    selectEl.title = themeTooltip(selectEl.value || DEFAULT_THEME_ID);
+}
+
 export function openSettings(section?: string){
     openModal('settings-modal');
     const modal = document.getElementById('settings-modal') as HTMLElement | null;
@@ -89,6 +119,20 @@ export function wireSettings() {
         const val = setThemePackSel.value || DEFAULT_THEME_ID;
         setThemePackSel.title = themeTooltip(val);
     };
+
+    let themePackRefreshInFlight = false;
+    setThemePackSel?.addEventListener('pointerdown', async () => {
+        if (!setThemePackSel || themePackRefreshInFlight) return;
+        themePackRefreshInFlight = true;
+        try {
+            await rebuildThemePackOptions(setThemePackSel, {
+                desiredId: setThemePackSel.value,
+                forceReload: true,
+            });
+        } finally {
+            themePackRefreshInFlight = false;
+        }
+    });
 
     setThemeSel?.addEventListener('change', () => {
         const v = (setThemeSel.value as ('system'|'dark'|'light')) || 'system';
@@ -260,22 +304,13 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
 
     m.dataset.currentCfg = JSON.stringify(cfg);
 
-    try { await refreshAvailableThemes(); } catch {}
     const themePackSel = get<HTMLSelectElement>('#set-theme-pack');
     if (themePackSel) {
-        const themes = getAvailableThemes();
-        themePackSel.innerHTML = '';
-        for (const theme of themes) {
-            const opt = document.createElement('option');
-            opt.value = theme.id;
-            opt.textContent = themeOptionLabel(theme);
-            opt.title = themeTooltip(theme.id);
-            themePackSel.appendChild(opt);
-        }
-        const desired = String(cfg.general?.theme_pack || DEFAULT_THEME_ID);
-        const match = themes.find((t) => t.id.toLowerCase() === desired.toLowerCase());
-        themePackSel.value = match ? match.id : DEFAULT_THEME_ID;
-        themePackSel.title = themeTooltip(themePackSel.value || DEFAULT_THEME_ID);
+        const desired = cfg.general?.theme_pack;
+        await rebuildThemePackOptions(themePackSel, {
+            desiredId: typeof desired === 'string' ? desired : undefined,
+            forceReload: true,
+        });
     }
 
     const elTheme = get<HTMLSelectElement>('#set-theme'); if (elTheme) elTheme.value = toKebab(cfg.general?.theme);
