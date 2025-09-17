@@ -25,10 +25,10 @@ function themeTooltip(id: string): string {
 
 export function openSettings(section?: string){
     openModal('settings-modal');
-    if (section) {
-        const modal = document.getElementById('settings-modal') as HTMLElement | null;
-        if (modal) activateSection(modal, section);
-    }
+    const modal = document.getElementById('settings-modal') as HTMLElement | null;
+    if (!modal) return;
+    if (section) activateSection(modal, section);
+    loadSettingsIntoForm(modal).catch(console.error);
 }
 
 function activateSection(modal: HTMLElement, section: string) {
