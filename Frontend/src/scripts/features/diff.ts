@@ -86,7 +86,7 @@ export function bindCommit() {
 }
 
 // Construct a minimal patch for one file by combining the file header and selected hunks.
-function buildPatchForSelectedHunks(path: string, lines: string[], hunkIndices: number[]): string {
+export function buildPatchForSelectedHunks(path: string, lines: string[], hunkIndices: number[]): string {
     if (!Array.isArray(lines) || !lines.length || !hunkIndices.length) return '';
     const normPath = String(path).replace(/\\/g, '/');
 
