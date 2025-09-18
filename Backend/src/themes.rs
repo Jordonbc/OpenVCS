@@ -1,20 +1,64 @@
 use directories::ProjectDirs;
-use include_dir::{include_dir, Dir};
 use log::warn;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
+    env,
     fs::{self, File},
-    io::{Cursor, Read, Seek},
+    io::{Read, Seek},
     path::{Path, PathBuf},
 };
 use zip::ZipArchive;
 
 const MANIFEST_NAME: &str = "theme.json";
-
-static BUILT_IN_THEMES_DIR: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/built-in-themes");
+const BUILT_IN_THEMES_DIR_NAME: &str = "built-in-themes";
 
 pub const DEFAULT_THEME_ID: &str = "default";
+
+fn built_in_theme_dirs() -> Vec<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if let Ok(explicit) = env::var("OPENVCS_BUILTIN_THEMES") {
+        let trimmed = explicit.trim();
+        if !trimmed.is_empty() {
+            candidates.push(PathBuf::from(trimmed));
+        }
+    }
+
+    if let Ok(current_dir) = env::current_dir() {
+        candidates.push(current_dir.join(BUILT_IN_THEMES_DIR_NAME));
+    }
+
+    if let Ok(exe) = env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join(BUILT_IN_THEMES_DIR_NAME));
+            candidates.push(dir.join("resources").join(BUILT_IN_THEMES_DIR_NAME));
+            #[cfg(target_os = "macos")]
+            if let Some(parent) = dir.parent() {
+                candidates.push(parent.join("Resources").join(BUILT_IN_THEMES_DIR_NAME));
+            }
+        }
+    }
+
+    candidates.push(PathBuf::from("Backend").join(BUILT_IN_THEMES_DIR_NAME));
+    candidates.push(PathBuf::from(BUILT_IN_THEMES_DIR_NAME));
+    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(BUILT_IN_THEMES_DIR_NAME));
+
+    let mut seen = HashSet::new();
+    candidates
+        .into_iter()
+        .filter_map(|path| {
+            if !seen.insert(path.clone()) {
+                return None;
+            }
+            if path.is_dir() {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -210,68 +254,85 @@ pub fn list_themes() -> Vec<ThemeSummary> {
     let mut seen = HashSet::new();
     seen.insert(DEFAULT_THEME_ID.to_string());
 
-    for file in BUILT_IN_THEMES_DIR.files() {
-        if !is_zip_file(file.path()) {
-            continue;
-        }
-
-        let display = file.path().display().to_string();
-        match read_manifest_from_bytes(&display, file.contents()) {
-            Ok(manifest) => {
-                let id_trimmed = manifest.id.trim();
-                if id_trimmed.is_empty() {
-                    warn!("themes: theme {} ignored due to empty id", display);
-                    continue;
-                }
-                let norm = id_trimmed.to_ascii_lowercase();
-                if seen.contains(&norm) {
-                    warn!(
-                        "themes: duplicate theme id `{}` ignored (file {})",
-                        id_trimmed, display
-                    );
-                    continue;
-                }
-                seen.insert(norm);
-
-                summaries.push(ThemeSummary {
-                    id: id_trimmed.to_string(),
-                    name: manifest.name.trim().to_string(),
-                    description: clean_opt(manifest.description),
-                    version: clean_opt(manifest.version),
-                    author: clean_opt(manifest.author),
-                    source: ThemeSource::BuiltIn,
-                });
-            }
-            Err(err) => warn!("themes: failed to read {}: {}", display, err),
-        }
+    let built_in_dirs = built_in_theme_dirs();
+    if built_in_dirs.is_empty() {
+        warn!("themes: no built-in theme directories located");
     }
+    for dir in built_in_dirs {
+        match fs::read_dir(&dir) {
+            Ok(entries) => {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() && is_zip_file(&path) {
+                        match read_manifest(&path) {
+                            Ok(manifest) => {
+                                let id_trimmed = manifest.id.trim();
+                                if id_trimmed.is_empty() {
+                                    warn!(
+                                        "themes: theme {} ignored due to empty id",
+                                        path.display()
+                                    );
+                                    continue;
+                                }
+                                let norm = id_trimmed.to_ascii_lowercase();
+                                if seen.contains(&norm) {
+                                    warn!(
+                                        "themes: duplicate theme id `{}` ignored (file {})",
+                                        id_trimmed,
+                                        path.display()
+                                    );
+                                    continue;
+                                }
+                                seen.insert(norm);
 
-    for dir in BUILT_IN_THEMES_DIR.dirs() {
-        let display = dir_display_name(dir);
-        match read_manifest_from_dir(&display, dir) {
-            Ok(manifest) => {
-                let id_trimmed = manifest.id.trim();
-                if id_trimmed.is_empty() {
-                    warn!("themes: theme {} ignored due to empty id", display);
-                    continue;
-                }
-                let norm = id_trimmed.to_ascii_lowercase();
-                if seen.contains(&norm) {
-                    warn!("themes: duplicate theme id `{}` ignored (dir {})", id_trimmed, display);
-                    continue;
-                }
-                seen.insert(norm);
+                                summaries.push(ThemeSummary {
+                                    id: id_trimmed.to_string(),
+                                    name: manifest.name.trim().to_string(),
+                                    description: clean_opt(manifest.description),
+                                    version: clean_opt(manifest.version),
+                                    author: clean_opt(manifest.author),
+                                    source: ThemeSource::BuiltIn,
+                                });
+                            }
+                            Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
+                        }
+                    } else if path.is_dir() {
+                        match read_manifest_from_directory(&path) {
+                            Ok(manifest) => {
+                                let id_trimmed = manifest.id.trim();
+                                if id_trimmed.is_empty() {
+                                    warn!(
+                                        "themes: theme {} ignored due to empty id",
+                                        path.display()
+                                    );
+                                    continue;
+                                }
+                                let norm = id_trimmed.to_ascii_lowercase();
+                                if seen.contains(&norm) {
+                                    warn!(
+                                        "themes: duplicate theme id `{}` ignored (dir {})",
+                                        id_trimmed,
+                                        path.display()
+                                    );
+                                    continue;
+                                }
+                                seen.insert(norm);
 
-                summaries.push(ThemeSummary {
-                    id: id_trimmed.to_string(),
-                    name: manifest.name.trim().to_string(),
-                    description: clean_opt(manifest.description),
-                    version: clean_opt(manifest.version),
-                    author: clean_opt(manifest.author),
-                    source: ThemeSource::BuiltIn,
-                });
+                                summaries.push(ThemeSummary {
+                                    id: id_trimmed.to_string(),
+                                    name: manifest.name.trim().to_string(),
+                                    description: clean_opt(manifest.description),
+                                    version: clean_opt(manifest.version),
+                                    author: clean_opt(manifest.author),
+                                    source: ThemeSource::BuiltIn,
+                                });
+                            }
+                            Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
+                        }
+                    }
+                }
             }
-            Err(err) => warn!("themes: failed to read {}: {}", display, err),
+            Err(err) => warn!("themes: failed to list {}: {}", dir.display(), err),
         }
     }
 
@@ -330,36 +391,41 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
         return Ok(default_theme_payload());
     }
 
-    for file in BUILT_IN_THEMES_DIR.files() {
-        if !is_zip_file(file.path()) {
-            continue;
-        }
-
-        let display = file.path().display().to_string();
-        match read_manifest_from_bytes(&display, file.contents()) {
-            Ok(manifest) => {
-                if manifest.id.trim().eq_ignore_ascii_case(requested) {
-                    return build_theme_payload_from_bytes(
-                        &display,
-                        file.contents(),
-                        manifest,
-                        ThemeSource::BuiltIn,
-                    );
+    for dir in built_in_theme_dirs() {
+        match fs::read_dir(&dir) {
+            Ok(entries) => {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() && is_zip_file(&path) {
+                        match read_manifest(&path) {
+                            Ok(manifest) => {
+                                if manifest.id.trim().eq_ignore_ascii_case(requested) {
+                                    return build_theme_payload_from_path(
+                                        &path,
+                                        manifest,
+                                        ThemeSource::BuiltIn,
+                                    );
+                                }
+                            }
+                            Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
+                        }
+                    } else if path.is_dir() {
+                        match read_manifest_from_directory(&path) {
+                            Ok(manifest) => {
+                                if manifest.id.trim().eq_ignore_ascii_case(requested) {
+                                    return build_theme_payload_from_directory(
+                                        &path,
+                                        manifest,
+                                        ThemeSource::BuiltIn,
+                                    );
+                                }
+                            }
+                            Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
+                        }
+                    }
                 }
             }
-            Err(err) => warn!("themes: failed to read {}: {}", display, err),
-        }
-    }
-
-    for dir in BUILT_IN_THEMES_DIR.dirs() {
-        let display = dir_display_name(dir);
-        match read_manifest_from_dir(&display, dir) {
-            Ok(manifest) => {
-                if manifest.id.trim().eq_ignore_ascii_case(requested) {
-                    return build_theme_payload_from_dir(&display, dir, manifest, ThemeSource::BuiltIn);
-                }
-            }
-            Err(err) => warn!("themes: failed to read {}: {}", display, err),
+            Err(err) => warn!("themes: failed to list {}: {}", dir.display(), err),
         }
     }
 
@@ -393,11 +459,6 @@ fn read_manifest(path: &Path) -> Result<RawThemeManifest, String> {
     read_manifest_from_reader(&path.display().to_string(), file)
 }
 
-fn read_manifest_from_bytes(name: &str, data: &[u8]) -> Result<RawThemeManifest, String> {
-    let cursor = Cursor::new(data);
-    read_manifest_from_reader(name, cursor)
-}
-
 fn read_manifest_from_reader<R>(name: &str, reader: R) -> Result<RawThemeManifest, String>
 where
     R: Read + Seek,
@@ -407,23 +468,28 @@ where
     read_manifest_from_archive(name, &mut archive)
 }
 
-fn dir_display_name(dir: &Dir<'_>) -> String {
-    dir.path().display().to_string()
-}
+fn read_manifest_from_directory(path: &Path) -> Result<RawThemeManifest, String> {
+    let manifest_path = path.join(MANIFEST_NAME);
+    let text = match fs::read_to_string(&manifest_path) {
+        Ok(text) => text,
+        Err(err) => {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                return Err(format!(
+                    "theme {} is missing {MANIFEST_NAME}",
+                    path.display()
+                ));
+            }
+            return Err(format!("read {}: {}", manifest_path.display(), err));
+        }
+    };
 
-fn read_manifest_from_dir(name: &str, dir: &Dir<'_>) -> Result<RawThemeManifest, String> {
-    let manifest_file = dir
-        .get_file(MANIFEST_NAME)
-        .ok_or_else(|| format!("theme {} is missing {MANIFEST_NAME}", name))?;
-    let text = std::str::from_utf8(manifest_file.contents())
-        .map_err(|err| format!("parse manifest in {}: {}", name, err))?;
-    let manifest: RawThemeManifest = serde_json::from_str(text)
-        .map_err(|err| format!("parse manifest in {}: {}", name, err))?;
+    let manifest: RawThemeManifest = serde_json::from_str(&text)
+        .map_err(|err| format!("parse manifest in {}: {}", path.display(), err))?;
     if manifest.id.trim().is_empty() {
-        return Err(format!("theme {} has an empty id", name));
+        return Err(format!("theme {} has an empty id", path.display()));
     }
     if manifest.name.trim().is_empty() {
-        return Err(format!("theme {} has an empty name", name));
+        return Err(format!("theme {} has an empty name", path.display()));
     }
     Ok(manifest)
 }
@@ -470,16 +536,6 @@ fn build_theme_payload_from_path(
     build_theme_payload_from_reader(&path.display().to_string(), file, manifest, source)
 }
 
-fn build_theme_payload_from_bytes(
-    name: &str,
-    data: &[u8],
-    manifest: RawThemeManifest,
-    source: ThemeSource,
-) -> Result<ThemePayload, String> {
-    let cursor = Cursor::new(data);
-    build_theme_payload_from_reader(name, cursor, manifest, source)
-}
-
 fn build_theme_payload_from_reader<R>(
     name: &str,
     reader: R,
@@ -490,30 +546,6 @@ where
     R: Read + Seek,
 {
     let (styles, markup, scripts) = read_assets_from_reader(name, reader, &manifest)?;
-    let summary = ThemeSummary {
-        id: manifest.id.trim().to_string(),
-        name: manifest.name.trim().to_string(),
-        description: clean_opt(manifest.description),
-        version: clean_opt(manifest.version),
-        author: clean_opt(manifest.author),
-        source,
-    };
-
-    Ok(ThemePayload {
-        summary,
-        styles,
-        markup,
-        scripts,
-    })
-}
-
-fn build_theme_payload_from_dir(
-    name: &str,
-    dir: &Dir<'_>,
-    manifest: RawThemeManifest,
-    source: ThemeSource,
-) -> Result<ThemePayload, String> {
-    let (styles, markup, scripts) = read_assets_from_dir(name, dir, &manifest)?;
     let summary = ThemeSummary {
         id: manifest.id.trim().to_string(),
         name: manifest.name.trim().to_string(),
@@ -558,30 +590,6 @@ where
     let dark = read_css_set(name, archive, &manifest.styles.dark)?;
     let markup = read_markup_sets(name, archive, &manifest.markup)?;
     let scripts = read_script_set(name, archive, &manifest.scripts)?;
-
-    Ok((
-        ThemeStyles {
-            global,
-            system,
-            light,
-            dark,
-        },
-        markup,
-        scripts,
-    ))
-}
-
-fn read_assets_from_dir(
-    name: &str,
-    dir: &Dir<'_>,
-    manifest: &RawThemeManifest,
-) -> Result<(ThemeStyles, ThemeMarkup, Vec<String>), String> {
-    let global = read_css_set_from_dir(name, dir, &manifest.styles.global)?;
-    let system = read_css_set_from_dir(name, dir, &manifest.styles.system)?;
-    let light = read_css_set_from_dir(name, dir, &manifest.styles.light)?;
-    let dark = read_css_set_from_dir(name, dir, &manifest.styles.dark)?;
-    let markup = read_markup_from_dir(name, dir, &manifest.markup)?;
-    let scripts = read_scripts_from_dir(name, dir, &manifest.scripts)?;
 
     Ok((
         ThemeStyles {
@@ -689,9 +697,54 @@ where
     Ok(scripts)
 }
 
-fn read_css_set_from_dir(
-    display: &str,
-    dir: &Dir<'_>,
+fn build_theme_payload_from_directory(
+    path: &Path,
+    manifest: RawThemeManifest,
+    source: ThemeSource,
+) -> Result<ThemePayload, String> {
+    let (styles, markup, scripts) = read_assets_from_directory(path, &manifest)?;
+    let summary = ThemeSummary {
+        id: manifest.id.trim().to_string(),
+        name: manifest.name.trim().to_string(),
+        description: clean_opt(manifest.description),
+        version: clean_opt(manifest.version),
+        author: clean_opt(manifest.author),
+        source,
+    };
+
+    Ok(ThemePayload {
+        summary,
+        styles,
+        markup,
+        scripts,
+    })
+}
+
+fn read_assets_from_directory(
+    base: &Path,
+    manifest: &RawThemeManifest,
+) -> Result<(ThemeStyles, ThemeMarkup, Vec<String>), String> {
+    let global = read_css_set_from_directory(base, &manifest.styles.global)?;
+    let system = read_css_set_from_directory(base, &manifest.styles.system)?;
+    let light = read_css_set_from_directory(base, &manifest.styles.light)?;
+    let dark = read_css_set_from_directory(base, &manifest.styles.dark)?;
+    let markup = read_markup_from_directory(base, &manifest.markup)?;
+    let scripts = read_scripts_from_directory(base, &manifest.scripts)?;
+
+    Ok((
+        ThemeStyles {
+            global,
+            system,
+            light,
+            dark,
+        },
+        markup,
+        scripts,
+    ))
+}
+
+fn read_css_set_from_directory(
+    base: &Path,
     files: &[String],
 ) -> Result<Option<String>, String> {
     if files.is_empty() {
@@ -704,7 +757,7 @@ fn read_css_set_from_dir(
         if trimmed.is_empty() {
             continue;
         }
-        let text = read_text_file_from_dir(dir, display, trimmed)?;
+        let text = read_text_file_from_directory(base, trimmed)?;
         if !text.trim().is_empty() {
             if !combined.is_empty() && !combined.ends_with('\n') {
                 combined.push('\n');
@@ -719,20 +772,18 @@ fn read_css_set_from_dir(
     Ok(if combined.trim().is_empty() { None } else { Some(combined) })
 }
 
-fn read_markup_from_dir(
-    display: &str,
-    dir: &Dir<'_>,
+fn read_markup_from_directory(
+    base: &Path,
     markup: &RawThemeMarkup,
 ) -> Result<ThemeMarkup, String> {
     Ok(ThemeMarkup {
-        head: read_css_set_from_dir(display, dir, &markup.head)?,
-        body: read_css_set_from_dir(display, dir, &markup.body)?,
+        head: read_css_set_from_directory(base, &markup.head)?,
+        body: read_css_set_from_directory(base, &markup.body)?,
     })
 }
 
-fn read_scripts_from_dir(
-    display: &str,
-    dir: &Dir<'_>,
+fn read_scripts_from_directory(
+    base: &Path,
     files: &[String],
 ) -> Result<Vec<String>, String> {
     if files.is_empty() {
@@ -745,7 +796,7 @@ fn read_scripts_from_dir(
         if trimmed.is_empty() {
             continue;
         }
-        let text = read_text_file_from_dir(dir, display, trimmed)?;
+        let text = read_text_file_from_directory(base, trimmed)?;
         if !text.trim().is_empty() {
             scripts.push(text);
         }
@@ -754,13 +805,17 @@ fn read_scripts_from_dir(
     Ok(scripts)
 }
 
-fn read_text_file_from_dir(dir: &Dir<'_>, display: &str, name: &str) -> Result<String, String> {
-    let target_path = dir.path().join(name.trim_start_matches("./"));
-    let file = dir
-        .get_file(&target_path)
-        .ok_or_else(|| format!("missing `{}` in {}", name, display))?;
-    let bytes = file.contents();
-    let text = std::str::from_utf8(bytes)
-        .map_err(|err| format!("read `{}` in {}: {}", name, display, err))?;
-    Ok(text.to_string())
+fn read_text_file_from_directory(base: &Path, name: &str) -> Result<String, String> {
+    let relative = name.trim_start_matches("./");
+    let path = base.join(relative);
+    match fs::read_to_string(&path) {
+        Ok(text) => Ok(text),
+        Err(err) => {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                Err(format!("missing `{}` in {}", name, base.display()))
+            } else {
+                Err(format!("read `{}` in {}: {}", name, base.display(), err))
+            }
+        }
+    }
 }
