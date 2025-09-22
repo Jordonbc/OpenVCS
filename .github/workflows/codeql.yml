@@ -12,6 +12,8 @@
 name: "CodeQL Advanced"
 
 on:
+  push:
+    branches: [ "Dev" ]
   pull_request:
     branches: [ "Dev" ]
   schedule:
@@ -42,7 +44,7 @@ jobs:
           - language: javascript-typescript
             build-mode: none
           - language: rust
-            build-mode: none
+            build-mode: autobuild
 
     steps:
       - name: Checkout repository
