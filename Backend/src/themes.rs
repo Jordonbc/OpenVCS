@@ -394,34 +394,45 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
     for dir in built_in_theme_dirs() {
         match fs::read_dir(&dir) {
             Ok(entries) => {
+                let mut directories = Vec::new();
+                let mut archives = Vec::new();
+
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.is_file() && is_zip_file(&path) {
-                        match read_manifest(&path) {
-                            Ok(manifest) => {
-                                if manifest.id.trim().eq_ignore_ascii_case(requested) {
-                                    return build_theme_payload_from_path(
-                                        &path,
-                                        manifest,
-                                        ThemeSource::BuiltIn,
-                                    );
-                                }
+                    if path.is_dir() {
+                        directories.push(path);
+                    } else if path.is_file() && is_zip_file(&path) {
+                        archives.push(path);
+                    }
+                }
+
+                for path in directories {
+                    match read_manifest_from_directory(&path) {
+                        Ok(manifest) => {
+                            if manifest.id.trim().eq_ignore_ascii_case(requested) {
+                                return build_theme_payload_from_directory(
+                                    &path,
+                                    manifest,
+                                    ThemeSource::BuiltIn,
+                                );
                             }
-                            Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
                         }
-                    } else if path.is_dir() {
-                        match read_manifest_from_directory(&path) {
-                            Ok(manifest) => {
-                                if manifest.id.trim().eq_ignore_ascii_case(requested) {
-                                    return build_theme_payload_from_directory(
-                                        &path,
-                                        manifest,
-                                        ThemeSource::BuiltIn,
-                                    );
-                                }
+                        Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
+                    }
+                }
+
+                for path in archives {
+                    match read_manifest(&path) {
+                        Ok(manifest) => {
+                            if manifest.id.trim().eq_ignore_ascii_case(requested) {
+                                return build_theme_payload_from_path(
+                                    &path,
+                                    manifest,
+                                    ThemeSource::BuiltIn,
+                                );
                             }
-                            Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
                         }
+                        Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
                     }
                 }
             }
