@@ -115,6 +115,17 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
     background:var(--accent); border-radius:var(--r-md) 0 0 var(--r-md);
 }
+.row.commit.incoming{
+    background:color-mix(in oklab, var(--warning) 18%, transparent);
+    border-color:color-mix(in oklab, var(--warning) 42%, transparent);
+}
+.row.commit.incoming:hover{
+    background:color-mix(in oklab, var(--warning) 26%, transparent);
+}
+.row.commit.incoming.active{
+    background:color-mix(in oklab, var(--warning) 32%, transparent);
+    border-color:color-mix(in oklab, var(--warning) 54%, transparent);
+}
 /* Picked (included in next commit) uses a success tint so it differs from active */
 .row.picked{ background:rgba(38,162,105,.10); border-color:rgba(38,162,105,.35); }
 /* When a row is both picked and active, keep the picked (green) background and show active marker */
