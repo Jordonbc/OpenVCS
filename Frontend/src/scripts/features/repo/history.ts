@@ -34,15 +34,31 @@ export function renderHistoryList(query: string): boolean {
     }
 
     const aheadIds: Set<string> = (state as any).aheadIds || new Set<string>();
+    let aheadFallbackRemaining = aheadIds.size > 0 ? 0 : ahead;
     commits.forEach((c, i) => {
         const li = document.createElement('li');
-        li.className = 'row commit';
+        const isIncoming = Boolean((c as any)?.incoming);
+        li.className = isIncoming ? 'row commit incoming' : 'row commit';
         const short = (c.id || '').slice(0, 7);
         const whenRaw = String(c.meta || '').split('•')[0].trim();
         const rel = formatTimeAgo(whenRaw);
         const exact = (c.meta || '').trim();
-        const isAhead = !!(c?.id && (aheadIds.size > 0 ? aheadIds.has(c.id) : (i < ahead)));
-        const statusTag = isAhead ? `<span class=\"tag up\" title=\"Not on remote yet\">↑ outgoing</span>` : '';
+        let isAhead = false;
+        if (c?.id) {
+            if (aheadIds.size > 0) {
+                isAhead = aheadIds.has(c.id);
+            } else if (!isIncoming && aheadFallbackRemaining > 0) {
+                isAhead = true;
+                aheadFallbackRemaining -= 1;
+            }
+        }
+        const remoteRef = String(((c as any)?.remoteRef || 'remote')).trim();
+        const remoteLabel = remoteRef === '@{upstream}' ? 'upstream' : remoteRef;
+        const statusTag = isAhead
+            ? `<span class=\"tag up\" title=\"Not on remote yet\">↑ outgoing</span>`
+            : isIncoming
+                ? `<span class=\"tag down\" title=\"${escapeHtml(`Fetched from ${remoteLabel}; pull to apply locally`)}\">↓ incoming</span>`
+                : '';
         li.innerHTML = `
         <span class="badge hash" title="${escapeHtml(c.id || '')}">${escapeHtml(short)}</span>
         <div class="file" title="${escapeHtml(c.msg || '')}">${escapeHtml(c.msg || '(no message)')}</div>

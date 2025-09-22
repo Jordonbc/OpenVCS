@@ -717,7 +717,14 @@ impl Git {
             let _ = walk.set_sorting(sort);
 
             let rev = q.rev.as_deref().unwrap_or("HEAD");
-            walk.push_ref(rev)?;
+            if rev.contains("..") {
+                walk.push_range(rev)?;
+            } else {
+                match repo.revparse_single(rev) {
+                    Ok(obj) => walk.push(obj.id())?,
+                    Err(_) => walk.push_ref(rev)?,
+                }
+            }
 
             // Pre-parse filters once
             let path_filter = q.path.as_deref();
