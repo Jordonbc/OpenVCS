@@ -42,7 +42,7 @@ regex = "1.11"
 log = "0.4" 
 env_logger = "0.11"
 parking_lot = "0.12"
-toml = "0.9.5"
+toml = "0.9.7"
 directories = "6"
 serde_json = "1.0"
 time = { version = "0.3", features = ["local-offset"] }
