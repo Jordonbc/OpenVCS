@@ -41,6 +41,7 @@ impl Default for AppConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct General {
     #[serde(default)] pub theme: Theme,
+    #[serde(default = "default_theme_pack")] pub theme_pack: String,
     #[serde(default)] pub language: Language,
     #[serde(default)] pub default_backend: DefaultBackend,
     #[serde(default)] pub update_channel: UpdateChannel,
@@ -53,6 +54,7 @@ impl Default for General {
     fn default() -> Self {
         Self {
             theme: Theme::System,
+            theme_pack: default_theme_pack(),
             language: Language::System,
             default_backend: DefaultBackend::Git,
             update_channel: UpdateChannel::Stable,
@@ -63,6 +65,8 @@ impl Default for General {
             }
     }
 }
+
+fn default_theme_pack() -> String { "default".to_string() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Git {
@@ -406,6 +410,9 @@ impl AppConfig {
     /// Clamp and normalize values so hand edits can’t break the app.
     pub fn validate(&mut self) {
         // General: nothing to clamp right now.
+        if self.general.theme_pack.trim().is_empty() {
+            self.general.theme_pack = default_theme_pack();
+        }
 
         // Git
 

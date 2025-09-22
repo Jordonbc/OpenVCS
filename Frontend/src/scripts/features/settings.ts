@@ -2,14 +2,63 @@ import { TAURI } from '../lib/tauri';
 import { openModal, closeModal } from '../ui/modals';
 import { toKebab } from '../lib/dom';
 import { notify } from '../lib/notify';
-import type { GlobalSettings } from '../types';
+import { setTheme } from '../ui/layout';
+import { DEFAULT_THEME_ID, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
+import type { GlobalSettings, ThemeSummary } from '../types';
+
+const THEME_PACK_HINT = 'Place theme ZIP files into the themes folder to enable them.';
+
+function themeOptionLabel(theme: ThemeSummary): string {
+    const version = theme.version?.trim();
+    return version ? `${theme.name} (${version})` : theme.name;
+}
+
+function themeTooltip(id: string): string {
+    const theme = getAvailableThemes().find((t) => t.id.toLowerCase() === id.toLowerCase());
+    if (!theme) return THEME_PACK_HINT;
+    const details: string[] = [];
+    if (theme.description) details.push(theme.description);
+    const meta = [theme.author, theme.version].filter(Boolean).join(' • ');
+    if (meta) details.push(meta);
+    return details.join('\n') || THEME_PACK_HINT;
+}
+
+async function rebuildThemePackOptions(
+    selectEl: HTMLSelectElement,
+    opts: { desiredId?: string | null; forceReload?: boolean } = {},
+) {
+    const { desiredId, forceReload } = opts;
+    if (forceReload) {
+        try {
+            await refreshAvailableThemes();
+        } catch {
+            // ignore refresh errors; fallback to whatever themes are cached
+        }
+    }
+
+    const themes = getAvailableThemes();
+    const desired = (desiredId ?? selectEl.value ?? DEFAULT_THEME_ID).toLowerCase();
+
+    selectEl.innerHTML = '';
+    for (const theme of themes) {
+        const opt = document.createElement('option');
+        opt.value = theme.id;
+        opt.textContent = themeOptionLabel(theme);
+        opt.title = themeTooltip(theme.id);
+        selectEl.appendChild(opt);
+    }
+
+    const match = themes.find((t) => t.id.toLowerCase() === desired);
+    selectEl.value = match ? match.id : DEFAULT_THEME_ID;
+    selectEl.title = themeTooltip(selectEl.value || DEFAULT_THEME_ID);
+}
 
 export function openSettings(section?: string){
     openModal('settings-modal');
-    if (section) {
-        const modal = document.getElementById('settings-modal') as HTMLElement | null;
-        if (modal) activateSection(modal, section);
-    }
+    const modal = document.getElementById('settings-modal') as HTMLElement | null;
+    if (!modal) return;
+    if (section) activateSection(modal, section);
+    loadSettingsIntoForm(modal).catch(console.error);
 }
 
 function activateSection(modal: HTMLElement, section: string) {
@@ -63,9 +112,44 @@ export function wireSettings() {
     lfsToggle?.addEventListener('change', updateLfsDependentState);
 
     const setThemeSel = modal.querySelector('#set-theme') as HTMLSelectElement | null;
+    const setThemePackSel = modal.querySelector('#set-theme-pack') as HTMLSelectElement | null;
+
+    const updateThemePackTitle = () => {
+        if (!setThemePackSel) return;
+        const val = setThemePackSel.value || DEFAULT_THEME_ID;
+        setThemePackSel.title = themeTooltip(val);
+    };
+
+    let themePackRefreshInFlight = false;
+    setThemePackSel?.addEventListener('pointerdown', async () => {
+        if (!setThemePackSel || themePackRefreshInFlight) return;
+        themePackRefreshInFlight = true;
+        try {
+            await rebuildThemePackOptions(setThemePackSel, {
+                desiredId: setThemePackSel.value,
+                forceReload: true,
+            });
+        } finally {
+            themePackRefreshInFlight = false;
+        }
+    });
+
     setThemeSel?.addEventListener('change', () => {
-        const v = setThemeSel.value;
-        document.documentElement.setAttribute('data-theme', v === 'dark' ? 'dark' : v === 'light' ? 'light' : 'system');
+        const v = (setThemeSel.value as ('system'|'dark'|'light')) || 'system';
+        setTheme(v);
+    });
+
+    setThemePackSel?.addEventListener('change', async () => {
+        if (!setThemePackSel) return;
+        const choice = setThemePackSel.value || DEFAULT_THEME_ID;
+        try {
+            await selectThemePack(choice);
+        } catch {
+            setThemePackSel.value = DEFAULT_THEME_ID;
+            try { await selectThemePack(DEFAULT_THEME_ID); } catch {}
+        } finally {
+            updateThemePackTitle();
+        }
     });
 
     const settingsSave  = modal.querySelector('#settings-save')  as HTMLButtonElement | null;
@@ -89,9 +173,13 @@ export function wireSettings() {
                 }
             }
 
+            modal.dataset.currentCfg = JSON.stringify(next);
+
             // Apply visual prefs immediately (no restart): theme, tab width, UI scale, mono font
             const theme = next.general?.theme || 'system';
-            document.documentElement.setAttribute('data-theme', theme);
+            const pack = next.general?.theme_pack || DEFAULT_THEME_ID;
+            try { await selectThemePack(pack, { silent: true, mode: theme }); } catch {}
+            setTheme(theme);
             try {
                 const root = document.documentElement;
                 const tabw = Number(next?.diff?.tab_width ?? 4);
@@ -113,7 +201,7 @@ export function wireSettings() {
             if (!TAURI.has) return;
             const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
 
-            cur.general = { theme: 'system', language: 'system', default_backend: 'git', update_channel: 'stable', reopen_last_repos: true, checks_on_launch: true, telemetry: false, crash_reports: false };
+            cur.general = { theme: 'system', theme_pack: DEFAULT_THEME_ID, language: 'system', default_backend: 'git', update_channel: 'stable', reopen_last_repos: true, checks_on_launch: true, telemetry: false, crash_reports: false };
             cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, fetch_on_focus: true, allow_hooks: 'ask', respect_core_autocrlf: true };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
@@ -123,6 +211,8 @@ export function wireSettings() {
 
             await TAURI.invoke('set_global_settings', { cfg: cur });
             await loadSettingsIntoForm(modal);
+            try { await selectThemePack(DEFAULT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
+            setTheme('system');
             notify('Defaults restored');
         } catch { notify('Failed to restore defaults'); }
     });
@@ -140,6 +230,7 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
     o.general = {
         ...o.general,
         theme: (get<HTMLSelectElement>('#set-theme')?.value) as any,
+        theme_pack: get<HTMLSelectElement>('#set-theme-pack')?.value || DEFAULT_THEME_ID,
         language: get<HTMLSelectElement>('#set-language')?.value,
         default_backend: (get<HTMLSelectElement>('#set-default-backend')?.value || 'git') as any,
         update_channel: (() => { const v = get<HTMLSelectElement>('#set-update-channel')?.value; return v === 'beta' ? 'nightly' : v; })(),
@@ -212,6 +303,15 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     if (!cfg) return;
 
     m.dataset.currentCfg = JSON.stringify(cfg);
+
+    const themePackSel = get<HTMLSelectElement>('#set-theme-pack');
+    if (themePackSel) {
+        const desired = cfg.general?.theme_pack;
+        await rebuildThemePackOptions(themePackSel, {
+            desiredId: typeof desired === 'string' ? desired : undefined,
+            forceReload: true,
+        });
+    }
 
     const elTheme = get<HTMLSelectElement>('#set-theme'); if (elTheme) elTheme.value = toKebab(cfg.general?.theme);
     const elLang  = get<HTMLSelectElement>('#set-language'); if (elLang) elLang.value = toKebab(cfg.general?.language);

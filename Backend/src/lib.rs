@@ -12,6 +12,7 @@ mod validate;
 mod settings;
 mod repo_settings;
 mod logging;
+mod themes;
 
 #[cfg(feature = "with-git")]
 #[allow(unused_imports)]
@@ -164,6 +165,8 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_lfs_pull,
         tauri_commands::git_lfs_prune,
         tauri_commands::git_lfs_track_paths,
+        tauri_commands::list_themes,
+        tauri_commands::load_theme,
         tauri_commands::get_global_settings,
         tauri_commands::set_global_settings,
         tauri_commands::get_repo_settings,
