@@ -129,6 +129,7 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 /* Small status tag used in history list (outgoing marker) */
 .tag{ font-size:.72rem; color:var(--muted); border:1px solid var(--border); padding:.05rem .4rem; border-radius:999px; }
 .tag.up{ color:var(--success); border-color: rgba(38,162,105,.55); }
+.tag.down{ color:var(--accent); border-color:rgba(53,132,228,.55); border-color: color-mix(in oklab, var(--accent) 55%, transparent); }
 
 /* ========== Right pane (header | scroll | commit) ========== */
 .right{

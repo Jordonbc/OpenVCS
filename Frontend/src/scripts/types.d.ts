@@ -21,6 +21,8 @@ export interface CommitItem {
     msg?: string;
     meta?: string;
     author?: string;
+    incoming?: boolean;
+    remoteRef?: string;
 }
 
 export interface StashItem {
