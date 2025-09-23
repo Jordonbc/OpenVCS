@@ -47,3 +47,40 @@ impl PartialEq<&str> for BackendId {
 macro_rules! backend_id {
     ($lit:literal) => { $crate::BackendId(::std::borrow::Cow::Borrowed($lit)) };
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn from_string_and_str_produce_expected_values() {
+        let owned = BackendId::from(String::from("git"));
+        let borrowed = BackendId::from("git");
+
+        assert_eq!(owned.as_str(), "git");
+        assert_eq!(borrowed.as_str(), "git");
+        assert!(borrowed == "git");
+    }
+
+    #[test]
+    fn displays_inner_string() {
+        let id = BackendId::from("libgit2");
+        assert_eq!(id.to_string(), "libgit2");
+    }
+
+    #[test]
+    fn serde_deserialises_from_json_string() {
+        let id: BackendId = serde_json::from_value(json!("git")).expect("deserialise backend id");
+        assert_eq!(id.as_str(), "git");
+    }
+
+    #[test]
+    fn macro_creates_borrowed_backend_id() {
+        let id = backend_id!("memory");
+        match id.0 {
+            Cow::Borrowed(value) => assert_eq!(value, "memory"),
+            Cow::Owned(_) => panic!("backend_id! should borrow literals"),
+        }
+    }
+}

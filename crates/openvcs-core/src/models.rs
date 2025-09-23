@@ -90,6 +90,30 @@ impl LogQuery {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn log_query_head_sets_limit_and_defaults_rest() {
+        let query = LogQuery::head(25);
+        assert_eq!(query.limit, 25);
+        assert!(query.rev.is_none());
+        assert!(query.path.is_none());
+        assert_eq!(query.skip, 0);
+        assert!(!query.topo_order);
+    }
+
+    #[test]
+    fn status_summary_default_is_zeroed() {
+        let summary = StatusSummary::default();
+        assert_eq!(summary.untracked, 0);
+        assert_eq!(summary.modified, 0);
+        assert_eq!(summary.staged, 0);
+        assert_eq!(summary.conflicted, 0);
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Capabilities {
     pub commits: bool,

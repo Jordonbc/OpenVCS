@@ -8,6 +8,9 @@ use std::{path::{Path, PathBuf}, sync::Arc};
 pub use crate::backend_id::BackendId;
 pub use crate::models::{Capabilities, OnEvent};
 
+#[cfg(test)]
+pub(crate) mod test_helpers;
+
 #[derive(thiserror::Error, Debug)]
 pub enum VcsError {
     #[error("not a repository: {0}")]
@@ -169,5 +172,20 @@ impl Repo {
     pub fn inner(&self) -> &dyn Vcs {
         log::trace!("openvcs-core: Repo::inner");
         &*self.inner
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{dummy_open, DummyVcs};
+    use std::path::Path;
+
+    #[test]
+    fn repo_forwards_backend_details() {
+        let repo = Repo::new(dummy_open(Path::new(".")).expect("dummy repo"));
+        assert_eq!(repo.id().as_ref(), "dummy-test");
+        assert!(repo.caps().commits);
+        assert_eq!(repo.inner().id().as_ref(), DummyVcs::open(Path::new(".")).unwrap().id().as_ref());
     }
 }
