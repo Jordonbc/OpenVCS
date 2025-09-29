@@ -113,6 +113,20 @@ export function wireSettings() {
 
     const setThemeSel = modal.querySelector('#set-theme') as HTMLSelectElement | null;
     const setThemePackSel = modal.querySelector('#set-theme-pack') as HTMLSelectElement | null;
+    const mergeModeSel = modal.querySelector('#set-merge-mode') as HTMLSelectElement | null;
+    const mergeCustomGroups = Array.from(modal.querySelectorAll<HTMLElement>('[data-merge-custom]'));
+
+    const updateMergeCustomState = () => {
+        const custom = (mergeModeSel?.value || 'builtin') === 'custom';
+        mergeCustomGroups.forEach((group) => {
+            group.classList.toggle('disabled', !custom);
+            group.querySelectorAll('input, textarea, select').forEach((field) => {
+                (field as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).disabled = !custom;
+            });
+        });
+    };
+    updateMergeCustomState();
+    mergeModeSel?.addEventListener('change', updateMergeCustomState);
 
     const updateThemePackTitle = () => {
         if (!setThemePackSel) return;
@@ -254,6 +268,16 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         max_file_size_mb: Number(get<HTMLInputElement>('#set-max-file-size-mb')?.value ?? 0),
         intraline: !!get<HTMLInputElement>('#set-intraline')?.checked,
         show_binary_placeholders: !!get<HTMLInputElement>('#set-binary-placeholders')?.checked,
+        external_merge: (() => {
+            const mode = get<HTMLSelectElement>('#set-merge-mode')?.value || 'builtin';
+            const path = (get<HTMLInputElement>('#set-merge-path')?.value || '').trim();
+            const args = get<HTMLInputElement>('#set-merge-args')?.value || '';
+            return {
+                enabled: mode === 'custom' && path.length > 0,
+                path,
+                args,
+            };
+        })(),
     };
 
     const rawConc = Number(get<HTMLInputElement>('#set-lfs-concurrency')?.value ?? 0);
@@ -341,10 +365,20 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elMx = get<HTMLInputElement>('#set-max-file-size-mb'); if (elMx) elMx.value = String(cfg.diff?.max_file_size_mb ?? 0);
     const elIn = get<HTMLInputElement>('#set-intraline'); if (elIn) elIn.checked = !!cfg.diff?.intraline;
     const elBp = get<HTMLInputElement>('#set-binary-placeholders'); if (elBp) elBp.checked = !!cfg.diff?.show_binary_placeholders;
+    const elMm = get<HTMLSelectElement>('#set-merge-mode');
+    const elMp = get<HTMLInputElement>('#set-merge-path');
+    const elMa = get<HTMLInputElement>('#set-merge-args');
+    if (elMp) elMp.value = cfg.diff?.external_merge?.path ?? '';
+    if (elMa) elMa.value = cfg.diff?.external_merge?.args ?? '';
+    if (elMm) {
+        const ext = cfg.diff?.external_merge;
+        elMm.value = ext && ext.enabled && (ext.path || '').trim().length > 0 ? 'custom' : 'builtin';
+        elMm.dispatchEvent(new Event('change'));
+    }
 
     const elLe = get<HTMLInputElement>('#set-lfs-enabled'); if (elLe) elLe.checked = !!cfg.lfs?.enabled;
     const elLc = get<HTMLInputElement>('#set-lfs-concurrency'); if (elLc) elLc.value = String(cfg.lfs?.concurrency ?? 0);
-    
+
     const elLl = get<HTMLInputElement>('#set-lfs-require-lock'); if (elLl) elLl.checked = !!cfg.lfs?.require_lock_before_edit;
     const elBg = get<HTMLInputElement>('#set-lfs-bg-fetch'); if (elBg) elBg.checked = !!cfg.lfs?.background_fetch_on_checkout;
     elLe?.dispatchEvent(new Event('change'));

@@ -1,6 +1,7 @@
 mod backends;
 mod branches;
 mod commit;
+mod conflicts;
 mod general;
 mod lfs;
 mod remotes;
@@ -14,6 +15,7 @@ mod themes;
 pub use backends::*;
 pub use branches::*;
 pub use commit::*;
+pub use conflicts::*;
 pub use general::*;
 pub use lfs::*;
 pub use remotes::*;

@@ -14,6 +14,7 @@ import updateHtml from "@modals/update.html?raw";
 import { wireUpdate } from "../features/update";
 import stashConfirmHtml from "@modals/stash-confirm.html?raw";
 import { wireStashConfirm } from "../features/stashConfirm";
+import mergeHtml from "@modals/merge.html?raw";
 
 // Lazy fragments (only those NOT present at load)
 const FRAGMENTS: Record<string, string> = {
@@ -25,6 +26,7 @@ const FRAGMENTS: Record<string, string> = {
     "rename-branch-modal": renameBranchHtml,
     "update-modal": updateHtml,
     "stash-confirm-modal": stashConfirmHtml,
+    "merge-modal": mergeHtml,
 };
 
 const loaded = new Set<string>();

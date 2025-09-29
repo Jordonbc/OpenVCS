@@ -12,6 +12,7 @@
 @import "./modal/repo-settings.css";
 @import "./modal/new-branch.css";
 @import "./modal/stash-confirm.css";
+@import "./modal/merge.css";
 
 /* Media queries last */
 @import "./responsive.css";

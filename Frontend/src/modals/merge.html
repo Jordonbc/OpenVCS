@@ -1,0 +1,34 @@
+<div class="modal" id="merge-modal" aria-hidden="true">
+  <div class="backdrop" data-close="true"></div>
+  <div class="dialog merge-dialog" role="dialog" aria-modal="true" aria-labelledby="merge-title">
+    <header class="modal-head">
+      <h2 id="merge-title">Resolve merge conflict</h2>
+      <button class="icon-btn" data-close="true" aria-label="Close">×</button>
+    </header>
+    <section class="merge-info">
+      <div class="merge-path" id="merge-path"></div>
+    </section>
+    <section class="merge-columns">
+      <div class="merge-column">
+        <h3>Base</h3>
+        <pre id="merge-base" class="merge-readonly"></pre>
+      </div>
+      <div class="merge-column">
+        <h3>Mine</h3>
+        <pre id="merge-ours" class="merge-readonly"></pre>
+      </div>
+      <div class="merge-column">
+        <h3>Theirs</h3>
+        <pre id="merge-theirs" class="merge-readonly"></pre>
+      </div>
+    </section>
+    <section class="merge-editor">
+      <label for="merge-result">Merged result</label>
+      <textarea id="merge-result" spellcheck="false"></textarea>
+    </section>
+    <footer class="modal-foot">
+      <button class="btn" data-close="true">Cancel</button>
+      <button class="btn primary" id="merge-apply">Apply merge</button>
+    </footer>
+  </div>
+</div>
