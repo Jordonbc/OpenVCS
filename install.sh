@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ===== OpenVCS Installer (interactive + CLI flags) =====
+# - No flags: show a dialog (Stable / Pre-release / Uninstall)
+# - --prerelease: install latest pre-release
+# - --uninstall : uninstall
+# - Safe atomic install; no rm -f/-rf
+# =======================================================
+
 # --- Config ---
 REPO_OWNER="Jordonbc"
 REPO_NAME="OpenVCS"
@@ -12,15 +19,130 @@ TARGET_PATH="${INSTALL_DIR%/}/${TARGET_BASENAME}"
 DESKTOP_DIR="${HOME}/.local/share/applications"
 DESKTOP_PATH="${DESKTOP_DIR}/openvcs.desktop"
 
-# --- Parse flags ---
+# --- State ---
 INCLUDE_PRERELEASE=false
 UNINSTALL=false
+INTERACTIVE_MODE=false
+DIALOG_TOOL="none"
+
+# --- Helpers: dialogs ---
+detect_dialog_tool() {
+  if command -v kdialog >/dev/null 2>&1; then
+    DIALOG_TOOL="kdialog"
+  elif command -v zenity >/dev/null 2>&1; then
+    DIALOG_TOOL="zenity"
+  elif command -v whiptail >/dev/null 2>&1; then
+    DIALOG_TOOL="whiptail"
+  elif command -v dialog >/dev/null 2>&1; then
+    DIALOG_TOOL="dialog"
+  else
+    DIALOG_TOOL="none"
+  fi
+}
+
+show_info() { # $1: message
+  case "$DIALOG_TOOL" in
+    kdialog)  kdialog --msgbox "$1" 2>/dev/null || true ;;
+    zenity)   zenity --info --title="OpenVCS Installer" --text="$1" 2>/dev/null || true ;;
+    whiptail) whiptail --title "OpenVCS Installer" --msgbox "$1" 10 70 || true ;;
+    dialog)   dialog --title "OpenVCS Installer" --msgbox "$1" 10 70 || true; clear ;;
+    *)        printf '\n%s\n' "$1" ;;
+  esac
+}
+
+show_error() { # $1: message
+  case "$DIALOG_TOOL" in
+    kdialog)  kdialog --error "$1" 2>/dev/null || true ;;
+    zenity)   zenity --error --title="OpenVCS Installer" --text="$1" 2>/dev/null || true ;;
+    whiptail) whiptail --title "OpenVCS Installer" --msgbox "❌ $1" 10 70 || true ;;
+    dialog)   dialog --title "OpenVCS Installer" --msgbox "❌ $1" 10 70 || true; clear ;;
+    *)        printf '\n❌ %s\n' "$1" >&2 ;;
+  esac
+}
+
+# --- Parse flags ---
 for arg in "${@:-}"; do
   case "$arg" in
     --prerelease) INCLUDE_PRERELEASE=true ;;
     --uninstall)  UNINSTALL=true ;;
+    --help|-h)
+      cat <<EOF
+OpenVCS installer
+
+Usage:
+  curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/Dev/install.sh | bash -s --
+  curl ... | bash -s -- --prerelease
+  curl ... | bash -s -- --uninstall
+
+No flags -> interactive dialog: stable (default), prerelease, or uninstall.
+EOF
+      exit 0
+      ;;
   esac
 done
+
+# --- Interactive mode (no flags) ---
+if ! $INCLUDE_PRERELEASE && ! $UNINSTALL && [[ "$#" -eq 0 ]]; then
+  detect_dialog_tool
+  INTERACTIVE_MODE=true
+
+  cancel_exit() { echo "Cancelled by user."; exit 0; }
+
+  CHOICE=""
+  RC=0
+  case "$DIALOG_TOOL" in
+    kdialog)
+      CHOICE="$(kdialog --menu "OpenVCS installer: choose action" \
+        stable "Install latest stable" \
+        prerelease "Install latest pre-release" \
+        uninstall "Uninstall OpenVCS")" || RC=$?
+      (( RC != 0 )) && cancel_exit
+      ;;
+    zenity)
+      CHOICE="$(zenity --list --title="OpenVCS Installer" \
+        --text="Choose action" --radiolist \
+        --column="" --column="Option" \
+        TRUE "stable" FALSE "prerelease" FALSE "uninstall")" || RC=$?
+      (( RC != 0 )) && cancel_exit
+      ;;
+    whiptail)
+      CHOICE="$(whiptail --title "OpenVCS Installer" --radiolist "Choose action" 12 64 3 \
+        "stable" "Install latest stable" ON \
+        "prerelease" "Install latest pre-release" OFF \
+        "uninstall" "Uninstall OpenVCS" OFF 3>&1 1>&2 2>&3)" || RC=$?
+      (( RC != 0 )) && cancel_exit
+      ;;
+    dialog)
+      CHOICE="$(dialog --title "OpenVCS Installer" --radiolist "Choose action" 12 64 3 \
+        "stable" 1 ON "prerelease" 2 OFF "uninstall" 3 OFF 3>&1 1>&2 2>&3)" || RC=$?
+      clear
+      (( RC != 0 )) && cancel_exit
+      ;;
+    none)
+      printf '\nOpenVCS installer\n  1) Install stable (default)\n  2) Install pre-release\n  3) Uninstall\nSelect [1-3] (Esc/Ctrl-D to cancel): '
+      if ! read -r ans; then
+        cancel_exit
+      fi
+      case "${ans:-1}" in
+        2) CHOICE="prerelease" ;;
+        3) CHOICE="uninstall" ;;
+        *) CHOICE="stable" ;;
+      esac
+      ;;
+  esac
+
+  # Extra guard: empty choice -> cancel
+  [[ -z "${CHOICE:-}" ]] && cancel_exit
+
+  case "${CHOICE}" in
+    prerelease) INCLUDE_PRERELEASE=true ;;
+    uninstall)  UNINSTALL=true ;;
+    *)          ;;  # stable default
+  esac
+fi
+
+# --- Error trap: show GUI error if interactive ---
+trap 'if $INTERACTIVE_MODE; then show_error "Installation failed. Check network access or GitHub releases, then try again."; fi' ERR
 
 # --- Uninstall mode ---
 if $UNINSTALL; then
@@ -44,6 +166,9 @@ if $UNINSTALL; then
   fi
 
   echo "✅ OpenVCS uninstalled."
+  if $INTERACTIVE_MODE; then
+    show_info "✅ OpenVCS was uninstalled."
+  fi
   exit 0
 fi
 
@@ -80,8 +205,8 @@ if command -v jq >/dev/null 2>&1; then
          | [ .browser_download_url, .name, $rel.tag_name ] | @tsv)
     ' <<<"$RELEASES_JSON" | head -n1)"
   fi
-  if [[ -n "$SEL" ]]; then
-    IFS=$'\t' read -r DOWNLOAD_URL ASSET_NAME RELEASE_TAG <<<"$SEL"
+  if [[ -n "${SEL:-}" ]]; then
+    IFS=$'\t' read -r DOWNLOAD_URL ASSET_NAME RELEASE_TAG <<<"${SEL}"
   fi
 else
   DOWNLOAD_URL="$(printf '%s' "$RELEASES_JSON" \
@@ -99,13 +224,12 @@ fi
 echo "Selected release tag: ${RELEASE_TAG:-unknown}"
 $INCLUDE_PRERELEASE && echo "(including pre-releases)"
 
-# --- Download safely ---
-TMP_FILE="$(mktemp)"
-trap '[[ -f "${TMP_FILE}" ]] && rm "${TMP_FILE}"' EXIT
+# --- Download safely (atomic on same filesystem) ---
+TMP_FILE="$(mktemp --tmpdir="${INSTALL_DIR}" ".openvcs.XXXXXXXX")"
+trap '[[ -f "${TMP_FILE:-}" ]] && rm "${TMP_FILE}"' EXIT
 echo "Downloading ${ASSET_NAME}..."
 curl -fL "${DOWNLOAD_URL}" -o "${TMP_FILE}"
 
-# Atomic replace: write to temp, then rename over old file
 echo "Installing to ${TARGET_PATH}..."
 mv "${TMP_FILE}" "${TARGET_PATH}"
 trap - EXIT
@@ -118,7 +242,7 @@ cat > "${DESKTOP_PATH}" <<EOF
 Type=Application
 Name=OpenVCS
 Comment=Cross-platform Git GUI
-Exec=${TARGET_PATH}
+Exec="${TARGET_PATH}"
 Icon=openvcs
 Categories=Development;IDE;
 Terminal=false
@@ -134,8 +258,13 @@ echo "✅ Installed:"
 echo "  - ${TARGET_PATH}"
 echo "  - Launcher: ${DESKTOP_PATH}"
 echo
-echo "Run it from your app menu or execute:"
+echo "Launch from your app menu, or run:"
 echo "  \"${TARGET_PATH}\""
 echo
 echo "To uninstall later:"
 echo "  $(basename "$0") --uninstall"
+
+# --- Final feedback if interactive ---
+if $INTERACTIVE_MODE; then
+  show_info "✅ OpenVCS installed successfully!\n\nLocation:\n${TARGET_PATH}"
+fi
