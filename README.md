@@ -1,5 +1,3 @@
-# OpenVCS
-
 <p align="center">
   <img src="docs/images/OpenVCS.png" alt="OpenVCS logo" width="220">
 </p>
