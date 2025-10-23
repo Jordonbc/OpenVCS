@@ -18,6 +18,12 @@ TARGET_PATH="${INSTALL_DIR%/}/${TARGET_BASENAME}"
 
 DESKTOP_DIR="${HOME}/.local/share/applications"
 DESKTOP_PATH="${DESKTOP_DIR}/openvcs.desktop"
+ICON_NAME="openvcs"
+ICON_SOURCE_PATH="docs/images/logos/OpenVCS-256.png"
+ICON_URL_BRANCH="Dev"
+ICON_THEME_DIR="${HOME}/.local/share/icons/hicolor"
+ICON_TARGET_DIR="${ICON_THEME_DIR}/256x256/apps"
+ICON_PATH="${ICON_TARGET_DIR}/${ICON_NAME}.png"
 
 # --- State ---
 INCLUDE_PRERELEASE=false
@@ -58,6 +64,44 @@ show_error() { # $1: message
     dialog)   dialog --title "OpenVCS Installer" --msgbox "❌ $1" 10 70 || true; clear ;;
     *)        printf '\n❌ %s\n' "$1" >&2 ;;
   esac
+}
+
+install_icon() {
+  [[ -z "${ICON_DOWNLOAD_URL:-}" ]] && return 1
+  echo "Installing icon to ${ICON_PATH}..."
+  mkdir -p "${ICON_TARGET_DIR}"
+  local tmp_icon
+  tmp_icon="$(mktemp)" || return 1
+  if ! curl -fsSL "${ICON_DOWNLOAD_URL}" -o "${tmp_icon}"; then
+    rm -f "${tmp_icon}"
+    return 1
+  fi
+  install -m 0644 "${tmp_icon}" "${ICON_PATH}" || {
+    rm -f "${tmp_icon}"
+    return 1
+  }
+  rm -f "${tmp_icon}"
+  if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -q "${ICON_THEME_DIR}" >/dev/null 2>&1 || true
+  fi
+  return 0
+}
+
+refresh_desktop_entries() {
+  sleep 2
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "${DESKTOP_DIR}" >/dev/null 2>&1 || true
+  fi
+  if command -v xdg-desktop-menu >/dev/null 2>&1; then
+    xdg-desktop-menu forceupdate >/dev/null 2>&1 || true
+  fi
+  if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+  elif command -v kbuildsycoca5 >/dev/null 2>&1; then
+    kbuildsycoca5 --noincremental >/dev/null 2>&1 || true
+  elif command -v kbuildsycoca4 >/dev/null 2>&1; then
+    kbuildsycoca4 >/dev/null 2>&1 || true
+  fi
 }
 
 # --- Parse flags ---
@@ -161,9 +205,17 @@ if $UNINSTALL; then
     echo "No desktop entry found at ${DESKTOP_PATH}"
   fi
 
-  if command -v update-desktop-database >/dev/null 2>&1; then
-    update-desktop-database "${DESKTOP_DIR}" >/dev/null 2>&1 || true
+  if [[ -f "${ICON_PATH}" ]]; then
+    echo "Removing icon: ${ICON_PATH}"
+    rm "${ICON_PATH}"
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+      gtk-update-icon-cache -q "${ICON_THEME_DIR}" >/dev/null 2>&1 || true
+    fi
+  else
+    echo "No icon found at ${ICON_PATH}"
   fi
+
+  refresh_desktop_entries
 
   echo "✅ OpenVCS uninstalled."
   if $INTERACTIVE_MODE; then
@@ -190,6 +242,7 @@ fi
 DOWNLOAD_URL=""
 ASSET_NAME=""
 RELEASE_TAG=""
+ICON_DOWNLOAD_URL=""
 
 if command -v jq >/dev/null 2>&1; then
   if $INCLUDE_PRERELEASE; then
@@ -198,15 +251,28 @@ if command -v jq >/dev/null 2>&1; then
       | ($rel.assets[] | select(.name|endswith(".AppImage"))
          | [ .browser_download_url, .name, $rel.tag_name ] | @tsv)
     ' <<<"$RELEASES_JSON" | head -n1)"
+    ICON_SEL="$(jq -r '
+      ( .[] | select(.draft|not) | select(.prerelease==true) ) as $rel
+      | ($rel.assets[] | select(.name|test("(?i)icon.*\\.png$"))
+         | [ .browser_download_url, .name ] | @tsv)
+    ' <<<"$RELEASES_JSON" | head -n1)"
   else
     SEL="$(jq -r '
       . as $rel
       | ($rel.assets[] | select(.name|endswith(".AppImage"))
          | [ .browser_download_url, .name, $rel.tag_name ] | @tsv)
     ' <<<"$RELEASES_JSON" | head -n1)"
+    ICON_SEL="$(jq -r '
+      . as $rel
+      | ($rel.assets[] | select(.name|test("(?i)icon.*\\.png$"))
+         | [ .browser_download_url, .name ] | @tsv)
+    ' <<<"$RELEASES_JSON" | head -n1)"
   fi
   if [[ -n "${SEL:-}" ]]; then
     IFS=$'\t' read -r DOWNLOAD_URL ASSET_NAME RELEASE_TAG <<<"${SEL}"
+  fi
+  if [[ -n "${ICON_SEL:-}" ]]; then
+    IFS=$'\t' read -r ICON_DOWNLOAD_URL _ <<<"${ICON_SEL}"
   fi
 else
   DOWNLOAD_URL="$(printf '%s' "$RELEASES_JSON" \
@@ -214,6 +280,10 @@ else
     | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')"
   ASSET_NAME="$(basename "${DOWNLOAD_URL:-}")"
   RELEASE_TAG="unknown"
+fi
+
+if [[ -z "${ICON_DOWNLOAD_URL}" ]]; then
+  ICON_DOWNLOAD_URL="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${ICON_URL_BRANCH}/${ICON_SOURCE_PATH}"
 fi
 
 if [[ -z "${DOWNLOAD_URL}" ]]; then
@@ -235,6 +305,10 @@ mv "${TMP_FILE}" "${TARGET_PATH}"
 trap - EXIT
 chmod +x "${TARGET_PATH}"
 
+if ! install_icon; then
+  echo "warning: failed to install icon. Desktop entry may lack icon." >&2
+fi
+
 # --- Desktop entry ---
 echo "Writing desktop entry: ${DESKTOP_PATH}"
 cat > "${DESKTOP_PATH}" <<EOF
@@ -249,9 +323,7 @@ Terminal=false
 StartupNotify=true
 EOF
 
-if command -v update-desktop-database >/dev/null 2>&1; then
-  update-desktop-database "${DESKTOP_DIR}" >/dev/null 2>&1 || true
-fi
+refresh_desktop_entries
 
 echo
 echo "✅ Installed:"
