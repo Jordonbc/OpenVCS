@@ -87,6 +87,23 @@ install_icon() {
   return 0
 }
 
+refresh_desktop_entries() {
+  sleep 2
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "${DESKTOP_DIR}" >/dev/null 2>&1 || true
+  fi
+  if command -v xdg-desktop-menu >/dev/null 2>&1; then
+    xdg-desktop-menu forceupdate >/dev/null 2>&1 || true
+  fi
+  if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+  elif command -v kbuildsycoca5 >/dev/null 2>&1; then
+    kbuildsycoca5 --noincremental >/dev/null 2>&1 || true
+  elif command -v kbuildsycoca4 >/dev/null 2>&1; then
+    kbuildsycoca4 >/dev/null 2>&1 || true
+  fi
+}
+
 # --- Parse flags ---
 for arg in "${@:-}"; do
   case "$arg" in
@@ -198,9 +215,7 @@ if $UNINSTALL; then
     echo "No icon found at ${ICON_PATH}"
   fi
 
-  if command -v update-desktop-database >/dev/null 2>&1; then
-    update-desktop-database "${DESKTOP_DIR}" >/dev/null 2>&1 || true
-  fi
+  refresh_desktop_entries
 
   echo "✅ OpenVCS uninstalled."
   if $INTERACTIVE_MODE; then
@@ -308,9 +323,7 @@ Terminal=false
 StartupNotify=true
 EOF
 
-if command -v update-desktop-database >/dev/null 2>&1; then
-  update-desktop-database "${DESKTOP_DIR}" >/dev/null 2>&1 || true
-fi
+refresh_desktop_entries
 
 echo
 echo "✅ Installed:"
