@@ -5,3 +5,6 @@
 Backend/icons/*.png -filter -diff -merge -text
 Backend/icons/*.ico -filter -diff -merge -text
 Backend/icons/*.icns -filter -diff -merge -text
+docs/images/logos/OpenVCS-128.png -filter -diff -merge -text
+docs/images/logos/OpenVCS-256.png -filter -diff -merge -text
+docs/images/logos/OpenVCS-512.png -filter -diff -merge -text
