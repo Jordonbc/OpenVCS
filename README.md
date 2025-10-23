@@ -64,6 +64,29 @@ OpenVCS is a new and upcoming cross‑platform version control client built with
 
 ### Installation
 
+#### Quick install (AppImage)
+
+OpenVCS provides a convenience script that fetches the latest AppImage, stores it at `~/Applications/openvcs.AppImage`, and creates a desktop entry so you can launch it from your app menu. Run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash
+```
+
+The script targets Linux, leaves existing configuration untouched, and can be re-run to pull the newest release. Use `--prerelease` to install the latest pre-release build or `--uninstall` to remove the AppImage and desktop entry. Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
+
+#### Manual AppImage download
+
+Prefer a portable setup? Download the latest AppImage from the GitHub releases page (e.g. https://github.com/Jordonbc/OpenVCS/releases/latest), make it executable, and run it directly:
+
+```bash
+chmod +x OpenVCS-*.AppImage
+./OpenVCS-*.AppImage
+```
+
+Store the AppImage wherever you like; no installation step is required.
+
+#### Build from source
+
 Clone the repository:
 
 ```bash
