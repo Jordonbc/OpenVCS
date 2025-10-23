@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=OpenVCS
-Comment=Cross-platform Git GUI
-Exec=openvcs
-Icon=openvcs
-Categories=Development;IDE;
-Terminal=false
-StartupNotify=true
