@@ -184,7 +184,7 @@ jobs:
 
       # ---------- Build & publish ----------
       - name: Build and publish Nightly prerelease
-        uses: tauri-apps/tauri-action@e834788a94591d81e3ae0bd9ec06366f5afb8994 # action-v0.5.23
+        uses: tauri-apps/tauri-action@3b50ac4d4512105f96edbaa78a6e2f9392805589 # action-v0.5.24
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FRONTEND_SKIP_BUILD: '1'
