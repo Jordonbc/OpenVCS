@@ -2,7 +2,7 @@ import { qsa, escapeHtml } from '../../lib/dom';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
 import { notify } from '../../lib/notify';
-import { state, prefs } from '../../state/state';
+import { state, prefs, disableDefaultSelectAll } from '../../state/state';
 import type { FileStatus, ConflictDetails } from '../../types';
 import { buildPatchForSelectedHunks } from '../diff';
 import { diffEl, diffHeadPath, listEl } from './context';
@@ -292,9 +292,19 @@ function bindConflictActions(root: HTMLElement, file: FileStatus, details: Confl
     }
 }
 
+function clearAllFileSelections() {
+    if (!listEl) return;
+    const rows = listEl.querySelectorAll<HTMLElement>('li.row');
+    rows.forEach((row) => {
+        row.classList.remove('picked');
+        const cb = row.querySelector<HTMLInputElement>('input.pick');
+        if (cb) { cb.checked = false; (cb as any).indeterminate = false; }
+    });
+}
+
 export function toggleFilePick(path: string, on: boolean) {
     if (!path) return;
-    state.defaultSelectAll = false;
+    disableDefaultSelectAll();
     if (on) state.selectedFiles.add(path);
     else state.selectedFiles.delete(path);
     if (state.currentFile && state.currentFile === path) {
@@ -355,7 +365,8 @@ function bindHunkToggles(root: HTMLElement) {
     const boxes = root.querySelectorAll<HTMLInputElement>('input.pick-hunk');
     boxes.forEach((b) => {
         b.addEventListener('change', () => {
-            state.defaultSelectAll = false;
+            const clearedImplicit = disableDefaultSelectAll(true);
+            if (clearedImplicit) clearAllFileSelections();
             const idx = Number(b.dataset.hunk || -1);
             if (b.checked) {
                 if (!state.selectedHunks.includes(idx)) state.selectedHunks.push(idx);
@@ -387,7 +398,8 @@ function bindHunkToggles(root: HTMLElement) {
     const lineBoxes = root.querySelectorAll<HTMLInputElement>('input.pick-line');
     lineBoxes.forEach((b) => {
         b.addEventListener('change', () => {
-            state.defaultSelectAll = false;
+            const clearedImplicit = disableDefaultSelectAll(true);
+            if (clearedImplicit) clearAllFileSelections();
             const hunk = Number(b.dataset.hunk || -1);
             const line = Number(b.dataset.line || -1);
             if (!state.currentFile || hunk < 0 || line < 0) return;
@@ -541,4 +553,3 @@ export function updateListCheckboxForPath(path: string, checked: boolean, indete
         (cb as any).indeterminate = indeterminate;
     }
 }
-

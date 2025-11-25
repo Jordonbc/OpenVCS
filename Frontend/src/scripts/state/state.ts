@@ -24,6 +24,7 @@ export const state = {
     behind: 0 as number,            // commits behind upstream
     aheadIds: new Set<string>() as Set<string>, // IDs of commits ahead of upstream
     defaultSelectAll: true as boolean, // by default select all files/hunks until user toggles
+    selectionImplicitAll: true as boolean, // true when select-all was auto-applied (no manual picks yet)
     // Selection state
     selectedFiles: new Set<string>(),
     currentFile: '' as string,
@@ -53,3 +54,15 @@ export const statusClass = (s: string) =>
     s === 'A' ? 'add' :
         s === 'M' ? 'mod' :
             s === 'D' ? 'del' : 'mod';
+
+// Disable the implicit "select all" mode. When clearImplicit is true, drop the
+// auto-filled selection set so later logic only sees explicit user picks.
+export function disableDefaultSelectAll(clearImplicit = false): boolean {
+    const hadImplicit = state.defaultSelectAll && state.selectionImplicitAll;
+    if (clearImplicit && hadImplicit) {
+        state.selectedFiles.clear();
+    }
+    state.defaultSelectAll = false;
+    state.selectionImplicitAll = false;
+    return Boolean(clearImplicit && hadImplicit);
+}

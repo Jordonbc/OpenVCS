@@ -27,8 +27,10 @@ export async function hydrateStatus() {
         state.files = Array.isArray(result?.files) ? (result.files as any) : [];
         const currentPaths = new Set((state.files || []).map((f) => f.path));
         if (state.defaultSelectAll) {
+            state.selectionImplicitAll = true;
             state.selectedFiles = new Set(Array.from(currentPaths));
         } else {
+            state.selectionImplicitAll = false;
             state.selectedFiles.forEach((p) => { if (!currentPaths.has(p)) state.selectedFiles.delete(p); });
         }
         (state as any).ahead = Number((result as any)?.ahead || 0);
@@ -39,6 +41,7 @@ export async function hydrateStatus() {
         console.warn('hydrateStatus failed', e);
         state.files = [];
         state.selectedFiles.clear();
+        state.selectionImplicitAll = false;
         renderList();
         window.dispatchEvent(new CustomEvent('app:status-updated'));
     }
