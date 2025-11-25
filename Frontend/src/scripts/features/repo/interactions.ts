@@ -1,7 +1,7 @@
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { notify } from '../../lib/notify';
 import { TAURI } from '../../lib/tauri';
-import { state } from '../../state/state';
+import { state, disableDefaultSelectAll } from '../../state/state';
 import type { FileStatus } from '../../types';
 import { openStashConfirm } from '../stashConfirm';
 import { dragState, listEl } from './context';
@@ -33,7 +33,7 @@ export function onFileClick(e: MouseEvent, file: FileStatus, index: number, visi
             if (state.selectedFiles.has(p)) state.selectedFiles.delete(p);
             else state.selectedFiles.add(p);
         }
-        state.defaultSelectAll = false;
+        disableDefaultSelectAll();
         updateSelectAllState(visible);
         renderListAfterRangeSelect(file);
     } else if (isToggle) {
@@ -124,7 +124,7 @@ export function onFileMouseDown(e: MouseEvent, file: FileStatus, index: number, 
 }
 
 export function applySelect(path: string, on: boolean, rowEl: HTMLElement | null, visible: FileStatus[], mode: 'diff' | 'commit') {
-    state.defaultSelectAll = false;
+    disableDefaultSelectAll();
     if (mode === 'commit') {
         if (on) state.selectedFiles.add(path); else state.selectedFiles.delete(path);
         if (rowEl) rowEl.classList.toggle('picked', on);
