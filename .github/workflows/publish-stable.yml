@@ -71,7 +71,7 @@ jobs:
 
       # ---------- Build & publish with Tauri action ----------
       - name: Build and create GitHub Release (draft)
-        uses: tauri-apps/tauri-action@3b50ac4d4512105f96edbaa78a6e2f9392805589 # action-v0.5.24
+        uses: tauri-apps/tauri-action@19b93bb55601e3e373a93cfb6eb4242e45f5af20 # action-v0.6.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # We already built the Frontend; tell Backend/Tauri to skip any beforeBuildCommand
