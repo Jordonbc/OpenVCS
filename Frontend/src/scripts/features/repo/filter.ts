@@ -1,4 +1,4 @@
-import { state, prefs } from '../../state/state';
+import { state, prefs, disableDefaultSelectAll } from '../../state/state';
 import { filterInput, selectAllBox } from './context';
 import { renderList } from './list';
 import { getVisibleFiles } from './selectionState';
