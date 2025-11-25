@@ -26,6 +26,5 @@ pub use updater::*;
 pub use themes::*;
 
 pub(crate) use shared::{
-    current_repo_or_err, get_repo_root, lfs_config, progress_bridge, run_repo_task, LfsEnvGuard,
-    ProgressPayload,
+    current_repo_or_err, lfs_config, progress_bridge, run_repo_task, LfsEnvGuard, ProgressPayload,
 };

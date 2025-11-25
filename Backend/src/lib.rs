@@ -123,6 +123,8 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::show_licenses,
         tauri_commands::browse_directory,
         tauri_commands::add_repo,
+        tauri_commands::list_backends_cmd,
+        tauri_commands::set_backend_cmd,
         tauri_commands::validate_git_url,
         tauri_commands::validate_add_path,
         tauri_commands::validate_clone_input,
