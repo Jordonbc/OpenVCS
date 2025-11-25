@@ -1,5 +1,6 @@
 use openvcs_core::*;
 use std::{
+    fs,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -7,7 +8,7 @@ use std::{
 };
 use openvcs_core::backend_descriptor::{BackendDescriptor, BACKENDS};
 use openvcs_core::backend_id::BackendId;
-use openvcs_core::models::{BranchItem, BranchKind, Capabilities, CommitItem, FileEntry, LogQuery, OnEvent, StatusPayload, StatusSummary, VcsEvent, StashItem};
+use openvcs_core::models::{BranchItem, BranchKind, Capabilities, CommitItem, ConflictDetails, ConflictSide, FileEntry, LogQuery, OnEvent, StatusPayload, StatusSummary, VcsEvent, StashItem};
 /* ============================ registry wiring ============================ */
 
 pub const GIT_SYSTEM_ID: BackendId = backend_id!("git-system");
@@ -106,6 +107,38 @@ impl GitSystem {
         } else {
             let err = String::from_utf8_lossy(&out.stderr).into_owned();
             log::debug!("git(capture): exit={}, stderr_bytes={}", out.status, err.len());
+            Err(VcsError::Backend {
+                backend: GIT_SYSTEM_ID,
+                msg: err,
+            })
+        }
+    }
+
+    fn run_git_capture_bytes<I, S>(cwd: Option<&Path>, args: I) -> Result<Vec<u8>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let argv: Vec<String> = args.into_iter().map(|s| s.as_ref().to_string()).collect();
+        log::trace!(
+            "git(capture-bytes): cwd={}, argv=[{}]",
+            cwd.map(|p| p.display().to_string()).unwrap_or_else(|| ".".into()),
+            argv.join(" ")
+        );
+
+        let mut cmd = Command::new(GIT_COMMAND_NAME);
+        if let Some(c) = cwd { cmd.current_dir(c); }
+        let out = cmd
+            .args(&argv)
+            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()
+            .map_err(VcsError::Io)?;
+        if out.status.success() {
+            Ok(out.stdout)
+        } else {
+            let err = String::from_utf8_lossy(&out.stderr).into_owned();
+            log::debug!("git(capture-bytes): exit={}, stderr_bytes={}", out.status, err.len());
             Err(VcsError::Backend {
                 backend: GIT_SYSTEM_ID,
                 msg: err,
@@ -656,6 +689,93 @@ impl Vcs for GitSystem {
             "show", "--no-color", "--unified=3", "--format=", rev
         ])?;
         Ok(out.trim_end().lines().map(|l| l.to_string()).collect())
+    }
+
+    fn conflict_details(&self, path: &Path) -> Result<ConflictDetails> {
+        log::trace!("git-system: conflict_details {}", path.display());
+        let p = Self::path_str(path)?;
+        let ls = Self::run_git_capture(Some(&self.workdir), ["ls-files", "-u", "--", p])?;
+        if ls.trim().is_empty() {
+            return Err(VcsError::Backend {
+                backend: GIT_SYSTEM_ID,
+                msg: format!("no conflict recorded for {p}"),
+            });
+        }
+
+        let repo_root = self.workdir.clone();
+        let read_stage = |stage: u8| -> Result<Option<Vec<u8>>> {
+            let spec = format!(":{}:{}", stage, p);
+            match Self::run_git_capture_bytes(Some(&repo_root), ["show", "--no-textconv", &spec]) {
+                Ok(bytes) => Ok(Some(bytes)),
+                Err(VcsError::Backend { .. }) => Ok(None),
+                Err(e) => Err(e),
+            }
+        };
+
+        fn decode_blob(data: Option<Vec<u8>>, binary: &mut bool, lfs_ptr: &mut bool) -> Option<String> {
+            let bytes = data?;
+            if bytes.iter().any(|&b| b == 0) {
+                *binary = true;
+                return None;
+            }
+            match String::from_utf8(bytes) {
+                Ok(text) => {
+                    if text.starts_with("version https://git-lfs.github.com/spec/v1") {
+                        *lfs_ptr = true;
+                    }
+                    Some(text)
+                }
+                Err(_) => {
+                    *binary = true;
+                    None
+                }
+            }
+        }
+
+        let ours_raw = read_stage(2)?;
+        let theirs_raw = read_stage(3)?;
+        let base_raw = read_stage(1)?;
+
+        let mut binary = false;
+        let mut lfs_pointer = false;
+        let ours_text = decode_blob(ours_raw, &mut binary, &mut lfs_pointer);
+        let theirs_text = decode_blob(theirs_raw, &mut binary, &mut lfs_pointer);
+        let base_text = decode_blob(base_raw, &mut binary, &mut lfs_pointer);
+
+        Ok(ConflictDetails {
+            path: p.to_string(),
+            ours: if binary { None } else { ours_text },
+            theirs: if binary { None } else { theirs_text },
+            base: if binary { None } else { base_text },
+            binary,
+            lfs_pointer,
+        })
+    }
+
+    fn checkout_conflict_side(&self, path: &Path, side: ConflictSide) -> Result<()> {
+        log::debug!("git-system: checkout_conflict_side {:?} {}", side, path.display());
+        let p = Self::path_str(path)?;
+        let flag = match side {
+            ConflictSide::Ours => "--ours",
+            ConflictSide::Theirs => "--theirs",
+        };
+        Self::run_git(Some(&self.workdir), ["checkout", flag, "--", p])?;
+        Self::run_git(Some(&self.workdir), ["add", "--", p])?;
+        Ok(())
+    }
+
+    fn write_merge_result(&self, path: &Path, content: &[u8]) -> Result<()> {
+        log::debug!("git-system: write_merge_result {} bytes={}", path.display(), content.len());
+        let abs = if path.is_absolute() { path.to_path_buf() } else { self.workdir.join(path) };
+        if let Some(parent) = abs.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent).map_err(VcsError::Io)?;
+            }
+        }
+        fs::write(&abs, content).map_err(VcsError::Io)?;
+        let rel = Self::path_str(path)?;
+        Self::run_git(Some(&self.workdir), ["add", "--", rel])?;
+        Ok(())
     }
 
     fn stage_patch(&self, patch: &str) -> Result<()> {

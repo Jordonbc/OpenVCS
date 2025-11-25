@@ -34,6 +34,25 @@ pub struct FileEntry {
     pub hunks: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ConflictDetails {
+    pub path: String,
+    pub ours: Option<String>,
+    pub theirs: Option<String>,
+    pub base: Option<String>,
+    #[serde(default)]
+    pub binary: bool,
+    #[serde(default)]
+    pub lfs_pointer: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConflictSide {
+    Ours,
+    Theirs,
+}
+
 /// Flat status summary plus file list, suitable for your UI.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
 pub struct StatusPayload {

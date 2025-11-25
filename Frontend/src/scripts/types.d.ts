@@ -16,6 +16,15 @@ export interface FileStatus {
     hunks?: string[];
 }
 
+export interface ConflictDetails {
+    path: string;
+    ours?: string | null;
+    theirs?: string | null;
+    base?: string | null;
+    binary?: boolean;
+    lfs_pointer?: boolean;
+}
+
 export interface CommitItem {
     id: string;
     msg?: string;

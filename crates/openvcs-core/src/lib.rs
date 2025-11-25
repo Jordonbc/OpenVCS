@@ -89,6 +89,21 @@ pub trait Vcs: Send + Sync {
     /// Unified diff for a specific commit (vs its first parent, or empty tree if none).
     fn diff_commit(&self, rev: &str) -> Result<Vec<String>>;
 
+    /// Details about a conflicted file (three-way content where available).
+    fn conflict_details(&self, _path: &Path) -> Result<models::ConflictDetails> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+
+    /// Replace the working tree/index copy of a conflicted file with ours/theirs.
+    fn checkout_conflict_side(&self, _path: &Path, _side: models::ConflictSide) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+
+    /// Persist a merged result and stage it.
+    fn write_merge_result(&self, _path: &Path, _content: &[u8]) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+
     /// Stage a unified-diff patch directly into the index (partial commit support).
     /// Backends may return `VcsError::Unsupported` if not implemented.
     fn stage_patch(&self, patch: &str) -> Result<()>;

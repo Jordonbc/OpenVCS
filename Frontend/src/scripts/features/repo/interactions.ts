@@ -2,6 +2,7 @@ import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { notify } from '../../lib/notify';
 import { TAURI } from '../../lib/tauri';
 import { state } from '../../state/state';
+import type { FileStatus } from '../../types';
 import { openStashConfirm } from '../stashConfirm';
 import { dragState, listEl } from './context';
 import { updateCommitButton } from './commit';
@@ -9,7 +10,7 @@ import { selectFile, renderCombinedDiff, clearDiffSelection, clearActiveRows, to
 import { hydrateStatus, hydrateStash } from './hydrate';
 import { getVisibleFiles, updateSelectAllState } from './selectionState';
 
-export function onFileClick(e: MouseEvent, file: { path: string }, index: number, visible: { path: string }[]) {
+export function onFileClick(e: MouseEvent, file: FileStatus, index: number, visible: FileStatus[]) {
     if (dragState.suppressNextClick) {
         dragState.suppressNextClick = false;
         if (state.diffSelectedFiles && state.diffSelectedFiles.size > 1) {
@@ -59,7 +60,7 @@ export function onFileClick(e: MouseEvent, file: { path: string }, index: number
     updateCommitButton();
 }
 
-export function onFileMouseDown(e: MouseEvent, file: { path: string }, index: number, visible: { path: string }[], li: HTMLElement) {
+export function onFileMouseDown(e: MouseEvent, file: FileStatus, index: number, visible: FileStatus[], li: HTMLElement) {
     if (e.button !== 0) return;
     const mode = e.shiftKey ? 'diff' : (e.ctrlKey || e.metaKey) ? 'commit' : null;
     if (mode === null) {
@@ -122,7 +123,7 @@ export function onFileMouseDown(e: MouseEvent, file: { path: string }, index: nu
     document.addEventListener('mouseup', onUp, { once: true });
 }
 
-export function applySelect(path: string, on: boolean, rowEl: HTMLElement | null, visible: { path: string }[], mode: 'diff' | 'commit') {
+export function applySelect(path: string, on: boolean, rowEl: HTMLElement | null, visible: FileStatus[], mode: 'diff' | 'commit') {
     state.defaultSelectAll = false;
     if (mode === 'commit') {
         if (on) state.selectedFiles.add(path); else state.selectedFiles.delete(path);
@@ -136,7 +137,7 @@ export function applySelect(path: string, on: boolean, rowEl: HTMLElement | null
     }
 }
 
-export function updateDragRange(visible: { path: string }[]) {
+export function updateDragRange(visible: FileStatus[]) {
     if (!dragState.isDragSelecting || dragState.dragMode === null) return;
     const a = Math.min(dragState.dragStartIndex, dragState.dragCurrentIndex);
     const b = Math.max(dragState.dragStartIndex, dragState.dragCurrentIndex);
@@ -181,7 +182,7 @@ export function updateDragRange(visible: { path: string }[]) {
     }
 }
 
-export function toggleSelectAll(on: boolean, visible: { path: string }[]) {
+export function toggleSelectAll(on: boolean, visible: FileStatus[]) {
     if (on) {
         visible.forEach((f) => { if (f.path) toggleFilePick(f.path, true); });
     } else {
@@ -189,7 +190,7 @@ export function toggleSelectAll(on: boolean, visible: { path: string }[]) {
     }
 }
 
-export function onFileContextMenu(ev: MouseEvent, f: { path: string }) {
+export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     ev.preventDefault();
     const x = ev.clientX, y = ev.clientY;
     const totalFiles = Array.isArray(state.files) ? state.files.length : 0;
@@ -273,7 +274,7 @@ export function setDragCurrentIndex(index: number) {
     dragState.dragCurrentIndex = index;
 }
 
-function renderListAfterRangeSelect(file: { path: string }) {
+function renderListAfterRangeSelect(file: FileStatus) {
     renderListCallback?.();
     const refreshed = getVisibleFiles();
     const nextIndex = refreshed.findIndex((v) => v.path === file.path);

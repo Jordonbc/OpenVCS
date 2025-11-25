@@ -47,3 +47,4 @@ directories = "6"
 serde_json = "1.0"
 time = { version = "0.3", features = ["local-offset"] }
 zip = "6.0"
+shlex = "1.2"

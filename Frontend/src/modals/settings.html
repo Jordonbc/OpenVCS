@@ -179,6 +179,30 @@
                             <span class="help-tip" title="Show a placeholder message for binary files in the diff view.">?</span>
                         </label>
                     </div>
+
+                    <div class="group">
+                        <label for="set-merge-mode">Merge conflicts
+                            <span class="help-tip" title="Choose how conflicts are resolved from the diff view.">?</span>
+                        </label>
+                        <select id="set-merge-mode">
+                            <option value="builtin">Built-in merge editor</option>
+                            <option value="custom">Launch custom tool</option>
+                        </select>
+                    </div>
+
+                    <div class="group" data-merge-custom>
+                        <label for="set-merge-path">Custom merge tool path
+                            <span class="help-tip" title="Executable to launch when resolving conflicts.">?</span>
+                        </label>
+                        <input id="set-merge-path" type="text" placeholder="/usr/bin/tool" />
+                    </div>
+
+                    <div class="group" data-merge-custom>
+                        <label for="set-merge-args">Custom merge tool arguments
+                            <span class="help-tip" title="Use placeholders like {mine}, {theirs}, and {merged}.">?</span>
+                        </label>
+                        <input id="set-merge-args" type="text" placeholder="--arg {mine} {theirs} {merged}" />
+                    </div>
                 </form>
 
                 <!-- LFS -->
