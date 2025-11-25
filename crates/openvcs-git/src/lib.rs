@@ -810,7 +810,7 @@ impl Vcs for GitSystem {
         }
         if let Err(_) = Self::run_git(Some(&self.workdir), args.clone()) {
             for p in paths {
-                let mut single = vec!["restore".to_string(), "--staged".into(), "--worktree".into(), "--source=HEAD".into(), "--".into(), Self::path_str(p)?.to_string()];
+                let single = vec!["restore".to_string(), "--staged".into(), "--worktree".into(), "--source=HEAD".into(), "--".into(), Self::path_str(p)?.to_string()];
                 let _ = Self::run_git(Some(&self.workdir), single);
             }
         }

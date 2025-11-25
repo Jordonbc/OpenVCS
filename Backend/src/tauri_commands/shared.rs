@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use openvcs_core::models::VcsEvent;
@@ -116,11 +116,4 @@ impl Drop for LfsEnvGuard {
             }
         }
     }
-}
-
-pub(crate) fn get_repo_root(state: &State<'_, AppState>) -> Result<PathBuf, String> {
-    state
-        .current_repo()
-        .map(|repo| repo.inner().workdir().to_path_buf())
-        .ok_or_else(|| "No repository selected".to_string())
 }

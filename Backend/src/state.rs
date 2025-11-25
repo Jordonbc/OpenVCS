@@ -34,7 +34,7 @@ pub struct AppState {
 impl AppState {
     pub fn new_with_config() -> Self {
         let cfg = AppConfig::load_or_default(); // reads ~/.config/openvcs/openvcs.conf
-        let mut s = Self {
+        let s = Self {
             config: RwLock::new(cfg),
             repo_config: RwLock::new(RepoConfig::default()),
             ..Default::default()
