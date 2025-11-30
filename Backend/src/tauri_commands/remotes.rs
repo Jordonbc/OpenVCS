@@ -66,7 +66,8 @@ pub async fn git_fetch_all<R: Runtime>(
 
         for (r, _url) in remotes.into_iter() {
             info!("Fetching all refs from remote '{r}'");
-            if let Err(e) = repo.inner().fetch(&r, "", on.clone()) {
+            let refspec = format!("+refs/heads/*:refs/remotes/{r}/*");
+            if let Err(e) = repo.inner().fetch(&r, &refspec, on.clone()) {
                 error!("Fetch failed for remote '{r}': {e}");
                 return Err(e.to_string());
             }
@@ -239,7 +240,7 @@ pub async fn git_undo_to_commit<R: Runtime>(
 
         let on = progress_bridge(app);
         on(VcsEvent::Info("Undoing to selected commit (soft reset)…"));
-        let rev = format!("{}^", target);
+        let rev = target.to_string();
         repo.inner()
             .reset_soft_to(&rev)
             .map_err(|e| e.to_string())?;

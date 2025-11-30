@@ -38,7 +38,7 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
     if let Some(path) = recents.into_iter().find(|p| p.exists()) {
         let backend: BackendId = match app_config.git.backend {
             settings::GitBackend::System => GIT_SYSTEM_ID,
-            settings::GitBackend::Libgit2 => backend_id!("libgit2"),
+            settings::GitBackend::Libgit2 => backend_id!("git-libgit2"),
         };
 
         let path_str = path.to_string_lossy().to_string();
