@@ -250,10 +250,8 @@ impl Git {
             }
 
             // 2) Remote branch name like "origin/feature"
-            let mut tried_remote = false;
             if name.contains('/') {
                 if repo.find_branch(name, g::BranchType::Remote).is_ok() {
-                    tried_remote = true;
                     let local = name.split('/').last().unwrap_or(name);
                     if repo.find_branch(local, g::BranchType::Local).is_err() {
                         // Create local branch at the remote target
@@ -272,22 +270,20 @@ impl Git {
             }
 
             // 3) Try default remote "origin/<name>"
-            if !tried_remote {
-                let remote_short = format!("origin/{name}");
-                if repo.find_branch(&remote_short, g::BranchType::Remote).is_ok() {
-                    let local = name;
-                    if repo.find_branch(local, g::BranchType::Local).is_err() {
-                        let rb = repo.find_branch(&remote_short, g::BranchType::Remote)?;
-                        let target = rb.get().target().ok_or_else(|| g::Error::from_str("remote branch has no target"))?;
-                        let commit = repo.find_commit(target)?;
-                        repo.branch(local, &commit, false)?;
-                        let mut lb = repo.find_branch(local, g::BranchType::Local)?;
-                        lb.set_upstream(Some(&remote_short))?;
-                    }
-                    checkout_ref(repo, &format!("refs/heads/{local}"))?;
-                    info!("created and checked out tracking branch '{}' for remote '{}'", local, remote_short);
-                    return Ok(());
+            let remote_short = format!("origin/{name}");
+            if repo.find_branch(&remote_short, g::BranchType::Remote).is_ok() {
+                let local = name;
+                if repo.find_branch(local, g::BranchType::Local).is_err() {
+                    let rb = repo.find_branch(&remote_short, g::BranchType::Remote)?;
+                    let target = rb.get().target().ok_or_else(|| g::Error::from_str("remote branch has no target"))?;
+                    let commit = repo.find_commit(target)?;
+                    repo.branch(local, &commit, false)?;
+                    let mut lb = repo.find_branch(local, g::BranchType::Local)?;
+                    lb.set_upstream(Some(&remote_short))?;
                 }
+                checkout_ref(repo, &format!("refs/heads/{local}"))?;
+                info!("created and checked out tracking branch '{}' for remote '{}'", local, remote_short);
+                return Ok(());
             }
 
             // 4) Fallback to local ref (may detach if it's a commit)
@@ -296,7 +292,6 @@ impl Git {
                 .map_err(|_| GitError::NoSuchBranch(name.into()))
         })
     }
-
 
     pub fn ensure_remote(&self, name: &str, url: &str) -> Result<()> {
         info!("ensuring remote '{name}' points to '{url}'");
@@ -369,10 +364,6 @@ impl Git {
             info!("fetch from '{remote}' finished");
             Ok(fetch_head)
         })
-    }
-
-    pub fn fetch(&self, remote: &str, refspec: &str) -> Result<Option<Oid>> {
-        self.fetch_with_progress(remote, refspec, |_| {})
     }
 
     pub fn fast_forward(&self, upstream: &str) -> Result<()> {
@@ -717,7 +708,14 @@ impl Git {
             let _ = walk.set_sorting(sort);
 
             let rev = q.rev.as_deref().unwrap_or("HEAD");
-            walk.push_ref(rev)?;
+            if rev.contains("..") {
+                walk.push_range(rev)?;
+            } else {
+                match repo.revparse_single(rev) {
+                    Ok(obj) => walk.push(obj.id())?,
+                    Err(_) => walk.push_ref(rev)?,
+                }
+            }
 
             // Pre-parse filters once
             let path_filter = q.path.as_deref();

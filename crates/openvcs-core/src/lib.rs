@@ -8,6 +8,9 @@ use std::{path::{Path, PathBuf}, sync::Arc};
 pub use crate::backend_id::BackendId;
 pub use crate::models::{Capabilities, OnEvent};
 
+#[cfg(test)]
+pub(crate) mod test_helpers;
+
 #[derive(thiserror::Error, Debug)]
 pub enum VcsError {
     #[error("not a repository: {0}")]
@@ -86,6 +89,21 @@ pub trait Vcs: Send + Sync {
     /// Unified diff for a specific commit (vs its first parent, or empty tree if none).
     fn diff_commit(&self, rev: &str) -> Result<Vec<String>>;
 
+    /// Details about a conflicted file (three-way content where available).
+    fn conflict_details(&self, _path: &Path) -> Result<models::ConflictDetails> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+
+    /// Replace the working tree/index copy of a conflicted file with ours/theirs.
+    fn checkout_conflict_side(&self, _path: &Path, _side: models::ConflictSide) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+
+    /// Persist a merged result and stage it.
+    fn write_merge_result(&self, _path: &Path, _content: &[u8]) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+
     /// Stage a unified-diff patch directly into the index (partial commit support).
     /// Backends may return `VcsError::Unsupported` if not implemented.
     fn stage_patch(&self, patch: &str) -> Result<()>;
@@ -106,12 +124,34 @@ pub trait Vcs: Send + Sync {
 
     // recovery
     fn hard_reset_head(&self) -> Result<()>;
+    /// Soft-reset HEAD to the given revision, keeping changes in the index and working tree.
+    fn reset_soft_to(&self, _rev: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
 
     // config
     /// Read repository-local identity (user.name, user.email). Returns None if missing.
     fn get_identity(&self) -> Result<Option<(String, String)>>;
     /// Set repository-local identity (user.name, user.email).
     fn set_identity_local(&self, name: &str, email: &str) -> Result<()>;
+
+    // stash
+    /// List available stash entries (most-recent first).
+    fn stash_list(&self) -> Result<Vec<models::StashItem>> { Err(VcsError::Unsupported(self.id())) }
+    /// Create a stash entry. If `paths` is non-empty, only those paths are stashed.
+    fn stash_push(&self, _message: &str, _include_untracked: bool, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    /// Apply a stash entry without dropping it.
+    fn stash_apply(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    /// Pop (apply and drop) a stash entry.
+    fn stash_pop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    /// Drop a stash entry.
+    fn stash_drop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    /// Show a unified diff for a stash entry.
+    fn stash_show(&self, _selector: &str) -> Result<Vec<String>> { Err(VcsError::Unsupported(self.id())) }
+
+    // git-lfs helpers (backends may return Unsupported if not applicable)
+    fn lfs_fetch(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn lfs_pull(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn lfs_prune(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn lfs_track(&self, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
 }
 
 /// A concrete repository handle that owns a chosen backend instance.
@@ -147,5 +187,20 @@ impl Repo {
     pub fn inner(&self) -> &dyn Vcs {
         log::trace!("openvcs-core: Repo::inner");
         &*self.inner
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{dummy_open, DummyVcs};
+    use std::path::Path;
+
+    #[test]
+    fn repo_forwards_backend_details() {
+        let repo = Repo::new(dummy_open(Path::new(".")).expect("dummy repo"));
+        assert_eq!(repo.id().as_ref(), "dummy-test");
+        assert!(repo.caps().commits);
+        assert_eq!(repo.inner().id().as_ref(), DummyVcs::open(Path::new(".")).unwrap().id().as_ref());
     }
 }

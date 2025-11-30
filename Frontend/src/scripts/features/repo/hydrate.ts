@@ -1,0 +1,119 @@
+import { TAURI } from '../../lib/tauri';
+import { state, prefs } from '../../state/state';
+import { renderList } from './list';
+
+export async function hydrateBranches() {
+    if (!TAURI.has) return;
+    try {
+        const list = await TAURI.invoke<any[]>('git_list_branches');
+        const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status').catch(() => ({ detached: false } as any));
+        const has = Array.isArray(list) && list.length > 0;
+        state.hasRepo = state.hasRepo || has;
+        if (has) {
+            state.branches = list as any;
+            state.branch = (head as any)?.branch || (list.find((b: any) => b.current)?.name) || state.branch || 'main';
+            window.dispatchEvent(new CustomEvent('app:branches-updated'));
+        }
+    } catch (e) {
+        console.warn('hydrateBranches failed', e);
+    }
+}
+
+export async function hydrateStatus() {
+    if (!TAURI.has) return;
+    try {
+        const result = await TAURI.invoke<{ files: any[]; ahead?: number; behind?: number }>('git_status');
+        state.hasRepo = true;
+        state.files = Array.isArray(result?.files) ? (result.files as any) : [];
+        const currentPaths = new Set((state.files || []).map((f) => f.path));
+        if (state.defaultSelectAll) {
+            state.selectionImplicitAll = true;
+            state.selectedFiles = new Set(Array.from(currentPaths));
+        } else {
+            state.selectionImplicitAll = false;
+            state.selectedFiles.forEach((p) => { if (!currentPaths.has(p)) state.selectedFiles.delete(p); });
+        }
+        (state as any).ahead = Number((result as any)?.ahead || 0);
+        (state as any).behind = Number((result as any)?.behind || 0);
+        renderList();
+        window.dispatchEvent(new CustomEvent('app:status-updated'));
+    } catch (e) {
+        console.warn('hydrateStatus failed', e);
+        state.files = [];
+        state.selectedFiles.clear();
+        state.selectionImplicitAll = false;
+        renderList();
+        window.dispatchEvent(new CustomEvent('app:status-updated'));
+    }
+}
+
+export async function hydrateCommits() {
+    if (!TAURI.has) return;
+    try {
+        const list = await TAURI.invoke<any[]>('git_log', { limit: 100 });
+        state.hasRepo = true;
+        const baseCommits = Array.isArray(list) ? (list as any) : [];
+        const behindCount = Number((state as any).behind || 0);
+        let incoming: any[] = [];
+        if (behindCount > 0) {
+            const limit = Math.min(Math.max(behindCount, 50), 500);
+            const branch = (state.branch || '').trim();
+            const ranges: { range: string; ref: string }[] = [
+                { range: 'HEAD..@{upstream}', ref: '@{upstream}' },
+            ];
+            if (branch) {
+                ranges.push({ range: `HEAD..origin/${branch}`, ref: `origin/${branch}` });
+            }
+            for (const { range, ref } of ranges) {
+                try {
+                    const remoteList = await TAURI.invoke<any[]>('git_log', { limit, rev: range });
+                    if (Array.isArray(remoteList) && remoteList.length > 0) {
+                        incoming = remoteList.map((c: any) => ({ ...c, incoming: true, remoteRef: ref }));
+                        break;
+                    }
+                } catch (err) {
+                    console.warn('hydrateCommits remote range failed', range, err);
+                }
+            }
+        }
+        const seen = new Set<string>();
+        const merged: any[] = [];
+        [...incoming, ...baseCommits].forEach((entry) => {
+            if (!entry || typeof entry !== 'object') return;
+            const id = String(entry.id || '');
+            if (!id || seen.has(id)) return;
+            seen.add(id);
+            merged.push(entry);
+        });
+        state.commits = merged;
+        const aheadCount = Number((state as any).ahead || 0);
+        if (aheadCount > 0) {
+            try {
+                const aheadList = await TAURI.invoke<any[]>('git_log', { limit: 1000, rev: '@{upstream}..HEAD' });
+                const ids = new Set<string>();
+                (aheadList || []).forEach((c: any) => { if (c?.id) ids.add(String(c.id)); });
+                (state as any).aheadIds = ids;
+            } catch {
+                (state as any).aheadIds = new Set<string>();
+            }
+        } else {
+            (state as any).aheadIds = new Set<string>();
+        }
+        if (prefs.tab === 'history') renderList();
+    } catch (e) {
+        console.warn('hydrateCommits failed', e);
+        state.commits = [];
+    }
+}
+
+export async function hydrateStash() {
+    if (!TAURI.has) return;
+    try {
+        const list = await TAURI.invoke<any[]>('git_stash_list');
+        (state as any).stash = Array.isArray(list) ? (list as any) : [];
+        if (prefs.tab === 'stash') renderList();
+    } catch (e) {
+        console.warn('hydrateStash failed', e);
+        (state as any).stash = [];
+    }
+}

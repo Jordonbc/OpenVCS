@@ -39,6 +39,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": [
+      "built-in-themes"
+    ],
     "licenseFile": "../LICENSE",
     "publisher": "Jordon Brooks",
     "shortDescription": "A simple, cross-platform GUI for Git.",

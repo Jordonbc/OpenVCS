@@ -4,6 +4,17 @@
 
 > This file is machine‑friendly but readable. Keep it up‑to‑date as the project evolves.
 
+# Tooling Rules (MUST FOLLOW)
+
+- All file edits MUST use the `apply_patch` tool, producing unified diffs first.
+- DO NOT write files via shell commands (`sed -i`, `tee`, `cat >`, `python -c`, redirections, etc.).
+- Assume direct shell writes will be blocked; do not attempt them.
+- Commands are allowed for READ-ONLY work (search, list, diff, log, compile, run tests).
+- If an edit is needed: generate a single `apply_patch` with complete diffs and a summary.
+- After applying a patch, run only read-only verification commands unless explicitly approved.
+- If a shell-write is ever proposed, replace it with `apply_patch` before proceeding.
+
+
 ## Project Summary
 
 - **Goal:** Open‑source, fully customisable VCS client. Git first; long‑term multi‑VCS via modular backends.
@@ -74,6 +85,7 @@ Run commands from the **workspace root** unless stated otherwise.
 
 - Small PRs with clear scope preferred.
 - Larger changes: open an issue first and tag as `proposal`.
+- Use apply_patch function to propose and make edits.
 
 ---
 

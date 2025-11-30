@@ -55,3 +55,41 @@ pub fn get_backend(id: impl AsRef<str>) -> Option<&'static BackendDescriptor> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{dummy_caps, dummy_clone_repo, dummy_open};
+    use std::path::Path;
+
+    #[linkme::distributed_slice(crate::backend_descriptor::BACKENDS)]
+    static TEST_BACKEND: BackendDescriptor = BackendDescriptor {
+        id: crate::backend_id!("dummy-test"),
+        name: "Dummy Backend",
+        caps: dummy_caps,
+        open: dummy_open,
+        clone_repo: dummy_clone_repo,
+    };
+
+    #[test]
+    fn list_backends_exposes_registered_backend() {
+        let ids: Vec<_> = list_backends().map(|b| b.id.as_ref()).collect();
+        assert!(ids.contains(&"dummy-test"));
+    }
+
+    #[test]
+    fn get_backend_finds_registered_entry() {
+        let backend = get_backend("dummy-test").expect("backend to exist");
+        assert_eq!(backend.name, "Dummy Backend");
+        assert!((backend.caps)().commits);
+
+        let repo = (backend.open)(Path::new("."))
+            .expect("backend open to succeed");
+        assert_eq!(repo.id().as_ref(), "dummy-test");
+    }
+
+    #[test]
+    fn missing_backend_returns_none() {
+        assert!(get_backend("unknown").is_none());
+    }
+}

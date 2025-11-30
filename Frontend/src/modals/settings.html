@@ -38,6 +38,15 @@
                     </div>
 
                     <div class="group">
+                        <label for="set-theme-pack">Theme pack
+                            <span class="help-tip" title="Drop theme ZIP files into the themes folder to make them available.">?</span>
+                        </label>
+                        <select id="set-theme-pack">
+                            <option value="default">Default</option>
+                        </select>
+                    </div>
+
+                    <div class="group">
                         <label for="set-language">Language
                             <span class="help-tip" title="UI language for labels and messages.">?</span>
                         </label>
@@ -104,6 +113,12 @@
                         </label>
                     </div>
 
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-fetch-on-focus" /> Fetch on app focus
+                            <span class="help-tip" title="Automatically runs git fetch when the app regains focus.">?</span>
+                        </label>
+                    </div>
+
                     
 
                     
@@ -164,12 +179,36 @@
                             <span class="help-tip" title="Show a placeholder message for binary files in the diff view.">?</span>
                         </label>
                     </div>
+
+                    <div class="group">
+                        <label for="set-merge-mode">Merge conflicts
+                            <span class="help-tip" title="Choose how conflicts are resolved from the diff view.">?</span>
+                        </label>
+                        <select id="set-merge-mode">
+                            <option value="builtin">Built-in merge editor</option>
+                            <option value="custom">Launch custom tool</option>
+                        </select>
+                    </div>
+
+                    <div class="group" data-merge-custom>
+                        <label for="set-merge-path">Custom merge tool path
+                            <span class="help-tip" title="Executable to launch when resolving conflicts.">?</span>
+                        </label>
+                        <input id="set-merge-path" type="text" placeholder="/usr/bin/tool" />
+                    </div>
+
+                    <div class="group" data-merge-custom>
+                        <label for="set-merge-args">Custom merge tool arguments
+                            <span class="help-tip" title="Use placeholders like {mine}, {theirs}, and {merged}.">?</span>
+                        </label>
+                        <input id="set-merge-args" type="text" placeholder="--arg {mine} {theirs} {merged}" />
+                    </div>
                 </form>
 
                 <!-- LFS -->
                 <form class="panel-form hidden" data-panel="lfs">
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-lfs-enabled" disabled /> Enable LFS integration
+                        <label class="checkbox"><input type="checkbox" id="set-lfs-enabled" /> Enable LFS integration
                             <span class="help-tip" title="Support Git LFS for large files (download pointers as real files).">?</span>
                         </label>
                     </div>
@@ -177,18 +216,18 @@
                         <label for="set-lfs-concurrency">Concurrent transfers
                             <span class="help-tip" title="Number of parallel LFS uploads/downloads.">?</span>
                         </label>
-                        <input id="set-lfs-concurrency" type="number" min="1" max="16" disabled />
+                        <input id="set-lfs-concurrency" type="number" min="1" max="16" />
                     </div>
                     <div class="group">
                         
                     </div>
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-lfs-require-lock" disabled /> Require lock before edit
+                        <label class="checkbox"><input type="checkbox" id="set-lfs-require-lock" /> Require lock before edit
                             <span class="help-tip" title="Prevent conflicting edits by requiring an LFS lock.">?</span>
                         </label>
                     </div>
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-lfs-bg-fetch" disabled /> Background fetch on checkout
+                        <label class="checkbox"><input type="checkbox" id="set-lfs-bg-fetch" /> Background fetch on checkout
                             <span class="help-tip" title="Fetch LFS objects automatically after switching branches.">?</span>
                         </label>
                     </div>

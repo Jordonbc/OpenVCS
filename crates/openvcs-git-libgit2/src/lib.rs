@@ -5,7 +5,7 @@ use log::{debug, error, info, trace, warn};
 use openvcs_core::*;
 use openvcs_core::backend_descriptor::{BackendDescriptor, BACKENDS};
 use openvcs_core::backend_id::BackendId;
-use openvcs_core::models::{Capabilities, OnEvent, StatusSummary, VcsEvent};
+use openvcs_core::models::{Capabilities, OnEvent, StatusSummary, VcsEvent, StashItem};
 
 pub const GIT_LIBGIT2_ID: BackendId = backend_id!("git-libgit2");
 
@@ -217,6 +217,12 @@ impl Vcs for GitLibGit2 {
         self.inner.hard_reset_head().map_err(Self::map_err)
     }
 
+    fn reset_soft_to(&self, _rev: &str) -> Result<()> {
+        // Not implemented yet for libgit2 backend.
+        warn!("git-libgit2: reset_soft_to requested but unsupported");
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
+
     fn log_commits(&self, q: &models::LogQuery) -> Result<Vec<models::CommitItem>> {
         trace!("git-libgit2: log_commits skip={} limit={}", q.skip, q.limit);
         self.inner.log_commits(q).map_err(Self::map_err)
@@ -295,4 +301,17 @@ impl Vcs for GitLibGit2 {
     fn merge_into_current(&self, _name: &str) -> Result<()> {
         Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
     }
+
+    // stash (unsupported in this backend for now)
+    fn stash_list(&self) -> Result<Vec<StashItem>> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn stash_push(&self, _message: &str, _include_untracked: bool, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn stash_apply(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn stash_pop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn stash_drop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn stash_show(&self, _selector: &str) -> Result<Vec<String>> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+
+    fn lfs_fetch(&self) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn lfs_pull(&self) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn lfs_prune(&self) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn lfs_track(&self, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
 }

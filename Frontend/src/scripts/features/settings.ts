@@ -2,9 +2,77 @@ import { TAURI } from '../lib/tauri';
 import { openModal, closeModal } from '../ui/modals';
 import { toKebab } from '../lib/dom';
 import { notify } from '../lib/notify';
-import type { GlobalSettings } from '../types';
+import { setTheme } from '../ui/layout';
+import { DEFAULT_THEME_ID, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
+import type { GlobalSettings, ThemeSummary } from '../types';
 
-export function openSettings(){ openModal('settings-modal'); }
+const THEME_PACK_HINT = 'Place theme ZIP files into the themes folder to enable them.';
+
+function themeOptionLabel(theme: ThemeSummary): string {
+    const version = theme.version?.trim();
+    return version ? `${theme.name} (${version})` : theme.name;
+}
+
+function themeTooltip(id: string): string {
+    const theme = getAvailableThemes().find((t) => t.id.toLowerCase() === id.toLowerCase());
+    if (!theme) return THEME_PACK_HINT;
+    const details: string[] = [];
+    if (theme.description) details.push(theme.description);
+    const meta = [theme.author, theme.version].filter(Boolean).join(' • ');
+    if (meta) details.push(meta);
+    return details.join('\n') || THEME_PACK_HINT;
+}
+
+async function rebuildThemePackOptions(
+    selectEl: HTMLSelectElement,
+    opts: { desiredId?: string | null; forceReload?: boolean } = {},
+) {
+    const { desiredId, forceReload } = opts;
+    if (forceReload) {
+        try {
+            await refreshAvailableThemes();
+        } catch {
+            // ignore refresh errors; fallback to whatever themes are cached
+        }
+    }
+
+    const themes = getAvailableThemes();
+    const desired = (desiredId ?? selectEl.value ?? DEFAULT_THEME_ID).toLowerCase();
+
+    selectEl.innerHTML = '';
+    for (const theme of themes) {
+        const opt = document.createElement('option');
+        opt.value = theme.id;
+        opt.textContent = themeOptionLabel(theme);
+        opt.title = themeTooltip(theme.id);
+        selectEl.appendChild(opt);
+    }
+
+    const match = themes.find((t) => t.id.toLowerCase() === desired);
+    selectEl.value = match ? match.id : DEFAULT_THEME_ID;
+    selectEl.title = themeTooltip(selectEl.value || DEFAULT_THEME_ID);
+}
+
+export function openSettings(section?: string){
+    openModal('settings-modal');
+    const modal = document.getElementById('settings-modal') as HTMLElement | null;
+    if (!modal) return;
+    if (section) activateSection(modal, section);
+    loadSettingsIntoForm(modal).catch(console.error);
+}
+
+function activateSection(modal: HTMLElement, section: string) {
+    const nav = modal.querySelector('#settings-nav');
+    const panels = modal.querySelector('#settings-panels');
+    if (!nav || !panels) return;
+    const btn = nav.querySelector<HTMLElement>(`[data-section="${section}"]`);
+    nav.querySelectorAll<HTMLElement>('.seg-btn').forEach(b => {
+        b.classList.toggle('active', b === btn);
+    });
+    panels.querySelectorAll<HTMLElement>('.panel-form').forEach(p => {
+        p.classList.toggle('hidden', p.getAttribute('data-panel') !== section);
+    });
+}
 
 export function wireSettings() {
     const modal = document.getElementById('settings-modal') as HTMLElement | null;
@@ -26,18 +94,76 @@ export function wireSettings() {
         nav.addEventListener('click', (e) => {
             const btn = (e.target as HTMLElement).closest('[data-section]') as HTMLElement | null;
             if (!btn) return;
-            nav.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b === btn));
-            const target = btn.getAttribute('data-section');
-            panels.querySelectorAll<HTMLElement>('.panel-form').forEach(p => {
-                p.classList.toggle('hidden', p.getAttribute('data-panel') !== target);
-            });
+            const target = btn.getAttribute('data-section') || undefined;
+            if (!target) return;
+            activateSection(modal, target);
         });
     }
 
+    const lfsToggle = modal.querySelector<HTMLInputElement>('#set-lfs-enabled');
+    const lfsDependents = ['#set-lfs-concurrency', '#set-lfs-require-lock', '#set-lfs-bg-fetch']
+        .map(sel => modal.querySelector<HTMLInputElement>(sel))
+        .filter((el): el is HTMLInputElement => !!el);
+    const updateLfsDependentState = () => {
+        const enabled = !!lfsToggle?.checked;
+        lfsDependents.forEach(input => input.disabled = !enabled);
+    };
+    updateLfsDependentState();
+    lfsToggle?.addEventListener('change', updateLfsDependentState);
+
     const setThemeSel = modal.querySelector('#set-theme') as HTMLSelectElement | null;
+    const setThemePackSel = modal.querySelector('#set-theme-pack') as HTMLSelectElement | null;
+    const mergeModeSel = modal.querySelector('#set-merge-mode') as HTMLSelectElement | null;
+    const mergeCustomGroups = Array.from(modal.querySelectorAll<HTMLElement>('[data-merge-custom]'));
+
+    const updateMergeCustomState = () => {
+        const custom = (mergeModeSel?.value || 'builtin') === 'custom';
+        mergeCustomGroups.forEach((group) => {
+            group.classList.toggle('disabled', !custom);
+            group.querySelectorAll('input, textarea, select').forEach((field) => {
+                (field as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).disabled = !custom;
+            });
+        });
+    };
+    updateMergeCustomState();
+    mergeModeSel?.addEventListener('change', updateMergeCustomState);
+
+    const updateThemePackTitle = () => {
+        if (!setThemePackSel) return;
+        const val = setThemePackSel.value || DEFAULT_THEME_ID;
+        setThemePackSel.title = themeTooltip(val);
+    };
+
+    let themePackRefreshInFlight = false;
+    setThemePackSel?.addEventListener('pointerdown', async () => {
+        if (!setThemePackSel || themePackRefreshInFlight) return;
+        themePackRefreshInFlight = true;
+        try {
+            await rebuildThemePackOptions(setThemePackSel, {
+                desiredId: setThemePackSel.value,
+                forceReload: true,
+            });
+        } finally {
+            themePackRefreshInFlight = false;
+        }
+    });
+
     setThemeSel?.addEventListener('change', () => {
-        const v = setThemeSel.value;
-        document.documentElement.setAttribute('data-theme', v === 'dark' ? 'dark' : v === 'light' ? 'light' : 'system');
+        const v = (setThemeSel.value as ('system'|'dark'|'light')) || 'system';
+        setTheme(v);
+    });
+
+    setThemePackSel?.addEventListener('change', async () => {
+        if (!setThemePackSel) return;
+        const choice = setThemePackSel.value || DEFAULT_THEME_ID;
+        try {
+            await selectThemePack(choice);
+        } catch {
+            setThemePackSel.value = DEFAULT_THEME_ID;
+            try { await selectThemePack(DEFAULT_THEME_ID); } catch {}
+        } finally {
+            updateThemePackTitle();
+        }
     });
 
     const settingsSave  = modal.querySelector('#settings-save')  as HTMLButtonElement | null;
@@ -61,9 +187,13 @@ export function wireSettings() {
                 }
             }
 
+            modal.dataset.currentCfg = JSON.stringify(next);
+
             // Apply visual prefs immediately (no restart): theme, tab width, UI scale, mono font
             const theme = next.general?.theme || 'system';
-            document.documentElement.setAttribute('data-theme', theme);
+            const pack = next.general?.theme_pack || DEFAULT_THEME_ID;
+            try { await selectThemePack(pack, { silent: true, mode: theme }); } catch {}
+            setTheme(theme);
             try {
                 const root = document.documentElement;
                 const tabw = Number(next?.diff?.tab_width ?? 4);
@@ -85,8 +215,8 @@ export function wireSettings() {
             if (!TAURI.has) return;
             const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
 
-            cur.general = { theme: 'system', language: 'system', default_backend: 'git', update_channel: 'stable', reopen_last_repos: true, checks_on_launch: true, telemetry: false, crash_reports: false };
-            cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, allow_hooks: 'ask', respect_core_autocrlf: true };
+            cur.general = { theme: 'system', theme_pack: DEFAULT_THEME_ID, language: 'system', default_backend: 'git', update_channel: 'stable', reopen_last_repos: true, checks_on_launch: true, telemetry: false, crash_reports: false };
+            cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, fetch_on_focus: true, allow_hooks: 'ask', respect_core_autocrlf: true };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
             cur.performance = { progressive_render: true, gpu_accel: true };
@@ -95,6 +225,8 @@ export function wireSettings() {
 
             await TAURI.invoke('set_global_settings', { cfg: cur });
             await loadSettingsIntoForm(modal);
+            try { await selectThemePack(DEFAULT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
+            setTheme('system');
             notify('Defaults restored');
         } catch { notify('Failed to restore defaults'); }
     });
@@ -112,6 +244,7 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
     o.general = {
         ...o.general,
         theme: (get<HTMLSelectElement>('#set-theme')?.value) as any,
+        theme_pack: get<HTMLSelectElement>('#set-theme-pack')?.value || DEFAULT_THEME_ID,
         language: get<HTMLSelectElement>('#set-language')?.value,
         default_backend: (get<HTMLSelectElement>('#set-default-backend')?.value || 'git') as any,
         update_channel: (() => { const v = get<HTMLSelectElement>('#set-update-channel')?.value; return v === 'beta' ? 'nightly' : v; })(),
@@ -123,6 +256,7 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         ...o.git,
         backend: get<HTMLSelectElement>('#set-git-backend')?.value as any,
         prune_on_fetch: !!get<HTMLInputElement>('#set-prune-on-fetch')?.checked,
+        fetch_on_focus: !!get<HTMLInputElement>('#set-fetch-on-focus')?.checked,
         allow_hooks: get<HTMLSelectElement>('#set-hook-policy')?.value,
         respect_core_autocrlf: !!get<HTMLInputElement>('#set-respect-autocrlf')?.checked,
     };
@@ -134,12 +268,24 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         max_file_size_mb: Number(get<HTMLInputElement>('#set-max-file-size-mb')?.value ?? 0),
         intraline: !!get<HTMLInputElement>('#set-intraline')?.checked,
         show_binary_placeholders: !!get<HTMLInputElement>('#set-binary-placeholders')?.checked,
+        external_merge: (() => {
+            const mode = get<HTMLSelectElement>('#set-merge-mode')?.value || 'builtin';
+            const path = (get<HTMLInputElement>('#set-merge-path')?.value || '').trim();
+            const args = get<HTMLInputElement>('#set-merge-args')?.value || '';
+            return {
+                enabled: mode === 'custom' && path.length > 0,
+                path,
+                args,
+            };
+        })(),
     };
 
+    const rawConc = Number(get<HTMLInputElement>('#set-lfs-concurrency')?.value ?? 0);
+    const conc = rawConc && isFinite(rawConc) ? Math.max(1, Math.min(16, rawConc)) : 4;
     o.lfs = {
         ...o.lfs,
         enabled: !!get<HTMLInputElement>('#set-lfs-enabled')?.checked,
-        concurrency: Number(get<HTMLInputElement>('#set-lfs-concurrency')?.value ?? 0),
+        concurrency: conc,
         require_lock_before_edit: !!get<HTMLInputElement>('#set-lfs-require-lock')?.checked,
         background_fetch_on_checkout: !!get<HTMLInputElement>('#set-lfs-bg-fetch')?.checked,
     };
@@ -182,6 +328,15 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
 
     m.dataset.currentCfg = JSON.stringify(cfg);
 
+    const themePackSel = get<HTMLSelectElement>('#set-theme-pack');
+    if (themePackSel) {
+        const desired = cfg.general?.theme_pack;
+        await rebuildThemePackOptions(themePackSel, {
+            desiredId: typeof desired === 'string' ? desired : undefined,
+            forceReload: true,
+        });
+    }
+
     const elTheme = get<HTMLSelectElement>('#set-theme'); if (elTheme) elTheme.value = toKebab(cfg.general?.theme);
     const elLang  = get<HTMLSelectElement>('#set-language'); if (elLang) elLang.value = toKebab(cfg.general?.language);
     const elDefBe = get<HTMLSelectElement>('#set-default-backend'); if (elDefBe) elDefBe.value = toKebab(cfg.general?.default_backend || 'git');
@@ -200,6 +355,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
         elGb.value = backend === 'libgit2' ? 'libgit2' : 'system';
     }
     const elPr = get<HTMLInputElement>('#set-prune-on-fetch'); if (elPr) elPr.checked = !!cfg.git?.prune_on_fetch;
+    const elFoF = get<HTMLInputElement>('#set-fetch-on-focus'); if (elFoF) elFoF.checked = !!cfg.git?.fetch_on_focus;
     
     const elHp = get<HTMLSelectElement>('#set-hook-policy'); if (elHp) elHp.value = toKebab(cfg.git?.allow_hooks);
     const elRc = get<HTMLInputElement>('#set-respect-autocrlf'); if (elRc) elRc.checked = !!cfg.git?.respect_core_autocrlf;
@@ -209,12 +365,23 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elMx = get<HTMLInputElement>('#set-max-file-size-mb'); if (elMx) elMx.value = String(cfg.diff?.max_file_size_mb ?? 0);
     const elIn = get<HTMLInputElement>('#set-intraline'); if (elIn) elIn.checked = !!cfg.diff?.intraline;
     const elBp = get<HTMLInputElement>('#set-binary-placeholders'); if (elBp) elBp.checked = !!cfg.diff?.show_binary_placeholders;
+    const elMm = get<HTMLSelectElement>('#set-merge-mode');
+    const elMp = get<HTMLInputElement>('#set-merge-path');
+    const elMa = get<HTMLInputElement>('#set-merge-args');
+    if (elMp) elMp.value = cfg.diff?.external_merge?.path ?? '';
+    if (elMa) elMa.value = cfg.diff?.external_merge?.args ?? '';
+    if (elMm) {
+        const ext = cfg.diff?.external_merge;
+        elMm.value = ext && ext.enabled && (ext.path || '').trim().length > 0 ? 'custom' : 'builtin';
+        elMm.dispatchEvent(new Event('change'));
+    }
 
     const elLe = get<HTMLInputElement>('#set-lfs-enabled'); if (elLe) elLe.checked = !!cfg.lfs?.enabled;
     const elLc = get<HTMLInputElement>('#set-lfs-concurrency'); if (elLc) elLc.value = String(cfg.lfs?.concurrency ?? 0);
-    
+
     const elLl = get<HTMLInputElement>('#set-lfs-require-lock'); if (elLl) elLl.checked = !!cfg.lfs?.require_lock_before_edit;
     const elBg = get<HTMLInputElement>('#set-lfs-bg-fetch'); if (elBg) elBg.checked = !!cfg.lfs?.background_fetch_on_checkout;
+    elLe?.dispatchEvent(new Event('change'));
 
     const elPrg= get<HTMLInputElement>('#set-progressive-render'); if (elPrg) elPrg.checked = !!cfg.performance?.progressive_render;
     const elGpu= get<HTMLInputElement>('#set-gpu-accel'); if (elGpu) elGpu.checked = !!cfg.performance?.gpu_accel;

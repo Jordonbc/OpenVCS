@@ -16,22 +16,40 @@ export interface FileStatus {
     hunks?: string[];
 }
 
+export interface ConflictDetails {
+    path: string;
+    ours?: string | null;
+    theirs?: string | null;
+    base?: string | null;
+    binary?: boolean;
+    lfs_pointer?: boolean;
+}
+
 export interface CommitItem {
     id: string;
     msg?: string;
     meta?: string;
     author?: string;
+    incoming?: boolean;
+    remoteRef?: string;
+}
+
+export interface StashItem {
+    selector: string; // e.g., "stash@{0}"
+    msg?: string;
+    meta?: string;    // date string
 }
 
 export interface AppPrefs {
     theme: 'dark' | 'light';
     leftW: number;   // px
-    tab: 'changes' | 'history';
+    tab: 'changes' | 'history' | 'stash';
 }
 
 export interface GlobalSettings {
     general?: {
         theme?: 'system'|'dark'|'light';
+        theme_pack?: string;
         language?: string;
         default_backend?: 'git'|string;
         update_channel?: string;
@@ -44,6 +62,7 @@ export interface GlobalSettings {
         backend?: 'system'|'libgit2'|string;
         default_branch?: string;
         prune_on_fetch?: boolean;
+        fetch_on_focus?: boolean;
         allow_hooks?: string;
         respect_core_autocrlf?: boolean;
     };
@@ -79,6 +98,30 @@ export interface GlobalSettings {
         live_viewer?: boolean;
         retain_archives?: number;
     };
+}
+
+export interface ThemeSummary {
+    id: string;
+    name: string;
+    description?: string;
+    version?: string;
+    author?: string;
+    source?: 'built-in' | 'user' | string;
+}
+
+export interface ThemePayload {
+    summary: ThemeSummary;
+    styles: {
+        global?: string | null;
+        system?: string | null;
+        light?: string | null;
+        dark?: string | null;
+    };
+    markup?: {
+        head?: string | null;
+        body?: string | null;
+    };
+    scripts?: string[];
 }
 
 export interface RepoSettings {

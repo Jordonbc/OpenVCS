@@ -12,6 +12,8 @@
 name: "CodeQL Advanced"
 
 on:
+  push:
+    branches: [ "Dev" ]
   pull_request:
     branches: [ "Dev" ]
   schedule:
@@ -46,12 +48,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         with:
           fetch-depth: 0
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@e12f0178983d466f2f6028f5cc7a6d786fd97f4b # v3
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -60,7 +62,11 @@ jobs:
 
       # If you ever switch a language to build-mode: manual, add the build here.
 
+      - name: Autobuild
+        if: matrix.build-mode == 'autobuild'
+        uses: github/codeql-action/autobuild@e12f0178983d466f2f6028f5cc7a6d786fd97f4b # v3
+
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@e12f0178983d466f2f6028f5cc7a6d786fd97f4b # v3
         with:
           category: "/language:${{ matrix.language }}"

@@ -34,6 +34,25 @@ pub struct FileEntry {
     pub hunks: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ConflictDetails {
+    pub path: String,
+    pub ours: Option<String>,
+    pub theirs: Option<String>,
+    pub base: Option<String>,
+    #[serde(default)]
+    pub binary: bool,
+    #[serde(default)]
+    pub lfs_pointer: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConflictSide {
+    Ours,
+    Theirs,
+}
+
 /// Flat status summary plus file list, suitable for your UI.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
 pub struct StatusPayload {
@@ -49,6 +68,17 @@ pub struct CommitItem {
     pub msg: String,
     pub meta: String, // e.g., date or short info
     pub author: String,
+}
+
+/// A single stash entry (backend-agnostic)
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct StashItem {
+    /// Selector like `stash@{0}` that can be used in commands.
+    pub selector: String,
+    /// Short message/subject.
+    pub msg: String,
+    /// Free-form metadata (date, branch, etc.).
+    pub meta: String,
 }
 
 /// Query for commit history. Keep this VCS-agnostic and stable.
@@ -76,6 +106,30 @@ pub struct LogQuery {
 impl LogQuery {
     pub fn head(limit: u32) -> Self {
         Self { limit, ..Default::default() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn log_query_head_sets_limit_and_defaults_rest() {
+        let query = LogQuery::head(25);
+        assert_eq!(query.limit, 25);
+        assert!(query.rev.is_none());
+        assert!(query.path.is_none());
+        assert_eq!(query.skip, 0);
+        assert!(!query.topo_order);
+    }
+
+    #[test]
+    fn status_summary_default_is_zeroed() {
+        let summary = StatusSummary::default();
+        assert_eq!(summary.untracked, 0);
+        assert_eq!(summary.modified, 0);
+        assert_eq!(summary.staged, 0);
+        assert_eq!(summary.conflicted, 0);
     }
 }
 

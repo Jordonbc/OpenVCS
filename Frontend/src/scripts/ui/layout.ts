@@ -2,6 +2,7 @@ import { qs, qsa, setText } from '../lib/dom';
 import { prefs, savePrefs, state, hasRepo, hasChanges } from '../state/state';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
+import { setAppearanceMode } from '../themes';
 
 const workGrid = qs<HTMLElement>('.work');
 const resizer  = qs<HTMLElement>('#resizer');
@@ -15,10 +16,16 @@ const repoBranchEl = qs<HTMLElement>('#repo-branch');
 const aheadBehindEl = qs<HTMLElement>('#ahead-behind');
 
 export function setTheme(theme: 'dark'|'light'|'system') {
-    document.documentElement.setAttribute('data-theme', theme);
+    const root = document.documentElement;
+    if (theme === 'system') {
+        root.removeAttribute('data-theme');
+    } else {
+        root.setAttribute('data-theme', theme);
+    }
     // (optional) mirror into settings select if present
     const sel = document.querySelector<HTMLSelectElement>('#settings-modal #set-theme');
     if (sel) sel.value = theme;
+    setAppearanceMode(theme);
     // Track effective theme in-memory (native settings persist it)
     prefs.theme = theme === 'system'
         ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
@@ -45,14 +52,18 @@ export function toggleTheme() {
     }
 }
 
-export function setTab(tab: 'changes'|'history') {
+export function setTab(tab: 'changes'|'history'|'stash') {
     prefs.tab = tab; savePrefs();
     tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    if (commitBox) commitBox.style.display = tab === 'history' ? 'none' : 'grid';
-    if (diffHeadPath) setText(diffHeadPath, tab === 'history' ? 'Commit details' : 'Select a file to view changes');
+    const hideCommit = (tab === 'history' || tab === 'stash');
+    if (commitBox) commitBox.style.display = hideCommit ? 'none' : 'grid';
+    if (diffHeadPath) setText(diffHeadPath,
+        tab === 'history' ? 'Commit details'
+      : tab === 'stash'   ? 'Stash details'
+                          : 'Select a file to view changes');
 }
 
-export function bindTabs(onChange: (t: 'changes'|'history') => void) {
+export function bindTabs(onChange: (t: 'changes'|'history'|'stash') => void) {
     tabs.forEach(btn => btn.addEventListener('click', () => onChange((btn.dataset.tab as any) ?? 'changes')));
 }
 
@@ -118,6 +129,8 @@ export function refreshRepoActions() {
     const summary  = qs<HTMLInputElement>('#commit-summary');
     const desc     = qs<HTMLTextAreaElement>('#commit-desc');
     const commit   = qs<HTMLButtonElement>('#commit-btn');
+    const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
+    const undoLeftWrap = document.getElementById('left-foot') as HTMLElement | null;
 
     // Repo-scoped actions
     if (fetchBtn)  fetchBtn.disabled  = !repoOn;
@@ -128,13 +141,22 @@ export function refreshRepoActions() {
     if (summary) summary.disabled = !(repoOn && changesOn);
     if (desc)    desc.disabled    = !(repoOn && changesOn);
 
-    // Commit button requires: repo + changes + non-empty summary + explicit selection (files or hunks)
+    // Commit button requires: repo + changes + non-empty summary + explicit selection (files, hunks, or per-line)
     const summaryFilled = (summary?.value.trim().length ?? 0) > 0;
-    // Require either selected hunks or selected files (commit UI selection)
+    // Require either selected hunks, selected lines, or selected files (commit UI selection)
     const hunksSelected = Object.keys((state as any).selectedHunksByFile || {})
         .some((k) => Array.isArray((state as any).selectedHunksByFile[k]) && (state as any).selectedHunksByFile[k].length > 0);
+    const linesSelected = Object.keys((state as any).selectedLinesByFile || {})
+        .some((k) => !!(state as any).selectedLinesByFile[k] && Object.keys((state as any).selectedLinesByFile[k] || {}).length > 0);
     const filesSelected = !!((state as any).selectedFiles && (state as any).selectedFiles.size > 0);
-    if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && (hunksSelected || filesSelected));
+    if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && (hunksSelected || linesSelected || filesSelected));
+
+    // Left-panel undo visibility (under files list)
+    const ahead = Number((state as any).ahead || 0);
+    const showUndo = repoOn && ahead > 0 && prefs.tab === 'changes';
+    const stashMode = undoLeftWrap?.dataset.mode === 'stash';
+    if (undoLeftWrap) undoLeftWrap.classList.toggle('show', stashMode || showUndo);
+    if (undoLeftBtn) (undoLeftBtn as HTMLButtonElement).disabled = !showUndo;
 
     // Optional hygiene: if changes disappear, clear any stale text so the next enablement starts clean
     if (!changesOn) {

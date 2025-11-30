@@ -37,14 +37,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
         with:
           fetch-depth: 0
           lfs: true
 
       # ---------- Frontend: lint + typecheck ----------
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -64,10 +64,10 @@ jobs:
 
       # ---------- Backend: cargo check ----------
       - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
 
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
 
       - name: Install Linux build deps
         if: runner.os == 'Linux'
@@ -83,7 +83,7 @@ jobs:
           pkg-config --modversion javascriptcoregtk-4.1
 
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
 
       - name: Cargo check
         run: cargo check

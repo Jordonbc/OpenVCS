@@ -1,10 +1,22 @@
-# OpenVCS
+<p align="center">
+  <img src="docs/images/logos/OpenVCS-256.png" alt="OpenVCS logo" width="220">
+</p>
 
 **The open‑source, fully customisable VCS client.**
 
 OpenVCS is a new and upcoming cross‑platform version control client built with [Tauri](https://tauri.app/), [Rust](https://www.rust-lang.org/), and a modern [TypeScript](https://www.typescriptlang.org/) + [Vite](https://vitejs.dev/) frontend. It aims to be the **all‑in‑one solution** for version control: clean, fast, and extensible. Features are actively being explored and are **not yet finalised**.
 
 > **Scope note:** The first main release focuses on **Git** to keep the scope tight. The long‑term vision is to support **all major VCS systems** through a backend/plugin architecture (e.g., Mercurial, SVN, Perforce, Fossil, etc.).
+
+## Quick Install (AppImage)
+
+OpenVCS provides a convenience script that fetches the latest AppImage, stores it at `~/Applications/openvcs.AppImage`, and creates a desktop entry so you can launch it from your app menu. Run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash
+```
+
+The script targets Linux, leaves existing configuration untouched, and can be re-run to pull the newest release. To install a pre-release, pass the flag through to the script: `curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash -s -- --prerelease`. To uninstall: `curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash -s -- --uninstall`. Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 
 ---
 
@@ -20,7 +32,7 @@ OpenVCS is a new and upcoming cross‑platform version control client built with
 
 - 🐧 **Linux‑first** (primary target)
 - 🪟 **Windows** builds supported
-- 🍏 **macOS** planned/experimental (community interest welcome)
+- 🍏 **macOS** not currently planned (community interest welcome)
 
 ## Features (Planned & In‑Progress)
 
@@ -63,6 +75,21 @@ OpenVCS is a new and upcoming cross‑platform version control client built with
 - **Git** installation (system Git is currently required)
 
 ### Installation
+
+For the automated installer, see [Quick Install (AppImage)](#quick-install-appimage).
+
+#### Manual AppImage download
+
+Prefer a portable setup? Download the latest AppImage from the GitHub releases page (e.g. https://github.com/Jordonbc/OpenVCS/releases/latest), make it executable, and run it directly:
+
+```bash
+chmod +x OpenVCS-*.AppImage
+./OpenVCS-*.AppImage
+```
+
+Store the AppImage wherever you like; no installation step is required.
+
+#### Build from source
 
 Clone the repository:
 

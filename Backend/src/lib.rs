@@ -5,13 +5,13 @@ use tauri_plugin_updater::UpdaterExt;
 
 mod utilities;
 mod tauri_commands;
-mod menus;
 mod workarounds;
 mod state;
 mod validate;
 mod settings;
 mod repo_settings;
 mod logging;
+mod themes;
 
 #[cfg(feature = "with-git")]
 #[allow(unused_imports)]
@@ -37,7 +37,7 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
     if let Some(path) = recents.into_iter().find(|p| p.exists()) {
         let backend: BackendId = match app_config.git.backend {
             settings::GitBackend::System => GIT_SYSTEM_ID,
-            settings::GitBackend::Libgit2 => backend_id!("libgit2"),
+            settings::GitBackend::Libgit2 => backend_id!("git-libgit2"),
         };
 
         let path_str = path.to_string_lossy().to_string();
@@ -79,8 +79,6 @@ pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::new_with_config())
         .setup(|app| {
-            menus::build_and_attach_menu(app)?;
-
             // On startup, optionally reopen the last repository if enabled in settings.
             try_reopen_last_repo(&app.handle());
 
@@ -105,8 +103,6 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(handle_window_event::<_>)
-        .on_menu_event(menus::handle_menu_event::<_>)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -122,6 +118,8 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::show_licenses,
         tauri_commands::browse_directory,
         tauri_commands::add_repo,
+        tauri_commands::list_backends_cmd,
+        tauri_commands::set_backend_cmd,
         tauri_commands::validate_git_url,
         tauri_commands::validate_add_path,
         tauri_commands::validate_clone_input,
@@ -130,6 +128,12 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_list_branches,
         tauri_commands::git_status,
         tauri_commands::git_log,
+        tauri_commands::git_stash_list,
+        tauri_commands::git_stash_push,
+        tauri_commands::git_stash_apply,
+        tauri_commands::git_stash_pop,
+        tauri_commands::git_stash_drop,
+        tauri_commands::git_stash_show,
         tauri_commands::git_head_status,
         tauri_commands::git_checkout_branch,
         tauri_commands::git_create_branch,
@@ -139,6 +143,10 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::open_repo,
         tauri_commands::clone_repo,
         tauri_commands::git_diff_file,
+        tauri_commands::git_conflict_details,
+        tauri_commands::git_resolve_conflict_side,
+        tauri_commands::git_save_merge_result,
+        tauri_commands::git_launch_merge_tool,
         tauri_commands::git_delete_branch,
         tauri_commands::git_merge_branch,
         tauri_commands::git_diff_commit,
@@ -149,22 +157,25 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_discard_paths,
         tauri_commands::git_discard_patch,
         tauri_commands::git_fetch,
+        tauri_commands::git_fetch_all,
         tauri_commands::git_pull,
         tauri_commands::git_push,
+        tauri_commands::git_undo_since_push,
+        tauri_commands::git_undo_to_commit,
+        tauri_commands::git_lfs_fetch_all,
+        tauri_commands::git_lfs_pull,
+        tauri_commands::git_lfs_prune,
+        tauri_commands::git_lfs_track_paths,
+        tauri_commands::list_themes,
+        tauri_commands::load_theme,
         tauri_commands::get_global_settings,
         tauri_commands::set_global_settings,
         tauri_commands::get_repo_settings,
         tauri_commands::set_repo_settings,
         tauri_commands::updater_install_now,
+        tauri_commands::open_repo_dotfile,
+        tauri_commands::open_docs,
+        tauri_commands::exit_app,
+        tauri_commands::check_for_updates,
     ]
-}
-
-fn handle_window_event<R: tauri::Runtime>(win: &tauri::Window<R>, event: &tauri::WindowEvent) {
-    match event {
-        tauri::WindowEvent::Focused(true) => {
-            // Fire a custom event to the frontend
-            let _ = win.emit("app:focus", ());
-        }
-        _ => {}
-    }
 }

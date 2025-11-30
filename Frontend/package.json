@@ -11,8 +11,8 @@
     "preview": "vite preview --strictPort --port 1420"
   },
   "devDependencies": {
-    "@types/node": "^24.3.1",
-    "typescript": "^5.9.2",
-    "vite": "^7.1.5"
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.4"
   }
 }

@@ -1,6 +1,5 @@
 use std::{fs, io};
 use std::path::PathBuf;
-use std::time::Duration;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +17,6 @@ pub struct AppConfig {
     #[serde(default)] pub advanced: Advanced,
     #[serde(default)] pub experimental: Experimental,
     #[serde(default)] pub logging: Logging,
-    #[serde(default)] pub network: Network,
 }
 
 impl Default for AppConfig {
@@ -36,7 +34,6 @@ impl Default for AppConfig {
             advanced: Default::default(),
             experimental: Default::default(),
             logging: Default::default(),
-            network: Default::default(),
         }
     }
 }
@@ -44,6 +41,7 @@ impl Default for AppConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct General {
     #[serde(default)] pub theme: Theme,
+    #[serde(default = "default_theme_pack")] pub theme_pack: String,
     #[serde(default)] pub language: Language,
     #[serde(default)] pub default_backend: DefaultBackend,
     #[serde(default)] pub update_channel: UpdateChannel,
@@ -56,6 +54,7 @@ impl Default for General {
     fn default() -> Self {
         Self {
             theme: Theme::System,
+            theme_pack: default_theme_pack(),
             language: Language::System,
             default_backend: DefaultBackend::Git,
             update_channel: UpdateChannel::Stable,
@@ -67,12 +66,15 @@ impl Default for General {
     }
 }
 
+fn default_theme_pack() -> String { "default".to_string() }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Git {
     #[serde(default)] pub backend: GitBackend,
     /// Default branch name used when creating new repos or inferring defaults
     #[serde(default)] pub default_branch: String,
     #[serde(default)] pub prune_on_fetch: bool,
+    #[serde(default)] pub fetch_on_focus: bool,
     #[serde(default)] pub allow_hooks: HookPolicy,
     #[serde(default)] pub respect_core_autocrlf: bool,
 }
@@ -82,6 +84,7 @@ impl Default for Git {
             backend: GitBackend::System,
             default_branch: "main".into(),
             prune_on_fetch: true,
+            fetch_on_focus: true,
             allow_hooks: HookPolicy::Ask,
             respect_core_autocrlf: true,
         }
@@ -263,22 +266,6 @@ impl Default for Logging {
 
 fn default_retain_archives() -> u32 { 10 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Network {
-    #[serde(default)] pub http_low_speed_time_secs: u64,
-    #[serde(default)] pub http_low_speed_limit: u32, // bytes/sec
-    #[serde(default)] pub extra_ssl_roots: Vec<PathBuf>,
-}
-impl Default for Network {
-    fn default() -> Self {
-        Self {
-            http_low_speed_time_secs: 30,
-            http_low_speed_limit: 1024,
-            extra_ssl_roots: vec![],
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum Theme { Light, Dark, System }
@@ -376,15 +363,6 @@ pub enum LogLevel { Trace, Debug, Info, Warn, Error }
 impl Default for LogLevel { fn default() -> Self { LogLevel::Info } }
 
 //
-// ──────────────────────────────────────────────────────────────────────────────
-// Convenience
-// ──────────────────────────────────────────────────────────────────────────────
-impl Network {
-    pub fn http_low_speed_time(&self) -> Duration {
-        Duration::from_secs(self.http_low_speed_time_secs)
-    }
-}
-
 impl AppConfig {
     /// ~/.config/openvcs/openvcs.conf (XDG/macOS/Windows aware)
     pub fn path() -> PathBuf {
@@ -432,6 +410,9 @@ impl AppConfig {
     /// Clamp and normalize values so hand edits can’t break the app.
     pub fn validate(&mut self) {
         // General: nothing to clamp right now.
+        if self.general.theme_pack.trim().is_empty() {
+            self.general.theme_pack = default_theme_pack();
+        }
 
         // Git
 
@@ -443,12 +424,6 @@ impl AppConfig {
         self.lfs.concurrency = self.lfs.concurrency.clamp(1, 16);
 
         // Performance
-
-        // Network
-        self.network.http_low_speed_time_secs =
-            self.network.http_low_speed_time_secs.clamp(1, 600);
-        self.network.http_low_speed_limit =
-            self.network.http_low_speed_limit.clamp(128, 10_000_000);
 
         // UX
         self.ux.recents_limit = self.ux.recents_limit.clamp(1, 100);
