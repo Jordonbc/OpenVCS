@@ -153,7 +153,16 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     padding:.6rem .8rem; border-bottom:1px solid var(--border);
     flex:0 0 auto;
 }
+.diff-head .path{
+    /* Prevent long paths from wrapping and shifting the layout when switching files */
+    flex:1 1 auto;
+    min-width:0;
+    overflow:hidden;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+}
 .path{ font-weight:600; }
+.diff-head .meta{ flex-shrink:0; white-space:nowrap; }
 .meta{ color:var(--muted); font-size:.85rem; display:flex; gap:.6rem; }
 
 /* Diff body (scrolls) */
