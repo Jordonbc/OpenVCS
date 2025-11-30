@@ -5,7 +5,6 @@ use tauri_plugin_updater::UpdaterExt;
 
 mod utilities;
 mod tauri_commands;
-mod menus;
 mod workarounds;
 mod state;
 mod validate;
@@ -80,8 +79,6 @@ pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::new_with_config())
         .setup(|app| {
-            menus::build_and_attach_menu(app)?;
-
             // On startup, optionally reopen the last repository if enabled in settings.
             try_reopen_last_repo(&app.handle());
 
@@ -106,8 +103,6 @@ pub fn run() {
 
             Ok(())
         })
-        .on_window_event(handle_window_event::<_>)
-        .on_menu_event(menus::handle_menu_event::<_>)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -178,9 +173,9 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::get_repo_settings,
         tauri_commands::set_repo_settings,
         tauri_commands::updater_install_now,
+        tauri_commands::open_repo_dotfile,
+        tauri_commands::open_docs,
+        tauri_commands::exit_app,
+        tauri_commands::check_for_updates,
     ]
-}
-
-fn handle_window_event<R: tauri::Runtime>(_win: &tauri::Window<R>, _event: &tauri::WindowEvent) {
-    // Frontend now handles focus via window/visibility events; no backend emit needed.
 }

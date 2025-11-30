@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 use log::{error, info, warn};
 use tauri::{async_runtime, Emitter, Manager, Runtime, State, Window};
+use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_updater::UpdaterExt;
 
 use openvcs_core::backend_descriptor::get_backend;
 use openvcs_core::{backend_id, BackendId, Repo};
@@ -13,6 +15,8 @@ use crate::utilities::utilities;
 use crate::validate;
 
 use super::progress_bridge;
+
+const WIKI_URL: &str = "https://github.com/jordonbc/OpenVCS/wiki";
 
 #[derive(serde::Serialize)]
 struct RepoSelectedPayload {
@@ -198,6 +202,65 @@ pub async fn open_repo<R: Runtime>(
 ) -> Result<(), String> {
     let be = backend_id.unwrap_or_else(|| backend_id!("git-system"));
     add_repo_internal(window, state, path, be).await
+}
+
+#[tauri::command]
+pub fn open_repo_dotfile<R: Runtime>(
+    window: Window<R>,
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<(), String> {
+    let repo_state = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
+    let mut path = repo_state.inner().workdir().to_path_buf();
+    path.push(name);
+
+    if !path.exists() {
+        fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&path)
+            .map_err(|e| format!("Unable to create file: {e}"))?;
+    }
+
+    window
+        .app_handle()
+        .opener()
+        .open_path(path.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|e| format!("Failed to open file: {e}"))
+}
+
+#[tauri::command]
+pub fn open_docs<R: Runtime>(window: Window<R>) -> Result<(), String> {
+    window
+        .app_handle()
+        .opener()
+        .open_url(WIKI_URL, None::<&str>)
+        .map_err(|e| format!("Failed to open docs: {e}"))
+}
+
+#[tauri::command]
+pub fn exit_app<R: Runtime>(window: Window<R>) -> Result<(), String> {
+    window.app_handle().exit(0);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn check_for_updates<R: Runtime>(window: Window<R>) -> Result<bool, String> {
+    let app_handle = window.app_handle();
+    match app_handle.updater() {
+        Ok(updater) => match updater.check().await {
+            Ok(Some(_u)) => {
+                let _ = app_handle.emit(
+                    "ui:update-available",
+                    serde_json::json!({"source":"manual"}),
+                );
+                Ok(true)
+            }
+            Ok(None) => Ok(false),
+            Err(_) => Err("Update check failed".into()),
+        },
+        Err(_) => Err("Updater unavailable".into()),
+    }
 }
 
 fn infer_repo_dir_from_url(url: &str) -> String {

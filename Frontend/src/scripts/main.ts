@@ -1,21 +1,23 @@
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
-import { prefs, savePrefs, state } from './state/state';
+import { prefs } from './state/state';
 import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
     bindLayoutActionState
 } from './ui/layout';
+import { initMenubar } from './ui/menubar';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
 import { bindRepoHotkeys, bindFilter, renderList, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash } from './features/repo';
 import { bindBranchUI } from './features/branches';
 import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
-import { openModal } from './ui/modals';
-import { openSettings, loadSettingsIntoForm } from './features/settings';
+import { openSettings } from './features/settings';
 import { showUpdateDialog } from './features/update';
 import { openRepoSettings } from './features/repoSettings';
 import { DEFAULT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
+
+const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
 
 // Title bar actions
 const fetchBtn = qs<HTMLButtonElement>('#fetch-btn');
@@ -67,8 +69,8 @@ function boot() {
     bindCommit();
     bindCommandSheet();
     bindBranchUI();
-    bindLayoutActionState()
-    bindRepoHotkeys(commitBtn || null, openSheet);
+    bindLayoutActionState();
+    bindRepoHotkeys(commitBtn || null, openSheet, fetchOnly);
 
     function statusController() {
         const statusEl = document.getElementById('status');
@@ -103,6 +105,11 @@ function boot() {
         return success;
     }
 
+    async function fetchOnly() {
+        const ctl = statusController();
+        await fetchAllRemotesOnly({ status: ctl });
+    }
+
     async function fetchAndPull() {
         if (!TAURI.has) return;
         const ctl = statusController();
@@ -122,9 +129,7 @@ function boot() {
         await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash()]);
     }
 
-    // title actions
-    fetchBtn?.addEventListener('click', fetchAndPull);
-    pushBtn?.addEventListener('click', async () => {
+    async function pushChanges() {
         const statusEl = document.getElementById('status');
         const setBusy = (msg: string) => {
             if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
@@ -133,10 +138,74 @@ function boot() {
         try {
             if (TAURI.has) { setBusy('Pushing…'); await TAURI.invoke('git_push', {}); }
             notify('Pushed');
-            // Refresh status/commits so ahead/behind and history update immediately
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
         } catch { notify('Push failed'); } finally { clearBusy(); }
-    });
+    }
+
+    async function openDocs() {
+        if (TAURI.has) {
+            try { await TAURI.invoke('open_docs', {}); return; } catch { /* fall back */ }
+        }
+        try { window.open(WIKI_URL, '_blank', 'noopener'); } catch { notify('Unable to open docs'); }
+    }
+
+    async function runLfsCommand(cmd: string, okMsg: string, errMsg: string) {
+        if (!TAURI.has) {
+            notify('Git LFS actions require the desktop app');
+            return;
+        }
+        try {
+            await TAURI.invoke(cmd);
+            notify(okMsg);
+            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+        } catch (err) {
+            const msg = String(err || '').trim();
+            const friendly = msg.includes('unsupported backend')
+                ? 'The current backend does not support Git LFS'
+                : (msg || errMsg);
+            notify(friendly);
+        }
+    }
+
+    async function runMenuAction(id?: string | null) {
+        switch (id) {
+            case 'clone_repo': openSheet('clone'); break;
+            case 'add_repo':   openSheet('add');   break;
+            case 'open_repo':  openSheet('switch');break;
+            case 'fetch': await fetchAndPull(); break;
+            case 'push':  await pushChanges();  break;
+            case 'commit': commitBtn?.click(); break;
+            case 'docs': await openDocs(); break;
+            case 'about': openAbout(); break;
+            case 'settings': openSettings(); break;
+            case 'repo-settings': openRepoSettings(); break;
+            case 'repo-edit-gitignore':
+            case 'repo-edit-gitattributes': {
+                if (!TAURI.has) { notify('Open this in the desktop app to edit repository files'); break; }
+                const name = id === 'repo-edit-gitignore' ? '.gitignore' : '.gitattributes';
+                try { await TAURI.invoke('open_repo_dotfile', { name }); }
+                catch { notify(`Could not open ${name}`); }
+                break;
+            }
+            case 'lfs-settings': openSettings('lfs'); break;
+            case 'lfs-fetch-all': await runLfsCommand('git_lfs_fetch_all', 'Fetched Git LFS objects', 'Git LFS fetch failed'); break;
+            case 'lfs-pull-all': await runLfsCommand('git_lfs_pull', 'Pulled Git LFS objects', 'Git LFS pull failed'); break;
+            case 'lfs-prune': await runLfsCommand('git_lfs_prune', 'Pruned Git LFS cache', 'Git LFS prune failed'); break;
+            case 'check_updates':
+                if (!TAURI.has) { notify('Update checks are available in the desktop app'); break; }
+                try {
+                    const hasUpdate = await TAURI.invoke<boolean>('check_for_updates', {});
+                    if (!hasUpdate) notify('Already up to date');
+                } catch { notify('Update check failed'); }
+                break;
+            case 'exit': if (TAURI.has) { TAURI.invoke('exit_app', {}).catch(() => {}); } break;
+            default: break;
+        }
+    }
+
+    // title actions
+    fetchBtn?.addEventListener('click', fetchAndPull);
+    pushBtn?.addEventListener('click', pushChanges);
     cloneBtn?.addEventListener('click', () => openSheet('clone'));
     repoSwitch?.addEventListener('click', () => openSheet('switch'));
 
@@ -169,41 +238,11 @@ function boot() {
     hydrateCommits();
     hydrateStash();
 
-    // menu routing
-    async function runLfsCommand(cmd: string, okMsg: string, errMsg: string) {
-        if (!TAURI.has) {
-            notify('Git LFS actions require the desktop app');
-            return;
-        }
-        try {
-            await TAURI.invoke(cmd);
-            notify(okMsg);
-            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
-        } catch (err) {
-            const msg = String(err || '').trim();
-            const friendly = msg.includes('unsupported backend')
-                ? 'The current backend does not support Git LFS'
-                : (msg || errMsg);
-            notify(friendly);
-        }
-    }
+    initMenubar(runMenuAction);
 
     TAURI.listen?.('menu', async ({ payload: id }) => {
-        switch (id) {
-            case 'clone_repo': openSheet('clone'); break;
-            case 'add_repo':   openSheet('add');   break;
-            case 'open_repo':  openSheet('switch');break;
-            case 'fetch': fetchBtn?.click(); break;
-            case 'push':  pushBtn?.click();  break;
-            case 'commit': commitBtn?.click(); break;
-            case 'docs': notify('Open docs…'); break;
-            case 'about': openAbout(); break;
-            case 'settings': openSettings(); break;
-            case 'lfs-settings': openSettings('lfs'); break;
-            case 'lfs-fetch-all': await runLfsCommand('git_lfs_fetch_all', 'Fetched Git LFS objects', 'Git LFS fetch failed'); break;
-            case 'lfs-pull-all': await runLfsCommand('git_lfs_pull', 'Pulled Git LFS objects', 'Git LFS pull failed'); break;
-            case 'lfs-prune': await runLfsCommand('git_lfs_prune', 'Pruned Git LFS cache', 'Git LFS prune failed'); break;
-        }
+        const resolved = typeof id === 'string' ? id : String(id ?? '');
+        await runMenuAction(resolved);
     });
 
     // backend events
