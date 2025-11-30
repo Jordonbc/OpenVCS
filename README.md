@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/OpenVCS-256.png" alt="OpenVCS logo" width="220">
+  <img src="docs/images/logos/OpenVCS-256.png" alt="OpenVCS logo" width="220">
 </p>
 
 **The open‑source, fully customisable VCS client.**
