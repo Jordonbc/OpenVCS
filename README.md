@@ -16,7 +16,7 @@ OpenVCS provides a convenience script that fetches the latest AppImage, stores i
 curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash
 ```
 
-The script targets Linux, leaves existing configuration untouched, and can be re-run to pull the newest release. Use `--prerelease` to install the latest pre-release build or `--uninstall` to remove the AppImage and desktop entry. Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
+The script targets Linux, leaves existing configuration untouched, and can be re-run to pull the newest release. To install a pre-release, pass the flag through to the script: `curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash -s -- --prerelease`. To uninstall: `curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash -s -- --uninstall`. Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 
 ---
 
