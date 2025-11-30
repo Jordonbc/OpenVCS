@@ -35,6 +35,9 @@ export function initMenubar(onAction: MenuAction) {
             e.stopPropagation();
             open(menu);
         });
+        trigger?.addEventListener('mouseenter', () => {
+            if (openMenu && openMenu !== menu) open(menu);
+        });
 
         const list = menu.querySelector<HTMLElement>('.menu-list');
         list?.addEventListener('click', (e) => {
@@ -55,4 +58,3 @@ export function initMenubar(onAction: MenuAction) {
         if (e.key === 'Escape') closeMenus();
     });
 }
-
