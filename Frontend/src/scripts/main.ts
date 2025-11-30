@@ -70,7 +70,7 @@ function boot() {
     bindCommandSheet();
     bindBranchUI();
     bindLayoutActionState();
-    bindRepoHotkeys(commitBtn || null, openSheet);
+    bindRepoHotkeys(commitBtn || null, openSheet, fetchOnly);
 
     function statusController() {
         const statusEl = document.getElementById('status');
@@ -103,6 +103,11 @@ function boot() {
             if (!keepBusy) ctl.clearBusy();
         }
         return success;
+    }
+
+    async function fetchOnly() {
+        const ctl = statusController();
+        await fetchAllRemotesOnly({ status: ctl });
     }
 
     async function fetchAndPull() {
