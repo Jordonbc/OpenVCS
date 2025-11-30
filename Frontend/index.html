@@ -9,6 +9,50 @@
 </head>
 <body>
   <div class="app" id="app">
+    <nav class="menubar" role="menubar" aria-label="Application menu">
+      <div class="menu" data-menu="file">
+        <button class="menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">File</button>
+        <div class="menu-list" role="menu" hidden>
+          <button class="menu-item" role="menuitem" data-action="clone_repo">Clone…</button>
+          <button class="menu-item" role="menuitem" data-action="add_repo">Add Existing…</button>
+          <button class="menu-item" role="menuitem" data-action="open_repo">Switch…</button>
+          <div class="menu-sep" role="separator"></div>
+          <button class="menu-item" role="menuitem" data-action="settings">Preferences…</button>
+          <button class="menu-item" role="menuitem" data-action="exit">Exit</button>
+        </div>
+      </div>
+      <div class="menu" data-menu="repository">
+        <button class="menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">Repository</button>
+        <div class="menu-list" role="menu" hidden>
+          <button class="menu-item" role="menuitem" data-action="fetch">Fetch/Pull</button>
+          <button class="menu-item" role="menuitem" data-action="push">Push</button>
+          <button class="menu-item" role="menuitem" data-action="commit">Commit</button>
+          <div class="menu-sep" role="separator"></div>
+          <button class="menu-item" role="menuitem" data-action="repo-edit-gitignore">Edit .gitignore</button>
+          <button class="menu-item" role="menuitem" data-action="repo-edit-gitattributes">Edit .gitattributes</button>
+          <button class="menu-item" role="menuitem" data-action="repo-settings">Repository Settings</button>
+        </div>
+      </div>
+      <div class="menu" data-menu="lfs">
+        <button class="menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">LFS</button>
+        <div class="menu-list" role="menu" hidden>
+          <button class="menu-item" role="menuitem" data-action="lfs-pull-all">Download LFS Files</button>
+          <button class="menu-item" role="menuitem" data-action="lfs-fetch-all">Fetch LFS</button>
+          <button class="menu-item" role="menuitem" data-action="lfs-prune">Prune LFS Cache</button>
+          <div class="menu-sep" role="separator"></div>
+          <button class="menu-item" role="menuitem" data-action="lfs-settings">LFS Preferences…</button>
+        </div>
+      </div>
+      <div class="menu" data-menu="help">
+        <button class="menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">Help</button>
+        <div class="menu-list" role="menu" hidden>
+          <button class="menu-item" role="menuitem" data-action="docs">Documentation</button>
+          <button class="menu-item" role="menuitem" data-action="check_updates">Check for Updates…</button>
+          <button class="menu-item" role="menuitem" data-action="about">About</button>
+        </div>
+      </div>
+    </nav>
+
     <!-- Titlebar -->
     <header class="titlebar" role="banner">
       <div class="repo-switch" id="repo-switch" title="Switch repository (Ctrl+R)" role="button" tabindex="0" aria-haspopup="dialog">
