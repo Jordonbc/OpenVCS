@@ -60,6 +60,24 @@
     background: rgba(53,132,228,.12);
     outline: 1px solid rgba(53,132,228,.35);
 }
+.pop-list li.pop-divider {
+    cursor: default;
+    padding: .35rem .4rem;
+}
+.pop-list li.pop-divider:hover { background: transparent; }
+.pop-list li.pop-divider::before,
+.pop-list li.pop-divider::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid var(--border);
+    opacity: .9;
+}
+.pop-list li.pop-divider > span {
+    color: var(--muted);
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+}
 .pop-list .label {
     display: inline-flex;
     align-items: center;

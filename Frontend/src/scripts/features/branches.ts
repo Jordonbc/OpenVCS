@@ -47,7 +47,16 @@ function renderBranches() {
     if (!branchList) return;
     const q = branchFilter?.value.trim().toLowerCase() || '';
     const items = (state.branches || []).filter(b => !q || b.name.toLowerCase().includes(q));
-    branchList.innerHTML = items.map(b => {
+
+    const localItems: Branch[] = [];
+    const remoteItems: Branch[] = [];
+    for (const branch of items) {
+        const kindType = (branch.kind?.type || '').toLowerCase();
+        if (kindType === 'remote') remoteItems.push(branch);
+        else localItems.push(branch);
+    }
+
+    const renderItem = (b: Branch) => {
         const kindType = b.kind?.type || '';
         const remote   = b.kind?.remote || '';
         let kindLabel = '';
@@ -61,7 +70,16 @@ function renderBranches() {
         </span>
         ${b.current ? '<span class="badge">Current</span>' : kindLabel}
       </li>`;
-    }).join('');
+    };
+
+    const parts: string[] = [];
+    parts.push(...localItems.map(renderItem));
+    if (localItems.length && remoteItems.length) {
+        parts.push(`<li class="pop-divider" role="separator" aria-label="Remote branches"><span>Remote branches</span></li>`);
+    }
+    parts.push(...remoteItems.map(renderItem));
+
+    branchList.innerHTML = parts.join('');
 }
 
 /* ---------------- popover ---------------- */
