@@ -2,6 +2,7 @@ use log::{error, info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window};
 
 use openvcs_core::models::{CommitItem, LogQuery, VcsEvent};
+use openvcs_core::VcsError;
 
 use crate::state::AppState;
 
@@ -81,10 +82,10 @@ pub async fn git_fetch_all<R: Runtime>(
 pub async fn git_pull<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<PullResult, String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let pulled = run_repo_task("git_pull", repo, move |repo| {
+    let result = run_repo_task("git_pull", repo, move |repo| {
         info!("git_pull called");
         let on = Some(progress_bridge(app));
         let current = repo
@@ -99,41 +100,79 @@ pub async fn git_pull<R: Runtime>(
                 "Detached HEAD; cannot determine upstream".to_string()
             })?;
 
-        let mut remote = "origin".to_string();
-        let mut branch = current.clone();
-        if let Ok(Some(upstream)) = repo.inner().branch_upstream(&current) {
-            let up = upstream
-                .trim()
-                .trim_start_matches("refs/remotes/")
-                .to_string();
-            if let Some((r, b)) = up.split_once('/') {
-                if !r.trim().is_empty() && !b.trim().is_empty() {
-                    remote = r.trim().to_string();
-                    branch = b.trim().to_string();
-                }
-            }
+        let upstream = repo.inner().branch_upstream(&current).map_err(|e| {
+            error!("Failed to determine upstream for branch '{current}': {e}");
+            e.to_string()
+        })?;
+
+        let Some(upstream) = upstream else {
+            info!("Pull skipped for branch '{current}' (no upstream configured)");
+            return Ok(PullResult {
+                pulled: false,
+                branch: current,
+                reason: Some("No upstream configured for this branch; pull skipped".to_string()),
+            });
+        };
+
+        let up = upstream.trim().trim_start_matches("refs/remotes/");
+        let Some((remote, upstream_branch)) = up.split_once('/') else {
+            warn!("Unrecognized upstream format for branch '{current}': '{upstream}'");
+            return Ok(PullResult {
+                pulled: false,
+                branch: current,
+                reason: Some("Unrecognized upstream format; pull skipped".to_string()),
+            });
+        };
+
+        let remote = remote.trim();
+        let upstream_branch = upstream_branch.trim();
+        if remote.is_empty() || upstream_branch.is_empty() {
+            warn!("Unrecognized upstream format for branch '{current}': '{upstream}'");
+            return Ok(PullResult {
+                pulled: false,
+                branch: current,
+                reason: Some("Unrecognized upstream format; pull skipped".to_string()),
+            });
         }
 
-        info!("Fast-forward pulling '{current}' from {remote}/{branch}");
-        repo.inner()
-            .pull_ff_only(&remote, &branch, on)
-            .map_err(|e| {
+        info!("Fast-forward pulling '{current}' from {remote}/{upstream_branch}");
+        match repo.inner().pull_ff_only(remote, upstream_branch, on) {
+            Ok(()) => {
+                info!("Pull (ff-only) completed successfully for branch '{current}'");
+                Ok(PullResult { pulled: true, branch: current, reason: None })
+            }
+            Err(VcsError::NoUpstream) => {
+                info!("Pull skipped for branch '{current}' (no upstream configured)");
+                Ok(PullResult {
+                    pulled: false,
+                    branch: current,
+                    reason: Some("No upstream configured for this branch; pull skipped".to_string()),
+                })
+            }
+            Err(e) => {
                 error!("Pull (ff-only) failed for branch '{current}': {e}");
-                e.to_string()
-            })?;
-
-        info!("Pull (ff-only) completed successfully for branch '{current}'");
-        Ok(format!("{current} <- {remote}/{branch}"))
+                Err(e.to_string())
+            }
+        }
     })
     .await?;
 
-    let _ = window.app_handle().emit(
-        "git-progress",
-        ProgressPayload {
-            message: format!("Pull complete ({pulled})"),
-        },
-    );
-    Ok(())
+    let msg = if result.pulled {
+        format!("Pull complete ({})", result.branch)
+    } else {
+        format!("Pull skipped ({})", result.branch)
+    };
+    let _ = window
+        .app_handle()
+        .emit("git-progress", ProgressPayload { message: msg });
+    Ok(result)
+}
+
+#[derive(serde::Serialize)]
+pub struct PullResult {
+    pub pulled: bool,
+    pub branch: String,
+    pub reason: Option<String>,
 }
 
 #[tauri::command]

@@ -421,15 +421,26 @@ impl Vcs for GitSystem {
     }
 
     fn pull_ff_only(&self, remote: &str, branch: &str, on: Option<OnEvent>) -> Result<()> {
-        // Prefer a single pull with ff-only for simplicity and to surface server messages
-        // Equivalent to: git fetch <remote> <branch>; git merge --ff-only <remote>/<branch>
-        // Using streaming to forward progress to the UI when available.
-        log::info!("git-system: pull --ff-only {} {}", remote, branch);
-        Self::run_git_streaming(
-            &self.workdir,
-            ["pull", "--ff-only", "--no-rebase", remote, branch],
-            on,
-        )
+        // Pull should only run when this local branch is tracking an upstream.
+        // New local branches (no upstream yet) must not attempt to pull a non-existent remote branch.
+        let upstream = Self::run_git_capture(Some(&self.workdir), [
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ])
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+        let Some(upstream) = upstream else {
+            log::info!("git-system: pull skipped (no upstream) remote={} branch={}", remote, branch);
+            return Err(VcsError::NoUpstream);
+        };
+
+        // Prefer pull without explicit remote/branch so git uses the configured upstream.
+        log::info!("git-system: pull --ff-only (upstream={})", upstream);
+        Self::run_git_streaming(&self.workdir, ["pull", "--ff-only", "--no-rebase"], on)
     }
 
     fn set_branch_upstream(&self, branch: &str, upstream: &str) -> Result<()> {
