@@ -9,6 +9,11 @@ import { onFileClick, onFileMouseDown, onFileContextMenu, setRenderListCallback,
 import { updateSelectAllState } from './selectionState';
 import { updateCommitButton } from './commit';
 
+export function wireRenderListCallbacks() {
+    setRenderListRef(renderList);
+    setRenderListCallback(renderList);
+}
+
 export function renderList() {
     const list = listEl;
     const count = countEl;
@@ -102,5 +107,3 @@ function renderChangesList(query: string) {
     }
     updateCommitButton();
 }
-setRenderListRef(renderList);
-setRenderListCallback(renderList);
