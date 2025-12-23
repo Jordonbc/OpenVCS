@@ -2,6 +2,7 @@ use log::{error, info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window};
 
 use openvcs_core::models::{CommitItem, LogQuery, VcsEvent};
+use openvcs_core::VcsError;
 
 use crate::state::AppState;
 
@@ -81,10 +82,10 @@ pub async fn git_fetch_all<R: Runtime>(
 pub async fn git_pull<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<PullResult, String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let current = run_repo_task("git_pull", repo, move |repo| {
+    let result = run_repo_task("git_pull", repo, move |repo| {
         info!("git_pull called");
         let on = Some(progress_bridge(app));
         let current = repo
@@ -99,26 +100,44 @@ pub async fn git_pull<R: Runtime>(
                 "Detached HEAD; cannot determine upstream".to_string()
             })?;
 
-        info!("Fast-forward pulling branch '{current}' from origin");
-        repo.inner()
-            .pull_ff_only("origin", &current, on)
-            .map_err(|e| {
+        info!("Fast-forward pulling branch '{current}'");
+        match repo.inner().pull_ff_only("origin", &current, on) {
+            Ok(()) => {
+                info!("Pull (ff-only) completed successfully for branch '{current}'");
+                Ok(PullResult { pulled: true, branch: current, reason: None })
+            }
+            Err(VcsError::NoUpstream) => {
+                info!("Pull skipped for branch '{current}' (no upstream configured)");
+                Ok(PullResult {
+                    pulled: false,
+                    branch: current,
+                    reason: Some("No upstream configured for this branch; pull skipped".to_string()),
+                })
+            }
+            Err(e) => {
                 error!("Pull (ff-only) failed for branch '{current}': {e}");
-                e.to_string()
-            })?;
-
-        info!("Pull (ff-only) completed successfully for branch '{current}'");
-        Ok(current)
+                Err(e.to_string())
+            }
+        }
     })
     .await?;
 
-    let _ = window.app_handle().emit(
-        "git-progress",
-        ProgressPayload {
-            message: format!("Pull complete ({current})"),
-        },
-    );
-    Ok(())
+    let msg = if result.pulled {
+        format!("Pull complete ({})", result.branch)
+    } else {
+        format!("Pull skipped ({})", result.branch)
+    };
+    let _ = window
+        .app_handle()
+        .emit("git-progress", ProgressPayload { message: msg });
+    Ok(result)
+}
+
+#[derive(serde::Serialize)]
+pub struct PullResult {
+    pub pulled: bool,
+    pub branch: String,
+    pub reason: Option<String>,
 }
 
 #[tauri::command]

@@ -175,10 +175,37 @@ impl Vcs for GitLibGit2 {
     }
 
     fn pull_ff_only(&self, remote: &str, branch: &str, _on: Option<OnEvent>) -> Result<()> {
+        // Pull should only run when this local branch is tracking an upstream.
+        // New local branches (no upstream yet) must not attempt to pull a non-existent remote branch.
+        use git2 as g;
+
+        let upstream_short = self.inner.with_repo(|repo| -> std::result::Result<Option<String>, g::Error> {
+            let local = repo.find_branch(branch, g::BranchType::Local)?;
+            let upstream = match local.upstream() {
+                Ok(up) => up,
+                Err(_) => return Ok(None),
+            };
+
+            let name = upstream.name()?.unwrap_or("").to_string();
+            if name.is_empty() {
+                return Ok(None);
+            }
+
+            Ok(Some(
+                name.strip_prefix("refs/remotes/")
+                    .unwrap_or(&name)
+                    .to_string(),
+            ))
+        }).map_err(Self::map_err)?;
+
+        let Some(upstream) = upstream_short.filter(|s| !s.trim().is_empty()) else {
+            info!("git-libgit2: pull skipped (no upstream) remote={} branch={}", remote, branch);
+            return Err(VcsError::NoUpstream);
+        };
+
         // Use libgit2 path that fetches and performs a fast-forward when possible.
         // Progress is logged; we currently do not bridge per-line progress for this path.
-        let upstream = format!("{}/{}", remote, branch);
-        info!("git-libgit2: pull_ff_only {}", upstream);
+        info!("git-libgit2: pull_ff_only (upstream={})", upstream);
         self.inner.fast_forward(&upstream).map_err(Self::map_err)
     }
 

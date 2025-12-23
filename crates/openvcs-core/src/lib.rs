@@ -17,6 +17,8 @@ pub enum VcsError {
     NotARepo(String),
     #[error("branch not found: {0}")]
     NoSuchBranch(String),
+    #[error("no upstream configured")]
+    NoUpstream,
     #[error("nothing to commit")]
     NothingToCommit,
     #[error("non-fast-forward; merge or rebase required")]

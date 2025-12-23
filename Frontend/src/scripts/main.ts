@@ -118,8 +118,12 @@ function boot() {
 
         try {
             ctl.setBusy('Pulling…');
-            await TAURI.invoke('git_pull', {});
-            notify('Pulled latest changes');
+            const res = await TAURI.invoke<{ pulled: boolean; branch: string; reason?: string | null }>('git_pull', {});
+            if (res?.pulled) {
+                notify('Pulled latest changes');
+            } else {
+                notify((res?.reason ?? 'No upstream configured for this branch; pull skipped') as string);
+            }
         } catch {
             notify('Pull failed');
         } finally {
