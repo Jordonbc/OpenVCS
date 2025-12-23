@@ -221,6 +221,29 @@ pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Resul
 }
 
 #[tauri::command]
+pub async fn git_set_upstream(
+    state: State<'_, AppState>,
+    branch: String,
+    upstream: String,
+) -> Result<(), String> {
+    let branch = branch.trim();
+    let upstream = upstream.trim();
+    if branch.is_empty() || upstream.is_empty() {
+        return Err("Branch/upstream cannot be empty".to_string());
+    }
+
+    let repo = current_repo_or_err(&state)?;
+    let branch = branch.to_string();
+    let upstream = upstream.to_string();
+    run_repo_task("git_set_upstream", repo, move |repo| {
+        repo.inner()
+            .set_branch_upstream(&branch, &upstream)
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn git_create_branch(
     state: State<'_, AppState>,
     name: String,

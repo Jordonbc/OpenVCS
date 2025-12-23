@@ -1,7 +1,7 @@
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
-import { prefs } from './state/state';
+import { prefs, state, hasRepo } from './state/state';
 import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
     bindLayoutActionState
@@ -21,6 +21,9 @@ const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
 
 // Title bar actions
 const fetchBtn = qs<HTMLButtonElement>('#fetch-btn');
+const fetchCaret = qs<HTMLButtonElement>('#fetch-caret');
+const fetchPop = qs<HTMLElement>('#fetch-pop');
+const fetchList = qs<HTMLElement>('#fetch-list');
 const pushBtn  = qs<HTMLButtonElement>('#push-btn');
 const cloneBtn = qs<HTMLButtonElement>('#clone-btn');
 const repoSwitch = qs<HTMLButtonElement>('#repo-switch');
@@ -70,7 +73,7 @@ function boot() {
     bindCommandSheet();
     bindBranchUI();
     bindLayoutActionState();
-    bindRepoHotkeys(commitBtn || null, openSheet, fetchOnly);
+    bindRepoHotkeys(commitBtn || null, openSheet, defaultFetchAction);
 
     function statusController() {
         const statusEl = document.getElementById('status');
@@ -110,6 +113,44 @@ function boot() {
         await fetchAllRemotesOnly({ status: ctl });
     }
 
+    function getBehindCount(): number {
+        const behind = Number((state as any)?.behind || 0);
+        return isFinite(behind) && behind > 0 ? behind : 0;
+    }
+
+    function updateFetchUI() {
+        const behind = getBehindCount();
+        const repoOn = hasRepo();
+        const canPull = repoOn;
+        const mainLabel = behind > 0 ? `Pull (${behind})` : 'Fetch';
+        const mainTitle = behind > 0
+            ? `Pull ${behind} commit${behind === 1 ? '' : 's'} (F5)`
+            : 'Fetch (F5)';
+
+        if (fetchBtn) {
+            fetchBtn.textContent = mainLabel;
+            fetchBtn.title = mainTitle;
+            fetchBtn.setAttribute('aria-label', mainTitle);
+        }
+
+        if (!fetchList) return;
+        const fetchOnlyItem = fetchList.querySelector<HTMLElement>('li[data-action="fetch-only"]');
+        const pullItem = fetchList.querySelector<HTMLElement>('li[data-action="pull"]');
+        if (fetchOnlyItem) {
+            fetchOnlyItem.setAttribute('aria-disabled', 'false');
+            fetchOnlyItem.tabIndex = 0;
+            const name = fetchOnlyItem.querySelector<HTMLElement>('.name');
+            if (name) name.textContent = 'Fetch';
+        }
+        if (pullItem) {
+            const pullLabel = behind > 0 ? `Pull (${behind})` : 'Pull';
+            pullItem.setAttribute('aria-disabled', canPull ? 'false' : 'true');
+            pullItem.tabIndex = canPull ? 0 : -1;
+            const name = pullItem.querySelector<HTMLElement>('.name');
+            if (name) name.textContent = pullLabel;
+        }
+    }
+
     async function fetchAndPull() {
         if (!TAURI.has) return;
         const ctl = statusController();
@@ -131,6 +172,32 @@ function boot() {
         }
 
         await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash()]);
+    }
+
+    async function defaultFetchAction() {
+        if (getBehindCount() > 0) await fetchAndPull();
+        else await fetchOnly();
+    }
+
+    function openFetchPopover() {
+        if (!fetchPop || !fetchCaret) return;
+        const anchor = (document.getElementById('fetch-split') || fetchBtn || fetchCaret) as HTMLElement | null;
+        if (!anchor) return;
+        updateFetchUI();
+        const r = anchor.getBoundingClientRect();
+        fetchPop.style.left = `${r.left}px`;
+        fetchPop.style.top  = `${r.bottom + 6}px`;
+        fetchPop.hidden = false;
+        fetchCaret.setAttribute('aria-expanded', 'true');
+
+        const firstEnabled = fetchList?.querySelector<HTMLElement>('li[role="menuitem"][aria-disabled="false"]');
+        setTimeout(() => firstEnabled?.focus(), 0);
+    }
+
+    function closeFetchPopover() {
+        if (!fetchPop || !fetchCaret) return;
+        fetchPop.hidden = true;
+        fetchCaret.setAttribute('aria-expanded', 'false');
     }
 
     async function pushChanges() {
@@ -176,7 +243,7 @@ function boot() {
             case 'clone_repo': openSheet('clone'); break;
             case 'add_repo':   openSheet('add');   break;
             case 'open_repo':  openSheet('switch');break;
-            case 'fetch': await fetchAndPull(); break;
+            case 'fetch': await defaultFetchAction(); break;
             case 'push':  await pushChanges();  break;
             case 'commit': commitBtn?.click(); break;
             case 'docs': await openDocs(); break;
@@ -208,7 +275,12 @@ function boot() {
     }
 
     // title actions
-    fetchBtn?.addEventListener('click', fetchAndPull);
+    fetchBtn?.addEventListener('click', () => { defaultFetchAction().catch(() => {}); });
+    fetchCaret?.addEventListener('click', (e) => {
+        if (!fetchPop) return;
+        if (fetchPop.hidden) openFetchPopover(); else closeFetchPopover();
+        e.stopPropagation();
+    });
     pushBtn?.addEventListener('click', pushChanges);
     cloneBtn?.addEventListener('click', () => openSheet('clone'));
     repoSwitch?.addEventListener('click', () => openSheet('switch'));
@@ -235,6 +307,7 @@ function boot() {
     setTab(prefs.tab);
     renderList();
     refreshRepoActions();
+    updateFetchUI();
 
     // initial data
     hydrateBranches().then(() => setRepoHeader());
@@ -282,6 +355,7 @@ function boot() {
         await hydrateBranches();
         setRepoHeader(path);
         await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+        updateFetchUI();
 
         // Broadcast app-level event so branch UI and actions can sync
         window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
@@ -300,6 +374,7 @@ function boot() {
         await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
         window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
         refreshRepoActions();
+        updateFetchUI();
       })
       .catch(() => {});
   }
@@ -327,6 +402,7 @@ function boot() {
             await fetchAllRemotesOnly({ hydrate: false });
         }
         await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash()]);
+        updateFetchUI();
     }
 
     window.addEventListener('focus', () => { onFocus().catch(() => {}); });
@@ -343,6 +419,37 @@ function boot() {
       });
       TAURI.listen?.('ui:open-about', () => openAbout());
       TAURI.listen?.('ui:open-repo-settings', () => openRepoSettings());
-  }
+
+    // keep Fetch/Pull label in sync with status
+    window.addEventListener('app:status-updated', updateFetchUI);
+    window.addEventListener('app:branches-updated', updateFetchUI);
+    window.addEventListener('app:repo-selected', updateFetchUI);
+
+    // fetch popover interactions
+    fetchList?.addEventListener('click', (e) => {
+        const li = (e.target as HTMLElement).closest('li[data-action]') as HTMLElement | null;
+        if (!li) return;
+        if (li.getAttribute('aria-disabled') === 'true') return;
+        const action = li.dataset.action || '';
+        closeFetchPopover();
+        if (action === 'fetch-only') fetchOnly().catch(() => {});
+        else if (action === 'pull') fetchAndPull().catch(() => {});
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!fetchPop || fetchPop.hidden) return;
+        const target = e.target as Node;
+        const split = document.getElementById('fetch-split');
+        if (fetchPop.contains(target)) return;
+        if (split && split.contains(target)) return;
+        closeFetchPopover();
+    });
+
+    window.addEventListener('resize', closeFetchPopover);
+    window.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (fetchPop && !fetchPop.hidden) closeFetchPopover();
+    });
+}
 
 boot();

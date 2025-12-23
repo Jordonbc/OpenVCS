@@ -1,0 +1,27 @@
+<!-- Set Upstream modal -->
+<div class="modal" id="set-upstream-modal" aria-hidden="true">
+  <div class="backdrop"></div>
+  <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="set-upstream-title">
+    <div class="sheet-head">
+      <h3 id="set-upstream-title" style="margin:0">Set Upstream</h3>
+      <button class="tbtn" data-close aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <form class="panel-form" onsubmit="return false;">
+        <div class="row">
+          <label for="set-upstream-branch">Local branch</label>
+          <input id="set-upstream-branch" type="text" readonly />
+        </div>
+        <div class="row">
+          <label for="set-upstream-select">Track remote branch</label>
+          <select id="set-upstream-select"></select>
+        </div>
+      </form>
+    </div>
+    <div class="sheet-actions" style="display:flex; gap:.5rem; justify-content:flex-end;">
+      <button class="tbtn" data-close type="button">Cancel</button>
+      <button class="tbtn primary" id="set-upstream-confirm" type="button" disabled>Set upstream</button>
+    </div>
+  </div>
+</div>
+

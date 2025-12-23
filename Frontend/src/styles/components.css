@@ -45,6 +45,32 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     background:var(--surface-2); border-color:var(--border); color:var(--muted);
 }
 
+/* Split button (main action + caret) */
+.split-btn{
+    display:inline-flex;
+    align-items:stretch;
+}
+.split-btn .btn{
+    border-radius:0;
+}
+.split-btn .btn:first-child{
+    border-top-left-radius:var(--r-sm);
+    border-bottom-left-radius:var(--r-sm);
+}
+.split-btn .btn:last-child{
+    border-top-right-radius:var(--r-sm);
+    border-bottom-right-radius:var(--r-sm);
+    margin-left:-1px; /* collapse borders */
+}
+.split-btn .split-caret{
+    min-width:2rem;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding-left:.45rem;
+    padding-right:.45rem;
+}
+
 /* ========== Badges ========== */
 .badge{
     font-size:.78rem; color:var(--muted);

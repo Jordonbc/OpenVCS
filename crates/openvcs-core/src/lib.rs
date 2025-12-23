@@ -124,6 +124,18 @@ pub trait Vcs: Send + Sync {
     /// `VcsError::Unsupported` if not available.
     fn merge_into_current(&self, name: &str) -> Result<()>;
 
+    /// Configure the given local branch to track the given upstream (e.g. `origin/main`).
+    /// Backends may return `VcsError::Unsupported` if not implemented.
+    fn set_branch_upstream(&self, _branch: &str, _upstream: &str) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+
+    /// Returns the configured upstream of a local branch as `remote/branch` (e.g. `origin/main`),
+    /// or `None` if no upstream is configured.
+    fn branch_upstream(&self, _branch: &str) -> Result<Option<String>> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+
     // recovery
     fn hard_reset_head(&self) -> Result<()>;
     /// Soft-reset HEAD to the given revision, keeping changes in the index and working tree.

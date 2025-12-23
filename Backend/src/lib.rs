@@ -149,6 +149,7 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_launch_merge_tool,
         tauri_commands::git_delete_branch,
         tauri_commands::git_merge_branch,
+        tauri_commands::git_set_upstream,
         tauri_commands::git_diff_commit,
         tauri_commands::commit_changes,
         tauri_commands::commit_selected,

@@ -100,8 +100,43 @@ pub async fn git_pull<R: Runtime>(
                 "Detached HEAD; cannot determine upstream".to_string()
             })?;
 
-        info!("Fast-forward pulling branch '{current}'");
-        match repo.inner().pull_ff_only("origin", &current, on) {
+        let upstream = repo.inner().branch_upstream(&current).map_err(|e| {
+            error!("Failed to determine upstream for branch '{current}': {e}");
+            e.to_string()
+        })?;
+
+        let Some(upstream) = upstream else {
+            info!("Pull skipped for branch '{current}' (no upstream configured)");
+            return Ok(PullResult {
+                pulled: false,
+                branch: current,
+                reason: Some("No upstream configured for this branch; pull skipped".to_string()),
+            });
+        };
+
+        let up = upstream.trim().trim_start_matches("refs/remotes/");
+        let Some((remote, upstream_branch)) = up.split_once('/') else {
+            warn!("Unrecognized upstream format for branch '{current}': '{upstream}'");
+            return Ok(PullResult {
+                pulled: false,
+                branch: current,
+                reason: Some("Unrecognized upstream format; pull skipped".to_string()),
+            });
+        };
+
+        let remote = remote.trim();
+        let upstream_branch = upstream_branch.trim();
+        if remote.is_empty() || upstream_branch.is_empty() {
+            warn!("Unrecognized upstream format for branch '{current}': '{upstream}'");
+            return Ok(PullResult {
+                pulled: false,
+                branch: current,
+                reason: Some("Unrecognized upstream format; pull skipped".to_string()),
+            });
+        }
+
+        info!("Fast-forward pulling '{current}' from {remote}/{upstream_branch}");
+        match repo.inner().pull_ff_only(remote, upstream_branch, on) {
             Ok(()) => {
                 info!("Pull (ff-only) completed successfully for branch '{current}'");
                 Ok(PullResult { pulled: true, branch: current, reason: None })
@@ -149,7 +184,7 @@ pub async fn git_push<R: Runtime>(
     let app = window.app_handle().clone();
     let current = run_repo_task("git_push", repo, move |repo| {
         info!("git_push called");
-        let on = Some(progress_bridge(app));
+        let on = Some(progress_bridge(app.clone()));
 
         let current = repo
             .inner()
@@ -170,6 +205,13 @@ pub async fn git_push<R: Runtime>(
             error!("Push failed for branch '{current}': {e}");
             e.to_string()
         })?;
+
+        // Pushing does not update local remote-tracking refs (refs/remotes/origin/*),
+        // which the UI uses for ahead/behind; refresh them best-effort.
+        let on_fetch = Some(progress_bridge(app));
+        if let Err(e) = repo.inner().fetch("origin", &current, on_fetch) {
+            warn!("Post-push fetch failed for branch '{current}': {e}");
+        }
 
         info!("Push completed successfully for '{current}'");
         Ok(current)
