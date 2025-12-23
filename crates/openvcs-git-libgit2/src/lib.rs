@@ -182,6 +182,48 @@ impl Vcs for GitLibGit2 {
         self.inner.fast_forward(&upstream).map_err(Self::map_err)
     }
 
+    fn set_branch_upstream(&self, branch: &str, upstream: &str) -> Result<()> {
+        let branch = branch.trim();
+        let upstream = upstream.trim();
+        if branch.is_empty() || upstream.is_empty() {
+            return Err(VcsError::Backend {
+                backend: self.id(),
+                msg: "branch/upstream cannot be empty".into(),
+            });
+        }
+
+        // Accept "origin/main" and "refs/remotes/origin/main". Store the standard config keys:
+        // - branch.<branch>.remote = origin
+        // - branch.<branch>.merge  = refs/heads/main
+        let upstream_short = upstream
+            .strip_prefix("refs/remotes/")
+            .unwrap_or(upstream);
+
+        let (remote, remote_branch) = upstream_short
+            .split_once('/')
+            .ok_or_else(|| VcsError::Backend {
+                backend: self.id(),
+                msg: "upstream must look like 'origin/main'".into(),
+            })?;
+
+        let merge_ref = format!("refs/heads/{}", remote_branch);
+        info!(
+            "git-libgit2: set_branch_upstream {} -> {} (remote={}, merge={})",
+            branch, upstream, remote, merge_ref
+        );
+
+        self.inner
+            .with_repo(|repo| {
+                let mut cfg = repo.config().map_err(Self::map_err)?;
+                cfg.set_str(&format!("branch.{branch}.remote"), remote)
+                    .map_err(Self::map_err)?;
+                cfg.set_str(&format!("branch.{branch}.merge"), &merge_ref)
+                    .map_err(Self::map_err)?;
+                Ok::<(), VcsError>(())
+            })
+            .map_err(Self::map_err)
+    }
+
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String> {
         info!(
             "git-libgit2: commit message_len={} author='{} <{}>' paths={}",

@@ -432,6 +432,39 @@ impl Vcs for GitSystem {
         )
     }
 
+    fn set_branch_upstream(&self, branch: &str, upstream: &str) -> Result<()> {
+        let branch = branch.trim();
+        let upstream = upstream.trim();
+        if branch.is_empty() || upstream.is_empty() {
+            return Err(VcsError::Backend {
+                backend: self.id(),
+                msg: "branch/upstream cannot be empty".into(),
+            });
+        }
+        log::info!("git-system: set_branch_upstream {} -> {}", branch, upstream);
+        Self::run_git(
+            Some(&self.workdir),
+            ["branch", &format!("--set-upstream-to={upstream}"), branch],
+        )
+    }
+
+    fn branch_upstream(&self, branch: &str) -> Result<Option<String>> {
+        let branch = branch.trim();
+        if branch.is_empty() {
+            return Ok(None);
+        }
+        let out = Self::run_git_capture(
+            Some(&self.workdir),
+            [
+                "for-each-ref",
+                "--format=%(upstream:short)",
+                &format!("refs/heads/{branch}"),
+            ],
+        )?;
+        let up = out.trim();
+        if up.is_empty() { Ok(None) } else { Ok(Some(up.to_string())) }
+    }
+
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String> {
         log::info!(
             "git-system: commit message_len={} author='{} <{}>' paths={}",

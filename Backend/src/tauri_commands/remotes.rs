@@ -130,7 +130,7 @@ pub async fn git_push<R: Runtime>(
     let app = window.app_handle().clone();
     let current = run_repo_task("git_push", repo, move |repo| {
         info!("git_push called");
-        let on = Some(progress_bridge(app));
+        let on = Some(progress_bridge(app.clone()));
 
         let current = repo
             .inner()
@@ -151,6 +151,13 @@ pub async fn git_push<R: Runtime>(
             error!("Push failed for branch '{current}': {e}");
             e.to_string()
         })?;
+
+        // Pushing does not update local remote-tracking refs (refs/remotes/origin/*),
+        // which the UI uses for ahead/behind; refresh them best-effort.
+        let on_fetch = Some(progress_bridge(app));
+        if let Err(e) = repo.inner().fetch("origin", &current, on_fetch) {
+            warn!("Post-push fetch failed for branch '{current}': {e}");
+        }
 
         info!("Push completed successfully for '{current}'");
         Ok(current)
