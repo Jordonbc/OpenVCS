@@ -8,7 +8,7 @@ import {
 } from './ui/layout';
 import { initMenubar } from './ui/menubar';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
-import { bindRepoHotkeys, bindFilter, renderList, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash } from './features/repo';
+import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash } from './features/repo';
 import { bindBranchUI } from './features/branches';
 import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
@@ -64,6 +64,7 @@ function boot() {
     } else {
         setTheme(prefs.theme);
     }
+    wireRenderListCallbacks();
     bindTabs((t) => { setTab(t); renderList(); });
     initResizer();
 
