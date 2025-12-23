@@ -9,17 +9,21 @@ import { hydrateStatus, hydrateCommits } from './hydrate';
 import { updateCommitButton } from './commit';
 
 export function renderHistoryList(query: string): boolean {
-    if (!listEl || !countEl || !diffHeadPath || !diffEl) return false;
-    listEl.innerHTML = '';
+    const list = listEl;
+    const count = countEl;
+    const head = diffHeadPath;
+    const diff = diffEl;
+    if (!list || !count || !head || !diff) return false;
+    list.innerHTML = '';
     const commits = (state.commits || []).filter((c) =>
         !query || c.msg?.toLowerCase().includes(query) || c.id?.includes(query)
     );
-    countEl.textContent = `${commits.length} commit${commits.length === 1 ? '' : 's'}`;
+    count.textContent = `${commits.length} commit${commits.length === 1 ? '' : 's'}`;
 
     if (!commits.length) {
-        listEl.innerHTML = '<li class="row" aria-disabled="true"><div class="file">No commits loaded.</div></li>';
-        diffHeadPath.textContent = 'Commit details';
-        diffEl.innerHTML = '';
+        list.innerHTML = '<li class="row" aria-disabled="true"><div class="file">No commits loaded.</div></li>';
+        head.textContent = 'Commit details';
+        diff.innerHTML = '';
         updateCommitButton();
         return true;
     }
@@ -30,7 +34,7 @@ export function renderHistoryList(query: string): boolean {
         const info = document.createElement('li');
         info.className = 'row notice';
         info.innerHTML = `<div class="file" title="Commits exist on the remote that are not pulled locally">↓ ${behind} incoming commit${behind === 1 ? '' : 's'} on remote</div>`;
-        listEl.appendChild(info);
+        list.appendChild(info);
     }
 
     const aheadIds: Set<string> = (state as any).aheadIds || new Set<string>();
@@ -87,7 +91,7 @@ export function renderHistoryList(query: string): boolean {
             }
             buildCtxMenu(items, x, y);
         });
-        listEl.appendChild(li);
+        list.appendChild(li);
     });
     selectHistory(commits[0], 0);
     updateCommitButton();

@@ -267,7 +267,7 @@ function boot() {
     })();
 
   // repo selected -> refresh
-    TAURI.listen?.('repo:selected', async ({ payload }) => {
+    TAURI.listen<string | { path?: string; repoPath?: string; repo?: string; dir?: string }>('repo:selected', async ({ payload }) => {
         const path = typeof payload === 'string'
             ? payload
             : (payload?.path ?? payload?.repoPath ?? payload?.repo ?? payload?.dir ?? '');
