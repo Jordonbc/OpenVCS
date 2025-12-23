@@ -44,6 +44,14 @@ Run commands from the **workspace root** unless stated otherwise.
   ```bash
   cd Frontend && npm install
   ```
+- **Build frontend only**:
+  ```bash
+  cd Frontend && npm run build
+  ```
+- **Type-check frontend only**:
+  ```bash
+  cd Frontend && npm exec tsc -- -p tsconfig.json --noEmit
+  ```
 - **Dev run** (Tauri + Vite; from root):
   ```bash
   cargo tauri dev
@@ -90,4 +98,3 @@ Run commands from the **workspace root** unless stated otherwise.
 ---
 
 *Keep this file concise. For larger details, link out to docs in **`docs/`**.*
-
