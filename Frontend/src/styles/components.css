@@ -19,6 +19,14 @@
 .btn:hover,.tbtn:hover,.pick:hover{ border-color:var(--accent); }
 .btn:active,.tbtn:active,.pick:active{ transform:translateY(1px); }
 
+.btn.attention{
+    border-color:color-mix(in oklab, var(--accent) 55%, var(--border));
+    background:color-mix(in oklab, var(--accent) 12%, var(--surface));
+}
+.btn.attention:hover{
+    background:color-mix(in oklab, var(--accent) 16%, var(--surface));
+}
+
 .btn.primary,.tbtn.primary{
     background:var(--accent);
     border-color:var(--accent);

@@ -137,6 +137,19 @@ export function refreshRepoActions() {
     if (pushBtn)   pushBtn.disabled   = !repoOn;
     if (branchBtn) branchBtn.disabled = !repoOn;
 
+    // Push highlight + badge when there are unpushed commits
+    const ahead = Number((state as any).ahead || 0);
+    if (pushBtn) {
+        pushBtn.classList.toggle('attention', repoOn && ahead > 0);
+        const labelEl = pushBtn.querySelector<HTMLElement>('.btn-label');
+        const label = repoOn && ahead > 0
+            ? `Push (${ahead})`
+            : 'Push';
+        pushBtn.title = label;
+        pushBtn.setAttribute('aria-label', label);
+        if (labelEl) labelEl.textContent = label;
+    }
+
     // Text inputs are ONLY enabled when there are active changes in an open repo
     if (summary) summary.disabled = !(repoOn && changesOn);
     if (desc)    desc.disabled    = !(repoOn && changesOn);
@@ -152,7 +165,6 @@ export function refreshRepoActions() {
     if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && (hunksSelected || linesSelected || filesSelected));
 
     // Left-panel undo visibility (under files list)
-    const ahead = Number((state as any).ahead || 0);
     const showUndo = repoOn && ahead > 0 && prefs.tab === 'changes';
     const stashMode = undoLeftWrap?.dataset.mode === 'stash';
     if (undoLeftWrap) undoLeftWrap.classList.toggle('show', stashMode || showUndo);
