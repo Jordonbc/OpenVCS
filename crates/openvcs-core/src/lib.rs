@@ -6,7 +6,7 @@ pub mod backend_descriptor;
 
 use std::{path::{Path, PathBuf}, sync::Arc};
 pub use crate::backend_id::BackendId;
-pub use crate::models::{Capabilities, OnEvent};
+pub use crate::models::{Capabilities, FetchOptions, OnEvent};
 
 #[cfg(test)]
 pub(crate) mod test_helpers;
@@ -63,6 +63,15 @@ pub trait Vcs: Send + Sync {
     /// Remove a configured remote by name (no-op if missing).
     fn remove_remote(&self, name: &str) -> Result<()>;
     fn fetch(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()>;
+    fn fetch_with_options(
+        &self,
+        remote: &str,
+        refspec: &str,
+        _opts: FetchOptions,
+        on: Option<OnEvent>,
+    ) -> Result<()> {
+        self.fetch(remote, refspec, on)
+    }
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()>;
 
     /// Fast-forward only pull of the current branch from the specified remote/branch.
