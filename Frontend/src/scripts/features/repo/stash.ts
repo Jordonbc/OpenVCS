@@ -17,11 +17,15 @@ export function setRenderListRef(fn: () => void) {
 }
 
 export function renderStashList(query: string): boolean {
-    if (!listEl || !countEl || !diffHeadPath || !diffEl) return false;
-    listEl.innerHTML = '';
+    const list = listEl;
+    const count = countEl;
+    const head = diffHeadPath;
+    const diff = diffEl;
+    if (!list || !count || !head || !diff) return false;
+    list.innerHTML = '';
     const stash = ((state as any).stash || []) as any[];
     const items = stash.filter((s) => !query || (s.msg || '').toLowerCase().includes(query) || (s.selector || '').includes(query));
-    countEl.textContent = `${items.length} stash${items.length === 1 ? '' : 'es'}`;
+    count.textContent = `${items.length} stash${items.length === 1 ? '' : 'es'}`;
 
     const enableActionButtons = (enabled: boolean) => {
         const a = document.querySelector<HTMLButtonElement>('#stash-apply-btn'); if (a) a.disabled = !enabled;
@@ -30,9 +34,9 @@ export function renderStashList(query: string): boolean {
     };
 
     if (!items.length) {
-        listEl.innerHTML = '<li class="row" aria-disabled="true"><div class="file">No stashes.</div></li>';
-        diffHeadPath.textContent = 'Stash details';
-        diffEl.innerHTML = '';
+        list.innerHTML = '<li class="row" aria-disabled="true"><div class="file">No stashes.</div></li>';
+        head.textContent = 'Stash details';
+        diff.innerHTML = '';
         enableActionButtons(false);
         return true;
     }
@@ -78,7 +82,7 @@ export function renderStashList(query: string): boolean {
             }});
             buildCtxMenu(items, x, y);
         });
-        listEl.appendChild(li);
+        list.appendChild(li);
     });
     selectStash(items[0], 0);
     return true;

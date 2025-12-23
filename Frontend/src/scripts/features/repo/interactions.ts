@@ -139,6 +139,7 @@ export function applySelect(path: string, on: boolean, rowEl: HTMLElement | null
 
 export function updateDragRange(visible: FileStatus[]) {
     if (!dragState.isDragSelecting || dragState.dragMode === null) return;
+    const list = listEl;
     const a = Math.min(dragState.dragStartIndex, dragState.dragCurrentIndex);
     const b = Math.max(dragState.dragStartIndex, dragState.dragCurrentIndex);
     if (dragState.dragMode === 'diff') {
@@ -148,9 +149,9 @@ export function updateDragRange(visible: FileStatus[]) {
             if (i >= a && i <= b) next.add(p); else if (!dragState.dragPreDiff.has(p)) next.delete(p);
         }
         state.diffSelectedFiles = next;
-        if (listEl) {
+        if (list) {
             visible.forEach((v) => {
-                const row = listEl.querySelector<HTMLElement>(`li.row[data-path="${(v.path || '').replace(/([\"\\])/g, '\\$1')}"]`);
+                const row = list.querySelector<HTMLElement>(`li.row[data-path="${(v.path || '').replace(/([\"\\])/g, '\\$1')}"]`);
                 if (row) row.classList.toggle('diffsel', state.diffSelectedFiles.has(v.path));
             });
         }
@@ -161,10 +162,10 @@ export function updateDragRange(visible: FileStatus[]) {
             const inRange = i >= a && i <= b;
             const on = inRange ? dragState.dragTargetState : dragState.dragPrePicked.has(p);
             if (on) next.add(p);
-            if (listEl) {
-                const row = listEl.querySelector<HTMLElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"]`);
+            if (list) {
+                const row = list.querySelector<HTMLElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"]`);
                 if (row) row.classList.toggle('picked', on);
-                const cb = listEl.querySelector<HTMLInputElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"] input.pick`);
+                const cb = list.querySelector<HTMLInputElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"] input.pick`);
                 if (cb) { cb.checked = on; (cb as any).indeterminate = false; }
             }
             if (state.currentFile && p === state.currentFile) {
