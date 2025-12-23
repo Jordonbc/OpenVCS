@@ -224,6 +224,32 @@ impl Vcs for GitLibGit2 {
             .map_err(Self::map_err)
     }
 
+    fn branch_upstream(&self, branch: &str) -> Result<Option<String>> {
+        let branch = branch.trim();
+        if branch.is_empty() {
+            return Ok(None);
+        }
+
+        self.inner
+            .with_repo(|repo| {
+                let cfg = repo.config().map_err(Self::map_err)?;
+                let remote_key = format!("branch.{branch}.remote");
+                let merge_key = format!("branch.{branch}.merge");
+                let remote = cfg.get_string(&remote_key).ok();
+                let merge = cfg.get_string(&merge_key).ok();
+                match (remote, merge) {
+                    (Some(remote), Some(merge)) => {
+                        let merge = merge.trim().trim_start_matches("refs/heads/");
+                        if remote.trim().is_empty() || merge.is_empty() {
+                            return Ok(None);
+                        }
+                        Ok(Some(format!("{}/{}", remote.trim(), merge)))
+                    }
+                    _ => Ok(None),
+                }
+            })
+    }
+
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String> {
         info!(
             "git-libgit2: commit message_len={} author='{} <{}>' paths={}",

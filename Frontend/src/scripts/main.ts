@@ -1,7 +1,7 @@
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
-import { prefs, state } from './state/state';
+import { prefs, state, hasRepo } from './state/state';
 import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
     bindLayoutActionState
@@ -120,6 +120,8 @@ function boot() {
 
     function updateFetchUI() {
         const behind = getBehindCount();
+        const repoOn = hasRepo();
+        const canPull = repoOn;
         const mainLabel = behind > 0 ? `Pull (${behind})` : 'Fetch';
         const mainTitle = behind > 0
             ? `Pull ${behind} commit${behind === 1 ? '' : 's'} (F5)`
@@ -142,8 +144,8 @@ function boot() {
         }
         if (pullItem) {
             const pullLabel = behind > 0 ? `Pull (${behind})` : 'Pull';
-            pullItem.setAttribute('aria-disabled', behind > 0 ? 'false' : 'true');
-            pullItem.tabIndex = behind > 0 ? 0 : -1;
+            pullItem.setAttribute('aria-disabled', canPull ? 'false' : 'true');
+            pullItem.tabIndex = canPull ? 0 : -1;
             const name = pullItem.querySelector<HTMLElement>('.name');
             if (name) name.textContent = pullLabel;
         }

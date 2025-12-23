@@ -84,7 +84,7 @@ pub async fn git_pull<R: Runtime>(
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let current = run_repo_task("git_pull", repo, move |repo| {
+    let pulled = run_repo_task("git_pull", repo, move |repo| {
         info!("git_pull called");
         let on = Some(progress_bridge(app));
         let current = repo
@@ -99,23 +99,38 @@ pub async fn git_pull<R: Runtime>(
                 "Detached HEAD; cannot determine upstream".to_string()
             })?;
 
-        info!("Fast-forward pulling branch '{current}' from origin");
+        let mut remote = "origin".to_string();
+        let mut branch = current.clone();
+        if let Ok(Some(upstream)) = repo.inner().branch_upstream(&current) {
+            let up = upstream
+                .trim()
+                .trim_start_matches("refs/remotes/")
+                .to_string();
+            if let Some((r, b)) = up.split_once('/') {
+                if !r.trim().is_empty() && !b.trim().is_empty() {
+                    remote = r.trim().to_string();
+                    branch = b.trim().to_string();
+                }
+            }
+        }
+
+        info!("Fast-forward pulling '{current}' from {remote}/{branch}");
         repo.inner()
-            .pull_ff_only("origin", &current, on)
+            .pull_ff_only(&remote, &branch, on)
             .map_err(|e| {
                 error!("Pull (ff-only) failed for branch '{current}': {e}");
                 e.to_string()
             })?;
 
         info!("Pull (ff-only) completed successfully for branch '{current}'");
-        Ok(current)
+        Ok(format!("{current} <- {remote}/{branch}"))
     })
     .await?;
 
     let _ = window.app_handle().emit(
         "git-progress",
         ProgressPayload {
-            message: format!("Pull complete ({current})"),
+            message: format!("Pull complete ({pulled})"),
         },
     );
     Ok(())
