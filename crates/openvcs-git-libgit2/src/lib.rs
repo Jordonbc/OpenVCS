@@ -168,6 +168,20 @@ impl Vcs for GitLibGit2 {
             .map_err(Self::map_err)
     }
 
+    fn fetch_with_options(
+        &self,
+        remote: &str,
+        refspec: &str,
+        opts: FetchOptions,
+        on: Option<OnEvent>,
+    ) -> Result<()> {
+        info!("git-libgit2: fetch {} {} (prune={})", remote, refspec, opts.prune);
+        self.inner
+            .fetch_with_progress_and_prune(remote, refspec, opts.prune, Self::adapt_progress(on))
+            .map(|_| ())
+            .map_err(Self::map_err)
+    }
+
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
         info!("git-libgit2: push {} {}", remote, refspec);
         self.inner.push_refspec_with_progress(remote, refspec, Self::adapt_progress(on))

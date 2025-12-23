@@ -328,12 +328,26 @@ impl Git {
     where
         F: Fn(String) + Send + Sync + 'static,
     {
-        info!("fetching from remote '{remote}' with refspec '{refspec}'");
+        self.fetch_with_progress_and_prune(remote, refspec, false, on)
+    }
+
+    pub fn fetch_with_progress_and_prune<F>(
+        &self,
+        remote: &str,
+        refspec: &str,
+        prune: bool,
+        on: F,
+    ) -> Result<Option<Oid>>
+    where
+        F: Fn(String) + Send + Sync + 'static,
+    {
+        info!("fetching from remote '{remote}' with refspec '{refspec}' (prune={prune})");
 
         let cb = make_remote_callbacks_with_progress(on);
         let mut fo = FetchOptions::new();
         fo.remote_callbacks(cb);
         fo.download_tags(AutotagOption::All);
+        fo.prune(if prune { g::FetchPrune::On } else { g::FetchPrune::Off });
         debug!("fetch options prepared (download_tags=All)");
 
         self.with_repo(|repo| {

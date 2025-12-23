@@ -70,6 +70,13 @@ pub struct CommitItem {
     pub author: String,
 }
 
+/// Options controlling fetch behavior.
+#[derive(Default, Clone, Copy, Debug)]
+pub struct FetchOptions {
+    /// When true, remove any remote-tracking refs that no longer exist on the remote.
+    pub prune: bool,
+}
+
 /// A single stash entry (backend-agnostic)
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct StashItem {

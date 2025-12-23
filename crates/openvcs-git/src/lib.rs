@@ -415,6 +415,25 @@ impl Vcs for GitSystem {
         Self::run_git_streaming(&self.workdir, ["fetch", "--progress", remote, refspec], on)
     }
 
+    fn fetch_with_options(
+        &self,
+        remote: &str,
+        refspec: &str,
+        opts: FetchOptions,
+        on: Option<OnEvent>,
+    ) -> Result<()> {
+        log::info!("git-system: fetch {} {} (prune={})", remote, refspec, opts.prune);
+        if opts.prune {
+            Self::run_git_streaming(
+                &self.workdir,
+                ["fetch", "--progress", "--prune", remote, refspec],
+                on,
+            )
+        } else {
+            Self::run_git_streaming(&self.workdir, ["fetch", "--progress", remote, refspec], on)
+        }
+    }
+
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
         log::info!("git-system: push {} {}", remote, refspec);
         Self::run_git_streaming(&self.workdir, ["push", "--progress", remote, refspec], on)
