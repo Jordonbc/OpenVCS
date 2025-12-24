@@ -77,6 +77,11 @@ pub struct Git {
     #[serde(default)] pub fetch_on_focus: bool,
     #[serde(default)] pub allow_hooks: HookPolicy,
     #[serde(default)] pub respect_core_autocrlf: bool,
+    /// Commit message template used for automatic merge commits.
+    ///
+    /// If empty, Git's default merge message is used.
+    /// Supported placeholders: {branch:source}, {branch:target}, {repo:name}, {repo:username}
+    #[serde(default)] pub merge_commit_message_template: String,
 }
 impl Default for Git {
     fn default() -> Self {
@@ -87,6 +92,7 @@ impl Default for Git {
             fetch_on_focus: true,
             allow_hooks: HookPolicy::Ask,
             respect_core_autocrlf: true,
+            merge_commit_message_template: "Merged branch '{branch:source}' into '{branch:target}'".into(),
         }
     }
 }

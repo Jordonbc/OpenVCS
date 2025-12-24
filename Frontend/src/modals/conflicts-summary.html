@@ -1,0 +1,29 @@
+<div class="modal" id="conflicts-summary-modal" aria-hidden="true">
+  <div class="backdrop" data-close="true"></div>
+  <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="conflicts-summary-title">
+    <div class="sheet-head">
+      <h3 id="conflicts-summary-title" style="margin:0">Resolve conflicts</h3>
+      <button class="icon close" data-close aria-label="Close">✕</button>
+    </div>
+
+    <section class="sheet-body" style="display:block">
+      <div class="group" style="margin-bottom:14px">
+        <div id="conflicts-summary-subtitle" style="opacity:.85"></div>
+      </div>
+
+      <div class="group">
+        <div id="conflicts-summary-count" style="font-weight:600; margin-bottom:10px"></div>
+        <div id="conflicts-summary-list" class="list"></div>
+      </div>
+
+      <div class="group" style="margin-top:14px; opacity:.8">
+        <div>Resolve each file, then commit to finish.</div>
+      </div>
+    </section>
+
+    <div class="sheet-foot" style="display:flex; gap:10px; justify-content:flex-end">
+      <button class="btn" id="conflicts-abort" hidden>Abort merge</button>
+      <button class="btn primary" id="conflicts-continue" hidden>Commit merge</button>
+    </div>
+  </div>
+</div>

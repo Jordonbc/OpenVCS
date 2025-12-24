@@ -133,6 +133,30 @@ pub trait Vcs: Send + Sync {
     /// `VcsError::Unsupported` if not available.
     fn merge_into_current(&self, name: &str) -> Result<()>;
 
+    /// Merge the given branch into the current HEAD with a specific commit message.
+    ///
+    /// Backends that do not support custom merge messages may ignore `message` and
+    /// fall back to their default merge behavior.
+    fn merge_into_current_with_message(&self, name: &str, message: Option<&str>) -> Result<()> {
+        let _ = message;
+        self.merge_into_current(name)
+    }
+
+    /// Abort an in-progress merge if supported.
+    fn merge_abort(&self) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+
+    /// Continue/commit an in-progress merge after conflicts are resolved if supported.
+    fn merge_continue(&self) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+
+    /// Returns true if a merge is currently in progress (e.g., `.git/MERGE_HEAD` exists).
+    fn merge_in_progress(&self) -> Result<bool> {
+        Ok(false)
+    }
+
     /// Configure the given local branch to track the given upstream (e.g. `origin/main`).
     /// Backends may return `VcsError::Unsupported` if not implemented.
     fn set_branch_upstream(&self, _branch: &str, _upstream: &str) -> Result<()> {
