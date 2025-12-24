@@ -36,13 +36,19 @@ function populateBaseSelect(modal: HTMLElement) {
     const all = [...current, ...locals, ...remotes];
 
     const curName = state.branch || current[0]?.name || '';
-    sel.innerHTML = all.map(b => {
+
+    sel.replaceChildren();
+    for (const b of all) {
         const isRemote = (b.kind?.type || '').toLowerCase() === 'remote';
         const label = isRemote && b.kind?.remote ? `${b.kind.remote}/${b.name.split('/').pop() || b.name}` : b.name;
         const value = b.name; // backend expects the ref name we already use elsewhere
-        const selected = value === curName ? ' selected' : '';
-        return `<option value="${value}"${selected}>${label}</option>`;
-    }).join("");
+
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = label;
+        opt.selected = value === curName;
+        sel.appendChild(opt);
+    }
 }
 
 export function wireNewBranch() {
@@ -83,7 +89,9 @@ export function wireNewBranch() {
             } else if (fixed !== rawTrim || raw !== rawTrim) {
                 nameHint.hidden = false;
                 nameHint.classList.remove('error');
-                nameHint.innerHTML = `Will be created as <code>${fixed}</code>`;
+                const code = document.createElement('code');
+                code.textContent = fixed;
+                nameHint.replaceChildren('Will be created as ', code);
             } else {
                 nameHint.hidden = true;
                 nameHint.textContent = '';
