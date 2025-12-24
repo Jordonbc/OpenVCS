@@ -194,13 +194,10 @@ export function toggleSelectAll(on: boolean, visible: FileStatus[]) {
 export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     ev.preventDefault();
     const x = ev.clientX, y = ev.clientY;
-    const totalFiles = Array.isArray(state.files) ? state.files.length : 0;
-    const selectedPaths = Array.from(state.selectedFiles || []);
-    const hasManualSelection = (!state.defaultSelectAll) || (selectedPaths.length > 0 && selectedPaths.length !== totalFiles);
-    const manualSelection = hasManualSelection ? selectedPaths : [];
-    const clickedInSelection = manualSelection.includes(f.path);
-    const hasMultiSelection = manualSelection.length > 1 && clickedInSelection;
-    const hasSingleSelection = manualSelection.length === 1 && clickedInSelection;
+    const selectedPaths = Array.from(state.selectedFiles || []).filter(Boolean);
+    const clickedInSelection = !!f.path && (state.selectedFiles?.has(f.path) ?? false);
+    const hasMultiSelection = selectedPaths.length > 1 && clickedInSelection;
+    const hasSingleSelection = selectedPaths.length === 1 && clickedInSelection;
     const items: CtxItem[] = [];
     const openStashForPaths = (paths: string[], defaultMessage: string) => {
         if (!paths.length) return;
@@ -221,10 +218,10 @@ export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
         catch { notify('Discard failed'); }
     }});
-    if (hasManualSelection && clickedInSelection) {
-        items.push({ label: 'Discard selected files', action: async () => {
+    if (clickedInSelection && selectedPaths.length > 1) {
+        items.push({ label: 'Discard all selected', action: async () => {
             if (!TAURI.has) return;
-            const paths = manualSelection.slice();
+            const paths = selectedPaths.slice();
             const ok = window.confirm(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
             if (!ok) return;
             try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
@@ -232,11 +229,11 @@ export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         }});
         if (hasMultiSelection) {
             items.push({ label: 'Create stash from selection…', action: () => {
-                openStashForPaths(manualSelection.slice(), 'WIP selection');
+                openStashForPaths(selectedPaths.slice(), 'WIP selection');
             }});
         }
     }
-    const singleTarget = hasSingleSelection ? manualSelection[0] : f.path;
+    const singleTarget = hasSingleSelection ? selectedPaths[0] : f.path;
     const defaultMsg = `WIP ${singleTarget}`;
     items.push({ label: 'Create stash for this file…', action: () => {
         openStashForPaths([singleTarget], defaultMsg);
@@ -247,7 +244,7 @@ export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             notify('Git LFS is available in the desktop app');
             return;
         }
-        const targets = (hasManualSelection && clickedInSelection ? manualSelection.slice() : [f.path]).filter(Boolean);
+        const targets = (clickedInSelection && selectedPaths.length > 1 ? selectedPaths.slice() : [f.path]).filter(Boolean);
         if (!targets.length) return;
         (async () => {
             try {
