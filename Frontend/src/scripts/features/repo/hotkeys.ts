@@ -1,5 +1,5 @@
 import { filterInput } from './context';
-import { disableDefaultSelectAll, state } from '../../state/state';
+import { disableDefaultSelectAll, prefs, state } from '../../state/state';
 import { getVisibleFiles } from './selectionState';
 import { toggleSelectAll } from './interactions';
 import { renderList } from './list';
@@ -29,12 +29,14 @@ export function bindRepoHotkeys(
         if (chord && key === 'r') { e.preventDefault(); openSheet('switch'); }
         if (chord && e.key === 'Enter') { e.preventDefault(); commitBtn?.click(); }
 
-        if (chord && key === 'a' && !e.shiftKey && !e.altKey && !modalOpen && !inEditable) {
+        if (chord && key === 'a' && !e.shiftKey && !e.altKey && !inEditable) {
+            e.preventDefault(); // prevent browser "select all text" behavior
+            if (modalOpen) return;
+            if (prefs.tab !== 'changes') return;
             const visible = getVisibleFiles();
             if (visible.length === 0) return;
             const selected = visible.filter((f) => f.path && state.selectedFiles.has(f.path)).length;
             const allSelected = selected === visible.length;
-            e.preventDefault();
             disableDefaultSelectAll();
             toggleSelectAll(!allSelected, visible);
             renderList();
