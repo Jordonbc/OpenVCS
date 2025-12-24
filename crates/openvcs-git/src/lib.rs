@@ -1041,4 +1041,12 @@ impl Vcs for GitSystem {
         }
         Self::run_git(Some(&self.workdir), args)
     }
+
+    fn lfs_is_tracked(&self, path: &Path) -> Result<bool> {
+        let p = Self::path_str(path)?;
+        // `git check-attr` does not require git-lfs to be installed; it reads `.gitattributes`.
+        // Output example: `path/to/file: filter: lfs`
+        let out = Self::run_git_capture(Some(&self.workdir), ["check-attr", "filter", "--", p])?;
+        Ok(out.lines().any(|l| l.contains("filter: lfs")))
+    }
 }
