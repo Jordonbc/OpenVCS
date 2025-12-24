@@ -215,6 +215,13 @@ export function bindBranchUI() {
     qs<HTMLButtonElement>('#branch-new')?.addEventListener('click', () => {
         closeBranchPopover();
         openModal('new-branch-modal');
+        const modal = document.getElementById('new-branch-modal') as HTMLElement | null;
+        const nameInput = modal?.querySelector<HTMLInputElement>('#new-branch-name') || null;
+        if (nameInput) {
+            nameInput.value = '';
+            nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+            setTimeout(() => nameInput.focus(), 0);
+        }
     });
 
     // React when a repo is selected somewhere else (add/clone/open)
