@@ -48,3 +48,20 @@
 #repo-settings-modal .panel-form input[type="number"]{ text-align:right; }
 #repo-settings-modal .panel-form .checkbox{ display:flex; align-items:center; gap:.6rem; }
 #repo-settings-modal .panel-form .checkbox input{ width:1.1rem; height:1.1rem; }
+
+#repo-settings-modal .remotes{
+    display:grid;
+    gap:.5rem;
+}
+#repo-settings-modal .remote-row{
+    display:grid;
+    grid-template-columns: 8rem 1fr auto;
+    gap:.5rem;
+    align-items:center;
+}
+#repo-settings-modal .remote-row .remote-name{
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+#repo-settings-modal .remote-row .remote-remove{
+    white-space:nowrap;
+}

@@ -6,6 +6,8 @@ import aboutHtml from "@modals/about.html?raw";
 import { wireSettings } from "../features/settings";
 import repoSettingsHtml from "@modals/repo-settings.html?raw";
 import { wireRepoSettings } from "../features/repoSettings";
+import sshHostkeyHtml from "@modals/ssh-hostkey.html?raw";
+import sshAuthHtml from "@modals/ssh-auth.html?raw";
 import newBranchHtml from "@modals/new-branch.html?raw";
 import { wireNewBranch } from "../features/newBranch";
 import renameBranchHtml from "@modals/rename-branch.html?raw";
@@ -25,6 +27,8 @@ const FRAGMENTS: Record<string, string> = {
     "about-modal": aboutHtml,
     "command-modal": cmdHtml,
     "repo-settings-modal": repoSettingsHtml,
+    "ssh-hostkey-modal": sshHostkeyHtml,
+    "ssh-auth-modal": sshAuthHtml,
     "new-branch-modal": newBranchHtml,
     "rename-branch-modal": renameBranchHtml,
     "set-upstream-modal": setUpstreamHtml,
@@ -68,6 +72,9 @@ export function hydrate(id: string): void {
 
     if (id === "settings-modal") wireSettings();
     if (id === "repo-settings-modal") wireRepoSettings();
+    if (id === "ssh-hostkey-modal") {
+        // wiring is done by the listener in the sshHostkey feature
+    }
     if (id === "new-branch-modal") wireNewBranch();
     if (id === "rename-branch-modal") wireRenameBranch();
     if (id === "set-upstream-modal") wireSetUpstream();

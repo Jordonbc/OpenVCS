@@ -9,6 +9,78 @@ use crate::state::AppState;
 
 use super::{current_repo_or_err, progress_bridge, run_repo_task, ProgressPayload};
 
+fn host_from_remote_url(url: &str) -> Option<String> {
+    let u = url.trim();
+    if u.is_empty() {
+        return None;
+    }
+
+    // git@host:owner/repo(.git)
+    if let Some(at) = u.find('@') {
+        let rest = &u[at + 1..];
+        if let Some((host, _path)) = rest.split_once(':') {
+            let host = host.trim();
+            if !host.is_empty() {
+                return Some(host.to_string());
+            }
+        }
+    }
+
+    // ssh://user@host/owner/repo(.git)
+    if let Some(rest) = u.strip_prefix("ssh://") {
+        let rest = rest.trim_start_matches('/');
+        let after_user = rest.split('@').nth(1).unwrap_or(rest);
+        let host = after_user.split('/').next().unwrap_or("").trim();
+        if !host.is_empty() {
+            return Some(host.to_string());
+        }
+    }
+
+    // https://host/owner/repo(.git)
+    if let Some(rest) = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")) {
+        let host = rest.split('/').next().unwrap_or("").trim();
+        if !host.is_empty() {
+            return Some(host.to_string());
+        }
+    }
+
+    None
+}
+
+fn looks_like_unknown_host_key(msg: &str) -> bool {
+    let m = msg.to_lowercase();
+    m.contains("the authenticity of host")
+        || m.contains("host key verification failed")
+        || m.contains("no hostkey alg")
+        || m.contains("could not resolve hostname")
+        || m.contains("known_hosts")
+        || m.contains("strict host key checking")
+}
+
+fn looks_like_ssh_auth_failure(msg: &str) -> bool {
+    let m = msg.to_lowercase();
+    m.contains("permission denied")
+        || m.contains("publickey")
+        || m.contains("could not read from remote repository")
+        || m.contains("authentication failed")
+}
+
+#[derive(Clone, serde::Serialize)]
+struct SshHostKeyPrompt {
+    host: String,
+    remote: String,
+    url: String,
+    message: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct SshAuthPrompt {
+    host: String,
+    remote: String,
+    url: String,
+    message: String,
+}
+
 #[tauri::command]
 pub async fn git_fetch<R: Runtime>(
     window: Window<R>,
@@ -34,8 +106,23 @@ pub async fn git_fetch<R: Runtime>(
                 "Detached HEAD; cannot determine upstream".to_string()
             })?;
 
-        info!("Fetching branch '{current}' from origin");
-        repo.inner().fetch_with_options("origin", &current, fetch_opts, on).map_err(|e| {
+        // Prefer the upstream remote for the current branch, falling back to `origin`.
+        let mut remote = "origin".to_string();
+        let mut refspec = current.clone();
+        if let Ok(Some(upstream)) = repo.inner().branch_upstream(&current) {
+            let up = upstream.trim().trim_start_matches("refs/remotes/");
+            if let Some((r, upstream_branch)) = up.split_once('/') {
+                let r = r.trim();
+                let upstream_branch = upstream_branch.trim();
+                if !r.is_empty() && !upstream_branch.is_empty() {
+                    remote = r.to_string();
+                    refspec = upstream_branch.to_string();
+                }
+            }
+        }
+
+        info!("Fetching '{refspec}' from remote '{remote}' (current branch '{current}')");
+        repo.inner().fetch_with_options(&remote, &refspec, fetch_opts, on).map_err(|e| {
             error!("Fetch failed for branch '{current}': {e}");
             e.to_string()
         })?;
@@ -66,21 +153,80 @@ pub async fn git_fetch_all<R: Runtime>(
     };
     run_repo_task("git_fetch_all", repo, move |repo| {
         info!("git_fetch_all called");
-        let on = Some(progress_bridge(app));
+        let on = Some(progress_bridge(app.clone()));
         let remotes = repo.inner().list_remotes().map_err(|e| {
             error!("Failed to list remotes: {e}");
             e.to_string()
         })?;
 
-        for (r, _url) in remotes.into_iter() {
+        if log::log_enabled!(log::Level::Trace) {
+            log::trace!("git_fetch_all: remotes={:?}", remotes);
+        }
+
+        let mut failures: Vec<String> = Vec::new();
+        for (r, url) in remotes.into_iter() {
             info!("Fetching all refs from remote '{r}'");
-            let refspec = format!("+refs/heads/*:refs/remotes/{r}/*");
-            if let Err(e) = repo.inner().fetch_with_options(&r, &refspec, fetch_opts, on.clone()) {
-                error!("Fetch failed for remote '{r}': {e}");
-                return Err(e.to_string());
+            let refspec_force = format!("+refs/heads/*:refs/remotes/{r}/*");
+            let refspec = format!("refs/heads/*:refs/remotes/{r}/*");
+
+            // Some backends/environments can be picky about force-refspec syntax; fall back to a
+            // non-force refspec so we still populate `refs/remotes/<remote>/*` for the UI.
+            if let Err(e) = repo.inner().fetch_with_options(&r, &refspec_force, fetch_opts, on.clone()) {
+                warn!("Fetch (force refspec) failed for remote '{r}': {e}; retrying without '+'");
+                if let Err(e2) = repo.inner().fetch_with_options(&r, &refspec, fetch_opts, on.clone()) {
+                    let msg = e2.to_string();
+                    if looks_like_unknown_host_key(&msg) {
+                        if let Some(host) = host_from_remote_url(&url) {
+                            let _ = app.emit(
+                                "ui:ssh-hostkey",
+                                SshHostKeyPrompt {
+                                    host,
+                                    remote: r.clone(),
+                                    url: url.clone(),
+                                    message: msg.clone(),
+                                },
+                            );
+                        }
+                    } else if looks_like_ssh_auth_failure(&msg) {
+                        if let Some(host) = host_from_remote_url(&url) {
+                            let _ = app.emit(
+                                "ui:ssh-auth",
+                                SshAuthPrompt {
+                                    host,
+                                    remote: r.clone(),
+                                    url: url.clone(),
+                                    message: msg.clone(),
+                                },
+                            );
+                        }
+                    }
+                    error!("Fetch failed for remote '{r}': {msg}");
+                    failures.push(format!("{r}: {msg}"));
+                    continue;
+                }
             }
         }
-        Ok(())
+
+        if log::log_enabled!(log::Level::Trace) {
+            match repo.inner().branches() {
+                Ok(mut branches) => {
+                    branches.sort_by(|a, b| a.full_ref.cmp(&b.full_ref));
+                    log::trace!("git_fetch_all: branches() returned {} refs", branches.len());
+                    for b in branches {
+                        log::trace!(
+                            "git_fetch_all: branch ref={} name={} kind={:?} current={}",
+                            b.full_ref,
+                            b.name,
+                            b.kind,
+                            b.current
+                        );
+                    }
+                }
+                Err(e) => log::trace!("git_fetch_all: branches() failed: {e}"),
+            }
+        }
+
+        if failures.is_empty() { Ok(()) } else { Err(failures.join("\n")) }
     })
     .await
 }

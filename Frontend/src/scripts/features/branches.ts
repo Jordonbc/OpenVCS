@@ -12,7 +12,7 @@ import { setTab } from '../ui/layout';
 import type { ConflictDetails, FileStatus } from '../types';
 import { openConflictsSummary } from './conflicts';
 
-type Branch = { name: string; current?: boolean; kind?: { type?: string; remote?: string } };
+type Branch = { name: string; full_ref?: string; current?: boolean; kind?: { type?: string; remote?: string } };
 
 const branchBtn    = qs<HTMLButtonElement>('#branch-switch');
 const branchName   = qs<HTMLElement>('#branch-name');
@@ -56,16 +56,23 @@ function renderBranches() {
     const remoteItems: Branch[] = [];
     for (const branch of items) {
         const kindType = (branch.kind?.type || '').toLowerCase();
-        if (kindType === 'remote') remoteItems.push(branch);
+        const isRemote =
+            kindType === 'remote' ||
+            String(branch.full_ref || '').startsWith('refs/remotes/') ||
+            (branch.name.includes('/') && !String(branch.full_ref || '').startsWith('refs/heads/'));
+
+        if (isRemote) remoteItems.push(branch);
         else localItems.push(branch);
     }
 
     const renderItem = (b: Branch) => {
         const kindType = b.kind?.type || '';
-        const remote   = b.kind?.remote || '';
+        const remoteFromName = b.name.includes('/') ? b.name.split('/')[0] : '';
+        const remote   = b.kind?.remote || remoteFromName || '';
         let kindLabel = '';
         if (kindType.toLowerCase() === 'local') kindLabel = '<span class="badge kind">Local</span>';
         else if (kindType.toLowerCase() === 'remote') kindLabel = `<span class="badge kind">Remote:${remote || 'remote'}</span>`;
+        else if (remote) kindLabel = `<span class="badge kind">Remote:${remote || 'remote'}</span>`;
         return `
       <li role="option" data-branch="${b.name}" aria-selected="${b.current ? 'true' : 'false'}">
         <span class="label">
@@ -90,7 +97,8 @@ function renderBranches() {
 
 async function openBranchPopover() {
     if (!branchBtn || !branchPop) return;
-    await loadBranches(); // ensure we have fresh data
+
+    await loadBranches();
     const r = branchBtn.getBoundingClientRect();
     branchPop.style.left = `${r.left}px`;
     branchPop.style.top  = `${r.bottom + 6}px`;

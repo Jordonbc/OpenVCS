@@ -1,10 +1,10 @@
 use openvcs_core::*;
 use std::{
     fs,
-    io::{BufRead, BufReader},
+    io::{Read},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 use openvcs_core::backend_descriptor::{BackendDescriptor, BACKENDS};
 use openvcs_core::backend_id::BackendId;
@@ -67,7 +67,7 @@ impl GitSystem {
         let out = cmd
             .args(&argv)
             // Disable interactive terminal prompts; rely on ssh-agent or fail fast
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oStrictHostKeyChecking=yes")
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(VcsError::Io)?;
@@ -109,7 +109,7 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let out = cmd
             .args(&argv)
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oStrictHostKeyChecking=yes")
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(VcsError::Io)?;
@@ -143,7 +143,7 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let out = cmd
             .args(&argv)
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oStrictHostKeyChecking=yes")
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(VcsError::Io)?;
@@ -177,7 +177,7 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let out = cmd
             .args(&argv)
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oStrictHostKeyChecking=yes")
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(VcsError::Io)?;
@@ -195,7 +195,7 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let mut child = cmd
             .args(args.into_iter().map(|s| s.as_ref().to_string()))
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oStrictHostKeyChecking=yes")
             .env("GIT_TERMINAL_PROMPT", "0")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
@@ -221,10 +221,14 @@ impl GitSystem {
             args.join(" ")
         );
 
+        if let Some(cb) = &on {
+            cb(VcsEvent::RemoteMessage(format!("$ git {}", args.join(" "))));
+        }
+
         let mut cmd = Command::new(GIT_COMMAND_NAME);
         cmd.current_dir(cwd)
             .args(args)
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oStrictHostKeyChecking=yes")
             .env("GIT_TERMINAL_PROMPT", "0")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -232,31 +236,90 @@ impl GitSystem {
 
         let mut child = cmd.spawn().map_err(VcsError::Io)?;
 
-        if let Some(stderr) = child.stderr.take() {
-            let on_clone = on.clone();
+        // IMPORTANT: `git fetch --progress` often uses carriage returns (`\r`) without newlines.
+        // Using `BufRead::lines()` can block and stop draining the pipe, which can deadlock the child.
+        // Drain both stdout/stderr with chunked reads and split on either '\n' or '\r'.
+        let stderr_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+
+        fn drain_stream<R: Read + Send + 'static>(
+            mut reader: R,
+            on: Option<OnEvent>,
+            buf: Arc<Mutex<String>>,
+        ) -> std::thread::JoinHandle<()> {
             std::thread::spawn(move || {
-                for line in BufReader::new(stderr).lines().flatten() {
-                    if let Some(cb) = &on_clone {
-                        cb(VcsEvent::Progress { phase: "git", detail: line });
+                let mut tmp = [0u8; 8192];
+                let mut pending: Vec<u8> = Vec::new();
+
+                let mut flush = |bytes: &[u8]| {
+                    let text = String::from_utf8_lossy(bytes).trim().to_string();
+                    if text.is_empty() {
+                        return;
+                    }
+                    if let Ok(mut s) = buf.lock() {
+                        if !s.is_empty() {
+                            s.push('\n');
+                        }
+                        s.push_str(&text);
+                    }
+                    if let Some(cb) = &on {
+                        cb(VcsEvent::Progress { phase: "git", detail: text });
+                    }
+                };
+
+                loop {
+                    let n = match reader.read(&mut tmp) {
+                        Ok(0) => break,
+                        Ok(n) => n,
+                        Err(_) => break,
+                    };
+                    pending.extend_from_slice(&tmp[..n]);
+
+                    let mut start = 0usize;
+                    for i in 0..pending.len() {
+                        let b = pending[i];
+                        if b == b'\n' || b == b'\r' {
+                            if i > start {
+                                flush(&pending[start..i]);
+                            }
+                            start = i + 1;
+                        }
+                    }
+                    if start > 0 {
+                        pending.drain(0..start);
                     }
                 }
-            });
-        }
-        if let Some(stdout) = child.stdout.take() {
-            for line in BufReader::new(stdout).lines().flatten() {
-                if let Some(cb) = &on {
-                    cb(VcsEvent::Progress { phase: "git", detail: line });
+
+                if !pending.is_empty() {
+                    flush(&pending);
                 }
-            }
+            })
         }
 
+        let stderr_join = child
+            .stderr
+            .take()
+            .map(|stderr| drain_stream(stderr, on.clone(), Arc::clone(&stderr_buf)));
+
+        let stdout_join = child
+            .stdout
+            .take()
+            .map(|stdout| drain_stream(stdout, on.clone(), Arc::clone(&stderr_buf)));
+
         let status = child.wait().map_err(VcsError::Io)?;
+        if let Some(h) = stdout_join { let _ = h.join(); }
+        if let Some(h) = stderr_join { let _ = h.join(); }
         if status.success() {
             log::trace!("git(stream): exit=0");
             Ok(())
         } else {
             log::debug!("git(stream): exit={}", status);
-            Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg: format!("git exited with {status}") })
+            let msg = stderr_buf
+                .lock()
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| format!("git exited with {status}"));
+            Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg })
         }
     }
 }
