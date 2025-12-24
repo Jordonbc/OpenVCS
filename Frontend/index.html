@@ -113,13 +113,14 @@
       <div class="resizer" id="resizer" title="Resize panel" aria-hidden="true"></div>
 
       <!-- Right column -->
-      <main class="panel right" id="right" role="main">
-        <div class="diff-head">
-          <div class="path" id="diff-path">Select an item</div>
-          <div class="meta" id="diff-meta" aria-label="Diff settings">
-            <span>LF</span><span>UTF-8</span><span>Unified</span>
-          </div>
-        </div>
+	      <main class="panel right" id="right" role="main">
+	        <div class="diff-head">
+	          <div class="path" id="diff-path">Select an item</div>
+	          <div class="meta" id="diff-meta" aria-label="Diff settings">
+	            <span id="diff-meta-lfs" hidden>LFS</span>
+	            <span>LF</span><span>UTF-8</span><span>Unified</span>
+	          </div>
+	        </div>
 
         <div class="diff" id="diff" aria-live="polite" aria-label="Diff view"></div>
 
