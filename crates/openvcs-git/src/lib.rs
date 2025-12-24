@@ -64,19 +64,32 @@ impl GitSystem {
 
         let mut cmd = Command::new(GIT_COMMAND_NAME);
         if let Some(c) = cwd { cmd.current_dir(c); }
-        let status = cmd
+        let out = cmd
             .args(&argv)
             // Disable interactive terminal prompts; rely on ssh-agent or fail fast
             .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
             .env("GIT_TERMINAL_PROMPT", "0")
-            .status()
+            .output()
             .map_err(VcsError::Io)?;
-        if status.success() {
-            log::trace!("git(run): exit=0");
+        if out.status.success() {
+            log::trace!("git(run): exit=0, stdout_bytes={}, stderr_bytes={}", out.stdout.len(), out.stderr.len());
             Ok(())
         } else {
-            log::debug!("git(run): exit={}", status);
-            Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg: format!("git exited with {status}") })
+            let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+            let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+            let mut msg = String::new();
+            if !stderr.trim().is_empty() {
+                msg.push_str(stderr.trim_end());
+            }
+            if !stdout.trim().is_empty() {
+                if !msg.is_empty() { msg.push('\n'); }
+                msg.push_str(stdout.trim_end());
+            }
+            if msg.is_empty() {
+                msg = format!("git exited with {}", out.status);
+            }
+            log::debug!("git(run): exit={}, stdout_bytes={}, stderr_bytes={}", out.status, stdout.len(), stderr.len());
+            Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg })
         }
     }
 
@@ -945,9 +958,44 @@ impl Vcs for GitSystem {
     }
 
     fn merge_into_current(&self, name: &str) -> Result<()> {
-        // Perform a merge into the current branch. Let git promptless merge and return any conflicts as error output.
+        self.merge_into_current_with_message(name, None)
+    }
+
+    fn merge_into_current_with_message(&self, name: &str, message: Option<&str>) -> Result<()> {
+        // Perform a merge into the current branch. Let git merge without prompting and
+        // return any conflicts as error output.
         log::info!("git-system: merge_into_current '{}'", name);
-        Self::run_git(Some(&self.workdir), ["merge", "--no-ff", name])
+        let mut args: Vec<String> = vec![
+            "merge".into(),
+            "--no-ff".into(),
+            "--no-edit".into(),
+            "--commit".into(),
+        ];
+        if let Some(msg) = message {
+            let msg = msg.trim();
+            if !msg.is_empty() {
+                args.push("-m".into());
+                args.push(msg.into());
+            }
+        }
+        args.push(name.into());
+        Self::run_git(Some(&self.workdir), args)
+    }
+
+    fn merge_abort(&self) -> Result<()> {
+        log::info!("git-system: merge_abort");
+        Self::run_git(Some(&self.workdir), ["merge", "--abort"])
+    }
+
+    fn merge_continue(&self) -> Result<()> {
+        log::info!("git-system: merge_continue");
+        // Continue the merge by committing the current index using the pre-populated MERGE_MSG.
+        Self::run_git(Some(&self.workdir), ["commit", "--no-edit"])
+    }
+
+    fn merge_in_progress(&self) -> Result<bool> {
+        let s = Self::run_git_capture_any_exit(Some(&self.workdir), ["rev-parse", "--verify", "-q", "MERGE_HEAD"])?;
+        Ok(!s.trim().is_empty())
     }
 
     // ---------------- stash ----------------

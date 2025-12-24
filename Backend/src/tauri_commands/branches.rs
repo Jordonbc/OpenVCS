@@ -9,6 +9,66 @@ use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};
 
+fn repo_username_from_origin(url: &str) -> Option<String> {
+    let u = url.trim();
+    if u.is_empty() {
+        return None;
+    }
+
+    // https://host/owner/repo(.git)
+    if let Some(rest) = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")) {
+        let path = rest.splitn(2, '/').nth(1).unwrap_or("");
+        let mut seg = path.split('/').filter(|s| !s.is_empty());
+        let owner = seg.next()?;
+        return Some(owner.to_string());
+    }
+
+    // git@host:owner/repo(.git)
+    if let Some(rest) = u.splitn(2, ':').nth(1) {
+        let mut seg = rest.split('/').filter(|s| !s.is_empty());
+        let owner = seg.next()?;
+        return Some(owner.to_string());
+    }
+
+    None
+}
+
+fn repo_name_from_origin(url: &str) -> Option<String> {
+    let u = url.trim();
+    if u.is_empty() {
+        return None;
+    }
+
+    // https://host/owner/repo(.git)
+    if let Some(rest) = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")) {
+        let path = rest.splitn(2, '/').nth(1).unwrap_or("");
+        let last = path.split('/').filter(|s| !s.is_empty()).last()?;
+        return Some(last.strip_suffix(".git").unwrap_or(last).to_string());
+    }
+
+    // git@host:owner/repo(.git)
+    if let Some(rest) = u.splitn(2, ':').nth(1) {
+        let last = rest.split('/').filter(|s| !s.is_empty()).last()?;
+        return Some(last.strip_suffix(".git").unwrap_or(last).to_string());
+    }
+
+    None
+}
+
+fn apply_merge_template(
+    template: &str,
+    source_branch: &str,
+    target_branch: &str,
+    repo_name: &str,
+    repo_username: &str,
+) -> String {
+    template
+        .replace("{branch:source}", source_branch)
+        .replace("{branch:target}", target_branch)
+        .replace("{repo:name}", repo_name)
+        .replace("{repo:username}", repo_username)
+}
+
 #[tauri::command]
 pub async fn git_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
     let repo = current_repo_or_err(&state)?;
@@ -212,10 +272,87 @@ pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Resul
     }
     let repo = current_repo_or_err(&state)?;
     let branch = name.to_string();
+    let template = state.with_config(|cfg| cfg.git.merge_commit_message_template.clone());
     run_repo_task("git_merge_branch", repo, move |repo| {
-        repo.inner()
-            .merge_into_current(&branch)
+        let vcs = repo.inner();
+        let target_branch = vcs
+            .current_branch()
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "HEAD".to_string());
+
+        let workdir_name = vcs
+            .workdir()
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("repo")
+            .to_string();
+
+        let (repo_username, repo_name) = match vcs.list_remotes() {
+            Ok(remotes) => {
+                let origin = remotes
+                    .iter()
+                    .find(|(n, _)| n == "origin")
+                    .map(|(_, url)| url.as_str())
+                    .unwrap_or("");
+                let username = repo_username_from_origin(origin).unwrap_or_default();
+                let name = repo_name_from_origin(origin).unwrap_or_else(|| workdir_name.clone());
+                (username, name)
+            }
+            Err(_) => (String::new(), workdir_name.clone()),
+        };
+
+        let msg = template.trim();
+        let message = if msg.is_empty() {
+            None
+        } else {
+            Some(apply_merge_template(
+                msg,
+                &branch,
+                &target_branch,
+                &repo_name,
+                &repo_username,
+            ))
+        };
+
+        vcs.merge_into_current_with_message(&branch, message.as_deref())
             .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[derive(serde::Serialize)]
+pub struct MergeContext {
+    pub in_progress: bool,
+}
+
+#[tauri::command]
+pub async fn git_merge_context(state: State<'_, AppState>) -> Result<MergeContext, String> {
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_merge_context", repo, move |repo| {
+        let in_progress = repo
+            .inner()
+            .merge_in_progress()
+            .unwrap_or(false);
+        Ok(MergeContext { in_progress })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_merge_abort(state: State<'_, AppState>) -> Result<(), String> {
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_merge_abort", repo, move |repo| {
+        repo.inner().merge_abort().map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_merge_continue(state: State<'_, AppState>) -> Result<(), String> {
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_merge_continue", repo, move |repo| {
+        repo.inner().merge_continue().map_err(|e| e.to_string())
     })
     .await
 }

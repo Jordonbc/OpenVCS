@@ -1,6 +1,7 @@
 import { TAURI } from '../../lib/tauri';
 import { state, prefs } from '../../state/state';
 import { renderList } from './list';
+import { autoOpenFirstConflict } from '../conflicts';
 
 export async function hydrateBranches() {
     if (!TAURI.has) return;
@@ -36,6 +37,7 @@ export async function hydrateStatus() {
         (state as any).ahead = Number((result as any)?.ahead || 0);
         (state as any).behind = Number((result as any)?.behind || 0);
         renderList();
+        void autoOpenFirstConflict(state.files as any);
         window.dispatchEvent(new CustomEvent('app:status-updated'));
     } catch (e) {
         console.warn('hydrateStatus failed', e);

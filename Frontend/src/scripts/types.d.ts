@@ -65,6 +65,7 @@ export interface GlobalSettings {
         fetch_on_focus?: boolean;
         allow_hooks?: string;
         respect_core_autocrlf?: boolean;
+        merge_commit_message_template?: string;
     };
     diff?: {
         tab_width?: number;

@@ -151,6 +151,18 @@ impl Vcs for DummyVcs {
         Ok(())
     }
 
+    fn merge_abort(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn merge_continue(&self) -> Result<()> {
+        Ok(())
+    }
+
+    fn merge_in_progress(&self) -> Result<bool> {
+        Ok(false)
+    }
+
     fn hard_reset_head(&self) -> Result<()> {
         Ok(())
     }

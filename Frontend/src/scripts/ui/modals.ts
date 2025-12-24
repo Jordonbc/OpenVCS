@@ -17,6 +17,7 @@ import { wireUpdate } from "../features/update";
 import stashConfirmHtml from "@modals/stash-confirm.html?raw";
 import { wireStashConfirm } from "../features/stashConfirm";
 import mergeHtml from "@modals/merge.html?raw";
+import conflictsSummaryHtml from "@modals/conflicts-summary.html?raw";
 
 // Lazy fragments (only those NOT present at load)
 const FRAGMENTS: Record<string, string> = {
@@ -30,6 +31,7 @@ const FRAGMENTS: Record<string, string> = {
     "update-modal": updateHtml,
     "stash-confirm-modal": stashConfirmHtml,
     "merge-modal": mergeHtml,
+    "conflicts-summary-modal": conflictsSummaryHtml,
 };
 
 const loaded = new Set<string>();

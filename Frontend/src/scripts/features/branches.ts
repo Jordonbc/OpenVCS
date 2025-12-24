@@ -8,6 +8,9 @@ import { openRenameBranch } from './renameBranch';
 import { openSetUpstream } from './setUpstream';
 import { buildCtxMenu, CtxItem } from '../lib/menu';
 import { renderList, hydrateCommits, hydrateStatus } from './repo';
+import { setTab } from '../ui/layout';
+import type { ConflictDetails, FileStatus } from '../types';
+import { openConflictsSummary } from './conflicts';
 
 type Branch = { name: string; current?: boolean; kind?: { type?: string; remote?: string } };
 
@@ -142,8 +145,27 @@ export function bindBranchUI() {
             if (name === cur) { notify('Cannot merge a branch into itself'); return; }
             const ok = window.confirm(`Merge '${name}' into '${cur}'?`);
             if (!ok) return;
-            try { if (TAURI.has) await TAURI.invoke('git_merge_branch', { name }); notify(`Merged '${name}' into '${cur}'`); await Promise.allSettled([renderList(), loadBranches()]); }
-            catch { notify('Merge failed'); }
+            try {
+                if (TAURI.has) await TAURI.invoke('git_merge_branch', { name });
+                notify(`Merged branch '${name}' into '${cur}'`);
+                await Promise.allSettled([renderList(), loadBranches()]);
+            } catch (e) {
+                const msg = String(e || '');
+                const looksLikeConflict =
+                    /CONFLICT/i.test(msg) ||
+                    /Automatic merge failed/i.test(msg) ||
+                    /fix conflicts and then commit/i.test(msg);
+
+                if (looksLikeConflict) {
+                    notify('Merge conflict detected');
+                    await hydrateStatus();
+                    setTab('changes');
+                    await openConflictsSummary((state.files || []) as FileStatus[]);
+                    return;
+                }
+
+                notify(`Merge failed${msg ? `: ${msg}` : ''}`);
+            }
         }});
         if (kind !== 'remote') {
             items.push({ label: '---' });
