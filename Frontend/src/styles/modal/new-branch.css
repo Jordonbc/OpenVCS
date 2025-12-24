@@ -11,8 +11,36 @@
 #new-branch-modal .panel-form .group{ display:grid; gap:.45rem; }
 #new-branch-modal .panel-form .checkbox{ display:flex; align-items:center; gap:.6rem; }
 
+#new-branch-modal .name-hint{
+    display:flex; align-items:center; gap:.5rem;
+    margin-top:.15rem;
+    color:var(--muted, #9aa0a6);
+    font-size:.9rem;
+}
+#new-branch-modal .name-hint[hidden]{
+    display:none;
+}
+#new-branch-modal .name-hint::before{
+    content:"⚠";
+    opacity:.9;
+    color: var(--warning, #f7c948);
+}
+#new-branch-modal .name-hint.error{
+    color:var(--danger, #ff6b6b);
+}
+#new-branch-modal .name-hint.error::before{
+    color:var(--danger, #ff6b6b);
+}
+
+#new-branch-modal .name-hint code{
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    background:rgba(255,255,255,.06);
+    border:1px solid var(--border);
+    padding:2px 6px;
+    border-radius:6px;
+}
+
 #new-branch-modal .sheet-actions{
     margin-top:auto; display:flex; align-items:center; gap:.5rem;
     justify-content:flex-end; padding:.5rem; border-top:1px solid var(--border);
 }
-
