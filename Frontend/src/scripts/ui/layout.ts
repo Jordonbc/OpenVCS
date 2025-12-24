@@ -124,6 +124,7 @@ export function refreshRepoActions() {
     const changesOn    = hasChanges();
 
     const fetchBtn = qs<HTMLButtonElement>('#fetch-btn');
+    const fetchCaret = qs<HTMLButtonElement>('#fetch-caret');
     const pushBtn  = qs<HTMLButtonElement>('#push-btn');
     const branchBtn= qs<HTMLButtonElement>('#branch-switch');
     const summary  = qs<HTMLInputElement>('#commit-summary');
@@ -134,6 +135,7 @@ export function refreshRepoActions() {
 
     // Repo-scoped actions
     if (fetchBtn)  fetchBtn.disabled  = !repoOn;
+    if (fetchCaret) fetchCaret.disabled = !repoOn;
     if (pushBtn)   pushBtn.disabled   = !repoOn;
     if (branchBtn) branchBtn.disabled = !repoOn;
 

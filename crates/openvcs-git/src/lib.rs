@@ -415,6 +415,25 @@ impl Vcs for GitSystem {
         Self::run_git_streaming(&self.workdir, ["fetch", "--progress", remote, refspec], on)
     }
 
+    fn fetch_with_options(
+        &self,
+        remote: &str,
+        refspec: &str,
+        opts: FetchOptions,
+        on: Option<OnEvent>,
+    ) -> Result<()> {
+        log::info!("git-system: fetch {} {} (prune={})", remote, refspec, opts.prune);
+        if opts.prune {
+            Self::run_git_streaming(
+                &self.workdir,
+                ["fetch", "--progress", "--prune", remote, refspec],
+                on,
+            )
+        } else {
+            Self::run_git_streaming(&self.workdir, ["fetch", "--progress", remote, refspec], on)
+        }
+    }
+
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
         log::info!("git-system: push {} {}", remote, refspec);
         Self::run_git_streaming(&self.workdir, ["push", "--progress", remote, refspec], on)
@@ -441,6 +460,39 @@ impl Vcs for GitSystem {
         // Prefer pull without explicit remote/branch so git uses the configured upstream.
         log::info!("git-system: pull --ff-only (upstream={})", upstream);
         Self::run_git_streaming(&self.workdir, ["pull", "--ff-only", "--no-rebase"], on)
+    }
+
+    fn set_branch_upstream(&self, branch: &str, upstream: &str) -> Result<()> {
+        let branch = branch.trim();
+        let upstream = upstream.trim();
+        if branch.is_empty() || upstream.is_empty() {
+            return Err(VcsError::Backend {
+                backend: self.id(),
+                msg: "branch/upstream cannot be empty".into(),
+            });
+        }
+        log::info!("git-system: set_branch_upstream {} -> {}", branch, upstream);
+        Self::run_git(
+            Some(&self.workdir),
+            ["branch", &format!("--set-upstream-to={upstream}"), branch],
+        )
+    }
+
+    fn branch_upstream(&self, branch: &str) -> Result<Option<String>> {
+        let branch = branch.trim();
+        if branch.is_empty() {
+            return Ok(None);
+        }
+        let out = Self::run_git_capture(
+            Some(&self.workdir),
+            [
+                "for-each-ref",
+                "--format=%(upstream:short)",
+                &format!("refs/heads/{branch}"),
+            ],
+        )?;
+        let up = out.trim();
+        if up.is_empty() { Ok(None) } else { Ok(Some(up.to_string())) }
     }
 
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String> {
@@ -988,5 +1040,13 @@ impl Vcs for GitSystem {
             args.push(Self::path_str(p)?.to_string());
         }
         Self::run_git(Some(&self.workdir), args)
+    }
+
+    fn lfs_is_tracked(&self, path: &Path) -> Result<bool> {
+        let p = Self::path_str(path)?;
+        // `git check-attr` does not require git-lfs to be installed; it reads `.gitattributes`.
+        // Output example: `path/to/file: filter: lfs`
+        let out = Self::run_git_capture(Some(&self.workdir), ["check-attr", "filter", "--", p])?;
+        Ok(out.lines().any(|l| l.contains("filter: lfs")))
     }
 }

@@ -168,6 +168,20 @@ impl Vcs for GitLibGit2 {
             .map_err(Self::map_err)
     }
 
+    fn fetch_with_options(
+        &self,
+        remote: &str,
+        refspec: &str,
+        opts: FetchOptions,
+        on: Option<OnEvent>,
+    ) -> Result<()> {
+        info!("git-libgit2: fetch {} {} (prune={})", remote, refspec, opts.prune);
+        self.inner
+            .fetch_with_progress_and_prune(remote, refspec, opts.prune, Self::adapt_progress(on))
+            .map(|_| ())
+            .map_err(Self::map_err)
+    }
+
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
         info!("git-libgit2: push {} {}", remote, refspec);
         self.inner.push_refspec_with_progress(remote, refspec, Self::adapt_progress(on))
@@ -207,6 +221,74 @@ impl Vcs for GitLibGit2 {
         // Progress is logged; we currently do not bridge per-line progress for this path.
         info!("git-libgit2: pull_ff_only (upstream={})", upstream);
         self.inner.fast_forward(&upstream).map_err(Self::map_err)
+    }
+
+    fn set_branch_upstream(&self, branch: &str, upstream: &str) -> Result<()> {
+        let branch = branch.trim();
+        let upstream = upstream.trim();
+        if branch.is_empty() || upstream.is_empty() {
+            return Err(VcsError::Backend {
+                backend: self.id(),
+                msg: "branch/upstream cannot be empty".into(),
+            });
+        }
+
+        // Accept "origin/main" and "refs/remotes/origin/main". Store the standard config keys:
+        // - branch.<branch>.remote = origin
+        // - branch.<branch>.merge  = refs/heads/main
+        let upstream_short = upstream
+            .strip_prefix("refs/remotes/")
+            .unwrap_or(upstream);
+
+        let (remote, remote_branch) = upstream_short
+            .split_once('/')
+            .ok_or_else(|| VcsError::Backend {
+                backend: self.id(),
+                msg: "upstream must look like 'origin/main'".into(),
+            })?;
+
+        let merge_ref = format!("refs/heads/{}", remote_branch);
+        info!(
+            "git-libgit2: set_branch_upstream {} -> {} (remote={}, merge={})",
+            branch, upstream, remote, merge_ref
+        );
+
+        self.inner
+            .with_repo(|repo| {
+                let mut cfg = repo.config().map_err(Self::map_err)?;
+                cfg.set_str(&format!("branch.{branch}.remote"), remote)
+                    .map_err(Self::map_err)?;
+                cfg.set_str(&format!("branch.{branch}.merge"), &merge_ref)
+                    .map_err(Self::map_err)?;
+                Ok::<(), VcsError>(())
+            })
+            .map_err(Self::map_err)
+    }
+
+    fn branch_upstream(&self, branch: &str) -> Result<Option<String>> {
+        let branch = branch.trim();
+        if branch.is_empty() {
+            return Ok(None);
+        }
+
+        self.inner
+            .with_repo(|repo| {
+                let cfg = repo.config().map_err(Self::map_err)?;
+                let remote_key = format!("branch.{branch}.remote");
+                let merge_key = format!("branch.{branch}.merge");
+                let remote = cfg.get_string(&remote_key).ok();
+                let merge = cfg.get_string(&merge_key).ok();
+                match (remote, merge) {
+                    (Some(remote), Some(merge)) => {
+                        let merge = merge.trim().trim_start_matches("refs/heads/");
+                        if remote.trim().is_empty() || merge.is_empty() {
+                            return Ok(None);
+                        }
+                        Ok(Some(format!("{}/{}", remote.trim(), merge)))
+                    }
+                    _ => Ok(None),
+                }
+            })
     }
 
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String> {

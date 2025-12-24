@@ -70,7 +70,10 @@
       </button>
 
       <div class="title-actions">
-        <button class="btn" id="fetch-btn" title="Fetch/Pull (F5)">Fetch/Pull</button>
+        <div class="split-btn" id="fetch-split" role="group" aria-label="Fetch and pull">
+          <button class="btn" id="fetch-btn" title="Fetch (F5)">Fetch</button>
+          <button class="btn split-caret" id="fetch-caret" title="Fetch options" aria-haspopup="menu" aria-expanded="false" aria-label="Fetch options">▾</button>
+        </div>
         <button class="btn with-badge" id="push-btn" title="Push">
           <span class="btn-label">Push</span>
         </button>
@@ -110,13 +113,14 @@
       <div class="resizer" id="resizer" title="Resize panel" aria-hidden="true"></div>
 
       <!-- Right column -->
-      <main class="panel right" id="right" role="main">
-        <div class="diff-head">
-          <div class="path" id="diff-path">Select an item</div>
-          <div class="meta" id="diff-meta" aria-label="Diff settings">
-            <span>LF</span><span>UTF-8</span><span>Unified</span>
-          </div>
-        </div>
+	      <main class="panel right" id="right" role="main">
+	        <div class="diff-head">
+	          <div class="path" id="diff-path">Select an item</div>
+	          <div class="meta" id="diff-meta" aria-label="Diff settings">
+	            <span id="diff-meta-lfs" hidden>LFS</span>
+	            <span>LF</span><span>UTF-8</span><span>Unified</span>
+	          </div>
+	        </div>
 
         <div class="diff" id="diff" aria-live="polite" aria-label="Diff view"></div>
 
@@ -153,6 +157,18 @@
       <button class="pick" id="branch-new" type="button">New…</button>
     </div>
     <ul class="pop-list" id="branch-list" role="listbox" aria-label="Branch list"></ul>
+  </div>
+
+  <!-- Fetch popover -->
+  <div class="popover compact" id="fetch-pop" role="menu" aria-label="Fetch options" hidden>
+    <ul class="pop-list" id="fetch-list" role="menu">
+      <li role="menuitem" tabindex="0" data-action="fetch-only">
+        <span class="label"><span class="name">Fetch</span></span>
+      </li>
+      <li role="menuitem" tabindex="-1" data-action="pull" aria-disabled="true">
+        <span class="label"><span class="name">Pull</span></span>
+      </li>
+    </ul>
   </div>
 
   <!-- Modal mount -->

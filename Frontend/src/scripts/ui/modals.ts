@@ -10,6 +10,8 @@ import newBranchHtml from "@modals/new-branch.html?raw";
 import { wireNewBranch } from "../features/newBranch";
 import renameBranchHtml from "@modals/rename-branch.html?raw";
 import { wireRenameBranch } from "../features/renameBranch";
+import setUpstreamHtml from "@modals/set-upstream.html?raw";
+import { wireSetUpstream } from "../features/setUpstream";
 import updateHtml from "@modals/update.html?raw";
 import { wireUpdate } from "../features/update";
 import stashConfirmHtml from "@modals/stash-confirm.html?raw";
@@ -24,6 +26,7 @@ const FRAGMENTS: Record<string, string> = {
     "repo-settings-modal": repoSettingsHtml,
     "new-branch-modal": newBranchHtml,
     "rename-branch-modal": renameBranchHtml,
+    "set-upstream-modal": setUpstreamHtml,
     "update-modal": updateHtml,
     "stash-confirm-modal": stashConfirmHtml,
     "merge-modal": mergeHtml,
@@ -65,6 +68,7 @@ export function hydrate(id: string): void {
     if (id === "repo-settings-modal") wireRepoSettings();
     if (id === "new-branch-modal") wireNewBranch();
     if (id === "rename-branch-modal") wireRenameBranch();
+    if (id === "set-upstream-modal") wireSetUpstream();
     if (id === "update-modal") wireUpdate();
     if (id === "stash-confirm-modal") wireStashConfirm();
 }

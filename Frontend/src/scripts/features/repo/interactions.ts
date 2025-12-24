@@ -139,6 +139,7 @@ export function applySelect(path: string, on: boolean, rowEl: HTMLElement | null
 
 export function updateDragRange(visible: FileStatus[]) {
     if (!dragState.isDragSelecting || dragState.dragMode === null) return;
+    const list = listEl;
     const a = Math.min(dragState.dragStartIndex, dragState.dragCurrentIndex);
     const b = Math.max(dragState.dragStartIndex, dragState.dragCurrentIndex);
     if (dragState.dragMode === 'diff') {
@@ -148,9 +149,9 @@ export function updateDragRange(visible: FileStatus[]) {
             if (i >= a && i <= b) next.add(p); else if (!dragState.dragPreDiff.has(p)) next.delete(p);
         }
         state.diffSelectedFiles = next;
-        if (listEl) {
+        if (list) {
             visible.forEach((v) => {
-                const row = listEl.querySelector<HTMLElement>(`li.row[data-path="${(v.path || '').replace(/([\"\\])/g, '\\$1')}"]`);
+                const row = list.querySelector<HTMLElement>(`li.row[data-path="${(v.path || '').replace(/([\"\\])/g, '\\$1')}"]`);
                 if (row) row.classList.toggle('diffsel', state.diffSelectedFiles.has(v.path));
             });
         }
@@ -161,10 +162,10 @@ export function updateDragRange(visible: FileStatus[]) {
             const inRange = i >= a && i <= b;
             const on = inRange ? dragState.dragTargetState : dragState.dragPrePicked.has(p);
             if (on) next.add(p);
-            if (listEl) {
-                const row = listEl.querySelector<HTMLElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"]`);
+            if (list) {
+                const row = list.querySelector<HTMLElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"]`);
                 if (row) row.classList.toggle('picked', on);
-                const cb = listEl.querySelector<HTMLInputElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"] input.pick`);
+                const cb = list.querySelector<HTMLInputElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"] input.pick`);
                 if (cb) { cb.checked = on; (cb as any).indeterminate = false; }
             }
             if (state.currentFile && p === state.currentFile) {
@@ -193,13 +194,16 @@ export function toggleSelectAll(on: boolean, visible: FileStatus[]) {
 export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     ev.preventDefault();
     const x = ev.clientX, y = ev.clientY;
-    const totalFiles = Array.isArray(state.files) ? state.files.length : 0;
-    const selectedPaths = Array.from(state.selectedFiles || []);
-    const hasManualSelection = (!state.defaultSelectAll) || (selectedPaths.length > 0 && selectedPaths.length !== totalFiles);
-    const manualSelection = hasManualSelection ? selectedPaths : [];
-    const clickedInSelection = manualSelection.includes(f.path);
-    const hasMultiSelection = manualSelection.length > 1 && clickedInSelection;
-    const hasSingleSelection = manualSelection.length === 1 && clickedInSelection;
+    const selectedPaths = Array.from(state.selectedFiles || []).filter(Boolean);
+    const clickedInSelection = !!f.path && (state.selectedFiles?.has(f.path) ?? false);
+    const explicitMultiSelection =
+        clickedInSelection &&
+        selectedPaths.length > 1 &&
+        !state.selectionImplicitAll;
+    const hasSingleSelection =
+        clickedInSelection &&
+        selectedPaths.length === 1 &&
+        !state.selectionImplicitAll;
     const items: CtxItem[] = [];
     const openStashForPaths = (paths: string[], defaultMessage: string) => {
         if (!paths.length) return;
@@ -220,22 +224,20 @@ export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
         catch { notify('Discard failed'); }
     }});
-    if (hasManualSelection && clickedInSelection) {
-        items.push({ label: 'Discard selected files', action: async () => {
+    if (explicitMultiSelection) {
+        items.push({ label: 'Discard all selected', action: async () => {
             if (!TAURI.has) return;
-            const paths = manualSelection.slice();
+            const paths = selectedPaths.slice();
             const ok = window.confirm(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
             if (!ok) return;
             try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
             catch { notify('Discard failed'); }
         }});
-        if (hasMultiSelection) {
-            items.push({ label: 'Create stash from selection…', action: () => {
-                openStashForPaths(manualSelection.slice(), 'WIP selection');
-            }});
-        }
+        items.push({ label: 'Create stash from selection…', action: () => {
+            openStashForPaths(selectedPaths.slice(), 'WIP selection');
+        }});
     }
-    const singleTarget = hasSingleSelection ? manualSelection[0] : f.path;
+    const singleTarget = hasSingleSelection ? selectedPaths[0] : f.path;
     const defaultMsg = `WIP ${singleTarget}`;
     items.push({ label: 'Create stash for this file…', action: () => {
         openStashForPaths([singleTarget], defaultMsg);
@@ -246,7 +248,7 @@ export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             notify('Git LFS is available in the desktop app');
             return;
         }
-        const targets = (hasManualSelection && clickedInSelection ? manualSelection.slice() : [f.path]).filter(Boolean);
+        const targets = (explicitMultiSelection ? selectedPaths.slice() : [f.path]).filter(Boolean);
         if (!targets.length) return;
         (async () => {
             try {

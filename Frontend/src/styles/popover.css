@@ -19,6 +19,7 @@
     box-shadow: var(--shadow-1);
 }
 .popover[hidden] { display: none !important; }
+.popover.compact { min-width: 180px; }
 
 /* Header */
 .pop-head {
@@ -56,6 +57,8 @@
     cursor: pointer;
 }
 .pop-list li:hover { background: rgba(255,255,255,.04); }
+.pop-list li[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+.pop-list li[aria-disabled="true"]:hover { background: transparent; }
 .pop-list li[aria-selected="true"] {
     background: rgba(53,132,228,.12);
     outline: 1px solid rgba(53,132,228,.35);

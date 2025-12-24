@@ -40,7 +40,7 @@ export async function showUpdateDialog(_data: any) {
     const stableTag = norm(stable?.tag_name || stable?.name || '');
     const nightlyTag = norm(nightly?.tag_name || nightly?.name || '');
 
-    const newerThanCurrent = (v: string) => v && v !== '' && norm(current) !== norm(v);
+    const newerThanCurrent = (v: string) => Boolean(v) && v !== '' && norm(current) !== norm(v);
 
     let show = false;
     let pick = null as any;

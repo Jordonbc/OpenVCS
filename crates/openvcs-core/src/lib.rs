@@ -6,7 +6,7 @@ pub mod backend_descriptor;
 
 use std::{path::{Path, PathBuf}, sync::Arc};
 pub use crate::backend_id::BackendId;
-pub use crate::models::{Capabilities, OnEvent};
+pub use crate::models::{Capabilities, FetchOptions, OnEvent};
 
 #[cfg(test)]
 pub(crate) mod test_helpers;
@@ -63,6 +63,15 @@ pub trait Vcs: Send + Sync {
     /// Remove a configured remote by name (no-op if missing).
     fn remove_remote(&self, name: &str) -> Result<()>;
     fn fetch(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()>;
+    fn fetch_with_options(
+        &self,
+        remote: &str,
+        refspec: &str,
+        _opts: FetchOptions,
+        on: Option<OnEvent>,
+    ) -> Result<()> {
+        self.fetch(remote, refspec, on)
+    }
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()>;
 
     /// Fast-forward only pull of the current branch from the specified remote/branch.
@@ -124,6 +133,18 @@ pub trait Vcs: Send + Sync {
     /// `VcsError::Unsupported` if not available.
     fn merge_into_current(&self, name: &str) -> Result<()>;
 
+    /// Configure the given local branch to track the given upstream (e.g. `origin/main`).
+    /// Backends may return `VcsError::Unsupported` if not implemented.
+    fn set_branch_upstream(&self, _branch: &str, _upstream: &str) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+
+    /// Returns the configured upstream of a local branch as `remote/branch` (e.g. `origin/main`),
+    /// or `None` if no upstream is configured.
+    fn branch_upstream(&self, _branch: &str) -> Result<Option<String>> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+
     // recovery
     fn hard_reset_head(&self) -> Result<()>;
     /// Soft-reset HEAD to the given revision, keeping changes in the index and working tree.
@@ -154,6 +175,7 @@ pub trait Vcs: Send + Sync {
     fn lfs_pull(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
     fn lfs_prune(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
     fn lfs_track(&self, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn lfs_is_tracked(&self, _path: &Path) -> Result<bool> { Err(VcsError::Unsupported(self.id())) }
 }
 
 /// A concrete repository handle that owns a chosen backend instance.

@@ -78,3 +78,14 @@ pub async fn git_lfs_track_paths(
     })
     .await
 }
+
+#[tauri::command]
+pub async fn git_lfs_is_tracked(state: State<'_, AppState>, path: String) -> Result<bool, String> {
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_lfs_is_tracked", repo, move |repo| {
+        repo.inner()
+            .lfs_is_tracked(&PathBuf::from(path))
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
