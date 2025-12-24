@@ -196,8 +196,14 @@ export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     const x = ev.clientX, y = ev.clientY;
     const selectedPaths = Array.from(state.selectedFiles || []).filter(Boolean);
     const clickedInSelection = !!f.path && (state.selectedFiles?.has(f.path) ?? false);
-    const hasMultiSelection = selectedPaths.length > 1 && clickedInSelection;
-    const hasSingleSelection = selectedPaths.length === 1 && clickedInSelection;
+    const explicitMultiSelection =
+        clickedInSelection &&
+        selectedPaths.length > 1 &&
+        !state.selectionImplicitAll;
+    const hasSingleSelection =
+        clickedInSelection &&
+        selectedPaths.length === 1 &&
+        !state.selectionImplicitAll;
     const items: CtxItem[] = [];
     const openStashForPaths = (paths: string[], defaultMessage: string) => {
         if (!paths.length) return;
@@ -218,7 +224,7 @@ export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
         catch { notify('Discard failed'); }
     }});
-    if (clickedInSelection && selectedPaths.length > 1) {
+    if (explicitMultiSelection) {
         items.push({ label: 'Discard all selected', action: async () => {
             if (!TAURI.has) return;
             const paths = selectedPaths.slice();
@@ -227,11 +233,9 @@ export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
             catch { notify('Discard failed'); }
         }});
-        if (hasMultiSelection) {
-            items.push({ label: 'Create stash from selection…', action: () => {
-                openStashForPaths(selectedPaths.slice(), 'WIP selection');
-            }});
-        }
+        items.push({ label: 'Create stash from selection…', action: () => {
+            openStashForPaths(selectedPaths.slice(), 'WIP selection');
+        }});
     }
     const singleTarget = hasSingleSelection ? selectedPaths[0] : f.path;
     const defaultMsg = `WIP ${singleTarget}`;
@@ -244,7 +248,7 @@ export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             notify('Git LFS is available in the desktop app');
             return;
         }
-        const targets = (clickedInSelection && selectedPaths.length > 1 ? selectedPaths.slice() : [f.path]).filter(Boolean);
+        const targets = (explicitMultiSelection ? selectedPaths.slice() : [f.path]).filter(Boolean);
         if (!targets.length) return;
         (async () => {
             try {
