@@ -65,6 +65,8 @@ export interface GlobalSettings {
     git?: {
         backend?: 'system'|'libgit2'|string;
         default_branch?: string;
+        ssh_binary?: 'auto'|'host'|'bundled'|'custom'|string;
+        ssh_path?: string;
         prune_on_fetch?: boolean;
         fetch_on_focus?: boolean;
         allow_hooks?: string;

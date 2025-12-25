@@ -128,6 +128,18 @@ export function wireSettings() {
     updateMergeCustomState();
     mergeModeSel?.addEventListener('change', updateMergeCustomState);
 
+    const sshBinSel = modal.querySelector('#set-git-ssh-binary') as HTMLSelectElement | null;
+    const sshPathInput = modal.querySelector('#set-git-ssh-path') as HTMLInputElement | null;
+    const updateSshPathState = () => {
+        if (!sshPathInput) return;
+        const mode = (sshBinSel?.value || 'auto').toLowerCase();
+        const enabled = mode === 'custom';
+        sshPathInput.disabled = !enabled;
+        if (!enabled) sshPathInput.value = '';
+    };
+    updateSshPathState();
+    sshBinSel?.addEventListener('change', updateSshPathState);
+
     const updateThemePackTitle = () => {
         if (!setThemePackSel) return;
         const val = setThemePackSel.value || DEFAULT_THEME_ID;
@@ -256,6 +268,8 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         ...o.git,
         backend: get<HTMLSelectElement>('#set-git-backend')?.value as any,
         merge_commit_message_template: get<HTMLInputElement>('#set-merge-message-template')?.value ?? '',
+        ssh_binary: (get<HTMLSelectElement>('#set-git-ssh-binary')?.value || 'auto') as any,
+        ssh_path: (get<HTMLInputElement>('#set-git-ssh-path')?.value || '').trim(),
         prune_on_fetch: !!get<HTMLInputElement>('#set-prune-on-fetch')?.checked,
         fetch_on_focus: !!get<HTMLInputElement>('#set-fetch-on-focus')?.checked,
         allow_hooks: get<HTMLSelectElement>('#set-hook-policy')?.value,
@@ -357,6 +371,15 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     }
     const elMmt = get<HTMLInputElement>('#set-merge-message-template');
     if (elMmt) elMmt.value = cfg.git?.merge_commit_message_template ?? '';
+    const elSshBin = get<HTMLSelectElement>('#set-git-ssh-binary');
+    if (elSshBin) elSshBin.value = toKebab(cfg.git?.ssh_binary) || 'auto';
+    const elSshPath = get<HTMLInputElement>('#set-git-ssh-path');
+    if (elSshPath) elSshPath.value = cfg.git?.ssh_path ?? '';
+    if (elSshPath) {
+        const enabled = (elSshBin?.value || 'auto') === 'custom';
+        elSshPath.disabled = !enabled;
+        if (!enabled) elSshPath.value = '';
+    }
     const elPr = get<HTMLInputElement>('#set-prune-on-fetch'); if (elPr) elPr.checked = !!cfg.git?.prune_on_fetch;
     const elFoF = get<HTMLInputElement>('#set-fetch-on-focus'); if (elFoF) elFoF.checked = !!cfg.git?.fetch_on_focus;
     
