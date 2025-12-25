@@ -1,0 +1,32 @@
+<!-- Delete Branch confirm modal -->
+<div class="modal" id="delete-branch-modal" aria-hidden="true">
+  <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="delete-branch-title">
+    <div class="sheet-head">
+      <div>
+        <h3 id="delete-branch-title" style="margin:0">Delete Branch</h3>
+        <p class="hint" id="delete-branch-hint" style="margin:.25rem 0 0;">This cannot be undone.</p>
+      </div>
+      <button class="tbtn" data-close type="button" aria-label="Close">✕</button>
+    </div>
+
+    <div class="sheet-body">
+      <div class="modal-note" id="delete-branch-message"></div>
+
+      <div class="danger-callout" id="delete-branch-danger" hidden>
+        <div class="danger-title">Force delete</div>
+        <div class="danger-text">Deletes the branch even if it has unmerged commits.</div>
+      </div>
+
+      <div class="kv-grid">
+        <div class="kv-label">Branch</div>
+        <div class="kv-value"><code id="delete-branch-name"></code></div>
+      </div>
+    </div>
+
+    <div class="sheet-actions">
+      <button class="tbtn" id="delete-branch-cancel-btn" data-close type="button">Cancel</button>
+      <button class="tbtn primary" id="delete-branch-confirm-btn" type="button">Delete</button>
+    </div>
+  </div>
+  <div class="backdrop" data-close></div>
+</div>

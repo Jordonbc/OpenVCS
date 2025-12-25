@@ -15,6 +15,7 @@
 @import "./modal/stash-confirm.css";
 @import "./modal/merge.css";
 @import "./modal/ssh-keys.css";
+@import "./modal/delete-branch.css";
 
 /* Media queries last */
 @import "./responsive.css";
