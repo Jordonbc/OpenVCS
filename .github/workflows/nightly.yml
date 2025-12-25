@@ -161,6 +161,37 @@ jobs:
           sudo apt-get install -y libappindicator3-dev librsvg2-dev patchelf
           sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
 
+      # ---------- Flatpak (Linux only; artifact) ----------
+      - name: Install Flatpak tooling
+        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Platform//48 org.gnome.Sdk//48
+
+      - name: Verify Flatpak manifest exists
+        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        run: |
+          set -euxo pipefail
+          ls -la packaging/flatpak
+          test -f packaging/flatpak/io.github.jordonbc.OpenVCS.yml
+
+      - name: Build Flatpak bundle
+        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        run: |
+          set -euxo pipefail
+          flatpak-builder --user --force-clean --repo=repo build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml
+          flatpak build-bundle repo OpenVCS.flatpak io.github.jordonbc.OpenVCS
+
+      - name: Upload Flatpak bundle (artifact)
+        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenVCS-flatpak-nightly
+          path: OpenVCS.flatpak
+
       # ---------- Cache ----------
       - name: Rust cache
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
@@ -209,3 +240,9 @@ jobs:
           releaseDraft: false
           prerelease: true
           args: ${{ matrix.args }}
+
+      - name: Upload Flatpak bundle to GitHub Release
+        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload openvcs-nightly OpenVCS.flatpak --clobber

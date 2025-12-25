@@ -1,5 +1,12 @@
 use std::{env, fs, path::PathBuf, process::Command};
 
+fn is_flatpak_build() -> bool {
+    matches!(
+        env::var("OPENVCS_FLATPAK").as_deref(),
+        Ok("1") | Ok("true") | Ok("yes") | Ok("on")
+    )
+}
+
 fn main() {
     // Base config path (in the Backend crate)
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
@@ -29,6 +36,18 @@ fn main() {
                 _ => serde_json::Value::Array(vec![stable.clone()]),
             };
             updater["endpoints"] = endpoints;
+        }
+    }
+
+    // Flatpak apps update via Flatpak, not the in-app updater.
+    if is_flatpak_build() {
+        if let Some(plugins) = json.get_mut("plugins") {
+            if let Some(updater) = plugins.get_mut("updater") {
+                updater["active"] = serde_json::Value::Bool(false);
+            }
+        }
+        if let Some(bundle) = json.get_mut("bundle") {
+            bundle["createUpdaterArtifacts"] = serde_json::Value::Bool(false);
         }
     }
 
