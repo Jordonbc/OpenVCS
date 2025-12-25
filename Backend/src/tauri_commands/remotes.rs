@@ -2,6 +2,7 @@ use log::{error, info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window};
 
 use openvcs_core::models::{CommitItem, LogQuery, VcsEvent};
+use openvcs_core::Vcs;
 use openvcs_core::VcsError;
 use openvcs_core::FetchOptions;
 
@@ -65,6 +66,46 @@ fn looks_like_ssh_auth_failure(msg: &str) -> bool {
         || m.contains("authentication failed")
 }
 
+fn remote_url_for(repo: &dyn Vcs, remote: &str) -> Option<String> {
+    let remote = remote.trim();
+    if remote.is_empty() {
+        return None;
+    }
+
+    let remotes = repo.list_remotes().ok()?;
+    remotes
+        .into_iter()
+        .find_map(|(name, url)| if name == remote { Some(url) } else { None })
+}
+
+fn emit_ssh_prompt<R: Runtime>(app: &tauri::AppHandle<R>, remote: &str, url: &str, msg: &str) {
+    if looks_like_unknown_host_key(msg) {
+        if let Some(host) = host_from_remote_url(url) {
+            let _ = app.emit(
+                "ui:ssh-hostkey",
+                SshHostKeyPrompt {
+                    host,
+                    remote: remote.to_string(),
+                    url: url.to_string(),
+                    message: msg.to_string(),
+                },
+            );
+        }
+    } else if looks_like_ssh_auth_failure(msg) {
+        if let Some(host) = host_from_remote_url(url) {
+            let _ = app.emit(
+                "ui:ssh-auth",
+                SshAuthPrompt {
+                    host,
+                    remote: remote.to_string(),
+                    url: url.to_string(),
+                    message: msg.to_string(),
+                },
+            );
+        }
+    }
+}
+
 #[derive(Clone, serde::Serialize)]
 struct SshHostKeyPrompt {
     host: String,
@@ -93,7 +134,7 @@ pub async fn git_fetch<R: Runtime>(
     };
     let current = run_repo_task("git_fetch", repo, move |repo| {
         info!("git_fetch called");
-        let on = Some(progress_bridge(app));
+        let on = Some(progress_bridge(app.clone()));
         let current = repo
             .inner()
             .current_branch()
@@ -122,10 +163,16 @@ pub async fn git_fetch<R: Runtime>(
         }
 
         info!("Fetching '{refspec}' from remote '{remote}' (current branch '{current}')");
-        repo.inner().fetch_with_options(&remote, &refspec, fetch_opts, on).map_err(|e| {
-            error!("Fetch failed for branch '{current}': {e}");
-            e.to_string()
-        })?;
+        if let Err(e) = repo
+            .inner()
+            .fetch_with_options(&remote, &refspec, fetch_opts, on)
+        {
+            let msg = e.to_string();
+            let url = remote_url_for(repo.inner(), &remote).unwrap_or_default();
+            emit_ssh_prompt(&app, &remote, &url, &msg);
+            error!("Fetch failed for branch '{current}': {msg}");
+            return Err(msg);
+        }
 
         info!("Fetch completed successfully for branch '{current}'");
         Ok(current)
@@ -175,31 +222,7 @@ pub async fn git_fetch_all<R: Runtime>(
                 warn!("Fetch (force refspec) failed for remote '{r}': {e}; retrying without '+'");
                 if let Err(e2) = repo.inner().fetch_with_options(&r, &refspec, fetch_opts, on.clone()) {
                     let msg = e2.to_string();
-                    if looks_like_unknown_host_key(&msg) {
-                        if let Some(host) = host_from_remote_url(&url) {
-                            let _ = app.emit(
-                                "ui:ssh-hostkey",
-                                SshHostKeyPrompt {
-                                    host,
-                                    remote: r.clone(),
-                                    url: url.clone(),
-                                    message: msg.clone(),
-                                },
-                            );
-                        }
-                    } else if looks_like_ssh_auth_failure(&msg) {
-                        if let Some(host) = host_from_remote_url(&url) {
-                            let _ = app.emit(
-                                "ui:ssh-auth",
-                                SshAuthPrompt {
-                                    host,
-                                    remote: r.clone(),
-                                    url: url.clone(),
-                                    message: msg.clone(),
-                                },
-                            );
-                        }
-                    }
+                    emit_ssh_prompt(&app, &r, &url, &msg);
                     error!("Fetch failed for remote '{r}': {msg}");
                     failures.push(format!("{r}: {msg}"));
                     continue;
@@ -240,7 +263,7 @@ pub async fn git_pull<R: Runtime>(
     let app = window.app_handle().clone();
     let result = run_repo_task("git_pull", repo, move |repo| {
         info!("git_pull called");
-        let on = Some(progress_bridge(app));
+        let on = Some(progress_bridge(app.clone()));
         let current = repo
             .inner()
             .current_branch()
@@ -303,8 +326,11 @@ pub async fn git_pull<R: Runtime>(
                 })
             }
             Err(e) => {
-                error!("Pull (ff-only) failed for branch '{current}': {e}");
-                Err(e.to_string())
+                let msg = e.to_string();
+                let url = remote_url_for(repo.inner(), remote).unwrap_or_default();
+                emit_ssh_prompt(&app, remote, &url, &msg);
+                error!("Pull (ff-only) failed for branch '{current}': {msg}");
+                Err(msg)
             }
         }
     })
