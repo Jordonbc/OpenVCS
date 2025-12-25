@@ -93,7 +93,14 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .row:hover { background:rgba(255,255,255,.04); }
 .row.active { background:rgba(53,132,228,.12); border-color:rgba(53,132,228,.35); }
 .file { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.status.add { color:var(--success); } .status.mod { color:#8b5cf6; } .status.del { color:var(--danger); }
+.status.add, .status-dot.add { color:var(--success); }
+.status.untracked, .status-dot.untracked { color:color-mix(in oklab, var(--success) 70%, var(--muted)); }
+.status.mod, .status-dot.mod { color:var(--warning); }
+.status.del, .status-dot.del { color:var(--danger); }
+.status.ren, .status-dot.ren { color:var(--accent); }
+.status.cpy, .status-dot.cpy { color:color-mix(in oklab, var(--accent) 65%, var(--success)); }
+.status.type, .status-dot.type { color:color-mix(in oklab, #8b5cf6 70%, var(--warning)); }
+.status.conflict, .status-dot.conflict { color:#8b5cf6; }
 
 .diff-head { display:flex; align-items:center; justify-content:space-between; gap:.6rem; padding:.6rem .8rem; border-bottom:1px solid var(--border); flex:0 0 auto; }
 .path { font-weight:600; }

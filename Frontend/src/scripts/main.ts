@@ -487,11 +487,13 @@ async function boot() {
                 const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status');
                 const key = `${head?.detached ? 1 : 0}:${String(head?.branch || '')}:${String(head?.commit || '')}`;
                 if (key === lastHeadKey) return;
-                lastHeadKey = key;
-                await hydrateBranches();
+
+                const ok = await hydrateBranches();
+                if (!ok) return;
                 setRepoHeader();
                 await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 updateFetchUI();
+                lastHeadKey = key;
             } catch {
                 // ignore transient failures (e.g. repo switching / git busy)
             }

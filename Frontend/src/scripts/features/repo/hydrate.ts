@@ -3,8 +3,8 @@ import { state, prefs } from '../../state/state';
 import { renderList } from './list';
 import { autoOpenFirstConflict } from '../conflicts';
 
-export async function hydrateBranches() {
-    if (!TAURI.has) return;
+export async function hydrateBranches(): Promise<boolean> {
+    if (!TAURI.has) return false;
     try {
         const list = await TAURI.invoke<any[]>('git_list_branches');
         const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status').catch(() => ({ detached: false } as any));
@@ -19,9 +19,12 @@ export async function hydrateBranches() {
                 ? `Detached HEAD ${short ? '(' + short + ')' : ''}`.trim()
                 : (state.branch || '—');
             window.dispatchEvent(new CustomEvent('app:branches-updated'));
+            return true;
         }
+        return false;
     } catch (e) {
         console.warn('hydrateBranches failed', e);
+        return false;
     }
 }
 
@@ -31,6 +34,27 @@ export async function hydrateStatus() {
         const result = await TAURI.invoke<{ files: any[]; ahead?: number; behind?: number }>('git_status');
         state.hasRepo = true;
         state.files = Array.isArray(result?.files) ? (result.files as any) : [];
+        // Track merge context for UI hints (e.g., resolved-conflict checkmarks)
+        try {
+            const ctx = await TAURI.invoke<{ in_progress: boolean }>('git_merge_context');
+            const inMerge = !!ctx?.in_progress;
+            if (state.mergeInProgress !== inMerge) {
+                state.seenConflicts = new Set<string>();
+            }
+            state.mergeInProgress = inMerge;
+            if (inMerge) {
+                (state.files || []).forEach((f: any) => {
+                    if (String(f?.status || '').toUpperCase() === 'U' && f?.path) {
+                        state.seenConflicts.add(String(f.path));
+                    }
+                });
+            } else {
+                state.seenConflicts = new Set<string>();
+            }
+        } catch {
+            state.mergeInProgress = false;
+            state.seenConflicts = new Set<string>();
+        }
         const currentPaths = new Set((state.files || []).map((f) => f.path));
         if (state.defaultSelectAll) {
             state.selectionImplicitAll = true;
@@ -47,6 +71,8 @@ export async function hydrateStatus() {
     } catch (e) {
         console.warn('hydrateStatus failed', e);
         state.files = [];
+        state.mergeInProgress = false;
+        state.seenConflicts = new Set<string>();
         state.selectedFiles.clear();
         state.selectionImplicitAll = false;
         renderList();

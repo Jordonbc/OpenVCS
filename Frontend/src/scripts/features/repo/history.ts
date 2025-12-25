@@ -2,7 +2,7 @@ import { escapeHtml } from '../../lib/dom';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
 import { notify } from '../../lib/notify';
-import { state, statusClass } from '../../state/state';
+import { state, statusClass, statusLabel } from '../../state/state';
 import { diffEl, diffHeadPath, diffMetaLfs, listEl, countEl } from './context';
 import { renderHunksReadonly, highlightRow } from './diffView';
 import { hydrateStatus, hydrateCommits } from './hydrate';
@@ -150,7 +150,7 @@ export async function selectHistory(commit: any, index: number) {
           ${files.map((f, i) => {
               const cls = i === 0 ? 'row active' : 'row';
               const status = (f.status || '').toUpperCase();
-              return `<div class="${cls}" data-idx="${i}"><span class="status ${statusClass(status)}">${escapeHtml(status)}</span><div class="file" title="${escapeHtml(f.path)}">${escapeHtml(f.path)}</div></div>`;
+              return `<div class="${cls}" data-idx="${i}"><span class="status-dot ${statusClass(status)}" title="${escapeHtml(statusLabel(status))}" aria-hidden="true"></span><div class="file" title="${escapeHtml(f.path)}">${escapeHtml(f.path)}</div></div>`;
           }).join('')}
         </div>`;
         const right = `<div class="commit-right" style="flex:1; overflow:auto; padding-left: 8px; display:flex; flex-direction:column;"><div class="commit-content">${renderHunksReadonly(files[0].lines)}</div></div>`;

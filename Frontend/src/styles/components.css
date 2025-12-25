@@ -177,9 +177,22 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .row.diffsel{ background:rgba(53,132,228,.08); border-color:rgba(53,132,228,.28); }
 .row.active.diffsel::before{ background:var(--accent); }
 .file{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.status.add{ color:var(--success); }
-.status.mod{ color:#8b5cf6; }
-.status.del{ color:var(--danger); }
+.status.add, .status-dot.add{ color:var(--success); }
+.status.untracked, .status-dot.untracked{ color:color-mix(in oklab, var(--success) 70%, var(--muted)); }
+.status.mod, .status-dot.mod{ color:var(--warning); }
+.status.del, .status-dot.del{ color:var(--danger); }
+.status.ren, .status-dot.ren{ color:var(--accent); }
+.status.cpy, .status-dot.cpy{ color:color-mix(in oklab, var(--accent) 65%, var(--success)); }
+.status.type, .status-dot.type{ color:color-mix(in oklab, #8b5cf6 70%, var(--warning)); }
+.status.conflict, .status-dot.conflict{ color:#8b5cf6; }
+
+.status-dot{
+    width:10px; height:10px; border-radius:3px;
+    border:1px solid color-mix(in oklab, currentColor 55%, transparent);
+    background:color-mix(in oklab, currentColor 30%, transparent);
+    display:inline-block;
+    flex:0 0 10px;
+}
 /* Small status tag used in history list (outgoing marker) */
 .tag{ font-size:.72rem; color:var(--muted); border:1px solid var(--border); padding:.05rem .4rem; border-radius:999px; }
 .tag.up{ color:var(--success); border-color: rgba(38,162,105,.55); }
@@ -264,8 +277,11 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 /* (Removed floating undo pop-up; inline button is used) */
 
 /* Check mark indicator at end of row when picked */
-.pick-mark{ margin-left:auto; color:rgba(38,162,105,1); opacity:0; transition:opacity .15s; font-weight:600; }
-.row.picked .pick-mark{ opacity:1; }
+.row-marks{ margin-left:auto; display:flex; align-items:center; gap:.55rem; }
+.stage-mark{ color:rgba(38,162,105,1); opacity:0; transition:opacity .15s; font-weight:600; }
+.row.resolved .stage-mark{ opacity:1; }
+.conflict-mark{ color:var(--danger); opacity:0; transition:opacity .15s; font-weight:700; }
+.row.conflicted .conflict-mark{ opacity:1; }
 
 /* Commit panel (pinned at bottom) */
 .commit{
