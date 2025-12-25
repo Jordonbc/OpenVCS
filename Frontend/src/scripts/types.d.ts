@@ -13,7 +13,10 @@ export interface Branch {
 
 export interface FileStatus {
     path: string;
+    old_path?: string;
     status: 'A'|'M'|'D'|string;
+    staged?: boolean;
+    resolved_conflict?: boolean;
     hunks?: string[];
 }
 

@@ -30,7 +30,13 @@ pub struct BranchItem {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct FileEntry {
     pub path: String,
+    #[serde(default)]
+    pub old_path: Option<String>,
     pub status: String,
+    #[serde(default)]
+    pub staged: bool,
+    #[serde(default)]
+    pub resolved_conflict: bool,
     pub hunks: Vec<String>,
 }
 

@@ -322,6 +322,65 @@ impl GitSystem {
             Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg })
         }
     }
+
+    fn try_auto_stage_resolved_conflict(&self, path: &str, in_merge: bool) -> Result<bool> {
+        let rel = path.trim();
+        if rel.is_empty() {
+            return Ok(false);
+        }
+
+        let abs = self.workdir.join(rel);
+        if !abs.exists() {
+            return Ok(false);
+        }
+
+        let meta = fs::metadata(&abs).map_err(VcsError::Io)?;
+        // Avoid reading huge files for heuristic checks.
+        if meta.len() > 8 * 1024 * 1024 {
+            return Ok(false);
+        }
+
+        let work_bytes = fs::read(&abs).map_err(VcsError::Io)?;
+
+        let repo_root = self.workdir.clone();
+        let spec_ours = format!(":2:{rel}");
+        let spec_theirs = format!(":3:{rel}");
+        let ours = Self::run_git_capture_bytes(Some(&repo_root), ["show", "--no-textconv", &spec_ours]).ok();
+        let theirs = Self::run_git_capture_bytes(Some(&repo_root), ["show", "--no-textconv", &spec_theirs]).ok();
+
+        let matches_side = ours.as_deref() == Some(work_bytes.as_slice())
+            || theirs.as_deref() == Some(work_bytes.as_slice());
+
+        if matches_side {
+            Self::run_git(Some(&self.workdir), ["add", "--", rel])?;
+            return Ok(true);
+        }
+
+        // Only use the "no conflict markers" heuristic during a real merge.
+        // For non-merge index conflicts (e.g. from `git apply --cached --3way`), auto-staging can
+        // silently drop the intended patch, so we avoid it.
+        if !in_merge {
+            return Ok(false);
+        }
+
+        let is_binary = work_bytes.iter().any(|&b| b == 0);
+        if is_binary {
+            return Ok(false);
+        }
+
+        let text = match std::str::from_utf8(&work_bytes) {
+            Ok(s) => s,
+            Err(_) => return Ok(false),
+        };
+
+        let has_markers = text.contains("<<<<<<<") || text.contains("=======") || text.contains(">>>>>>>");
+        if has_markers {
+            return Ok(false);
+        }
+
+        Self::run_git(Some(&self.workdir), ["add", "--", rel])?;
+        Ok(true)
+    }
 }
 
 impl Vcs for GitSystem {
@@ -629,45 +688,138 @@ impl Vcs for GitSystem {
     }
 
     fn status_payload(&self) -> Result<StatusPayload> {
+        fn parse(workdir: &Path, out: &str) -> (Vec<FileEntry>, Vec<String>) {
+            let mut files = Vec::<FileEntry>::new();
+            let mut conflicted_paths: Vec<String> = Vec::new();
+
+            for line in out.lines() {
+                if line.starts_with("? ") {
+                    // Untracked; token after "?" is the path
+                    if let Some(path) = line.split_whitespace().last() {
+                        files.push(FileEntry {
+                            path: path.to_string(),
+                            old_path: None,
+                            status: "?".into(),
+                            staged: false,
+                            resolved_conflict: false,
+                            hunks: Vec::new(),
+                        });
+                    }
+                } else if line.starts_with("1 ") || line.starts_with("2 ") {
+                    // Ordinary changed entry: "1 XY ... <path>" or rename/copy record "2 XY ... <path>"
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() < 2 {
+                        continue;
+                    }
+                    let xy = parts.get(1).copied().unwrap_or("");
+                    let x = xy.chars().nth(0).unwrap_or(' ');
+                    let y = xy.chars().nth(1).unwrap_or(' ');
+                    let staged = x != ' ';
+
+                    if line.starts_with("2 ") {
+                        // Rename/copy record includes two paths at the end.
+                        // Determine which one is the "new" path by checking for existence when possible.
+                        if parts.len() >= 2 + 1 + 1 + 1 {
+                            let sub = parts.get(2).copied().unwrap_or("");
+                            let status = if sub.to_ascii_uppercase().starts_with('C') { "C" } else { "R" }.to_string();
+                            if parts.len() >= 2 {
+                                let a = parts.get(parts.len().saturating_sub(2)).copied().unwrap_or("");
+                                let b = parts.get(parts.len().saturating_sub(1)).copied().unwrap_or("");
+                                let a_exists = workdir.join(a).exists();
+                                let b_exists = workdir.join(b).exists();
+                                let (new_path, old_path) = if a_exists && !b_exists {
+                                    (a.to_string(), Some(b.to_string()))
+                                } else if b_exists && !a_exists {
+                                    (b.to_string(), Some(a.to_string()))
+                                } else {
+                                    // Fallback to porcelain v2 convention: last token is the source/orig path.
+                                    (a.to_string(), Some(b.to_string()))
+                                };
+                                files.push(FileEntry {
+                                    path: new_path,
+                                    old_path,
+                                    status,
+                                    staged,
+                                    resolved_conflict: false,
+                                    hunks: Vec::new(),
+                                });
+                            }
+                        }
+                    } else {
+                        // Ordinary changed entry: choose a stable UI status bucket.
+                        let status = if x == 'D' || y == 'D' {
+                            "D"
+                        } else if x == 'A' || y == 'A' {
+                            "A"
+                        } else if x == 'R' || y == 'R' {
+                            "R"
+                        } else if x == 'C' || y == 'C' {
+                            "C"
+                        } else if x == 'T' || y == 'T' {
+                            "T"
+                        } else if x == 'M' || y == 'M' {
+                            "M"
+                        } else {
+                            "M"
+                        }
+                        .to_string();
+
+                        if let Some(path) = parts.last() {
+                            files.push(FileEntry {
+                                path: (*path).to_string(),
+                                old_path: None,
+                                status,
+                                staged,
+                                resolved_conflict: false,
+                                hunks: Vec::new(),
+                            });
+                        }
+                    }
+                } else if line.starts_with("u ") {
+                    // conflicted; last token is path
+                    if let Some(path) = line.split_whitespace().last() {
+                        let path = path.to_string();
+                        conflicted_paths.push(path.clone());
+                        files.push(FileEntry {
+                            path,
+                            old_path: None,
+                            status: "U".into(),
+                            staged: false,
+                            resolved_conflict: false,
+                            hunks: Vec::new(),
+                        });
+                    }
+                }
+            }
+
+            (files, conflicted_paths)
+        }
+
         // Per-file changes via porcelain v2
         let out = Self::run_git_capture(Some(&self.workdir), ["status", "--porcelain=v2"])?;
-        let mut files = Vec::<FileEntry>::new();
+        let (mut files, conflicted_paths) = parse(&self.workdir, &out);
 
-        for line in out.lines() {
-            if line.starts_with("? ") {
-                // Untracked; token after "?" is the path
-                if let Some(path) = line.split_whitespace().last() {
-                    files.push(FileEntry { path: path.to_string(), status: "A".into(), hunks: Vec::new() });
+        // If Git has already resolved the working tree for a conflict (e.g. external tool / other client),
+        // stage it automatically so it no longer blocks commits.
+        if !conflicted_paths.is_empty() {
+            let mut did_stage_any = false;
+            let mut auto_resolved: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let in_merge = self.merge_in_progress().unwrap_or(false);
+            for path in &conflicted_paths {
+                if self.try_auto_stage_resolved_conflict(path, in_merge).unwrap_or(false) {
+                    did_stage_any = true;
+                    auto_resolved.insert(path.to_string());
                 }
-            } else if line.starts_with("1 ") {
-                // Ordinary changed entry: "1 XY ... <path>"
-                let xy = &line[2..4];
-                let x = xy.chars().nth(0).unwrap_or(' ');
-                let y = xy.chars().nth(1).unwrap_or(' ');
-                let is_mod = |c: char| c == 'M' || c == 'T';
-                let status = if x == 'A' || y == 'A' {
-                    "A"
-                } else if x == 'D' || y == 'D' {
-                    "D"
-                } else if is_mod(x) || is_mod(y) {
-                    "M"
-                } else {
-                    // Default to Modified for any other ordinary change combo
-                    "M"
-                }.to_string();
-
-                if let Some(path) = line.split_whitespace().last() {
-                    files.push(FileEntry { path: path.to_string(), status, hunks: Vec::new() });
-                }
-            } else if line.starts_with("2 ") {
-                // Rename/copy record; mark as rename and use new path
-                if let Some(path) = line.split_whitespace().last() {
-                    files.push(FileEntry { path: path.to_string(), status: "R".into(), hunks: Vec::new() });
-                }
-            } else if line.starts_with("u ") {
-                // conflicted; last token is path
-                if let Some(path) = line.split_whitespace().last() {
-                    files.push(FileEntry { path: path.to_string(), status: "U".into(), hunks: Vec::new() });
+            }
+            if did_stage_any {
+                let out2 = Self::run_git_capture(Some(&self.workdir), ["status", "--porcelain=v2"])?;
+                (files, _) = parse(&self.workdir, &out2);
+                if !auto_resolved.is_empty() {
+                    for f in &mut files {
+                        if auto_resolved.contains(&f.path) {
+                            f.resolved_conflict = true;
+                        }
+                    }
                 }
             }
         }

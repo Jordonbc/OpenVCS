@@ -1,5 +1,5 @@
 import { escapeHtml } from '../../lib/dom';
-import { state, prefs, statusClass } from '../../state/state';
+import { state, prefs, statusClass, statusLabel } from '../../state/state';
 import { refreshRepoActions } from '../../ui/layout';
 import { filterInput, listEl, countEl, diffHeadPath, diffEl } from './context';
 import { renderCombinedDiff, selectFile, toggleFilePick } from './diffView';
@@ -51,7 +51,12 @@ function renderChangesList(query: string) {
     const list = listEl;
     const count = countEl;
     if (!list || !count) return;
-    const files = (state.files || []).filter((f) => !query || (f.path || '').toLowerCase().includes(query));
+    const files = (state.files || []).filter((f: any) => {
+        if (!query) return true;
+        const p = String(f?.path || '').toLowerCase();
+        const o = String((f as any)?.old_path || '').toLowerCase();
+        return p.includes(query) || o.includes(query);
+    });
     count.textContent = `${files.length} file${files.length === 1 ? '' : 's'}`;
     updateSelectAllState(files);
 
@@ -71,13 +76,28 @@ function renderChangesList(query: string) {
         li.setAttribute('data-path', f.path || '');
         const picked = state.selectedFiles.has(f.path);
         const diffsel = state.diffSelectedFiles.has(f.path);
+        const staged = !!(f as any).staged;
+        const status = String((f as any)?.status || '').toUpperCase();
+        const conflicted = status === 'U';
+        const resolvedConflict =
+            !!(f as any).resolved_conflict ||
+            (state.mergeInProgress && staged && !conflicted && state.seenConflicts.has(String(f.path || '')));
+        const oldPath = String((f as any)?.old_path || '').trim();
+        const displayPath = (status === 'R' || status === 'C') && oldPath
+            ? `${oldPath} → ${String(f.path || '').trim()}`
+            : String(f.path || '');
         li.classList.toggle('picked', picked);
         li.classList.toggle('diffsel', diffsel);
+        li.classList.toggle('resolved', resolvedConflict);
+        li.classList.toggle('conflicted', conflicted);
         li.innerHTML = `
-      <input type="checkbox" class="pick" aria-label="Select file" ${picked ? 'checked' : ''} />
-      <span class="status ${statusClass(f.status)}">${escapeHtml(f.status || '')}</span>
-      <div class="file" title="${escapeHtml(f.path || '')}">${escapeHtml(f.path || '')}</div>
-      <span class="pick-mark" aria-hidden="true">✓</span>`;
+	      <input type="checkbox" class="pick" aria-label="Select file" ${picked ? 'checked' : ''} />
+	      <span class="status-dot ${statusClass(status)}" title="${escapeHtml(statusLabel(status).trim())}" aria-hidden="true"></span>
+	      <div class="file" title="${escapeHtml(displayPath)}">${escapeHtml(displayPath)}</div>
+          <span class="row-marks" aria-hidden="true">
+            <span class="stage-mark">✓</span>
+            <span class="conflict-mark">!</span>
+          </span>`;
         li.addEventListener('click', (e) => onFileClick(e as MouseEvent, f, i, files));
         li.addEventListener('mousedown', (e) => onFileMouseDown(e as MouseEvent, f, i, files, li));
         li.addEventListener('mouseenter', () => {

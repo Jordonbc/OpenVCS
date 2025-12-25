@@ -189,7 +189,7 @@ export function bindLayoutActionState() {
     // Recompute on repo selection, status refresh, branch changes, and typing (when enabled)
     window.addEventListener('app:repo-selected', refreshRepoActions);
     window.addEventListener('app:status-updated', () => { refreshRepoActions(); renderAheadBehind(); });
-    window.addEventListener('app:branches-updated', () => { refreshRepoActions(); renderAheadBehind(); });
+    window.addEventListener('app:branches-updated', () => { setRepoHeader(); refreshRepoActions(); renderAheadBehind(); });
 
     // Summary typing should re-evaluate the commit button state
     qs<HTMLInputElement>('#commit-summary')?.addEventListener('input', refreshRepoActions);
@@ -204,7 +204,7 @@ export function setRepoHeader(pathMaybe?: string) {
         const base = String(pathMaybe).replace(/[\\/]+$/, '').split(/[/\\]/).pop() || pathMaybe;
         setText(repoTitleEl, base);
     }
-    if (repoBranchEl) setText(repoBranchEl, state.branch || 'No repo open');
+    if (repoBranchEl) setText(repoBranchEl, state.branchLabel || state.branch || 'No repo open');
 }
 export function resetRepoHeader() {
     if (repoTitleEl) setText(repoTitleEl, 'Click to open Repo');
