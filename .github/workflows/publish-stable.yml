@@ -82,15 +82,15 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
-          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install -y flathub org.gnome.Platform//48 org.gnome.Sdk//48
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Platform//48 org.gnome.Sdk//48
 
       - name: Build Flatpak bundle
         if: matrix.platform == 'ubuntu-22.04'
         shell: bash
         run: |
           set -euxo pipefail
-          flatpak-builder --force-clean --repo=repo build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml
+          flatpak-builder --user --force-clean --repo=repo build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml
           flatpak build-bundle repo OpenVCS.flatpak io.github.jordonbc.OpenVCS
 
       - name: Upload Flatpak bundle (artifact)
