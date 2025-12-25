@@ -2,6 +2,8 @@ app-id: io.github.jordonbc.OpenVCS
 runtime: org.gnome.Platform
 runtime-version: "48"
 sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
 
 command: openvcs
 
@@ -19,6 +21,7 @@ modules:
   - name: openvcs
     buildsystem: simple
     build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
       env:
         OPENVCS_FLATPAK: "1"
       build-args:
@@ -32,8 +35,7 @@ modules:
           - target
     build-commands:
       - test -f Frontend/dist/index.html
-      - command -v cargo >/dev/null || ((curl -sSf https://sh.rustup.rs || wget -qO- https://sh.rustup.rs) | sh -s -- -y --profile minimal)
-      - $HOME/.cargo/bin/cargo build --release --manifest-path Backend/Cargo.toml
+      - cargo build --release --manifest-path Backend/Cargo.toml
       - install -Dm755 target/release/openvcs /app/bin/openvcs
       - install -Dm644 packaging/flatpak/io.github.jordonbc.OpenVCS.desktop /app/share/applications/io.github.jordonbc.OpenVCS.desktop
       - install -Dm644 packaging/flatpak/io.github.jordonbc.OpenVCS.metainfo.xml /app/share/metainfo/io.github.jordonbc.OpenVCS.metainfo.xml
