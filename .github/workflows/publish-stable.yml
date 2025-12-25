@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: ubuntu-22.04
+          - platform: ubuntu-24.04
             args: ''
           - platform: windows-latest
             args: ''
@@ -34,7 +34,7 @@ jobs:
 
       - name: Compute version tag
         id: version
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-24.04'
         shell: bash
         run: |
           set -euo pipefail
@@ -66,7 +66,7 @@ jobs:
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
 
       - name: Install Linux build deps (Ubuntu)
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-24.04'
         shell: bash
         run: |
           set -euxo pipefail
@@ -77,12 +77,12 @@ jobs:
 
       # ---------- Flatpak (Linux only; artifact) ----------
       - name: Install Flatpak tooling
-        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         shell: bash
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.gnome.Platform//48 org.gnome.Sdk//48
           # Cargo/rustc must come from the Flatpak SDK environment (not the host toolchain).
@@ -92,7 +92,7 @@ jobs:
             || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable
 
       - name: Verify Flatpak manifest exists
-        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         shell: bash
         run: |
           set -euxo pipefail
@@ -100,7 +100,7 @@ jobs:
           test -f packaging/flatpak/io.github.jordonbc.OpenVCS.yml
 
       - name: Build Flatpak bundle
-        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         shell: bash
         run: |
           set -euxo pipefail
@@ -108,7 +108,7 @@ jobs:
           flatpak build-bundle repo OpenVCS.flatpak io.github.jordonbc.OpenVCS
 
       - name: Upload Flatpak bundle (artifact)
-        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         uses: actions/upload-artifact@v4
         with:
           name: OpenVCS-flatpak-stable
@@ -144,7 +144,7 @@ jobs:
           # bundles: ''           # e.g. 'deb,appimage,msi,nsis' if you want to restrict output
 
       - name: Upload Flatpak bundle to GitHub Release
-        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ steps.version.outputs.tag }}" OpenVCS.flatpak --clobber
