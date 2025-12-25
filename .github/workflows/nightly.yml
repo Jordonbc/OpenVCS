@@ -163,7 +163,7 @@ jobs:
 
       # ---------- Flatpak (Linux only; artifact) ----------
       - name: Install Flatpak tooling
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         run: |
           set -euxo pipefail
           sudo apt-get update
@@ -171,15 +171,22 @@ jobs:
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.gnome.Platform//48 org.gnome.Sdk//48
 
+      - name: Verify Flatpak manifest exists
+        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        run: |
+          set -euxo pipefail
+          ls -la packaging/flatpak
+          test -f packaging/flatpak/io.github.jordonbc.OpenVCS.yml
+
       - name: Build Flatpak bundle
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         run: |
           set -euxo pipefail
           flatpak-builder --user --force-clean --repo=repo build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml
           flatpak build-bundle repo OpenVCS.flatpak io.github.jordonbc.OpenVCS
 
       - name: Upload Flatpak bundle (artifact)
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         uses: actions/upload-artifact@v4
         with:
           name: OpenVCS-flatpak-nightly
@@ -235,7 +242,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Upload Flatpak bundle to GitHub Release
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-22.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload openvcs-nightly OpenVCS.flatpak --clobber
