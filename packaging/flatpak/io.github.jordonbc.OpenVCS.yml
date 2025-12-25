@@ -1,0 +1,48 @@
+app-id: io.github.jordonbc.OpenVCS
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+
+command: openvcs
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.FileChooser
+  - --talk-name=org.freedesktop.portal.OpenURI
+
+modules:
+  - name: openvcs
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+      env:
+        OPENVCS_FLATPAK: "1"
+      build-args:
+        - --share=network
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .flatpak-builder
+          - Frontend/dist
+          - Frontend/node_modules
+          - target
+    build-commands:
+      - npm ci --prefix Frontend
+      - npm run build --prefix Frontend
+      - cargo build --release --manifest-path Backend/Cargo.toml
+      - install -Dm755 target/release/openvcs /app/bin/openvcs
+      - install -Dm644 packaging/flatpak/io.github.jordonbc.OpenVCS.desktop /app/share/applications/io.github.jordonbc.OpenVCS.desktop
+      - install -Dm644 packaging/flatpak/io.github.jordonbc.OpenVCS.metainfo.xml /app/share/metainfo/io.github.jordonbc.OpenVCS.metainfo.xml
+      - install -Dm644 Backend/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.jordonbc.OpenVCS.png
+      - install -Dm644 Backend/icons/64x64.png /app/share/icons/hicolor/64x64/apps/io.github.jordonbc.OpenVCS.png
+      - install -Dm644 Backend/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.jordonbc.OpenVCS.png
+      - install -Dm644 Backend/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.jordonbc.OpenVCS.png

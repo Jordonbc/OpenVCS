@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.jordonbc.OpenVCS</id>
+  <name>OpenVCS</name>
+  <summary>A simple, cross-platform GUI for Git.</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.jordonbc">
+    <name>Jordon Brooks</name>
+  </developer>
+  <url type="homepage">https://bbgames.dev</url>
+  <url type="bugtracker">https://github.com/Jordonbc/OpenVCS/issues</url>
+  <description>
+    <p>OpenVCS is a lightweight, highly customizable Git GUI built with Rust and Tauri.</p>
+  </description>
+  <launchable type="desktop-id">io.github.jordonbc.OpenVCS.desktop</launchable>
+  <provides>
+    <binary>openvcs</binary>
+  </provides>
+</component>
