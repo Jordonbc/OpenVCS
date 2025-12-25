@@ -7,6 +7,10 @@ fn is_flatpak_build() -> bool {
     )
 }
 
+fn is_tauri_dev() -> bool {
+    matches!(env::var("DEP_TAURI_DEV").as_deref(), Ok("true"))
+}
+
 fn main() {
     // Base config path (in the Backend crate)
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
@@ -36,6 +40,22 @@ fn main() {
                 _ => serde_json::Value::Array(vec![stable.clone()]),
             };
             updater["endpoints"] = endpoints;
+        }
+    }
+
+    // The app should only ever point at a dev server when running `cargo tauri dev`.
+    // In all other cases (including `cargo build`, `cargo run`, `cargo tauri build`, Flatpak, CI),
+    // we must ship/load the prebuilt frontend assets from `frontendDist`.
+    let strip_dev_server = !is_tauri_dev() || is_flatpak_build();
+
+    // Non-dev builds should never point at the dev server.
+    // We build the frontend ahead of time and ship it as production assets.
+    if strip_dev_server {
+        if let Some(build) = json.get_mut("build") {
+            if let Some(build_obj) = build.as_object_mut() {
+                build_obj.remove("devUrl");
+                build_obj.remove("beforeDevCommand");
+            }
         }
     }
 
