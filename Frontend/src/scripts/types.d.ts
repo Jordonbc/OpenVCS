@@ -6,6 +6,7 @@ export interface BranchKind {
 }
 export interface Branch {
     name: string;
+    full_ref?: string;
     current?: boolean;
     kind?: BranchKind;
 }

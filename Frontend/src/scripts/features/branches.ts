@@ -6,6 +6,7 @@ import { state } from '../state/state';
 import { openModal } from '../ui/modals';
 import { openRenameBranch } from './renameBranch';
 import { openSetUpstream } from './setUpstream';
+import { confirmDeleteBranch } from './deleteBranchConfirm';
 import { buildCtxMenu, CtxItem } from '../lib/menu';
 import { renderList, hydrateCommits, hydrateStatus } from './repo';
 import { setTab } from '../ui/layout';
@@ -194,8 +195,8 @@ export function bindBranchUI() {
             items.push({ label: 'Rename…', action: () => openRenameBranch(name) });
             items.push({ label: wantForce ? 'Force delete…' : 'Delete…', action: async () => {
                 if (name === cur) { notify('Cannot delete the current branch'); return; }
-                const ok = window.confirm(`${wantForce ? 'Force delete' : 'Delete'} local branch '${name}'? This cannot be undone.`);
-                if (!ok) return;
+                const ok = await confirmDeleteBranch({ name, force: wantForce });
+                if (!ok) { notify('Delete cancelled'); return; }
                 try {
                     if (TAURI.has) await TAURI.invoke('git_delete_branch', { name, force: wantForce });
                     notify(`${wantForce ? 'Force-deleted' : 'Deleted'} '${name}'`);
@@ -204,7 +205,12 @@ export function bindBranchUI() {
                     const msg = String(e || '');
                     if (wantForce) { notify(`Force delete failed${msg ? `: ${msg}` : ''}`); return; }
                     // If not fully merged, offer force delete as a fallback
-                    const ok2 = window.confirm(`Delete failed${msg ? `: ${msg}` : ''}.\n\nForce delete '${name}' anyway? This cannot be undone.`);
+                    const ok2 = await confirmDeleteBranch({
+                        name,
+                        force: true,
+                        message: `Delete failed${msg ? `: ${msg}` : ''}. You can force delete to remove it anyway.`,
+                        hint: "Force delete cannot be undone.",
+                    });
                     if (!ok2) { notify('Delete cancelled'); return; }
                     try {
                         if (TAURI.has) await TAURI.invoke('git_delete_branch', { name, force: true });

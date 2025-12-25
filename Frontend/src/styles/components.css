@@ -34,6 +34,15 @@
     font-weight:600;
 }
 .btn.primary:hover,.tbtn.primary:hover{ background:var(--accent-2); }
+.btn.danger,.tbtn.danger{
+    background:var(--danger);
+    border-color:var(--danger);
+    color:#fff;
+    font-weight:700;
+}
+.btn.danger:hover,.tbtn.danger:hover{
+    background:color-mix(in oklab, var(--danger) 82%, #000);
+}
 .tbtn.primary.big{ padding:.55rem .9rem; border-radius:var(--r-lg); }
 .btn.icon{ padding:.32rem .5rem; border-radius:var(--r-sm); }
 
