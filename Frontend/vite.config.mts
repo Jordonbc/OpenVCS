@@ -22,11 +22,13 @@ export default defineConfig({
         // hmr: { host: "localhost", overlay: false },
     },
     build: {
-        target: "es2022",
+        // Tauri on Linux uses WebKitGTK; AppImage users may have older runtimes.
+        // Keep the output conservative to avoid "white screen" due to syntax errors.
+        target: "es2019",
         outDir: "dist",
         emptyOutDir: true,
     },
     optimizeDeps: {
-        esbuildOptions: { target: "es2022" },
+        esbuildOptions: { target: "es2019" },
     },
 });
