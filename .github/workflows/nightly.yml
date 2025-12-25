@@ -6,6 +6,12 @@ on:
     # 01:30 UTC daily (02:30 in London during BST)
     - cron: '30 1 * * *'
   workflow_dispatch:
+    inputs:
+      force:
+        description: Build even if no changes since last nightly tag
+        type: boolean
+        required: false
+        default: false
 
 # Default to least privilege; override per-job as needed
 permissions:
@@ -64,7 +70,7 @@ jobs:
   nightly:
     name: Build & publish Nightly (only if changed)
     needs: check-changes
-    if: needs.check-changes.outputs.changed == 'true'
+    if: needs.check-changes.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && inputs.force == 'true')
     permissions:
       contents: write      # create/delete release + tag
       actions: write       # use GitHub Actions cache (rust-cache / sccache)
