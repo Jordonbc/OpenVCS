@@ -90,7 +90,7 @@ export function wireSshKeys() {
   refreshBtn?.addEventListener('click', refresh);
   copyBtn?.addEventListener('click', () => {
     if (!selectedPath) { notify('Select a key first'); return; }
-    copyToClipboard(`ssh-add "${selectedPath.replace(/"/g, '\\"')}"`);
+    copyToClipboard(`ssh-add "${selectedPath.replace(/[\\"]/g, (ch) => '\\' + ch)}"`);
   });
   addBtn?.addEventListener('click', async () => {
     if (!TAURI.has) return;
