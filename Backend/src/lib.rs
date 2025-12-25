@@ -194,6 +194,8 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::open_output_log_window,
         tauri_commands::get_output_log,
         tauri_commands::clear_output_log,
+        tauri_commands::tail_app_log,
+        tauri_commands::clear_app_log,
         tauri_commands::exit_app,
         tauri_commands::check_for_updates,
     ]
