@@ -73,6 +73,13 @@ pub struct Git {
     #[serde(default)] pub backend: GitBackend,
     /// Default branch name used when creating new repos or inferring defaults
     #[serde(default)] pub default_branch: String,
+    /// Which SSH binary to use for the system-git backend.
+    ///
+    /// On Linux AppImage, the bundled `ssh` can be older than the host and may fail to parse
+    /// distro crypto-policy configuration. `Auto` prefers the host OpenSSH if present.
+    #[serde(default)] pub ssh_binary: GitSshBinary,
+    /// Used when `ssh_binary = "custom"`.
+    #[serde(default)] pub ssh_path: String,
     #[serde(default)] pub prune_on_fetch: bool,
     #[serde(default)] pub fetch_on_focus: bool,
     #[serde(default)] pub allow_hooks: HookPolicy,
@@ -88,6 +95,8 @@ impl Default for Git {
         Self {
             backend: GitBackend::System,
             default_branch: "main".into(),
+            ssh_binary: GitSshBinary::Auto,
+            ssh_path: String::new(),
             prune_on_fetch: true,
             fetch_on_focus: true,
             allow_hooks: HookPolicy::Ask,
@@ -294,6 +303,11 @@ impl Default for GitBackend { fn default() -> Self { GitBackend::System } }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+pub enum GitSshBinary { Auto, Host, Bundled, Custom }
+impl Default for GitSshBinary { fn default() -> Self { GitSshBinary::Auto } }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
 pub enum DefaultBackend { Git }
 impl Default for DefaultBackend { fn default() -> Self { DefaultBackend::Git } }
 
@@ -421,6 +435,12 @@ impl AppConfig {
         }
 
         // Git
+        if self.git.default_branch.trim().is_empty() {
+            self.git.default_branch = "main".into();
+        }
+        if self.git.ssh_path.trim().is_empty() && self.git.ssh_binary == GitSshBinary::Custom {
+            self.git.ssh_binary = GitSshBinary::Auto;
+        }
 
         // Diff
         self.diff.tab_width = self.diff.tab_width.clamp(1, 16);

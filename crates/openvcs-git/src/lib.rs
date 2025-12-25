@@ -17,6 +17,59 @@ fn caps_static() -> Capabilities {
     Capabilities { commits: true, branches: true, tags: true, staging: true, push_pull: true, fast_forward: true }
 }
 
+fn git_ssh_command() -> String {
+    let mode = std::env::var("OPENVCS_SSH_MODE").ok().unwrap_or_else(|| "auto".into());
+    let mode = mode.trim().to_ascii_lowercase();
+
+    let custom = std::env::var("OPENVCS_SSH").ok().filter(|s| !s.trim().is_empty());
+
+    let ssh = match mode.as_str() {
+        "custom" => custom.unwrap_or_else(|| "ssh".to_string()),
+        "bundled" => "ssh".to_string(),
+        "host" => {
+            #[cfg(target_os = "linux")]
+            {
+                let prefer = ["/usr/bin/ssh", "/bin/ssh", "/usr/local/bin/ssh"];
+                prefer
+                    .iter()
+                    .copied()
+                    .find_map(|p| std::path::Path::new(p).exists().then(|| p.to_string()))
+                    .unwrap_or_else(|| "ssh".to_string())
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                "ssh".to_string()
+            }
+        }
+        // "auto" (or any unknown value)
+        _ => {
+            // Env override always wins.
+            if let Some(s) = custom {
+                s
+            } else {
+                #[cfg(target_os = "linux")]
+                {
+                    // AppImage builds may ship an older `ssh` on PATH, which can fail to parse
+                    // distro-managed `/etc/crypto-policies/back-ends/openssh.config` (e.g. ML-KEM KEX).
+                    // Prefer the host OpenSSH if present.
+                    let prefer = ["/usr/bin/ssh", "/bin/ssh", "/usr/local/bin/ssh"];
+                    prefer
+                        .iter()
+                        .copied()
+                        .find_map(|p| std::path::Path::new(p).exists().then(|| p.to_string()))
+                        .unwrap_or_else(|| "ssh".to_string())
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    "ssh".to_string()
+                }
+            }
+        }
+    };
+
+    format!("{ssh} -oBatchMode=yes -oStrictHostKeyChecking=yes")
+}
+
 fn open_factory(path: &Path) -> Result<Arc<dyn Vcs>> {
     GitSystem::open(path).map(|v| Arc::new(v) as Arc<dyn Vcs>)
 }
@@ -67,7 +120,7 @@ impl GitSystem {
         let out = cmd
             .args(&argv)
             // Disable interactive terminal prompts; rely on ssh-agent or fail fast
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oStrictHostKeyChecking=yes")
+            .env("GIT_SSH_COMMAND", git_ssh_command())
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(VcsError::Io)?;
@@ -109,7 +162,7 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let out = cmd
             .args(&argv)
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oStrictHostKeyChecking=yes")
+            .env("GIT_SSH_COMMAND", git_ssh_command())
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(VcsError::Io)?;
@@ -143,7 +196,7 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let out = cmd
             .args(&argv)
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oStrictHostKeyChecking=yes")
+            .env("GIT_SSH_COMMAND", git_ssh_command())
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(VcsError::Io)?;
@@ -177,7 +230,7 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let out = cmd
             .args(&argv)
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oStrictHostKeyChecking=yes")
+            .env("GIT_SSH_COMMAND", git_ssh_command())
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(VcsError::Io)?;
@@ -195,7 +248,7 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let mut child = cmd
             .args(args.into_iter().map(|s| s.as_ref().to_string()))
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oStrictHostKeyChecking=yes")
+            .env("GIT_SSH_COMMAND", git_ssh_command())
             .env("GIT_TERMINAL_PROMPT", "0")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
@@ -228,7 +281,7 @@ impl GitSystem {
         let mut cmd = Command::new(GIT_COMMAND_NAME);
         cmd.current_dir(cwd)
             .args(args)
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes -oStrictHostKeyChecking=yes")
+            .env("GIT_SSH_COMMAND", git_ssh_command())
             .env("GIT_TERMINAL_PROMPT", "0")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
