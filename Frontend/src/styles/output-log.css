@@ -17,6 +17,9 @@ body.output-log-body{
   background: var(--surface-2);
 }
 #output-log-view .outlog-title{ font-weight: 600; }
+#output-log-view .outlog-left{ display:flex; gap:.75rem; align-items:center; min-width: 0; }
+#output-log-view .outlog-tabs{ display:flex; gap:.5rem; align-items:center; }
+#output-log-view .outlog-tab.is-active{ outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent); outline-offset: 1px; }
 #output-log-view .outlog-actions{ display:flex; gap:.5rem; align-items:center; }
 #output-log-view .outlog-autoscroll{ display:flex; gap:.5rem; align-items:center; color: var(--muted); font-size:.9rem; }
 #output-log-view .outlog-body{ flex:1; overflow:hidden; }
@@ -28,6 +31,7 @@ body.output-log-body{
   font-size: .9rem;
   line-height: 1.35;
 }
+#output-log-view .outlog-hidden{ display:none; }
 #output-log-view .outlog-row{
   padding:.18rem .35rem;
   border-radius: var(--r-sm);

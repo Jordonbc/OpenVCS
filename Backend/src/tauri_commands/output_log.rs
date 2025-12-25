@@ -3,6 +3,44 @@ use tauri::{Manager, Runtime, Window, WebviewUrl, WebviewWindowBuilder};
 use crate::output_log::OutputLogEntry;
 use crate::state::AppState;
 
+fn read_last_lines(path: &std::path::Path, max_lines: usize) -> std::io::Result<Vec<String>> {
+    use std::io::{Read, Seek};
+
+    let mut file = std::fs::File::open(path)?;
+    let file_len = file.metadata()?.len();
+    if file_len == 0 {
+        return Ok(vec![]);
+    }
+
+    let mut chunks: Vec<Vec<u8>> = Vec::new();
+    let mut newline_count: usize = 0;
+    let mut pos = file_len;
+    let chunk_size: u64 = 8 * 1024;
+
+    while pos > 0 && newline_count <= max_lines {
+        let start = pos.saturating_sub(chunk_size);
+        let read_len = (pos - start) as usize;
+
+        file.seek(std::io::SeekFrom::Start(start))?;
+        let mut buf = vec![0u8; read_len];
+        file.read_exact(&mut buf)?;
+
+        newline_count += buf.iter().filter(|&&b| b == b'\n').count();
+        chunks.push(buf);
+
+        pos = start;
+    }
+
+    let total_len: usize = chunks.iter().map(|c| c.len()).sum();
+    let mut data = Vec::with_capacity(total_len);
+    for chunk in chunks.into_iter().rev() {
+        data.extend_from_slice(&chunk);
+    }
+
+    let text = String::from_utf8_lossy(&data);
+    Ok(text.lines().map(|s| s.to_string()).collect())
+}
+
 #[tauri::command]
 pub fn get_output_log(state: tauri::State<'_, AppState>) -> Vec<OutputLogEntry> {
     state.output_log()
@@ -11,6 +49,29 @@ pub fn get_output_log(state: tauri::State<'_, AppState>) -> Vec<OutputLogEntry> 
 #[tauri::command]
 pub fn clear_output_log(state: tauri::State<'_, AppState>) {
     state.clear_output_log();
+}
+
+#[tauri::command]
+pub fn tail_app_log(max_lines: Option<usize>) -> Vec<OutputLogEntry> {
+    use crate::output_log::{OutputLevel, OutputLogEntry};
+
+    let max_lines = max_lines.unwrap_or(1500).clamp(1, 10_000);
+    let path = std::path::Path::new("logs").join("openvcs.log");
+
+    let Ok(lines) = read_last_lines(&path, max_lines) else {
+        return vec![];
+    };
+
+    let start = lines.len().saturating_sub(max_lines);
+    lines[start..]
+        .iter()
+        .map(|line| OutputLogEntry::new(0, OutputLevel::Info, "app", line.clone()))
+        .collect()
+}
+
+#[tauri::command]
+pub fn clear_app_log() -> Result<(), String> {
+    crate::logging::clear_active_log_file()
 }
 
 #[tauri::command]
@@ -31,4 +92,3 @@ pub fn open_output_log_window<R: Runtime>(window: Window<R>) -> Result<(), Strin
 
     Ok(())
 }
-

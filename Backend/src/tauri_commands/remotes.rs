@@ -123,6 +123,32 @@ struct SshAuthPrompt {
 }
 
 #[tauri::command]
+pub async fn git_set_remote_url(
+    state: State<'_, AppState>,
+    name: String,
+    url: String,
+) -> Result<(), String> {
+    let repo = current_repo_or_err(&state)?;
+    let name = name.trim().to_string();
+    let url = url.trim().to_string();
+
+    if name.is_empty() {
+        return Err("Remote name cannot be empty".to_string());
+    }
+    if url.is_empty() {
+        return Err("Remote URL cannot be empty".to_string());
+    }
+
+    run_repo_task("git_set_remote_url", repo, move |repo| {
+        repo.inner().ensure_remote(&name, &url).map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn git_fetch<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
