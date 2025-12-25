@@ -16,7 +16,21 @@ OpenVCS provides a convenience script that fetches the latest AppImage, stores i
 curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash
 ```
 
-The script targets Linux, leaves existing configuration untouched, and can be re-run to pull the newest release. To install a pre-release, pass the flag through to the script: `curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash -s -- --prerelease`. To uninstall: `curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash -s -- --uninstall`. Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
+The script targets Linux, leaves existing configuration untouched, and can be re-run to pull the newest release.
+
+**Install pre-release (nightly):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash -s -- --prerelease
+```
+
+**Uninstall:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash -s -- --uninstall
+```
+
+Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 
 ---
 
@@ -89,6 +103,17 @@ chmod +x OpenVCS-*.AppImage
 
 Store the AppImage wherever you like; no installation step is required.
 
+#### Flatpak (experimental)
+
+A Flatpak manifest exists under `packaging/flatpak/`, but Flatpak support is currently **experimental** and may be broken even if the bundle builds successfully.
+
+Known issues/limitations:
+
+- The sandbox does not provide `git`, but OpenVCS currently defaults to the **system Git** backend; in Flatpak you may need to switch to the **libgit2** backend in settings.
+- If the frontend assets are not included correctly, the app can show a blank window / “could not connect to localhost” (dev server) instead of loading `Frontend/dist`.
+
+For local build notes see `packaging/flatpak/README.md`.
+
 #### Build from source
 
 Clone the repository:
@@ -105,13 +130,13 @@ cd Frontend
 npm install
 ```
 
-Run in development mode from the workspace root:
+**Run in development mode (dev server):**
 
 ```bash
 cargo tauri dev
 ```
 
-Build a release binary:
+**Build a release bundle (production):**
 
 ```bash
 cargo tauri build
