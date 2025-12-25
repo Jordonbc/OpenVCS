@@ -32,6 +32,16 @@ jobs:
           lfs: true
           fetch-depth: 0
 
+      - name: Compute version tag
+        id: version
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(grep -m1 '^version *= *\"' Backend/Cargo.toml | sed -E 's/^version *= *\"([^\"]+)\".*/\\1/')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=openvcs-v$VERSION" >> "$GITHUB_OUTPUT"
+
       # ---------- Frontend (Node + Vite) ----------
       - name: Setup Node
         uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
@@ -65,6 +75,31 @@ jobs:
           # Prefer WebKitGTK 4.1; fall back to 4.0 if 4.1 isn't available
           sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
 
+      # ---------- Flatpak (Linux only; artifact) ----------
+      - name: Install Flatpak tooling
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install -y flathub org.gnome.Platform//48 org.gnome.Sdk//48
+
+      - name: Build Flatpak bundle
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          flatpak-builder --force-clean --repo=repo build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml
+          flatpak build-bundle repo OpenVCS.flatpak io.github.jordonbc.OpenVCS
+
+      - name: Upload Flatpak bundle (artifact)
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenVCS-flatpak-stable
+          path: OpenVCS.flatpak
+
       # ---------- Cargo caching ----------
       - name: Rust cache
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
@@ -93,3 +128,9 @@ jobs:
           args: ${{ matrix.args }}
           includeDebug: false   # default; set true if you want debug archives too
           # bundles: ''           # e.g. 'deb,appimage,msi,nsis' if you want to restrict output
+
+      - name: Upload Flatpak bundle to GitHub Release
+        if: matrix.platform == 'ubuntu-22.04'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ steps.version.outputs.tag }}" OpenVCS.flatpak --clobber
