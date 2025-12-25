@@ -6,25 +6,21 @@
     <div class="sheet-body">
       <div class="panel-form">
         <div class="group">
-          <div style="color:var(--muted); font-size:.95rem;">
+          <div class="modal-note">
             The remote requires SSH host key verification. Only trust this host if you recognize it.
           </div>
         </div>
-        <div class="group">
-          <label>Host</label>
-          <div id="ssh-hostkey-host" style="font-family:var(--mono);"></div>
-        </div>
-        <div class="group">
-          <label>Remote</label>
-          <div id="ssh-hostkey-remote" style="font-family:var(--mono);"></div>
-        </div>
-        <div class="group">
-          <label>URL</label>
-          <div id="ssh-hostkey-url" style="font-family:var(--mono); word-break:break-all;"></div>
+        <div class="group kv-grid" aria-label="SSH remote details">
+          <div class="kv-label">Host</div>
+          <div id="ssh-hostkey-host" class="kv-value"></div>
+          <div class="kv-label">Remote</div>
+          <div id="ssh-hostkey-remote" class="kv-value"></div>
+          <div class="kv-label">URL</div>
+          <div id="ssh-hostkey-url" class="kv-value"></div>
         </div>
         <details class="group">
           <summary style="cursor:pointer; color:var(--muted);">Details</summary>
-          <pre id="ssh-hostkey-msg" style="white-space:pre-wrap; margin:.5rem 0 0; color:var(--muted);"></pre>
+          <pre id="ssh-hostkey-msg" class="kv-pre"></pre>
         </details>
       </div>
     </div>
@@ -35,4 +31,3 @@
   </div>
   <div class="backdrop" data-close></div>
 </div>
-

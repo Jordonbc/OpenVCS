@@ -1,0 +1,33 @@
+/* src/styles/modal/ssh-keys.css */
+
+#ssh-keys-modal .dialog.sheet{
+  width: min(760px, 95vw);
+}
+
+#ssh-keys-modal .sheet-body{
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+#ssh-keys-modal .panel-form{
+  gap: 1rem;
+}
+
+#ssh-keys-modal .ssh-box{
+  background: var(--control-bg);
+  color: var(--control-text);
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
+  padding: .65rem .75rem;
+  font-family: var(--mono);
+  font-size: .9rem;
+  overflow: auto;
+  margin: 0;
+}
+
+#ssh-keys-modal #ssh-keys-list{
+  display:flex;
+  flex-wrap:wrap;
+  gap:.5rem;
+  padding: .25rem;
+}
+

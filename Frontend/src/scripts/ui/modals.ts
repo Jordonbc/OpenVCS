@@ -8,6 +8,7 @@ import repoSettingsHtml from "@modals/repo-settings.html?raw";
 import { wireRepoSettings } from "../features/repoSettings";
 import sshHostkeyHtml from "@modals/ssh-hostkey.html?raw";
 import sshAuthHtml from "@modals/ssh-auth.html?raw";
+import sshKeysHtml from "@modals/ssh-keys.html?raw";
 import newBranchHtml from "@modals/new-branch.html?raw";
 import { wireNewBranch } from "../features/newBranch";
 import renameBranchHtml from "@modals/rename-branch.html?raw";
@@ -20,6 +21,7 @@ import stashConfirmHtml from "@modals/stash-confirm.html?raw";
 import { wireStashConfirm } from "../features/stashConfirm";
 import mergeHtml from "@modals/merge.html?raw";
 import conflictsSummaryHtml from "@modals/conflicts-summary.html?raw";
+import { wireSshKeys } from "../features/sshKeys";
 
 // Lazy fragments (only those NOT present at load)
 const FRAGMENTS: Record<string, string> = {
@@ -29,6 +31,7 @@ const FRAGMENTS: Record<string, string> = {
     "repo-settings-modal": repoSettingsHtml,
     "ssh-hostkey-modal": sshHostkeyHtml,
     "ssh-auth-modal": sshAuthHtml,
+    "ssh-keys-modal": sshKeysHtml,
     "new-branch-modal": newBranchHtml,
     "rename-branch-modal": renameBranchHtml,
     "set-upstream-modal": setUpstreamHtml,
@@ -75,6 +78,7 @@ export function hydrate(id: string): void {
     if (id === "ssh-hostkey-modal") {
         // wiring is done by the listener in the sshHostkey feature
     }
+    if (id === "ssh-keys-modal") wireSshKeys();
     if (id === "new-branch-modal") wireNewBranch();
     if (id === "rename-branch-modal") wireRenameBranch();
     if (id === "set-upstream-modal") wireSetUpstream();

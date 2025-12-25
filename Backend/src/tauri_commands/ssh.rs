@@ -1,5 +1,6 @@
 use std::{fs, path::PathBuf, process::Command};
 
+use serde::Serialize;
 use tauri::command;
 
 fn known_hosts_path() -> Result<PathBuf, String> {
@@ -7,11 +8,36 @@ fn known_hosts_path() -> Result<PathBuf, String> {
     Ok(home.join(".ssh").join("known_hosts"))
 }
 
+fn ssh_dir_path() -> Result<PathBuf, String> {
+    let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
+    Ok(home.join(".ssh"))
+}
+
 fn ensure_ssh_dir() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
     let dir = home.join(".ssh");
     fs::create_dir_all(&dir).map_err(|e| format!("Failed to create ~/.ssh: {e}"))?;
     Ok(dir)
+}
+
+#[derive(Clone, Serialize)]
+pub struct SshCommandOutput {
+    pub code: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+fn run_command(cmd: &str, args: &[&str]) -> Result<SshCommandOutput, String> {
+    let out = Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| format!("Failed to run {cmd}: {e}"))?;
+
+    Ok(SshCommandOutput {
+        code: out.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&out.stdout).trim().to_string(),
+        stderr: String::from_utf8_lossy(&out.stderr).trim().to_string(),
+    })
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -74,3 +100,72 @@ pub fn ssh_trust_host(host: String) -> Result<(), String> {
     Ok(())
 }
 
+#[command]
+pub fn ssh_agent_list_keys() -> Result<SshCommandOutput, String> {
+    // Exit codes:
+    // 0 = keys listed, 1 = agent has no keys, 2 = agent not running/unreachable (platform dependent).
+    run_command("ssh-add", &["-l"])
+}
+
+#[derive(Clone, Serialize)]
+pub struct SshKeyCandidate {
+    pub path: String,
+    pub name: String,
+}
+
+#[command]
+pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
+    let dir = ssh_dir_path()?;
+    let Ok(read_dir) = fs::read_dir(&dir) else {
+        return Ok(vec![]);
+    };
+
+    let mut keys = vec![];
+    for entry in read_dir.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
+            continue;
+        };
+
+        // Heuristic: include common private key names and exclude obvious non-keys.
+        if name.ends_with(".pub")
+            || name == "known_hosts"
+            || name == "config"
+            || name.ends_with(".log")
+            || name.ends_with(".old")
+        {
+            continue;
+        }
+
+        let looks_like_private_key = name == "id_ed25519"
+            || name == "id_rsa"
+            || name == "id_ecdsa"
+            || name == "id_dsa"
+            || name.ends_with(".pem")
+            || name.ends_with(".key");
+
+        if !looks_like_private_key {
+            continue;
+        }
+
+        keys.push(SshKeyCandidate {
+            path: path.display().to_string(),
+            name: name.to_string(),
+        });
+    }
+
+    keys.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(keys)
+}
+
+#[command]
+pub fn ssh_add_key(path: String) -> Result<SshCommandOutput, String> {
+    let p = path.trim();
+    if p.is_empty() {
+        return Err("Path cannot be empty".to_string());
+    }
+    run_command("ssh-add", &[p])
+}
