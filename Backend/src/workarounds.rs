@@ -1,5 +1,23 @@
 #[cfg(target_os = "linux")]
 pub fn apply_linux_nvidia_workaround() {
+    fn set_env_if_missing(key: &str, value: &str, label: &str) {
+        if std::env::var_os(key).is_none() {
+            eprintln!("Applying {label}: {key}={value}");
+            std::env::set_var(key, value);
+        }
+    }
+
+    // AppImage: WebKitGTK sandbox often fails (missing bubblewrap or userns disabled),
+    // which can manifest as a blank/white webview.
+    let is_appimage = std::env::var_os("APPIMAGE").is_some() || std::env::var_os("APPDIR").is_some();
+    if is_appimage {
+        set_env_if_missing(
+            "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS",
+            "1",
+            "AppImage WebKit sandbox workaround",
+        );
+    }
+
     // Only apply if we're on Wayland + NVIDIA
     let is_wayland = std::env::var("XDG_SESSION_TYPE")
         .map(|v| v.eq_ignore_ascii_case("wayland"))
@@ -20,11 +38,11 @@ pub fn apply_linux_nvidia_workaround() {
     };
 
     if is_wayland && is_nvidia {
-        const KEY: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
-        if std::env::var_os(KEY).is_none() {
-            eprintln!("Applying NVIDIA Wayland workaround: {KEY}=1");
-            std::env::set_var(KEY, "1");
-        }
+        set_env_if_missing("WEBKIT_DISABLE_DMABUF_RENDERER", "1", "NVIDIA Wayland workaround");
+
+        // Some driver/Wayland combinations still crash or render a white screen unless
+        // accelerated compositing is disabled.
+        set_env_if_missing("WEBKIT_DISABLE_COMPOSITING_MODE", "1", "NVIDIA Wayland workaround");
     }
 }
 

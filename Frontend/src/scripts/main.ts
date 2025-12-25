@@ -1,3 +1,5 @@
+import './polyfills';
+
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
@@ -543,4 +545,13 @@ async function boot() {
     });
 }
 
-boot();
+boot().catch((error) => {
+    console.error('OpenVCS failed to start', error);
+    const root = document.getElementById('app') || document.body;
+    const message = error instanceof Error ? (error.stack || error.message) : String(error);
+    root.textContent =
+        'OpenVCS failed to start.\n\n' +
+        message +
+        '\n\nThis can happen on Linux if the WebKitGTK runtime is too old or crashes. ' +
+        'Updating WebKitGTK or running under X11 can help.';
+});

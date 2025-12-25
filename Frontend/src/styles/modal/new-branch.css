@@ -21,7 +21,7 @@
     display:none;
 }
 #new-branch-modal .name-hint::before{
-    content:"⚠";
+    content:"!";
     opacity:.9;
     color: var(--warning, #f7c948);
 }

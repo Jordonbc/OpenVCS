@@ -99,7 +99,11 @@
               <input id="select-all" type="checkbox" aria-label="Select all visible files" />
               <span>All</span>
             </label>
-            <span class="filter-icon" aria-hidden="true">🔎</span>
+            <span class="filter-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="14" height="14" focusable="false" aria-hidden="true">
+                <path fill="currentColor" d="M10 2a8 8 0 1 1 4.9 14.3l4.4 4.4-1.4 1.4-4.4-4.4A8 8 0 0 1 10 2zm0 2a6 6 0 1 0 0 12a6 6 0 0 0 0-12z"/>
+              </svg>
+            </span>
             <input id="filter" type="search" placeholder="Filter files… (Ctrl+F)" aria-label="Filter files or commits" />
           </div>
           <span id="changes-count">0 items</span>
