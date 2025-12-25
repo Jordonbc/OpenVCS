@@ -16,6 +16,7 @@ export function savePrefs() {
 export const state = {
     hasRepo: false,                 // backend truth (set after open/clone/add)
     branch: '' as string,           // current branch name
+    branchLabel: '' as string,      // display label (e.g. Detached HEAD (abc1234))
     branches: [] as Branch[],       // list of branches
     files: [] as FileStatus[],      // working tree status
     commits: [] as CommitItem[],    // recent commits

@@ -13,6 +13,11 @@ export async function hydrateBranches() {
         if (has) {
             state.branches = list as any;
             state.branch = (head as any)?.branch || (list.find((b: any) => b.current)?.name) || state.branch || 'main';
+            const detached = Boolean((head as any)?.detached);
+            const short = String((head as any)?.commit || '').slice(0, 7);
+            state.branchLabel = detached
+                ? `Detached HEAD ${short ? '(' + short + ')' : ''}`.trim()
+                : (state.branch || '—');
             window.dispatchEvent(new CustomEvent('app:branches-updated'));
         }
     } catch (e) {

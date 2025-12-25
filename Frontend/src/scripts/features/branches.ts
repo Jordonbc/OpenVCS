@@ -22,6 +22,13 @@ const branchFilter = qs<HTMLInputElement>('#branch-filter');
 const branchList   = qs<HTMLElement>('#branch-list');
 const repoBranchEl = qs<HTMLElement>('#repo-branch');
 
+function syncBranchLabelsFromState() {
+    const label = state.branchLabel || state.branch || '—';
+    if (branchName) branchName.textContent = label;
+    if (repoBranchEl) repoBranchEl.textContent = label;
+    setBranchUIEnabled(!!state.branch);
+}
+
 /* ---------------- data load ---------------- */
 
 async function loadBranches() {
@@ -34,6 +41,7 @@ async function loadBranches() {
         if (head?.branch) state.branch = head.branch;
         const short = (head?.commit || '').slice(0, 7);
         const label = head?.detached ? `Detached HEAD ${short ? '(' + short + ')' : ''}` : (state.branch || '—');
+        state.branchLabel = label;
         if (branchName) branchName.textContent = label;
         if (repoBranchEl) repoBranchEl.textContent = label;
 
@@ -262,7 +270,8 @@ export function bindBranchUI() {
 
     // React when a repo is selected somewhere else (add/clone/open)
     window.addEventListener('app:repo-selected', () => void loadBranches());
+    window.addEventListener('app:branches-updated', syncBranchLabelsFromState);
 
     // Initial state
-    setBranchUIEnabled(!!state.branch);
+    syncBranchLabelsFromState();
 }
