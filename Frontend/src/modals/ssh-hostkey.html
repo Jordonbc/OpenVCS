@@ -1,0 +1,38 @@
+<div class="modal" id="ssh-hostkey-modal" aria-hidden="true">
+  <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="ssh-hostkey-title">
+    <div class="sheet-head">
+      <h3 id="ssh-hostkey-title" style="margin:0">Trust SSH Host?</h3>
+    </div>
+    <div class="sheet-body">
+      <div class="panel-form">
+        <div class="group">
+          <div style="color:var(--muted); font-size:.95rem;">
+            The remote requires SSH host key verification. Only trust this host if you recognize it.
+          </div>
+        </div>
+        <div class="group">
+          <label>Host</label>
+          <div id="ssh-hostkey-host" style="font-family:var(--mono);"></div>
+        </div>
+        <div class="group">
+          <label>Remote</label>
+          <div id="ssh-hostkey-remote" style="font-family:var(--mono);"></div>
+        </div>
+        <div class="group">
+          <label>URL</label>
+          <div id="ssh-hostkey-url" style="font-family:var(--mono); word-break:break-all;"></div>
+        </div>
+        <details class="group">
+          <summary style="cursor:pointer; color:var(--muted);">Details</summary>
+          <pre id="ssh-hostkey-msg" style="white-space:pre-wrap; margin:.5rem 0 0; color:var(--muted);"></pre>
+        </details>
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button class="tbtn" id="ssh-hostkey-deny" type="button">Deny</button>
+      <button class="tbtn primary big" id="ssh-hostkey-accept" type="button">Trust &amp; Retry</button>
+    </div>
+  </div>
+  <div class="backdrop" data-close></div>
+</div>
+

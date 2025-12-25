@@ -9,6 +9,8 @@ mod settings;
 mod shared;
 mod stash;
 mod status;
+mod ssh;
+mod output_log;
 mod updater;
 mod themes;
 
@@ -22,6 +24,8 @@ pub use remotes::*;
 pub use settings::*;
 pub use stash::*;
 pub use status::*;
+pub use ssh::*;
+pub use output_log::*;
 pub use updater::*;
 pub use themes::*;
 

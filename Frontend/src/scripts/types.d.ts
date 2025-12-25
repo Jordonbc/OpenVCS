@@ -129,4 +129,5 @@ export interface RepoSettings {
     user_name?: string;
     user_email?: string;
     origin_url?: string;
+    remotes?: Array<{ name: string; url: string }>;
 }

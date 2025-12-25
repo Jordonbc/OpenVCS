@@ -10,6 +10,7 @@
 @import "./modal/command-sheet.css";
 @import "./modal/settings.css";
 @import "./modal/repo-settings.css";
+@import "./output-log.css";
 @import "./modal/new-branch.css";
 @import "./modal/stash-confirm.css";
 @import "./modal/merge.css";

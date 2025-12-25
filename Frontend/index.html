@@ -47,6 +47,7 @@
         <button class="menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">Help</button>
         <div class="menu-list" role="menu" hidden>
           <button class="menu-item" role="menuitem" data-action="docs">Documentation</button>
+          <button class="menu-item" role="menuitem" data-action="show-output-log">Show Output Log</button>
           <button class="menu-item" role="menuitem" data-action="check_updates">Check for Updates…</button>
           <button class="menu-item" role="menuitem" data-action="about">About</button>
         </div>
@@ -164,6 +165,9 @@
     <ul class="pop-list" id="fetch-list" role="menu">
       <li role="menuitem" tabindex="0" data-action="fetch-only">
         <span class="label"><span class="name">Fetch</span></span>
+      </li>
+      <li role="menuitem" tabindex="0" data-action="fetch-all">
+        <span class="label"><span class="name">Fetch all remotes</span></span>
       </li>
       <li role="menuitem" tabindex="-1" data-action="pull" aria-disabled="true">
         <span class="label"><span class="name">Pull</span></span>

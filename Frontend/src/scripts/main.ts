@@ -15,6 +15,9 @@ import { openAbout } from './features/about';
 import { openSettings } from './features/settings';
 import { showUpdateDialog } from './features/update';
 import { openRepoSettings } from './features/repoSettings';
+import { initSshHostkeyPrompt } from './features/sshHostkey';
+import { initSshAuthPrompt } from './features/sshAuth';
+import { initOutputLogViewIfRequested } from './features/outputLog';
 import { DEFAULT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
 
 const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
@@ -30,7 +33,9 @@ const repoSwitch = qs<HTMLButtonElement>('#repo-switch');
 const commitBtn = qs<HTMLButtonElement>('#commit-btn');
 const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
 
-function boot() {
+async function boot() {
+    // If launched as the Output Log window, render that view and skip the main app UI.
+    if (await initOutputLogViewIfRequested()) return;
     // theme & basic layout
     // Prefer native settings for theme; fall back to current in-memory default
     if (TAURI.has) {
@@ -75,6 +80,8 @@ function boot() {
     bindBranchUI();
     bindLayoutActionState();
     bindRepoHotkeys(commitBtn || null, openSheet, defaultFetchAction);
+    initSshHostkeyPrompt();
+    initSshAuthPrompt();
 
     function statusController() {
         const statusEl = document.getElementById('status');
@@ -88,30 +95,63 @@ function boot() {
         };
     }
 
+    let fetchInFlight: Promise<boolean> | null = null;
+    async function runFetch(fn: () => Promise<boolean>) {
+        if (fetchInFlight) return fetchInFlight;
+        fetchInFlight = fn();
+        try { return await fetchInFlight; }
+        finally { fetchInFlight = null; }
+    }
+
+    async function fetchCurrentRemoteOnly(options: { hydrate?: boolean; status?: ReturnType<typeof statusController>; keepBusy?: boolean } = {}) {
+        if (!TAURI.has) return false;
+        return runFetch(async () => {
+            const { hydrate = true, status, keepBusy = false } = options;
+            const ctl = status ?? statusController();
+            let success = false;
+            try {
+                ctl.setBusy('Fetching…');
+                await TAURI.invoke('git_fetch', {});
+                notify('Fetched');
+                if (hydrate) {
+                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                }
+                success = true;
+            } catch {
+                notify('Fetch failed');
+            } finally {
+                if (!keepBusy) ctl.clearBusy();
+            }
+            return success;
+        });
+    }
+
     async function fetchAllRemotesOnly(options: { hydrate?: boolean; status?: ReturnType<typeof statusController>; keepBusy?: boolean } = {}) {
         if (!TAURI.has) return false;
-        const { hydrate = true, status, keepBusy = false } = options;
-        const ctl = status ?? statusController();
-        let success = false;
-        try {
-            ctl.setBusy('Fetching…');
-            await TAURI.invoke('git_fetch_all', {});
-            notify('Fetched all remotes');
-            if (hydrate) {
-                await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+        return runFetch(async () => {
+            const { hydrate = true, status, keepBusy = false } = options;
+            const ctl = status ?? statusController();
+            let success = false;
+            try {
+                ctl.setBusy('Fetching all…');
+                await TAURI.invoke('git_fetch_all', {});
+                notify('Fetched all remotes');
+                if (hydrate) {
+                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                }
+                success = true;
+            } catch {
+                notify('Fetch all failed');
+            } finally {
+                if (!keepBusy) ctl.clearBusy();
             }
-            success = true;
-        } catch {
-            notify('Fetch failed');
-        } finally {
-            if (!keepBusy) ctl.clearBusy();
-        }
-        return success;
+            return success;
+        });
     }
 
     async function fetchOnly() {
         const ctl = statusController();
-        await fetchAllRemotesOnly({ status: ctl });
+        await fetchCurrentRemoteOnly({ status: ctl });
     }
 
     function getBehindCount(): number {
@@ -136,12 +176,17 @@ function boot() {
 
         if (!fetchList) return;
         const fetchOnlyItem = fetchList.querySelector<HTMLElement>('li[data-action="fetch-only"]');
+        const fetchAllItem = fetchList.querySelector<HTMLElement>('li[data-action="fetch-all"]');
         const pullItem = fetchList.querySelector<HTMLElement>('li[data-action="pull"]');
         if (fetchOnlyItem) {
             fetchOnlyItem.setAttribute('aria-disabled', 'false');
             fetchOnlyItem.tabIndex = 0;
             const name = fetchOnlyItem.querySelector<HTMLElement>('.name');
             if (name) name.textContent = 'Fetch';
+        }
+        if (fetchAllItem) {
+            fetchAllItem.setAttribute('aria-disabled', 'false');
+            fetchAllItem.tabIndex = 0;
         }
         if (pullItem) {
             const pullLabel = behind > 0 ? `Pull (${behind})` : 'Pull';
@@ -155,7 +200,7 @@ function boot() {
     async function fetchAndPull() {
         if (!TAURI.has) return;
         const ctl = statusController();
-        const fetched = await fetchAllRemotesOnly({ hydrate: false, status: ctl, keepBusy: true });
+        const fetched = await fetchCurrentRemoteOnly({ hydrate: false, status: ctl, keepBusy: true });
         if (!fetched) { ctl.clearBusy(); return; }
 
         try {
@@ -248,6 +293,11 @@ function boot() {
             case 'push':  await pushChanges();  break;
             case 'commit': commitBtn?.click(); break;
             case 'docs': await openDocs(); break;
+            case 'show-output-log':
+                if (!TAURI.has) { notify('Output Log is available in the desktop app'); break; }
+                try { await TAURI.invoke('open_output_log_window', {}); }
+                catch { notify('Failed to open Output Log'); }
+                break;
             case 'about': openAbout(); break;
             case 'settings': openSettings(); break;
             case 'repo-settings': openRepoSettings(); break;
@@ -340,7 +390,9 @@ function boot() {
             }, 1500);
         };
         TAURI.listen?.('git-progress', ({ payload }) => {
-            setBusy(String((payload as any)?.message || 'Working…'));
+            // Don't spam the footer with raw git output; keep it generic.
+            void payload;
+            setBusy('Working…');
         });
     })();
 
@@ -391,7 +443,10 @@ function boot() {
     });
 
     // App focus: handle entirely in TS (no backend event)
+    let focusInFlight: Promise<void> | null = null;
     async function onFocus() {
+        if (focusInFlight) return focusInFlight;
+        focusInFlight = (async () => {
         let doFetch = false;
         if (TAURI.has) {
             try {
@@ -400,10 +455,16 @@ function boot() {
             } catch {}
         }
         if (doFetch) {
-            await fetchAllRemotesOnly({ hydrate: false });
+            await fetchCurrentRemoteOnly({ hydrate: false });
         }
         await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash()]);
         updateFetchUI();
+        })();
+        try {
+            await focusInFlight;
+        } finally {
+            focusInFlight = null;
+        }
     }
 
     window.addEventListener('focus', () => { onFocus().catch(() => {}); });
@@ -434,6 +495,7 @@ function boot() {
         const action = li.dataset.action || '';
         closeFetchPopover();
         if (action === 'fetch-only') fetchOnly().catch(() => {});
+        else if (action === 'fetch-all') fetchAllRemotesOnly().catch(() => {});
         else if (action === 'pull') fetchAndPull().catch(() => {});
     });
 

@@ -7,6 +7,7 @@ use parking_lot::RwLock;
 use openvcs_core::Repo;
 use crate::settings::AppConfig;
 use crate::repo_settings::RepoConfig;
+use crate::output_log::OutputLogEntry;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,9 @@ pub struct AppState {
     /// Repository-specific settings (in-memory for now)
     repo_config: RwLock<RepoConfig>,
 
+    /// In-memory output log (VCS commands/output)
+    output_log: RwLock<Vec<OutputLogEntry>>,
+
     /// Currently open repository
     current_repo: RwLock<Option<Arc<Repo>>>,
 
@@ -37,6 +41,7 @@ impl AppState {
         let s = Self {
             config: RwLock::new(cfg),
             repo_config: RwLock::new(RepoConfig::default()),
+            output_log: RwLock::new(Vec::new()),
             ..Default::default()
         };
         // Attempt to load recents from app data (not config dir)
@@ -87,6 +92,26 @@ impl AppState {
     pub fn set_repo_config(&self, cfg: RepoConfig) -> Result<(), String> {
         *self.repo_config.write() = cfg;
         Ok(())
+    }
+
+    /* -------- output log -------- */
+
+    pub fn push_output_log(&self, entry: OutputLogEntry) {
+        const MAX: usize = 2000;
+        let mut log = self.output_log.write();
+        log.push(entry);
+        if log.len() > MAX {
+            let extra = log.len() - MAX;
+            log.drain(0..extra);
+        }
+    }
+
+    pub fn output_log(&self) -> Vec<OutputLogEntry> {
+        self.output_log.read().clone()
+    }
+
+    pub fn clear_output_log(&self) {
+        self.output_log.write().clear();
     }
 
     /// Transactional edit: clone → mutate → validate → save → swap.
