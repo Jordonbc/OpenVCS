@@ -225,15 +225,73 @@ export async function selectHistory(commit: any, index: number) {
         const sideEl = diffEl.querySelector('.commit-files');
         const contentEl = diffEl.querySelector('.commit-content');
         if (sideEl && contentEl) {
+            const selectCommitFile = (idx: number) => {
+                if (idx < 0 || idx >= files.length) return;
+                sideEl.querySelectorAll('.row').forEach((r) => r.classList.remove('active'));
+                const row = sideEl.querySelector<HTMLElement>(`.row[data-idx="${idx}"]`);
+                row?.classList.add('active');
+                hydrateLfsBadgeForPath(files[idx]?.path || '');
+                (contentEl as HTMLElement).innerHTML = renderHunksReadonly(files[idx].lines);
+            };
+
             sideEl.querySelectorAll<HTMLElement>('.row').forEach((row) => {
                 row.addEventListener('click', () => {
-                    sideEl.querySelectorAll('.row').forEach((r) => r.classList.remove('active'));
-                    row.classList.add('active');
                     const idx = Number(row.getAttribute('data-idx') || '-1');
-                    if (idx >= 0 && idx < files.length) {
-                        hydrateLfsBadgeForPath(files[idx]?.path || '');
-                        (contentEl as HTMLElement).innerHTML = renderHunksReadonly(files[idx].lines);
-                    }
+                    selectCommitFile(idx);
+                });
+
+                row.addEventListener('contextmenu', (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    const idx = Number(row.getAttribute('data-idx') || '-1');
+                    if (idx < 0 || idx >= files.length) return;
+                    selectCommitFile(idx);
+
+                    const file = files[idx];
+                    const x = (ev as MouseEvent).clientX, y = (ev as MouseEvent).clientY;
+                    const items: CtxItem[] = [];
+                    items.push({
+                        label: 'Copy path', action: async () => {
+                            try {
+                                await navigator.clipboard.writeText(file?.path || '');
+                                notify('Path copied');
+                            } catch { /* ignore */ }
+                        },
+                    });
+
+                    items.push({ label: '---' });
+                    items.push({
+                        label: 'Revert this file', action: async () => {
+                            if (!TAURI.has) {
+                                notify('Revert requires the desktop app');
+                                return;
+                            }
+                            const block = Array.isArray(file?.lines) ? file.lines : [];
+                            const isBinary = block.some((l) => /GIT binary patch|Binary files /i.test(String(l || '')));
+                            if (isBinary) {
+                                notify('Cannot revert binary diffs yet');
+                                return;
+                            }
+
+                            const short = String(commit?.id || '').slice(0, 7) || '(unknown)';
+                            const ok = window.confirm(`Revert changes from commit ${short} for:\n${file?.path || '(unknown file)'}\n\nThis applies a reverse patch to your working tree and index.`);
+                            if (!ok) return;
+
+                            let patch = block.join('\n');
+                            if (patch && !patch.endsWith('\n')) patch += '\n';
+
+                            try {
+                                await TAURI.invoke('git_discard_patch', { patch });
+                                notify('Reverted file changes (review in Changes tab)');
+                                await Promise.allSettled([hydrateStatus()]);
+                            } catch (e) {
+                                const msg = String(e || '').trim();
+                                notify(msg ? `Revert failed: ${msg}` : 'Revert failed');
+                            }
+                        },
+                    });
+
+                    buildCtxMenu(items, x, y);
                 });
             });
         }
