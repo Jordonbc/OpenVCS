@@ -76,7 +76,31 @@ export function openSettings(section?: string){
     const modal = document.getElementById('settings-modal') as HTMLElement | null;
     if (!modal) return;
     if (section) activateSection(modal, section);
-    loadSettingsIntoForm(modal).catch(console.error);
+
+    // Prevent a "double-click to refresh" feel where the user opens the Theme dropdown
+    // before the async settings/theme list has finished loading.
+    if (TAURI.has) {
+        modal.setAttribute('aria-busy', 'true');
+        const setThemeAuto = modal.querySelector<HTMLInputElement>('#set-theme-auto');
+        const setThemeSel = modal.querySelector<HTMLSelectElement>('#set-theme');
+        if (setThemeAuto) setThemeAuto.disabled = true;
+        if (setThemeSel) {
+            setThemeSel.disabled = true;
+            setThemeSel.innerHTML = '';
+            const opt = document.createElement('option');
+            opt.value = DEFAULT_LIGHT_THEME_ID;
+            opt.textContent = 'Loading…';
+            setThemeSel.appendChild(opt);
+        }
+    }
+
+    loadSettingsIntoForm(modal)
+        .catch(console.error)
+        .finally(() => {
+            modal.removeAttribute('aria-busy');
+            const setThemeAuto = modal.querySelector<HTMLInputElement>('#set-theme-auto');
+            if (setThemeAuto) setThemeAuto.disabled = false;
+        });
 }
 
 function activateSection(modal: HTMLElement, section: string) {
@@ -168,20 +192,6 @@ export function wireSettings() {
         setThemeSel.title = themeTooltip(setThemeSel.value || DEFAULT_LIGHT_THEME_ID);
     };
 
-    let themeRefreshInFlight = false;
-    const refreshThemeOptions = async () => {
-        if (!setThemeSel || themeRefreshInFlight) return;
-        themeRefreshInFlight = true;
-        try {
-            await rebuildThemePackOptions(setThemeSel, {
-                desiredId: setThemeSel.value,
-                forceReload: true,
-            });
-        } finally {
-            themeRefreshInFlight = false;
-        }
-    };
-
     const applyThemeFromControls = async (opts: { silent?: boolean } = {}) => {
         if (!setThemeSel) return;
         const auto = !!setThemeAuto?.checked;
@@ -199,7 +209,14 @@ export function wireSettings() {
 
     setThemeSel?.addEventListener('pointerdown', () => {
         if (setThemeAuto?.checked) return;
-        refreshThemeOptions().catch(() => {});
+
+        // Keep the options list in sync with the already-cached theme list without
+        // kicking off an async refresh during the same user gesture (which makes the
+        // native picker look stale until it's opened again).
+        rebuildThemePackOptions(setThemeSel, {
+            desiredId: setThemeSel.value,
+            forceReload: false,
+        }).catch(() => {});
     });
 
     setThemeSel?.addEventListener('change', () => {
@@ -765,7 +782,13 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             await TAURI.invoke('set_global_settings', { cfg: next });
             modal.dataset.currentCfg = JSON.stringify(next);
             await reloadPlugins();
-            try { await refreshAvailableThemes(); } catch {}
+            try {
+                await refreshAvailableThemes();
+                const themeSel = modal.querySelector<HTMLSelectElement>('#set-theme');
+                if (themeSel && document.activeElement !== themeSel) {
+                    await rebuildThemePackOptions(themeSel, { desiredId: themeSel.value, forceReload: false });
+                }
+            } catch {}
         } catch {
             notify('Failed to update plugins');
         }
