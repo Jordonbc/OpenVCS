@@ -65,6 +65,19 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: {
     buildCtxMenu(items, x, y);
 }
 
+// Allow opening commit actions from the commit details view (no extra toolbar button).
+if (diffEl && !(diffEl as any).__historyCtxWired) {
+    (diffEl as any).__historyCtxWired = true;
+    diffEl.addEventListener('contextmenu', (ev) => {
+        if (prefs.tab !== 'history') return;
+        const commit = (state as any)?.selectedCommit;
+        if (!commit) return;
+        ev.preventDefault();
+        const x = (ev as MouseEvent).clientX, y = (ev as MouseEvent).clientY;
+        void openCommitActionsMenu(commit, x, y);
+    });
+}
+
 if (historyActionsBtn && !(historyActionsBtn as any).__wired) {
     (historyActionsBtn as any).__wired = true;
     historyActionsBtn.addEventListener('click', (ev) => {
@@ -72,7 +85,7 @@ if (historyActionsBtn && !(historyActionsBtn as any).__wired) {
         const commit = (state as any)?.selectedCommit;
         if (!commit) return;
         const r = historyActionsBtn.getBoundingClientRect();
-        void openCommitActionsMenu(commit, Math.round(r.right - 4), Math.round(r.bottom + 4));
+        void openCommitActionsMenu(commit, Math.round(r.right), Math.round(r.bottom + 6));
     });
     window.addEventListener('app:tab-changed', () => updateHistoryActionsVisibility());
 }

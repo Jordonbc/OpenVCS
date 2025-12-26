@@ -219,7 +219,17 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 }
 .path{ font-weight:600; }
 .diff-head .meta{ flex-shrink:0; white-space:nowrap; }
-.meta{ color:var(--muted); font-size:.85rem; display:flex; gap:.6rem; }
+.meta{ color:var(--muted); font-size:.85rem; display:flex; gap:.6rem; align-items:center; }
+.diff-head .meta #history-actions-btn{
+    padding:.08rem .35rem;
+    height:1.35rem;
+    min-height:unset;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    line-height:1;
+    font-size:1.05em;
+}
 
 /* Diff body (scrolls) */
 .diff{

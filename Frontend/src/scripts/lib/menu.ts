@@ -9,8 +9,9 @@ export function buildCtxMenu(items: CtxItem[], x: number, y: number) {
   document.querySelectorAll('.ctxmenu').forEach(el => el.remove());
   const m = document.createElement('div');
   m.className = 'ctxmenu';
-  m.style.left = `${x}px`;
-  m.style.top = `${y}px`;
+  // Position gets clamped to viewport after measuring.
+  m.style.left = `${Math.round(x)}px`;
+  m.style.top = `${Math.round(y)}px`;
   items.forEach((it) => {
     if (it.label === '---') {
       const sep = document.createElement('div');
@@ -34,6 +35,34 @@ export function buildCtxMenu(items: CtxItem[], x: number, y: number) {
     m.appendChild(d);
   });
   document.body.appendChild(m);
+
+  // Clamp (and prefer flipping) so the menu never renders off-screen.
+  try {
+    const margin = 8;
+    const rect = m.getBoundingClientRect();
+    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+
+    let left = x;
+    let top = y;
+
+    // Prefer opening to the left/up when near edges.
+    if (left + rect.width > vw - margin && left - rect.width >= margin) {
+      left = left - rect.width;
+    }
+    if (top + rect.height > vh - margin && top - rect.height >= margin) {
+      top = top - rect.height;
+    }
+
+    // Final clamp.
+    left = Math.max(margin, Math.min(vw - rect.width - margin, left));
+    top = Math.max(margin, Math.min(vh - rect.height - margin, top));
+
+    m.style.left = `${Math.round(left)}px`;
+    m.style.top = `${Math.round(top)}px`;
+  } catch {
+    // ignore
+  }
   const close = () => m.remove();
   setTimeout(() => { document.addEventListener('click', close, { once: true }); }, 0);
 }
