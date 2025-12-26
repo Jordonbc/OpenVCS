@@ -61,6 +61,9 @@ export function setTab(tab: 'changes'|'history'|'stash') {
         tab === 'history' ? 'Commit details'
       : tab === 'stash'   ? 'Stash details'
                           : 'Select a file to view changes');
+    const historyActionsBtn = qs<HTMLButtonElement>('#history-actions-btn');
+    if (historyActionsBtn) historyActionsBtn.hidden = tab !== 'history';
+    window.dispatchEvent(new CustomEvent('app:tab-changed', { detail: tab }));
 }
 
 export function bindTabs(onChange: (t: 'changes'|'history'|'stash') => void) {

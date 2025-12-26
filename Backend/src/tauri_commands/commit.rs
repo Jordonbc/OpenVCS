@@ -7,7 +7,7 @@ use openvcs_core::models::VcsEvent;
 
 use crate::state::AppState;
 
-use super::progress_bridge;
+use super::{current_repo_or_err, progress_bridge, run_repo_task};
 
 #[tauri::command]
 pub async fn commit_changes<R: Runtime>(
@@ -255,4 +255,67 @@ pub async fn commit_patch_and_files<R: Runtime>(
     })
     .await
     .map_err(|e| format!("commit_patch_and_files task failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn git_cherry_pick_to_branch<R: Runtime>(
+    window: Window<R>,
+    state: State<'_, AppState>,
+    id: String,
+    branch: String,
+) -> Result<(), String> {
+    info!("git_cherry_pick_to_branch called (id={}, branch={})", id, branch);
+
+    let repo = current_repo_or_err(&state)?;
+    let app = window.app_handle().clone();
+    run_repo_task("git_cherry_pick_to_branch", repo, move |repo| {
+        let id = id.trim().to_string();
+        let branch = branch.trim().to_string();
+        if id.is_empty() {
+            return Err("Commit id cannot be empty".into());
+        }
+        if branch.is_empty() {
+            return Err("Target branch cannot be empty".into());
+        }
+
+        let on = progress_bridge(app);
+        on(VcsEvent::Progress { phase: "git", detail: format!("Checking out '{branch}'…") });
+        repo.inner()
+            .checkout_branch(&branch)
+            .map_err(|e| e.to_string())?;
+
+        on(VcsEvent::Progress { phase: "git", detail: format!("Cherry-picking {id}…") });
+        repo.inner().cherry_pick(&id).map_err(|e| e.to_string())?;
+
+        on(VcsEvent::Info("Cherry-pick complete".into()));
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_revert_commit<R: Runtime>(
+    window: Window<R>,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    info!("git_revert_commit called (id={})", id);
+
+    let repo = current_repo_or_err(&state)?;
+    let app = window.app_handle().clone();
+    run_repo_task("git_revert_commit", repo, move |repo| {
+        let id = id.trim().to_string();
+        if id.is_empty() {
+            return Err("Commit id cannot be empty".into());
+        }
+
+        let on = progress_bridge(app);
+        on(VcsEvent::Progress { phase: "git", detail: format!("Reverting {id}…") });
+        repo.inner()
+            .revert_commit(&id, true)
+            .map_err(|e| e.to_string())?;
+        on(VcsEvent::Info("Revert complete".into()));
+        Ok(())
+    })
+    .await
 }
