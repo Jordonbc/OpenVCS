@@ -20,6 +20,8 @@ permissions:
 env:
   # Scheduled runs should always build from Dev. Manual runs should build from the selected branch.
   TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'Dev' }}
+  # Flatpak is currently disabled in CI; set to '1' to re-enable.
+  OPENVCS_ENABLE_FLATPAK: '0'
 
 jobs:
   check-changes:
@@ -183,7 +185,7 @@ jobs:
 
       # ---------- Flatpak (Linux only; artifact) ----------
       - name: Install Flatpak tooling
-        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         run: |
           set -euxo pipefail
           sudo apt-get update
@@ -197,21 +199,21 @@ jobs:
             || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable
 
       - name: Verify Flatpak manifest exists
-        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         run: |
           set -euxo pipefail
           ls -la packaging/flatpak
           test -f packaging/flatpak/io.github.jordonbc.OpenVCS.yml
 
       - name: Build Flatpak bundle
-        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         run: |
           set -euxo pipefail
           flatpak-builder --user --force-clean --repo=repo build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml
           flatpak build-bundle repo OpenVCS.flatpak io.github.jordonbc.OpenVCS
 
       - name: Upload Flatpak bundle (artifact)
-        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         uses: actions/upload-artifact@v4
         with:
           name: OpenVCS-flatpak-nightly
@@ -267,7 +269,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Upload Flatpak bundle to GitHub Release
-        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload openvcs-nightly OpenVCS.flatpak --clobber
