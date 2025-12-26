@@ -1,0 +1,20 @@
+/* Cyberpunk neon dark palette */
+:root {
+  --bg:#05010a;
+  --surface:#0b0414;
+  --surface-2:#160625;
+  --text:#f6f3ff;
+  --muted:#8481a5;
+  --border:rgba(57,243,255,.28);
+  --accent:#ff3bc7;
+  --accent-2:#38f1ff;
+  --danger:#ff5f87;
+  --success:#46ffb1;
+  --warning:#ffd447;
+  --shadow-1:0 18px 48px rgba(35,9,52,.72);
+  --control-bg:#0d0618;
+  --control-bg-focus:#180a29;
+  --control-border:#2a0e40;
+  --control-text:#f6f3ff;
+  --control-muted:#7a7799;
+}

@@ -1,0 +1,7 @@
+/* Shared neon styling for Cyberpunk theme */
+:root {
+  --ui-scale: 1.02;
+  --font: 'Fira Code', 'JetBrains Mono', ui-monospace, monospace;
+  --mono: 'Fira Code', ui-monospace, monospace;
+  --shadow-ambient: 0 0 36px rgba(56, 243, 255, 0.22);
+}

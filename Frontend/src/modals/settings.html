@@ -9,7 +9,7 @@
 
         <section class="sheet-body">
             <!-- Sidebar -->
-            <nav aria-label="Settings sections">
+            <nav class="list-scroll" aria-label="Settings sections">
                 <ul id="settings-nav" class="list">
                     <li><button class="seg-btn active" data-section="general">General</button></li>
                     <li><button class="seg-btn" data-section="git">Git</button></li>
@@ -24,6 +24,7 @@
 
             <!-- Panels -->
             <div id="settings-panels">
+                <div id="settings-panels-scroll" class="list-scroll">
                 <!-- General -->
                 <form class="panel-form" data-panel="general">
                     <div class="group">
@@ -336,6 +337,8 @@
                 </form>
 
                 <!-- Footer actions -->
+                </div>
+
                 <div class="sheet-actions">
                     <button class="tbtn" id="settings-reset" type="button">Restore defaults</button>
                     <div style="flex:1"></div>

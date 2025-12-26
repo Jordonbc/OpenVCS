@@ -65,6 +65,12 @@
     flex-direction: column;
     gap: 1rem;
     min-height: 0;
+    overflow: hidden;
+}
+
+#settings-panels-scroll{
+    flex: 1 1 auto;
+    min-height: 0;
     overflow: auto;
     padding-right: .25rem;
 }
@@ -74,9 +80,7 @@
 
 /* Footer actions: sit just below content when short, stick at viewport bottom when long */
 #settings-modal .sheet-actions{
-    margin-top: auto;
-    position: sticky;
-    bottom: 0;
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     gap: .5rem;
