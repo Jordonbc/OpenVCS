@@ -43,6 +43,10 @@
           <button class="menu-item" role="menuitem" data-action="lfs-settings">LFS Preferences…</button>
         </div>
       </div>
+      <div class="menu" data-menu="plugins">
+        <button class="menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">Plugins</button>
+        <div class="menu-list" id="plugins-menu-list" role="menu" hidden></div>
+      </div>
       <div class="menu" data-menu="help">
         <button class="menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">Help</button>
         <div class="menu-list" role="menu" hidden>
@@ -78,6 +82,7 @@
         <button class="btn with-badge" id="push-btn" title="Push">
           <span class="btn-label">Push</span>
         </button>
+        <div id="plugin-title-actions" class="plugin-title-actions" aria-label="Plugin actions"></div>
       </div>
     </header>
 

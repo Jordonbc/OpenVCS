@@ -1,0 +1,21 @@
+/* Hello World (dark) */
+:root{
+  --bg:#0f1220;
+  --surface:#171a2a;
+  --surface-2:#1e2235;
+  --text:#eaf0ff;
+  --muted:#9aa7c7;
+  --border:rgba(135,180,255,.18);
+  --accent:#7c5cff;
+  --accent-2:#b4a5ff;
+  --danger:#ff5c7a;
+  --success:#3fd8a0;
+  --warning:#ffd166;
+  --shadow-1:0 12px 24px rgba(10,14,26,.55);
+  --control-bg:#13162a;
+  --control-bg-focus:#1a1e34;
+  --control-border:#2b3247;
+  --control-text:#eaf0ff;
+  --control-muted:#9aa7c7;
+}
+

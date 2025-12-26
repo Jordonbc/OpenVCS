@@ -1,0 +1,21 @@
+/* Aurora light palette */
+[data-theme="light"] {
+  --bg:#f2f7ff;
+  --surface:#ffffff;
+  --surface-2:#edf4ff;
+  --text:#213047;
+  --muted:#5b6b82;
+  --border:rgba(33,48,71,.16);
+  --accent:#1f8ceb;
+  --accent-2:#46a6ff;
+  --danger:#d64574;
+  --success:#2e9f7a;
+  --warning:#d7942e;
+  --shadow-1:0 12px 30px rgba(44,84,140,.18);
+  --control-bg:#f6f9ff;
+  --control-bg-focus:#eef4ff;
+  --control-border:#c8d6eb;
+  --control-text:#213047;
+  --control-muted:#5b6b82;
+}
+

@@ -20,6 +20,7 @@ import { initSshHostkeyPrompt } from './features/sshHostkey';
 import { initSshAuthPrompt } from './features/sshAuth';
 import { initOutputLogViewIfRequested } from './features/outputLog';
 import { DEFAULT_LIGHT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
+import { initPlugins, runHook, runPluginAction } from './plugins';
 
 const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
 
@@ -38,6 +39,7 @@ async function boot() {
     // If launched as the Output Log window, render that view and skip the main app UI.
     if (await initOutputLogViewIfRequested()) return;
     observeOverlayScrollbars();
+    await initPlugins();
     // theme & basic layout
     // Prefer native settings for theme; fall back to current in-memory default
     if (TAURI.has) {
@@ -255,9 +257,17 @@ async function boot() {
         };
         const clearBusy = () => { if (statusEl) statusEl.classList.remove('busy'); };
         try {
+            const hookData = { branch: state.branch };
+            const pre = await runHook('prePush', hookData);
+            if (pre.cancelled) {
+                notify(pre.reason || 'Push cancelled');
+                return;
+            }
             if (TAURI.has) { setBusy('Pushing…'); await TAURI.invoke('git_push', {}); }
+            await runHook('onPush', hookData);
             notify('Pushed');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+            await runHook('postPush', hookData);
         } catch { notify('Push failed'); } finally { clearBusy(); }
     }
 
@@ -323,7 +333,11 @@ async function boot() {
                 } catch { notify('Update check failed'); }
                 break;
             case 'exit': if (TAURI.has) { TAURI.invoke('exit_app', {}).catch(() => {}); } break;
-            default: break;
+            default: {
+                if (!id) break;
+                const handled = await runPluginAction(id);
+                if (!handled) break;
+            }
         }
     }
 
@@ -337,6 +351,12 @@ async function boot() {
     pushBtn?.addEventListener('click', pushChanges);
     cloneBtn?.addEventListener('click', () => openSheet('clone'));
     repoSwitch?.addEventListener('click', () => openSheet('switch'));
+    document.getElementById('plugin-title-actions')?.addEventListener('click', (e) => {
+        const target = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-action]') || null;
+        const action = target?.dataset.action || '';
+        if (!action) return;
+        runMenuAction(action).catch(() => {});
+    });
 
     // No dynamic undo insertion; the inline button lives in the commit panel
 

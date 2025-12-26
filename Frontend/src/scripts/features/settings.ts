@@ -4,9 +4,11 @@ import { toKebab } from '../lib/dom';
 import { notify } from '../lib/notify';
 import { setTheme } from '../ui/layout';
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
+import { reloadPlugins } from '../plugins';
+import type { PluginSummary } from '../plugins';
 import type { GlobalSettings, ThemeSummary } from '../types';
 
-const THEME_PACK_HINT = 'Place theme ZIP files into the themes folder to enable them.';
+const THEME_PACK_HINT = 'Install a theme ZIP into the themes folder, or install a plugin that provides themes.';
 const SYSTEM_DARK_MQ = matchMedia('(prefers-color-scheme: dark)');
 
 function normalizeAppearance(value: unknown): 'light' | 'dark' | 'both' | null {
@@ -88,6 +90,10 @@ function activateSection(modal: HTMLElement, section: string) {
     panels.querySelectorAll<HTMLElement>('.panel-form').forEach(p => {
         p.classList.toggle('hidden', p.getAttribute('data-panel') !== section);
     });
+
+    // Plugins are applied immediately (no Save/Cancel).
+    const actions = modal.querySelector<HTMLElement>('.sheet-actions');
+    if (actions) actions.classList.toggle('hidden', section === 'plugins');
 }
 
 export function wireSettings() {
@@ -277,6 +283,7 @@ export function wireSettings() {
             cur.performance = { progressive_render: true, gpu_accel: true };
             cur.ux = { ui_scale: 1.0, font_mono: 'monospace', vim_nav: false, color_blind_mode: 'none', recents_limit: 10 };
             cur.logging = { level: 'info', live_viewer: false, retain_archives: 10 };
+            cur.plugins = { disabled: [] };
 
             await TAURI.invoke('set_global_settings', { cfg: cur });
             await loadSettingsIntoForm(modal);
@@ -286,7 +293,7 @@ export function wireSettings() {
         } catch { notify('Failed to restore defaults'); }
     });
 
-    loadSettingsIntoForm(modal).catch(console.error);
+    // Settings are loaded by `openSettings()` on open.
 }
 
 function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
@@ -378,6 +385,33 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         retain_archives: keep,
     };
 
+    const pluginsStateKey = '__pluginsPanelState';
+    const pluginsState = (root as any)[pluginsStateKey] as { disabled?: Set<string>; list?: PluginSummary[] } | undefined;
+    if (pluginsState?.disabled instanceof Set) {
+        const byLower = new Map<string, string>();
+        for (const plugin of Array.isArray(pluginsState.list) ? pluginsState.list : []) {
+            const id = String(plugin?.id || '').trim();
+            if (!id) continue;
+            byLower.set(id.toLowerCase(), id);
+        }
+        const disabled = Array.from(pluginsState.disabled.values())
+            .map((id) => String(id || '').trim().toLowerCase())
+            .filter(Boolean)
+            .map((id) => byLower.get(id) || id);
+        o.plugins = { ...(o.plugins || {}), disabled };
+    } else {
+        const pluginToggles = Array.from(root.querySelectorAll<HTMLInputElement>('[data-plugin-id]'));
+        if (pluginToggles.length) {
+            const disabled: string[] = [];
+            for (const toggle of pluginToggles) {
+                const id = String(toggle.dataset.pluginId || '').trim();
+                if (!id) continue;
+                if (!toggle.checked) disabled.push(id);
+            }
+            o.plugins = { ...(o.plugins || {}), disabled };
+        }
+    }
+
     return o;
 }
 
@@ -389,6 +423,8 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     if (!cfg) return;
 
     m.dataset.currentCfg = JSON.stringify(cfg);
+
+    await loadPluginsIntoForm(m, cfg);
 
     const themeSel = get<HTMLSelectElement>('#set-theme');
     const elAuto = get<HTMLInputElement>('#set-theme-auto');
@@ -478,4 +514,330 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     // Logging
     const elLvl = get<HTMLSelectElement>('#set-log-level'); if (elLvl) elLvl.value = toKebab(cfg.logging?.level || 'info');
     const elKeep= get<HTMLInputElement>('#set-log-keep'); if (elKeep) elKeep.value = String(cfg.logging?.retain_archives ?? 10);
+}
+
+async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
+    const pane = modal.querySelector<HTMLElement>('#plugins-pane');
+    const listEl = modal.querySelector<HTMLElement>('#plugins-list');
+    const detailEl = modal.querySelector<HTMLElement>('#plugins-detail');
+    const groupLabelEl = modal.querySelector<HTMLElement>('#plugins-group-label');
+    const searchEl = modal.querySelector<HTMLInputElement>('#plugins-search');
+    const enableAllBtn = modal.querySelector<HTMLButtonElement>('#plugins-enable-all');
+    const disableAllBtn = modal.querySelector<HTMLButtonElement>('#plugins-disable-all');
+
+    if (!pane || !listEl || !detailEl || !groupLabelEl || !searchEl || !enableAllBtn || !disableAllBtn) return;
+
+    listEl.replaceChildren();
+    detailEl.replaceChildren();
+    detailEl.classList.add('empty');
+    detailEl.textContent = 'Select a plugin to view details.';
+
+    if (!TAURI.has) {
+        groupLabelEl.textContent = 'Installed (0 of 0 enabled)';
+        listEl.replaceChildren();
+        return;
+    }
+
+    let list: PluginSummary[] = [];
+    try {
+        list = await TAURI.invoke<PluginSummary[]>('list_plugins');
+    } catch {
+        groupLabelEl.textContent = 'Installed (0 of 0 enabled)';
+        listEl.replaceChildren();
+        detailEl.classList.add('empty');
+        detailEl.textContent = 'Failed to load plugins.';
+        return;
+    }
+
+    const disabled = new Set(
+        (Array.isArray(cfg.plugins?.disabled) ? cfg.plugins!.disabled! : [])
+            .map((s) => String(s || '').trim().toLowerCase())
+            .filter(Boolean),
+    );
+
+    const stateKey = '__pluginsPanelState';
+    type PluginsPanelState = {
+        list: PluginSummary[];
+        disabled: Set<string>;
+        query: string;
+        selectedId: string | null;
+    };
+    const state: PluginsPanelState = (modal as any)[stateKey] || {
+        list: [],
+        disabled: new Set<string>(),
+        query: '',
+        selectedId: null,
+    };
+    state.list = Array.isArray(list) ? list : [];
+    state.disabled = disabled;
+    state.query = String(searchEl.value || '').trim().toLowerCase();
+
+    const matchesQuery = (p: PluginSummary, q: string): boolean => {
+        if (!q) return true;
+        const hay = [
+            p.name,
+            p.id,
+            p.author,
+            p.description,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return hay.includes(q);
+    };
+
+    const enabledCount = state.list.filter((p) => p?.id && !state.disabled.has(String(p.id).trim().toLowerCase())).length;
+    groupLabelEl.textContent = `Installed (${enabledCount} of ${state.list.length} enabled)`;
+
+    const filtered = state.list.filter((p) => p && p.id && p.name && matchesQuery(p, state.query));
+
+    const ensureSelection = () => {
+        const current = state.selectedId ? String(state.selectedId).trim() : '';
+        if (current && filtered.some((p) => String(p.id).trim() === current)) return;
+        state.selectedId = filtered.length ? String(filtered[0].id).trim() : null;
+    };
+
+    const renderDetails = () => {
+        detailEl.replaceChildren();
+        const selectedId = state.selectedId ? String(state.selectedId).trim() : '';
+        const plugin = state.list.find((p) => String(p?.id || '').trim() === selectedId) || null;
+        if (!plugin) {
+            detailEl.classList.add('empty');
+            detailEl.textContent = filtered.length ? 'Select a plugin to view details.' : 'No plugins installed.';
+            return;
+        }
+        detailEl.classList.remove('empty');
+
+        const id = String(plugin.id).trim();
+        const idLower = id.toLowerCase();
+        const isEnabled = !state.disabled.has(idLower);
+        const version = String(plugin.version || '').trim();
+        const author = String(plugin.author || '').trim();
+        const themeCount = Number(plugin.theme_dirs ?? 0) || 0;
+
+        const head = document.createElement('div');
+        head.className = 'plugin-detail-head';
+
+        const title = document.createElement('div');
+        title.className = 'plugin-detail-title';
+        const nameEl = document.createElement('div');
+        nameEl.className = 'name';
+        nameEl.textContent = String(plugin.name || id).trim();
+        const metaEl = document.createElement('div');
+        metaEl.className = 'meta';
+        metaEl.textContent = [
+            version ? `v${version}` : '',
+            author || '',
+        ].filter(Boolean).join(' • ') || ' ';
+        title.appendChild(nameEl);
+        title.appendChild(metaEl);
+
+        const actions = document.createElement('div');
+        actions.className = 'plugin-detail-actions';
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'tbtn';
+        toggle.id = 'plugins-toggle-selected';
+        toggle.textContent = isEnabled ? 'Disable' : 'Enable';
+        toggle.dataset.pluginToggle = id;
+        actions.appendChild(toggle);
+
+        head.appendChild(title);
+        head.appendChild(actions);
+
+        const body = document.createElement('div');
+        body.className = 'plugin-detail-body';
+        const descText = String(plugin.description || '').trim();
+        if (descText) {
+            const desc = document.createElement('div');
+            desc.className = 'desc';
+            desc.textContent = descText;
+            body.appendChild(desc);
+        }
+
+        const kv = document.createElement('div');
+        kv.className = 'plugin-detail-kv';
+        const row = (k: string, v: string) => {
+            const kEl = document.createElement('div');
+            kEl.className = 'k';
+            kEl.textContent = k;
+            const vEl = document.createElement('div');
+            vEl.className = 'v';
+            vEl.textContent = v;
+            kv.appendChild(kEl);
+            kv.appendChild(vEl);
+        };
+        row('ID', id);
+        row('Code', plugin.entry ? 'Yes' : 'No');
+        row('Themes', themeCount ? String(themeCount) : '0');
+        if (author) row('Author', author);
+        if (version) row('Version', version);
+        body.appendChild(kv);
+
+        detailEl.appendChild(head);
+        detailEl.appendChild(body);
+    };
+
+    const renderList = () => {
+        listEl.replaceChildren();
+        if (!state.list.length) {
+            const li = document.createElement('li');
+            li.className = 'plugin-row';
+            li.setAttribute('aria-selected', 'false');
+            li.textContent = 'No plugins installed.';
+            listEl.appendChild(li);
+            renderDetails();
+            return;
+        }
+
+        if (!filtered.length) {
+            const li = document.createElement('li');
+            li.className = 'plugin-row';
+            li.setAttribute('aria-selected', 'false');
+            li.textContent = 'No matching plugins.';
+            listEl.appendChild(li);
+            renderDetails();
+            return;
+        }
+
+        for (const plugin of filtered) {
+            const id = String(plugin.id).trim();
+            const idLower = id.toLowerCase();
+            const isEnabled = !state.disabled.has(idLower);
+
+            const li = document.createElement('li');
+            li.className = 'plugin-row';
+            li.dataset.plugin = id;
+            li.setAttribute('role', 'option');
+            li.setAttribute('aria-selected', state.selectedId === id ? 'true' : 'false');
+
+            const main = document.createElement('div');
+            main.className = 'plugin-row-main';
+
+            const icon = document.createElement('div');
+            icon.className = 'plugin-icon';
+            const initial = String(plugin.name || id).trim().slice(0, 1).toUpperCase() || 'P';
+            icon.textContent = initial;
+
+            const text = document.createElement('div');
+            text.className = 'plugin-row-text';
+            const name = document.createElement('div');
+            name.className = 'name';
+            name.textContent = String(plugin.name || id).trim();
+            const meta = document.createElement('div');
+            meta.className = 'meta';
+            const version = String(plugin.version || '').trim();
+            const author = String(plugin.author || '').trim();
+            meta.textContent = [author, version ? `v${version}` : ''].filter(Boolean).join(' • ') || id;
+            text.appendChild(name);
+            text.appendChild(meta);
+
+            main.appendChild(icon);
+            main.appendChild(text);
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = isEnabled;
+            checkbox.dataset.pluginId = id;
+            checkbox.setAttribute('aria-label', `Enable ${plugin.name || id}`);
+
+            li.appendChild(main);
+            li.appendChild(checkbox);
+            listEl.appendChild(li);
+        }
+
+        renderDetails();
+    };
+
+    const updateCounts = () => {
+        const enabledNow = state.list.filter((p) => p?.id && !state.disabled.has(String(p.id).trim().toLowerCase())).length;
+        groupLabelEl.textContent = `Installed (${enabledNow} of ${state.list.length} enabled)`;
+    };
+
+    ensureSelection();
+    (modal as any)[stateKey] = state;
+    renderList();
+
+    const persistPluginsDisabled = async () => {
+        if (!TAURI.has) return;
+        try {
+            const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
+            const next: GlobalSettings = { ...(cur || {}) };
+            next.plugins = { ...(next.plugins || {}) };
+            next.plugins.disabled = Array.from(state.disabled.values());
+            await TAURI.invoke('set_global_settings', { cfg: next });
+            modal.dataset.currentCfg = JSON.stringify(next);
+            await reloadPlugins();
+            try { await refreshAvailableThemes(); } catch {}
+        } catch {
+            notify('Failed to update plugins');
+        }
+    };
+
+    if (!(pane as any).__wired) {
+        (pane as any).__wired = true;
+
+        pane.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement | null;
+            const toggleBtn = target?.closest<HTMLButtonElement>('[data-plugin-toggle]') || null;
+            if (toggleBtn) {
+                const id = String(toggleBtn.dataset.pluginToggle || '').trim();
+                const checkbox = pane.querySelector<HTMLInputElement>(`input[type="checkbox"][data-plugin-id="${CSS.escape(id)}"]`);
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                return;
+            }
+
+            const row = target?.closest<HTMLElement>('.plugin-row[data-plugin]') || null;
+            if (!row) return;
+            const id = String(row.dataset.plugin || '').trim();
+            if (!id) return;
+            state.selectedId = id;
+            renderList();
+        });
+
+        pane.addEventListener('change', (e) => {
+            const el = e.target as HTMLInputElement | null;
+            if (!el || el.type !== 'checkbox' || !el.dataset.pluginId) return;
+            const id = String(el.dataset.pluginId).trim().toLowerCase();
+            if (!id) return;
+            if (el.checked) state.disabled.delete(id);
+            else state.disabled.add(id);
+            updateCounts();
+            renderDetails();
+            persistPluginsDisabled().catch(() => {});
+        });
+
+        searchEl.addEventListener('input', () => {
+            state.query = String(searchEl.value || '').trim().toLowerCase();
+            ensureSelection();
+            renderList();
+        });
+
+        enableAllBtn.addEventListener('click', () => {
+            for (const p of state.list) {
+                const id = String(p?.id || '').trim().toLowerCase();
+                if (id) state.disabled.delete(id);
+            }
+            searchEl.dispatchEvent(new Event('input'));
+            updateCounts();
+            persistPluginsDisabled().catch(() => {});
+        });
+
+        disableAllBtn.addEventListener('click', () => {
+            for (const p of state.list) {
+                const id = String(p?.id || '').trim().toLowerCase();
+                if (id) state.disabled.add(id);
+            }
+            searchEl.dispatchEvent(new Event('input'));
+            updateCounts();
+            persistPluginsDisabled().catch(() => {});
+        });
+
+        pane.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === '/' && document.activeElement !== searchEl) {
+                e.preventDefault();
+                searchEl.focus();
+            }
+        });
+    }
 }

@@ -105,6 +105,9 @@ export interface GlobalSettings {
         live_viewer?: boolean;
         retain_archives?: number;
     };
+    plugins?: {
+        disabled?: string[];
+    };
 }
 
 export interface ThemeSummary {
@@ -116,6 +119,7 @@ export interface ThemeSummary {
     appearance?: 'light' | 'dark' | 'both' | string;
     paired_with?: string;
     source?: 'built-in' | 'user' | string;
+    plugin_id?: string;
 }
 
 export interface ThemePayload {

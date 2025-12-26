@@ -14,6 +14,7 @@ mod ssh;
 mod output_log;
 mod updater;
 mod themes;
+mod plugins;
 
 pub use backends::*;
 pub use branches::*;
@@ -30,6 +31,7 @@ pub use ssh::*;
 pub use output_log::*;
 pub use updater::*;
 pub use themes::*;
+pub use plugins::*;
 
 pub(crate) use shared::{
     current_repo_or_err, lfs_config, progress_bridge, run_repo_task, LfsEnvGuard, ProgressPayload,

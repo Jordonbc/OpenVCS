@@ -1,0 +1,28 @@
+:root[data-theme-pack="right-dock"]{
+    --bg:#0f1722;
+    --surface:#151f2f;
+    --surface-2:#0d1421;
+    --text:#f4f7ff;
+    --muted:#8793ab;
+    --border:rgba(255,255,255,0.06);
+    --accent:#f57c48;
+    --accent-2:#f89d5d;
+    --danger:#f15d5d;
+    --success:#52c196;
+    --warning:#f7b955;
+    --shadow-1:0 18px 36px rgba(0,0,0,0.35);
+}
+
+:root[data-theme-pack="right-dock"] .left-head{
+    background:rgba(255,255,255,0.02);
+}
+
+:root[data-theme-pack="right-dock"] .row:hover{
+    background:rgba(245,124,72,0.14);
+}
+
+:root[data-theme-pack="right-dock"] .row.active{
+    background:rgba(245,124,72,0.22);
+    border-color:rgba(245,124,72,0.45);
+}
+

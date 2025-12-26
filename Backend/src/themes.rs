@@ -10,6 +10,8 @@ use std::{
 };
 use zip::ZipArchive;
 
+use crate::plugins;
+
 const MANIFEST_NAME: &str = "theme.json";
 const BUILT_IN_THEMES_DIR_NAME: &str = "built-in-themes";
 
@@ -65,6 +67,7 @@ fn built_in_theme_dirs() -> Vec<PathBuf> {
 pub enum ThemeSource {
     BuiltIn,
     User,
+    Plugin,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -82,6 +85,8 @@ pub struct ThemeSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paired_with: Option<String>,
     pub source: ThemeSource,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -264,6 +269,7 @@ pub fn default_theme_summary() -> ThemeSummary {
         appearance: None,
         paired_with: None,
         source: ThemeSource::BuiltIn,
+        plugin_id: None,
     }
 }
 
@@ -328,11 +334,15 @@ pub fn list_themes() -> Vec<ThemeSummary> {
                                     appearance,
                                     paired_with,
                                     source: ThemeSource::BuiltIn,
+                                    plugin_id: None,
                                 });
                             }
                             Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
                         }
                     } else if path.is_dir() {
+                        if !path.join(MANIFEST_NAME).is_file() {
+                            continue;
+                        }
                         match read_manifest_from_directory(&path) {
                             Ok(manifest) => {
                                 let id_trimmed = manifest.id.trim();
@@ -367,6 +377,7 @@ pub fn list_themes() -> Vec<ThemeSummary> {
                                     appearance,
                                     paired_with,
                                     source: ThemeSource::BuiltIn,
+                                    plugin_id: None,
                                 });
                             }
                             Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
@@ -375,6 +386,48 @@ pub fn list_themes() -> Vec<ThemeSummary> {
                 }
             }
             Err(err) => warn!("themes: failed to list {}: {}", dir.display(), err),
+        }
+    }
+
+    for theme_dir in plugins::plugin_theme_dirs() {
+        match read_manifest_from_directory(&theme_dir.path) {
+            Ok(manifest) => {
+                let id_trimmed = manifest.id.trim();
+                if id_trimmed.is_empty() {
+                    warn!(
+                        "themes: theme {} ignored due to empty id",
+                        theme_dir.path.display()
+                    );
+                    continue;
+                }
+                let norm = id_trimmed.to_ascii_lowercase();
+                if seen.contains(&norm) {
+                    continue;
+                }
+                seen.insert(norm);
+
+                let appearance = clean_mode(manifest.appearance.clone())
+                    .or_else(|| infer_mode_from_manifest(&manifest));
+                let paired_with = clean_opt(manifest.paired_with.clone())
+                    .filter(|p| !p.eq_ignore_ascii_case(id_trimmed));
+
+                summaries.push(ThemeSummary {
+                    id: id_trimmed.to_string(),
+                    name: manifest.name.trim().to_string(),
+                    description: clean_opt(manifest.description),
+                    version: clean_opt(manifest.version),
+                    author: clean_opt(manifest.author),
+                    appearance,
+                    paired_with,
+                    source: ThemeSource::Plugin,
+                    plugin_id: Some(theme_dir.plugin_id.clone()),
+                });
+            }
+            Err(err) => warn!(
+                "themes: failed to read {}: {}",
+                theme_dir.path.display(),
+                err
+            ),
         }
     }
 
@@ -416,6 +469,7 @@ pub fn list_themes() -> Vec<ThemeSummary> {
                         appearance,
                         paired_with,
                         source: ThemeSource::User,
+                        plugin_id: None,
                     });
                 }
                 Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
@@ -455,6 +509,9 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
                 }
 
                 for path in directories {
+                    if !path.join(MANIFEST_NAME).is_file() {
+                        continue;
+                    }
                     match read_manifest_from_directory(&path) {
                         Ok(manifest) => {
                             if manifest.id.trim().eq_ignore_ascii_case(requested) {
@@ -462,6 +519,7 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
                                     &path,
                                     manifest,
                                     ThemeSource::BuiltIn,
+                                    None,
                                 );
                             }
                         }
@@ -477,6 +535,7 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
                                     &path,
                                     manifest,
                                     ThemeSource::BuiltIn,
+                                    None,
                                 );
                             }
                         }
@@ -503,10 +562,26 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
         match read_manifest(&path) {
             Ok(manifest) => {
                 if manifest.id.trim().eq_ignore_ascii_case(requested) {
-                    return build_theme_payload_from_path(&path, manifest, ThemeSource::User);
+                    return build_theme_payload_from_path(&path, manifest, ThemeSource::User, None);
                 }
             }
             Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
+        }
+    }
+
+    for theme_dir in plugins::plugin_theme_dirs() {
+        match read_manifest_from_directory(&theme_dir.path) {
+            Ok(manifest) => {
+                if manifest.id.trim().eq_ignore_ascii_case(requested) {
+                    return build_theme_payload_from_directory(
+                        &theme_dir.path,
+                        manifest,
+                        ThemeSource::Plugin,
+                        Some(theme_dir.plugin_id.clone()),
+                    );
+                }
+            }
+            Err(err) => warn!("themes: failed to read {}: {}", theme_dir.path.display(), err),
         }
     }
 
@@ -590,9 +665,10 @@ fn build_theme_payload_from_path(
     path: &Path,
     manifest: RawThemeManifest,
     source: ThemeSource,
+    plugin_id: Option<String>,
 ) -> Result<ThemePayload, String> {
     let file = File::open(path).map_err(|err| format!("open {}: {}", path.display(), err))?;
-    build_theme_payload_from_reader(&path.display().to_string(), file, manifest, source)
+    build_theme_payload_from_reader(&path.display().to_string(), file, manifest, source, plugin_id)
 }
 
 fn build_theme_payload_from_reader<R>(
@@ -600,6 +676,7 @@ fn build_theme_payload_from_reader<R>(
     reader: R,
     manifest: RawThemeManifest,
     source: ThemeSource,
+    plugin_id: Option<String>,
 ) -> Result<ThemePayload, String>
 	where
 	    R: Read + Seek,
@@ -617,6 +694,7 @@ fn build_theme_payload_from_reader<R>(
 	        appearance,
 	        paired_with,
 	        source,
+            plugin_id,
 	    };
 
     Ok(ThemePayload {
@@ -765,6 +843,7 @@ fn build_theme_payload_from_directory(
     path: &Path,
     manifest: RawThemeManifest,
     source: ThemeSource,
+    plugin_id: Option<String>,
 ) -> Result<ThemePayload, String> {
     let (styles, markup, scripts) = read_assets_from_directory(path, &manifest)?;
     let appearance = clean_mode(manifest.appearance.clone()).or_else(|| infer_mode_from_manifest(&manifest));
@@ -779,6 +858,7 @@ fn build_theme_payload_from_directory(
         appearance,
         paired_with,
         source,
+        plugin_id,
     };
 
     Ok(ThemePayload {

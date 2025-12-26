@@ -40,7 +40,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "built-in-themes"
+      "built-in-plugins"
     ],
     "licenseFile": "../LICENSE",
     "publisher": "Jordon Brooks",

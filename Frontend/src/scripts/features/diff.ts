@@ -3,6 +3,7 @@ import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { state } from '../state/state';
 import { hydrateStatus, hydrateCommits } from './repo';
+import { runHook } from '../plugins';
 
 export function bindCommit() {
     const commitBtn     = qs<HTMLButtonElement>('#commit-btn');
@@ -10,7 +11,7 @@ export function bindCommit() {
     const commitDesc    = qs<HTMLTextAreaElement>('#commit-desc');
 
     commitBtn?.addEventListener('click', async () => {
-        const summary = commitSummary?.value.trim() || '';
+        let summary = commitSummary?.value.trim() || '';
         if (!summary) { commitSummary?.focus(); notify('Summary is required'); return; }
         const hunksMap: Record<string, number[]> = (state as any).selectedHunksByFile || {};
         const linesMap: Record<string, Record<number, number[]>> = (state as any).selectedLinesByFile || {};
@@ -26,7 +27,7 @@ export function bindCommit() {
         };
         try {
             setBusy('Committing…');
-            const description = commitDesc?.value || '';
+            let description = commitDesc?.value || '';
 
             // Build a combined patch when any file has partial hunks/lines selected
             const partialFiles = Array.from(new Set([
@@ -61,7 +62,24 @@ export function bindCommit() {
             const fullFiles = selectedFiles.filter(f => !partialFiles.includes(f));
             if (TAURI.has) {
                 if (combinedPatch.trim().length > 0 || fullFiles.length > 0) {
+                    const hookData = {
+                        summary,
+                        description,
+                        branch: state.branch,
+                        files: fullFiles,
+                        partialFiles,
+                        patch: combinedPatch,
+                    };
+                    const pre = await runHook('preCommit', hookData);
+                    if (pre.cancelled) {
+                        notify(pre.reason || 'Commit cancelled');
+                        clearBusy('Ready');
+                        return;
+                    }
+                    summary = String(hookData.summary || '').trim() || summary;
+                    description = String(hookData.description || '');
                     await TAURI.invoke('commit_patch_and_files', { summary, description, patch: combinedPatch, files: fullFiles });
+                    await runHook('onCommit', hookData);
                 } else {
                     notify('Select files or hunks to commit');
                     return;
@@ -77,6 +95,7 @@ export function bindCommit() {
             state.currentFile = '' as any;
             // Refresh status and commits immediately
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+            await runHook('postCommit', { summary, description, branch: state.branch, files: fullFiles, partialFiles });
             clearBusy('Ready');
         } catch { notify('Commit failed'); }
         finally {

@@ -13,6 +13,7 @@ pub struct AppConfig {
     #[serde(default)] pub lfs: Lfs,
     #[serde(default)] pub performance: Performance,
     #[serde(default)] pub integrations: Integrations,
+    #[serde(default)] pub plugins: Plugins,
     #[serde(default)] pub ux: Ux,
     #[serde(default)] pub advanced: Advanced,
     #[serde(default)] pub experimental: Experimental,
@@ -30,6 +31,7 @@ impl Default for AppConfig {
             lfs: Default::default(),
             performance: Default::default(),
             integrations: Default::default(),
+            plugins: Default::default(),
             ux: Default::default(),
             advanced: Default::default(),
             experimental: Default::default(),
@@ -204,6 +206,20 @@ impl Default for Integrations {
             issue_provider: IssueProvider::Auto,
             host_overrides: Default::default(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Plugins {
+    /// Plugin ids that are installed but disabled.
+    ///
+    /// IDs are matched case-insensitively.
+    #[serde(default)]
+    pub disabled: Vec<String>,
+}
+impl Default for Plugins {
+    fn default() -> Self {
+        Self { disabled: Vec::new() }
     }
 }
 
@@ -450,6 +466,19 @@ impl AppConfig {
         self.lfs.concurrency = self.lfs.concurrency.clamp(1, 16);
 
         // Performance
+
+        // Plugins
+        {
+            let mut seen = std::collections::HashSet::new();
+            self.plugins.disabled = self
+                .plugins
+                .disabled
+                .iter()
+                .map(|s| s.trim().to_ascii_lowercase())
+                .filter(|s| !s.is_empty())
+                .filter(|s| seen.insert(s.clone()))
+                .collect();
+        }
 
         // UX
         self.ux.recents_limit = self.ux.recents_limit.clamp(1, 100);
