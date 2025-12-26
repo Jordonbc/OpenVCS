@@ -1,10 +1,11 @@
 {
   "id": "example.hello",
   "name": "Hello Plugin",
+  "category": "Examples",
+  "tags": ["example", "demo", "hooks", "themes"],
   "version": "0.1.0",
   "author": "OpenVCS",
   "description": "Example plugin: adds a menu item + titlebar button, and demonstrates commit/push hooks. Also ships a theme.",
   "entry": "entry.js",
   "themes": ["themes/Hello_World"]
 }
-

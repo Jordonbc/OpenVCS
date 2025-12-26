@@ -591,11 +591,14 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
     const matchesQuery = (p: PluginSummary, q: string): boolean => {
         if (!q) return true;
+        const tags = Array.isArray(p.tags) ? String(p.tags.join(' ') || '') : '';
         const hay = [
             p.name,
             p.id,
             p.author,
             p.description,
+            p.category,
+            tags,
         ].filter(Boolean).join(' ').toLowerCase();
         return hay.includes(q);
     };
@@ -627,6 +630,10 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         const isEnabled = !state.disabled.has(idLower);
         const version = String(plugin.version || '').trim();
         const author = String(plugin.author || '').trim();
+        const category = String(plugin.category || '').trim();
+        const tags = Array.isArray(plugin.tags)
+            ? plugin.tags.map((t) => String(t || '').trim()).filter(Boolean)
+            : [];
         const themeCount = Number(plugin.theme_dirs ?? 0) || 0;
 
         const head = document.createElement('div');
@@ -640,6 +647,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         const metaEl = document.createElement('div');
         metaEl.className = 'meta';
         metaEl.textContent = [
+            category || '',
             version ? `v${version}` : '',
             author || '',
         ].filter(Boolean).join(' • ') || ' ';
@@ -684,6 +692,8 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         row('ID', id);
         row('Code', plugin.entry ? 'Yes' : 'No');
         row('Themes', themeCount ? String(themeCount) : '0');
+        if (category) row('Category', category);
+        if (tags.length) row('Tags', tags.join(', '));
         if (author) row('Author', author);
         if (version) row('Version', version);
         body.appendChild(kv);
@@ -742,7 +752,8 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             meta.className = 'meta';
             const version = String(plugin.version || '').trim();
             const author = String(plugin.author || '').trim();
-            meta.textContent = [author, version ? `v${version}` : ''].filter(Boolean).join(' • ') || id;
+            const category = String(plugin.category || '').trim();
+            meta.textContent = [category, author, version ? `v${version}` : ''].filter(Boolean).join(' • ') || id;
             text.appendChild(name);
             text.appendChild(meta);
 

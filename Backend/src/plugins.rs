@@ -18,6 +18,10 @@ pub struct PluginSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
@@ -46,6 +50,10 @@ struct RawPluginManifest {
     name: String,
     #[serde(default)]
     description: Option<String>,
+    #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
     #[serde(default)]
     version: Option<String>,
     #[serde(default)]
@@ -79,6 +87,23 @@ fn clean_opt(value: Option<String>) -> Option<String> {
             Some(trimmed.to_string())
         }
     })
+}
+
+fn clean_tags(tags: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for tag in tags {
+        let trimmed = tag.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let key = trimmed.to_ascii_lowercase();
+        if !seen.insert(key) {
+            continue;
+        }
+        out.push(trimmed.to_string());
+    }
+    out
 }
 
 fn built_in_plugin_dirs() -> Vec<PathBuf> {
@@ -158,6 +183,8 @@ fn manifest_to_summary(manifest: RawPluginManifest) -> PluginSummary {
         id: manifest.id.trim().to_string(),
         name: manifest.name.trim().to_string(),
         description: clean_opt(manifest.description),
+        category: clean_opt(manifest.category),
+        tags: clean_tags(manifest.tags),
         version: clean_opt(manifest.version),
         author: clean_opt(manifest.author),
         entry: clean_opt(manifest.entry),

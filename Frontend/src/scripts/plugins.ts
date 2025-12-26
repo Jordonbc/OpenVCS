@@ -6,6 +6,8 @@ export interface PluginSummary {
     id: string;
     name: string;
     description?: string;
+    category?: string;
+    tags?: string[];
     version?: string;
     author?: string;
     entry?: string;

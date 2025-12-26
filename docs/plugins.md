@@ -30,6 +30,8 @@ Minimal example:
 {
   "id": "example.hello",
   "name": "Hello Plugin",
+  "category": "Examples",
+  "tags": ["example", "demo"],
   "version": "0.1.0",
   "author": "You",
   "description": "Demonstrates OpenVCS plugins.",
@@ -42,6 +44,8 @@ Fields:
 
 - `id` (string, required): stable unique plugin id
 - `name` (string, required): display name
+- `category` (string, optional): broad grouping for UI (e.g. `Themes`, `Integrations`, `Examples`)
+- `tags` (string[], optional): searchable keywords (e.g. `["git", "theme", "hooks"]`)
 - `entry` (string, optional): relative path to a JS ESM module to run
 - `themes` (string[], optional): relative paths to theme directories (each containing `theme.json`)
 
