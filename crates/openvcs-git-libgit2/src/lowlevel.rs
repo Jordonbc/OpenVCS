@@ -328,12 +328,26 @@ impl Git {
     where
         F: Fn(String) + Send + Sync + 'static,
     {
-        info!("fetching from remote '{remote}' with refspec '{refspec}'");
+        self.fetch_with_progress_and_prune(remote, refspec, false, on)
+    }
+
+    pub fn fetch_with_progress_and_prune<F>(
+        &self,
+        remote: &str,
+        refspec: &str,
+        prune: bool,
+        on: F,
+    ) -> Result<Option<Oid>>
+    where
+        F: Fn(String) + Send + Sync + 'static,
+    {
+        info!("fetching from remote '{remote}' with refspec '{refspec}' (prune={prune})");
 
         let cb = make_remote_callbacks_with_progress(on);
         let mut fo = FetchOptions::new();
         fo.remote_callbacks(cb);
         fo.download_tags(AutotagOption::All);
+        fo.prune(if prune { g::FetchPrune::On } else { g::FetchPrune::Off });
         debug!("fetch options prepared (download_tags=All)");
 
         self.with_repo(|repo| {
@@ -818,25 +832,45 @@ impl Git {
 
                 let code = if s.contains(g::Status::CONFLICTED) {
                     "U"
+                } else if s.intersects(g::Status::INDEX_RENAMED | g::Status::WT_RENAMED) {
+                    "R"
+                } else if s.intersects(g::Status::INDEX_TYPECHANGE | g::Status::WT_TYPECHANGE) {
+                    "T"
                 } else if s.contains(g::Status::INDEX_DELETED) || s.contains(g::Status::WT_DELETED) {
                     "D"
+                } else if s.contains(g::Status::WT_NEW) && !s.contains(g::Status::INDEX_NEW) {
+                    "?"
                 } else if s.contains(g::Status::INDEX_NEW) || s.contains(g::Status::WT_NEW) {
                     "A"
-                } else if s.intersects(g::Status::INDEX_MODIFIED | g::Status::WT_MODIFIED | g::Status::INDEX_TYPECHANGE | g::Status::WT_TYPECHANGE) {
+                } else if s.intersects(g::Status::INDEX_MODIFIED | g::Status::WT_MODIFIED) {
                     "M"
                 } else {
-                    "R?"
-                }.to_string();
+                    "M"
+                }
+                .to_string();
 
-                let path = e.head_to_index()
-                    .and_then(|d| d.new_file().path())
-                    .or_else(|| e.index_to_workdir().and_then(|d| d.new_file().path()))
-                    .or_else(|| e.head_to_index().and_then(|d| d.old_file().path()))
-                    .or_else(|| e.index_to_workdir().and_then(|d| d.old_file().path()))
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_default();
+                let staged = s.intersects(
+                    g::Status::INDEX_NEW
+                        | g::Status::INDEX_MODIFIED
+                        | g::Status::INDEX_DELETED
+                        | g::Status::INDEX_RENAMED
+                        | g::Status::INDEX_TYPECHANGE,
+                );
 
-                files.push(FileEntry { path, status: code, hunks: Vec::new() });
+                let delta = e.head_to_index().or_else(|| e.index_to_workdir());
+                let (path, old_path) = if let Some(d) = delta {
+                    let newp = d.new_file().path().map(|p| p.to_string_lossy().to_string());
+                    let oldp = d.old_file().path().map(|p| p.to_string_lossy().to_string());
+                    let old_path = match (&oldp, &newp, &code[..]) {
+                        (Some(o), Some(n), "R" | "C") if o != n => Some(o.clone()),
+                        _ => None,
+                    };
+                    (newp.or(oldp).unwrap_or_default(), old_path)
+                } else {
+                    (String::new(), None)
+                };
+
+                files.push(FileEntry { path, old_path, status: code, staged, resolved_conflict: false, hunks: Vec::new() });
             }
 
             // ahead/behind (best effort)

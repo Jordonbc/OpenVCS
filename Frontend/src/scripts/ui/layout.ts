@@ -124,6 +124,7 @@ export function refreshRepoActions() {
     const changesOn    = hasChanges();
 
     const fetchBtn = qs<HTMLButtonElement>('#fetch-btn');
+    const fetchCaret = qs<HTMLButtonElement>('#fetch-caret');
     const pushBtn  = qs<HTMLButtonElement>('#push-btn');
     const branchBtn= qs<HTMLButtonElement>('#branch-switch');
     const summary  = qs<HTMLInputElement>('#commit-summary');
@@ -134,8 +135,22 @@ export function refreshRepoActions() {
 
     // Repo-scoped actions
     if (fetchBtn)  fetchBtn.disabled  = !repoOn;
+    if (fetchCaret) fetchCaret.disabled = !repoOn;
     if (pushBtn)   pushBtn.disabled   = !repoOn;
     if (branchBtn) branchBtn.disabled = !repoOn;
+
+    // Push highlight + badge when there are unpushed commits
+    const ahead = Number((state as any).ahead || 0);
+    if (pushBtn) {
+        pushBtn.classList.toggle('attention', repoOn && ahead > 0);
+        const labelEl = pushBtn.querySelector<HTMLElement>('.btn-label');
+        const label = repoOn && ahead > 0
+            ? `Push (${ahead})`
+            : 'Push';
+        pushBtn.title = label;
+        pushBtn.setAttribute('aria-label', label);
+        if (labelEl) labelEl.textContent = label;
+    }
 
     // Text inputs are ONLY enabled when there are active changes in an open repo
     if (summary) summary.disabled = !(repoOn && changesOn);
@@ -152,7 +167,6 @@ export function refreshRepoActions() {
     if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && (hunksSelected || linesSelected || filesSelected));
 
     // Left-panel undo visibility (under files list)
-    const ahead = Number((state as any).ahead || 0);
     const showUndo = repoOn && ahead > 0 && prefs.tab === 'changes';
     const stashMode = undoLeftWrap?.dataset.mode === 'stash';
     if (undoLeftWrap) undoLeftWrap.classList.toggle('show', stashMode || showUndo);
@@ -175,7 +189,7 @@ export function bindLayoutActionState() {
     // Recompute on repo selection, status refresh, branch changes, and typing (when enabled)
     window.addEventListener('app:repo-selected', refreshRepoActions);
     window.addEventListener('app:status-updated', () => { refreshRepoActions(); renderAheadBehind(); });
-    window.addEventListener('app:branches-updated', () => { refreshRepoActions(); renderAheadBehind(); });
+    window.addEventListener('app:branches-updated', () => { setRepoHeader(); refreshRepoActions(); renderAheadBehind(); });
 
     // Summary typing should re-evaluate the commit button state
     qs<HTMLInputElement>('#commit-summary')?.addEventListener('input', refreshRepoActions);
@@ -190,7 +204,7 @@ export function setRepoHeader(pathMaybe?: string) {
         const base = String(pathMaybe).replace(/[\\/]+$/, '').split(/[/\\]/).pop() || pathMaybe;
         setText(repoTitleEl, base);
     }
-    if (repoBranchEl) setText(repoBranchEl, state.branch || 'No repo open');
+    if (repoBranchEl) setText(repoBranchEl, state.branchLabel || state.branch || 'No repo open');
 }
 export function resetRepoHeader() {
     if (repoTitleEl) setText(repoTitleEl, 'Click to open Repo');

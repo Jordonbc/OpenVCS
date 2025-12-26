@@ -30,7 +30,13 @@ pub struct BranchItem {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct FileEntry {
     pub path: String,
+    #[serde(default)]
+    pub old_path: Option<String>,
     pub status: String,
+    #[serde(default)]
+    pub staged: bool,
+    #[serde(default)]
+    pub resolved_conflict: bool,
     pub hunks: Vec<String>,
 }
 
@@ -68,6 +74,13 @@ pub struct CommitItem {
     pub msg: String,
     pub meta: String, // e.g., date or short info
     pub author: String,
+}
+
+/// Options controlling fetch behavior.
+#[derive(Default, Clone, Copy, Debug)]
+pub struct FetchOptions {
+    /// When true, remove any remote-tracking refs that no longer exist on the remote.
+    pub prune: bool,
 }
 
 /// A single stash entry (backend-agnostic)

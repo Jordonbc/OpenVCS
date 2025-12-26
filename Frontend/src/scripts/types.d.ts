@@ -6,13 +6,17 @@ export interface BranchKind {
 }
 export interface Branch {
     name: string;
+    full_ref?: string;
     current?: boolean;
     kind?: BranchKind;
 }
 
 export interface FileStatus {
     path: string;
+    old_path?: string;
     status: 'A'|'M'|'D'|string;
+    staged?: boolean;
+    resolved_conflict?: boolean;
     hunks?: string[];
 }
 
@@ -61,10 +65,13 @@ export interface GlobalSettings {
     git?: {
         backend?: 'system'|'libgit2'|string;
         default_branch?: string;
+        ssh_binary?: 'auto'|'host'|'bundled'|'custom'|string;
+        ssh_path?: string;
         prune_on_fetch?: boolean;
         fetch_on_focus?: boolean;
         allow_hooks?: string;
         respect_core_autocrlf?: boolean;
+        merge_commit_message_template?: string;
     };
     diff?: {
         tab_width?: number;
@@ -128,4 +135,5 @@ export interface RepoSettings {
     user_name?: string;
     user_email?: string;
     origin_url?: string;
+    remotes?: Array<{ name: string; url: string }>;
 }

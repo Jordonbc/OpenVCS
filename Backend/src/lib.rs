@@ -2,6 +2,7 @@ use tauri::{Emitter, Manager};
 use std::sync::Arc;
 use openvcs_core::{backend_id, BackendId};
 use tauri_plugin_updater::UpdaterExt;
+use tauri::WindowEvent;
 
 mod utilities;
 mod tauri_commands;
@@ -12,6 +13,7 @@ mod settings;
 mod repo_settings;
 mod logging;
 mod themes;
+mod output_log;
 
 #[cfg(feature = "with-git")]
 #[allow(unused_imports)]
@@ -103,6 +105,14 @@ pub fn run() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            // If the main window is closed, exit the app even if auxiliary windows are open.
+            if window.label() == "main" {
+                if let WindowEvent::CloseRequested { .. } = event {
+                    window.app_handle().exit(0);
+                }
+            }
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -149,6 +159,10 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_launch_merge_tool,
         tauri_commands::git_delete_branch,
         tauri_commands::git_merge_branch,
+        tauri_commands::git_merge_context,
+        tauri_commands::git_merge_abort,
+        tauri_commands::git_merge_continue,
+        tauri_commands::git_set_upstream,
         tauri_commands::git_diff_commit,
         tauri_commands::commit_changes,
         tauri_commands::commit_selected,
@@ -156,6 +170,7 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::commit_patch_and_files,
         tauri_commands::git_discard_paths,
         tauri_commands::git_discard_patch,
+        tauri_commands::git_set_remote_url,
         tauri_commands::git_fetch,
         tauri_commands::git_fetch_all,
         tauri_commands::git_pull,
@@ -166,15 +181,25 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::git_lfs_pull,
         tauri_commands::git_lfs_prune,
         tauri_commands::git_lfs_track_paths,
+        tauri_commands::git_lfs_is_tracked,
         tauri_commands::list_themes,
         tauri_commands::load_theme,
         tauri_commands::get_global_settings,
         tauri_commands::set_global_settings,
         tauri_commands::get_repo_settings,
         tauri_commands::set_repo_settings,
+        tauri_commands::ssh_trust_host,
+        tauri_commands::ssh_agent_list_keys,
+        tauri_commands::ssh_key_candidates,
+        tauri_commands::ssh_add_key,
         tauri_commands::updater_install_now,
         tauri_commands::open_repo_dotfile,
         tauri_commands::open_docs,
+        tauri_commands::open_output_log_window,
+        tauri_commands::get_output_log,
+        tauri_commands::clear_output_log,
+        tauri_commands::tail_app_log,
+        tauri_commands::clear_app_log,
         tauri_commands::exit_app,
         tauri_commands::check_for_updates,
     ]

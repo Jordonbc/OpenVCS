@@ -14,8 +14,9 @@
                     <input id="git-user-email" type="email" />
                 </div>
                 <div class="group">
-                    <label for="git-origin-url">Origin remote URL</label>
-                    <input id="git-origin-url" type="text" placeholder="git@host:org/repo.git or https://…" />
+                    <label>Remotes</label>
+                    <div id="git-remotes" class="remotes" role="group" aria-label="Git remotes"></div>
+                    <button class="tbtn" id="git-remote-add" type="button">Add Remote</button>
                 </div>
             </form>
         </div>

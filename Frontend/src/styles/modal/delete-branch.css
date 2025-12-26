@@ -1,0 +1,32 @@
+/* src/styles/modal/delete-branch.css */
+
+#delete-branch-modal .dialog.sheet{
+  width: clamp(420px, 92vw, 520px);
+  max-height: min(70vh, 420px);
+}
+
+#delete-branch-modal code{
+  font-family: var(--mono);
+}
+
+#delete-branch-modal .danger-callout{
+  border: 1px solid color-mix(in oklab, var(--danger) 55%, var(--border));
+  background: color-mix(in oklab, var(--danger) 10%, var(--surface-2));
+  border-radius: var(--r-md);
+  padding: .75rem .85rem;
+  display: grid;
+  gap: .25rem;
+}
+
+#delete-branch-modal .danger-callout[hidden]{
+  display: none;
+}
+
+#delete-branch-modal .danger-title{
+  color: var(--danger);
+  font-weight: 700;
+}
+
+#delete-branch-modal .danger-text{
+  color: var(--text);
+}

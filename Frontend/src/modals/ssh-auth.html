@@ -1,0 +1,35 @@
+<div class="modal" id="ssh-auth-modal" aria-hidden="true">
+  <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="ssh-auth-title">
+    <div class="sheet-head">
+      <h3 id="ssh-auth-title" style="margin:0">SSH Authentication Failed</h3>
+    </div>
+    <div class="sheet-body">
+      <div class="panel-form">
+        <div class="group">
+          <div class="modal-note">
+            OpenVCS couldn’t authenticate to this remote over SSH. Ensure your SSH key is loaded (<span style="font-family:var(--mono);">ssh-agent</span>) or switch the remote to HTTPS.
+          </div>
+        </div>
+        <div class="group kv-grid" aria-label="SSH remote details">
+          <div class="kv-label">Host</div>
+          <div id="ssh-auth-host" class="kv-value"></div>
+          <div class="kv-label">Remote</div>
+          <div id="ssh-auth-remote" class="kv-value"></div>
+          <div class="kv-label">URL</div>
+          <div id="ssh-auth-url" class="kv-value"></div>
+        </div>
+        <details class="group">
+          <summary style="cursor:pointer; color:var(--muted);">Details</summary>
+          <pre id="ssh-auth-msg" class="kv-pre"></pre>
+        </details>
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button class="tbtn" id="ssh-auth-ssh-keys" type="button">SSH Keys…</button>
+      <button class="tbtn" id="ssh-auth-switch-https" type="button">Switch to HTTPS</button>
+      <button class="tbtn" id="ssh-auth-open-remotes" type="button">Open Remotes…</button>
+      <button class="tbtn primary big" id="ssh-auth-ok" type="button">OK</button>
+    </div>
+  </div>
+  <div class="backdrop" data-close></div>
+</div>

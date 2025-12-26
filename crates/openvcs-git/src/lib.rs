@@ -1,10 +1,10 @@
 use openvcs_core::*;
 use std::{
     fs,
-    io::{BufRead, BufReader},
+    io::{Read},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 use openvcs_core::backend_descriptor::{BackendDescriptor, BACKENDS};
 use openvcs_core::backend_id::BackendId;
@@ -15,6 +15,59 @@ pub const GIT_SYSTEM_ID: BackendId = backend_id!("git-system");
 
 fn caps_static() -> Capabilities {
     Capabilities { commits: true, branches: true, tags: true, staging: true, push_pull: true, fast_forward: true }
+}
+
+fn git_ssh_command() -> String {
+    let mode = std::env::var("OPENVCS_SSH_MODE").ok().unwrap_or_else(|| "auto".into());
+    let mode = mode.trim().to_ascii_lowercase();
+
+    let custom = std::env::var("OPENVCS_SSH").ok().filter(|s| !s.trim().is_empty());
+
+    let ssh = match mode.as_str() {
+        "custom" => custom.unwrap_or_else(|| "ssh".to_string()),
+        "bundled" => "ssh".to_string(),
+        "host" => {
+            #[cfg(target_os = "linux")]
+            {
+                let prefer = ["/usr/bin/ssh", "/bin/ssh", "/usr/local/bin/ssh"];
+                prefer
+                    .iter()
+                    .copied()
+                    .find_map(|p| std::path::Path::new(p).exists().then(|| p.to_string()))
+                    .unwrap_or_else(|| "ssh".to_string())
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                "ssh".to_string()
+            }
+        }
+        // "auto" (or any unknown value)
+        _ => {
+            // Env override always wins.
+            if let Some(s) = custom {
+                s
+            } else {
+                #[cfg(target_os = "linux")]
+                {
+                    // AppImage builds may ship an older `ssh` on PATH, which can fail to parse
+                    // distro-managed `/etc/crypto-policies/back-ends/openssh.config` (e.g. ML-KEM KEX).
+                    // Prefer the host OpenSSH if present.
+                    let prefer = ["/usr/bin/ssh", "/bin/ssh", "/usr/local/bin/ssh"];
+                    prefer
+                        .iter()
+                        .copied()
+                        .find_map(|p| std::path::Path::new(p).exists().then(|| p.to_string()))
+                        .unwrap_or_else(|| "ssh".to_string())
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    "ssh".to_string()
+                }
+            }
+        }
+    };
+
+    format!("{ssh} -oBatchMode=yes -oStrictHostKeyChecking=yes")
 }
 
 fn open_factory(path: &Path) -> Result<Arc<dyn Vcs>> {
@@ -64,19 +117,32 @@ impl GitSystem {
 
         let mut cmd = Command::new(GIT_COMMAND_NAME);
         if let Some(c) = cwd { cmd.current_dir(c); }
-        let status = cmd
+        let out = cmd
             .args(&argv)
             // Disable interactive terminal prompts; rely on ssh-agent or fail fast
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_SSH_COMMAND", git_ssh_command())
             .env("GIT_TERMINAL_PROMPT", "0")
-            .status()
+            .output()
             .map_err(VcsError::Io)?;
-        if status.success() {
-            log::trace!("git(run): exit=0");
+        if out.status.success() {
+            log::trace!("git(run): exit=0, stdout_bytes={}, stderr_bytes={}", out.stdout.len(), out.stderr.len());
             Ok(())
         } else {
-            log::debug!("git(run): exit={}", status);
-            Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg: format!("git exited with {status}") })
+            let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+            let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+            let mut msg = String::new();
+            if !stderr.trim().is_empty() {
+                msg.push_str(stderr.trim_end());
+            }
+            if !stdout.trim().is_empty() {
+                if !msg.is_empty() { msg.push('\n'); }
+                msg.push_str(stdout.trim_end());
+            }
+            if msg.is_empty() {
+                msg = format!("git exited with {}", out.status);
+            }
+            log::debug!("git(run): exit={}, stdout_bytes={}, stderr_bytes={}", out.status, stdout.len(), stderr.len());
+            Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg })
         }
     }
 
@@ -96,7 +162,7 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let out = cmd
             .args(&argv)
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_SSH_COMMAND", git_ssh_command())
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(VcsError::Io)?;
@@ -130,7 +196,7 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let out = cmd
             .args(&argv)
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_SSH_COMMAND", git_ssh_command())
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(VcsError::Io)?;
@@ -164,7 +230,7 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let out = cmd
             .args(&argv)
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_SSH_COMMAND", git_ssh_command())
             .env("GIT_TERMINAL_PROMPT", "0")
             .output()
             .map_err(VcsError::Io)?;
@@ -182,7 +248,7 @@ impl GitSystem {
         if let Some(c) = cwd { cmd.current_dir(c); }
         let mut child = cmd
             .args(args.into_iter().map(|s| s.as_ref().to_string()))
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_SSH_COMMAND", git_ssh_command())
             .env("GIT_TERMINAL_PROMPT", "0")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
@@ -208,10 +274,14 @@ impl GitSystem {
             args.join(" ")
         );
 
+        if let Some(cb) = &on {
+            cb(VcsEvent::RemoteMessage(format!("$ git {}", args.join(" "))));
+        }
+
         let mut cmd = Command::new(GIT_COMMAND_NAME);
         cmd.current_dir(cwd)
             .args(args)
-            .env("GIT_SSH_COMMAND", "ssh -oBatchMode=yes")
+            .env("GIT_SSH_COMMAND", git_ssh_command())
             .env("GIT_TERMINAL_PROMPT", "0")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -219,32 +289,150 @@ impl GitSystem {
 
         let mut child = cmd.spawn().map_err(VcsError::Io)?;
 
-        if let Some(stderr) = child.stderr.take() {
-            let on_clone = on.clone();
+        // IMPORTANT: `git fetch --progress` often uses carriage returns (`\r`) without newlines.
+        // Using `BufRead::lines()` can block and stop draining the pipe, which can deadlock the child.
+        // Drain both stdout/stderr with chunked reads and split on either '\n' or '\r'.
+        let stderr_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
+
+        fn drain_stream<R: Read + Send + 'static>(
+            mut reader: R,
+            on: Option<OnEvent>,
+            buf: Arc<Mutex<String>>,
+        ) -> std::thread::JoinHandle<()> {
             std::thread::spawn(move || {
-                for line in BufReader::new(stderr).lines().flatten() {
-                    if let Some(cb) = &on_clone {
-                        cb(VcsEvent::Progress { phase: "git", detail: line });
+                let mut tmp = [0u8; 8192];
+                let mut pending: Vec<u8> = Vec::new();
+
+                let mut flush = |bytes: &[u8]| {
+                    let text = String::from_utf8_lossy(bytes).trim().to_string();
+                    if text.is_empty() {
+                        return;
+                    }
+                    if let Ok(mut s) = buf.lock() {
+                        if !s.is_empty() {
+                            s.push('\n');
+                        }
+                        s.push_str(&text);
+                    }
+                    if let Some(cb) = &on {
+                        cb(VcsEvent::Progress { phase: "git", detail: text });
+                    }
+                };
+
+                loop {
+                    let n = match reader.read(&mut tmp) {
+                        Ok(0) => break,
+                        Ok(n) => n,
+                        Err(_) => break,
+                    };
+                    pending.extend_from_slice(&tmp[..n]);
+
+                    let mut start = 0usize;
+                    for i in 0..pending.len() {
+                        let b = pending[i];
+                        if b == b'\n' || b == b'\r' {
+                            if i > start {
+                                flush(&pending[start..i]);
+                            }
+                            start = i + 1;
+                        }
+                    }
+                    if start > 0 {
+                        pending.drain(0..start);
                     }
                 }
-            });
-        }
-        if let Some(stdout) = child.stdout.take() {
-            for line in BufReader::new(stdout).lines().flatten() {
-                if let Some(cb) = &on {
-                    cb(VcsEvent::Progress { phase: "git", detail: line });
+
+                if !pending.is_empty() {
+                    flush(&pending);
                 }
-            }
+            })
         }
 
+        let stderr_join = child
+            .stderr
+            .take()
+            .map(|stderr| drain_stream(stderr, on.clone(), Arc::clone(&stderr_buf)));
+
+        let stdout_join = child
+            .stdout
+            .take()
+            .map(|stdout| drain_stream(stdout, on.clone(), Arc::clone(&stderr_buf)));
+
         let status = child.wait().map_err(VcsError::Io)?;
+        if let Some(h) = stdout_join { let _ = h.join(); }
+        if let Some(h) = stderr_join { let _ = h.join(); }
         if status.success() {
             log::trace!("git(stream): exit=0");
             Ok(())
         } else {
             log::debug!("git(stream): exit={}", status);
-            Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg: format!("git exited with {status}") })
+            let msg = stderr_buf
+                .lock()
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| format!("git exited with {status}"));
+            Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg })
         }
+    }
+
+    fn try_auto_stage_resolved_conflict(&self, path: &str, in_merge: bool) -> Result<bool> {
+        let rel = path.trim();
+        if rel.is_empty() {
+            return Ok(false);
+        }
+
+        let abs = self.workdir.join(rel);
+        if !abs.exists() {
+            return Ok(false);
+        }
+
+        let meta = fs::metadata(&abs).map_err(VcsError::Io)?;
+        // Avoid reading huge files for heuristic checks.
+        if meta.len() > 8 * 1024 * 1024 {
+            return Ok(false);
+        }
+
+        let work_bytes = fs::read(&abs).map_err(VcsError::Io)?;
+
+        let repo_root = self.workdir.clone();
+        let spec_ours = format!(":2:{rel}");
+        let spec_theirs = format!(":3:{rel}");
+        let ours = Self::run_git_capture_bytes(Some(&repo_root), ["show", "--no-textconv", &spec_ours]).ok();
+        let theirs = Self::run_git_capture_bytes(Some(&repo_root), ["show", "--no-textconv", &spec_theirs]).ok();
+
+        let matches_side = ours.as_deref() == Some(work_bytes.as_slice())
+            || theirs.as_deref() == Some(work_bytes.as_slice());
+
+        if matches_side {
+            Self::run_git(Some(&self.workdir), ["add", "--", rel])?;
+            return Ok(true);
+        }
+
+        // Only use the "no conflict markers" heuristic during a real merge.
+        // For non-merge index conflicts (e.g. from `git apply --cached --3way`), auto-staging can
+        // silently drop the intended patch, so we avoid it.
+        if !in_merge {
+            return Ok(false);
+        }
+
+        let is_binary = work_bytes.iter().any(|&b| b == 0);
+        if is_binary {
+            return Ok(false);
+        }
+
+        let text = match std::str::from_utf8(&work_bytes) {
+            Ok(s) => s,
+            Err(_) => return Ok(false),
+        };
+
+        let has_markers = text.contains("<<<<<<<") || text.contains("=======") || text.contains(">>>>>>>");
+        if has_markers {
+            return Ok(false);
+        }
+
+        Self::run_git(Some(&self.workdir), ["add", "--", rel])?;
+        Ok(true)
     }
 }
 
@@ -415,21 +603,84 @@ impl Vcs for GitSystem {
         Self::run_git_streaming(&self.workdir, ["fetch", "--progress", remote, refspec], on)
     }
 
+    fn fetch_with_options(
+        &self,
+        remote: &str,
+        refspec: &str,
+        opts: FetchOptions,
+        on: Option<OnEvent>,
+    ) -> Result<()> {
+        log::info!("git-system: fetch {} {} (prune={})", remote, refspec, opts.prune);
+        if opts.prune {
+            Self::run_git_streaming(
+                &self.workdir,
+                ["fetch", "--progress", "--prune", remote, refspec],
+                on,
+            )
+        } else {
+            Self::run_git_streaming(&self.workdir, ["fetch", "--progress", remote, refspec], on)
+        }
+    }
+
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
         log::info!("git-system: push {} {}", remote, refspec);
         Self::run_git_streaming(&self.workdir, ["push", "--progress", remote, refspec], on)
     }
 
     fn pull_ff_only(&self, remote: &str, branch: &str, on: Option<OnEvent>) -> Result<()> {
-        // Prefer a single pull with ff-only for simplicity and to surface server messages
-        // Equivalent to: git fetch <remote> <branch>; git merge --ff-only <remote>/<branch>
-        // Using streaming to forward progress to the UI when available.
-        log::info!("git-system: pull --ff-only {} {}", remote, branch);
-        Self::run_git_streaming(
-            &self.workdir,
-            ["pull", "--ff-only", "--no-rebase", remote, branch],
-            on,
+        // Pull should only run when this local branch is tracking an upstream.
+        // New local branches (no upstream yet) must not attempt to pull a non-existent remote branch.
+        let upstream = Self::run_git_capture(Some(&self.workdir), [
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ])
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+        let Some(upstream) = upstream else {
+            log::info!("git-system: pull skipped (no upstream) remote={} branch={}", remote, branch);
+            return Err(VcsError::NoUpstream);
+        };
+
+        // Prefer pull without explicit remote/branch so git uses the configured upstream.
+        log::info!("git-system: pull --ff-only (upstream={})", upstream);
+        Self::run_git_streaming(&self.workdir, ["pull", "--ff-only", "--no-rebase"], on)
+    }
+
+    fn set_branch_upstream(&self, branch: &str, upstream: &str) -> Result<()> {
+        let branch = branch.trim();
+        let upstream = upstream.trim();
+        if branch.is_empty() || upstream.is_empty() {
+            return Err(VcsError::Backend {
+                backend: self.id(),
+                msg: "branch/upstream cannot be empty".into(),
+            });
+        }
+        log::info!("git-system: set_branch_upstream {} -> {}", branch, upstream);
+        Self::run_git(
+            Some(&self.workdir),
+            ["branch", &format!("--set-upstream-to={upstream}"), branch],
         )
+    }
+
+    fn branch_upstream(&self, branch: &str) -> Result<Option<String>> {
+        let branch = branch.trim();
+        if branch.is_empty() {
+            return Ok(None);
+        }
+        let out = Self::run_git_capture(
+            Some(&self.workdir),
+            [
+                "for-each-ref",
+                "--format=%(upstream:short)",
+                &format!("refs/heads/{branch}"),
+            ],
+        )?;
+        let up = out.trim();
+        if up.is_empty() { Ok(None) } else { Ok(Some(up.to_string())) }
     }
 
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String> {
@@ -490,45 +741,138 @@ impl Vcs for GitSystem {
     }
 
     fn status_payload(&self) -> Result<StatusPayload> {
+        fn parse(workdir: &Path, out: &str) -> (Vec<FileEntry>, Vec<String>) {
+            let mut files = Vec::<FileEntry>::new();
+            let mut conflicted_paths: Vec<String> = Vec::new();
+
+            for line in out.lines() {
+                if line.starts_with("? ") {
+                    // Untracked; token after "?" is the path
+                    if let Some(path) = line.split_whitespace().last() {
+                        files.push(FileEntry {
+                            path: path.to_string(),
+                            old_path: None,
+                            status: "?".into(),
+                            staged: false,
+                            resolved_conflict: false,
+                            hunks: Vec::new(),
+                        });
+                    }
+                } else if line.starts_with("1 ") || line.starts_with("2 ") {
+                    // Ordinary changed entry: "1 XY ... <path>" or rename/copy record "2 XY ... <path>"
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() < 2 {
+                        continue;
+                    }
+                    let xy = parts.get(1).copied().unwrap_or("");
+                    let x = xy.chars().nth(0).unwrap_or(' ');
+                    let y = xy.chars().nth(1).unwrap_or(' ');
+                    let staged = x != ' ';
+
+                    if line.starts_with("2 ") {
+                        // Rename/copy record includes two paths at the end.
+                        // Determine which one is the "new" path by checking for existence when possible.
+                        if parts.len() >= 2 + 1 + 1 + 1 {
+                            let sub = parts.get(2).copied().unwrap_or("");
+                            let status = if sub.to_ascii_uppercase().starts_with('C') { "C" } else { "R" }.to_string();
+                            if parts.len() >= 2 {
+                                let a = parts.get(parts.len().saturating_sub(2)).copied().unwrap_or("");
+                                let b = parts.get(parts.len().saturating_sub(1)).copied().unwrap_or("");
+                                let a_exists = workdir.join(a).exists();
+                                let b_exists = workdir.join(b).exists();
+                                let (new_path, old_path) = if a_exists && !b_exists {
+                                    (a.to_string(), Some(b.to_string()))
+                                } else if b_exists && !a_exists {
+                                    (b.to_string(), Some(a.to_string()))
+                                } else {
+                                    // Fallback to porcelain v2 convention: last token is the source/orig path.
+                                    (a.to_string(), Some(b.to_string()))
+                                };
+                                files.push(FileEntry {
+                                    path: new_path,
+                                    old_path,
+                                    status,
+                                    staged,
+                                    resolved_conflict: false,
+                                    hunks: Vec::new(),
+                                });
+                            }
+                        }
+                    } else {
+                        // Ordinary changed entry: choose a stable UI status bucket.
+                        let status = if x == 'D' || y == 'D' {
+                            "D"
+                        } else if x == 'A' || y == 'A' {
+                            "A"
+                        } else if x == 'R' || y == 'R' {
+                            "R"
+                        } else if x == 'C' || y == 'C' {
+                            "C"
+                        } else if x == 'T' || y == 'T' {
+                            "T"
+                        } else if x == 'M' || y == 'M' {
+                            "M"
+                        } else {
+                            "M"
+                        }
+                        .to_string();
+
+                        if let Some(path) = parts.last() {
+                            files.push(FileEntry {
+                                path: (*path).to_string(),
+                                old_path: None,
+                                status,
+                                staged,
+                                resolved_conflict: false,
+                                hunks: Vec::new(),
+                            });
+                        }
+                    }
+                } else if line.starts_with("u ") {
+                    // conflicted; last token is path
+                    if let Some(path) = line.split_whitespace().last() {
+                        let path = path.to_string();
+                        conflicted_paths.push(path.clone());
+                        files.push(FileEntry {
+                            path,
+                            old_path: None,
+                            status: "U".into(),
+                            staged: false,
+                            resolved_conflict: false,
+                            hunks: Vec::new(),
+                        });
+                    }
+                }
+            }
+
+            (files, conflicted_paths)
+        }
+
         // Per-file changes via porcelain v2
         let out = Self::run_git_capture(Some(&self.workdir), ["status", "--porcelain=v2"])?;
-        let mut files = Vec::<FileEntry>::new();
+        let (mut files, conflicted_paths) = parse(&self.workdir, &out);
 
-        for line in out.lines() {
-            if line.starts_with("? ") {
-                // Untracked; token after "?" is the path
-                if let Some(path) = line.split_whitespace().last() {
-                    files.push(FileEntry { path: path.to_string(), status: "A".into(), hunks: Vec::new() });
+        // If Git has already resolved the working tree for a conflict (e.g. external tool / other client),
+        // stage it automatically so it no longer blocks commits.
+        if !conflicted_paths.is_empty() {
+            let mut did_stage_any = false;
+            let mut auto_resolved: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let in_merge = self.merge_in_progress().unwrap_or(false);
+            for path in &conflicted_paths {
+                if self.try_auto_stage_resolved_conflict(path, in_merge).unwrap_or(false) {
+                    did_stage_any = true;
+                    auto_resolved.insert(path.to_string());
                 }
-            } else if line.starts_with("1 ") {
-                // Ordinary changed entry: "1 XY ... <path>"
-                let xy = &line[2..4];
-                let x = xy.chars().nth(0).unwrap_or(' ');
-                let y = xy.chars().nth(1).unwrap_or(' ');
-                let is_mod = |c: char| c == 'M' || c == 'T';
-                let status = if x == 'A' || y == 'A' {
-                    "A"
-                } else if x == 'D' || y == 'D' {
-                    "D"
-                } else if is_mod(x) || is_mod(y) {
-                    "M"
-                } else {
-                    // Default to Modified for any other ordinary change combo
-                    "M"
-                }.to_string();
-
-                if let Some(path) = line.split_whitespace().last() {
-                    files.push(FileEntry { path: path.to_string(), status, hunks: Vec::new() });
-                }
-            } else if line.starts_with("2 ") {
-                // Rename/copy record; mark as rename and use new path
-                if let Some(path) = line.split_whitespace().last() {
-                    files.push(FileEntry { path: path.to_string(), status: "R".into(), hunks: Vec::new() });
-                }
-            } else if line.starts_with("u ") {
-                // conflicted; last token is path
-                if let Some(path) = line.split_whitespace().last() {
-                    files.push(FileEntry { path: path.to_string(), status: "U".into(), hunks: Vec::new() });
+            }
+            if did_stage_any {
+                let out2 = Self::run_git_capture(Some(&self.workdir), ["status", "--porcelain=v2"])?;
+                (files, _) = parse(&self.workdir, &out2);
+                if !auto_resolved.is_empty() {
+                    for f in &mut files {
+                        if auto_resolved.contains(&f.path) {
+                            f.resolved_conflict = true;
+                        }
+                    }
                 }
             }
         }
@@ -882,9 +1226,44 @@ impl Vcs for GitSystem {
     }
 
     fn merge_into_current(&self, name: &str) -> Result<()> {
-        // Perform a merge into the current branch. Let git promptless merge and return any conflicts as error output.
+        self.merge_into_current_with_message(name, None)
+    }
+
+    fn merge_into_current_with_message(&self, name: &str, message: Option<&str>) -> Result<()> {
+        // Perform a merge into the current branch. Let git merge without prompting and
+        // return any conflicts as error output.
         log::info!("git-system: merge_into_current '{}'", name);
-        Self::run_git(Some(&self.workdir), ["merge", "--no-ff", name])
+        let mut args: Vec<String> = vec![
+            "merge".into(),
+            "--no-ff".into(),
+            "--no-edit".into(),
+            "--commit".into(),
+        ];
+        if let Some(msg) = message {
+            let msg = msg.trim();
+            if !msg.is_empty() {
+                args.push("-m".into());
+                args.push(msg.into());
+            }
+        }
+        args.push(name.into());
+        Self::run_git(Some(&self.workdir), args)
+    }
+
+    fn merge_abort(&self) -> Result<()> {
+        log::info!("git-system: merge_abort");
+        Self::run_git(Some(&self.workdir), ["merge", "--abort"])
+    }
+
+    fn merge_continue(&self) -> Result<()> {
+        log::info!("git-system: merge_continue");
+        // Continue the merge by committing the current index using the pre-populated MERGE_MSG.
+        Self::run_git(Some(&self.workdir), ["commit", "--no-edit"])
+    }
+
+    fn merge_in_progress(&self) -> Result<bool> {
+        let s = Self::run_git_capture_any_exit(Some(&self.workdir), ["rev-parse", "--verify", "-q", "MERGE_HEAD"])?;
+        Ok(!s.trim().is_empty())
     }
 
     // ---------------- stash ----------------
@@ -977,5 +1356,13 @@ impl Vcs for GitSystem {
             args.push(Self::path_str(p)?.to_string());
         }
         Self::run_git(Some(&self.workdir), args)
+    }
+
+    fn lfs_is_tracked(&self, path: &Path) -> Result<bool> {
+        let p = Self::path_str(path)?;
+        // `git check-attr` does not require git-lfs to be installed; it reads `.gitattributes`.
+        // Output example: `path/to/file: filter: lfs`
+        let out = Self::run_git_capture(Some(&self.workdir), ["check-attr", "filter", "--", p])?;
+        Ok(out.lines().any(|l| l.contains("filter: lfs")))
     }
 }

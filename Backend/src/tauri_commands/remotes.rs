@@ -2,10 +2,151 @@ use log::{error, info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window};
 
 use openvcs_core::models::{CommitItem, LogQuery, VcsEvent};
+use openvcs_core::Vcs;
+use openvcs_core::VcsError;
+use openvcs_core::FetchOptions;
 
 use crate::state::AppState;
 
 use super::{current_repo_or_err, progress_bridge, run_repo_task, ProgressPayload};
+
+fn host_from_remote_url(url: &str) -> Option<String> {
+    let u = url.trim();
+    if u.is_empty() {
+        return None;
+    }
+
+    // git@host:owner/repo(.git)
+    if let Some(at) = u.find('@') {
+        let rest = &u[at + 1..];
+        if let Some((host, _path)) = rest.split_once(':') {
+            let host = host.trim();
+            if !host.is_empty() {
+                return Some(host.to_string());
+            }
+        }
+    }
+
+    // ssh://user@host/owner/repo(.git)
+    if let Some(rest) = u.strip_prefix("ssh://") {
+        let rest = rest.trim_start_matches('/');
+        let after_user = rest.split('@').nth(1).unwrap_or(rest);
+        let host = after_user.split('/').next().unwrap_or("").trim();
+        if !host.is_empty() {
+            return Some(host.to_string());
+        }
+    }
+
+    // https://host/owner/repo(.git)
+    if let Some(rest) = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")) {
+        let host = rest.split('/').next().unwrap_or("").trim();
+        if !host.is_empty() {
+            return Some(host.to_string());
+        }
+    }
+
+    None
+}
+
+fn looks_like_unknown_host_key(msg: &str) -> bool {
+    let m = msg.to_lowercase();
+    m.contains("the authenticity of host")
+        || m.contains("host key verification failed")
+        || m.contains("no hostkey alg")
+        || m.contains("could not resolve hostname")
+        || m.contains("known_hosts")
+        || m.contains("strict host key checking")
+}
+
+fn looks_like_ssh_auth_failure(msg: &str) -> bool {
+    let m = msg.to_lowercase();
+    m.contains("permission denied")
+        || m.contains("publickey")
+        || m.contains("could not read from remote repository")
+        || m.contains("authentication failed")
+}
+
+fn remote_url_for(repo: &dyn Vcs, remote: &str) -> Option<String> {
+    let remote = remote.trim();
+    if remote.is_empty() {
+        return None;
+    }
+
+    let remotes = repo.list_remotes().ok()?;
+    remotes
+        .into_iter()
+        .find_map(|(name, url)| if name == remote { Some(url) } else { None })
+}
+
+fn emit_ssh_prompt<R: Runtime>(app: &tauri::AppHandle<R>, remote: &str, url: &str, msg: &str) {
+    if looks_like_unknown_host_key(msg) {
+        if let Some(host) = host_from_remote_url(url) {
+            let _ = app.emit(
+                "ui:ssh-hostkey",
+                SshHostKeyPrompt {
+                    host,
+                    remote: remote.to_string(),
+                    url: url.to_string(),
+                    message: msg.to_string(),
+                },
+            );
+        }
+    } else if looks_like_ssh_auth_failure(msg) {
+        if let Some(host) = host_from_remote_url(url) {
+            let _ = app.emit(
+                "ui:ssh-auth",
+                SshAuthPrompt {
+                    host,
+                    remote: remote.to_string(),
+                    url: url.to_string(),
+                    message: msg.to_string(),
+                },
+            );
+        }
+    }
+}
+
+#[derive(Clone, serde::Serialize)]
+struct SshHostKeyPrompt {
+    host: String,
+    remote: String,
+    url: String,
+    message: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct SshAuthPrompt {
+    host: String,
+    remote: String,
+    url: String,
+    message: String,
+}
+
+#[tauri::command]
+pub async fn git_set_remote_url(
+    state: State<'_, AppState>,
+    name: String,
+    url: String,
+) -> Result<(), String> {
+    let repo = current_repo_or_err(&state)?;
+    let name = name.trim().to_string();
+    let url = url.trim().to_string();
+
+    if name.is_empty() {
+        return Err("Remote name cannot be empty".to_string());
+    }
+    if url.is_empty() {
+        return Err("Remote URL cannot be empty".to_string());
+    }
+
+    run_repo_task("git_set_remote_url", repo, move |repo| {
+        repo.inner().ensure_remote(&name, &url).map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await?;
+
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn git_fetch<R: Runtime>(
@@ -14,9 +155,12 @@ pub async fn git_fetch<R: Runtime>(
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
+    let fetch_opts = FetchOptions {
+        prune: state.with_config(|c| c.git.prune_on_fetch),
+    };
     let current = run_repo_task("git_fetch", repo, move |repo| {
         info!("git_fetch called");
-        let on = Some(progress_bridge(app));
+        let on = Some(progress_bridge(app.clone()));
         let current = repo
             .inner()
             .current_branch()
@@ -29,11 +173,32 @@ pub async fn git_fetch<R: Runtime>(
                 "Detached HEAD; cannot determine upstream".to_string()
             })?;
 
-        info!("Fetching branch '{current}' from origin");
-        repo.inner().fetch("origin", &current, on).map_err(|e| {
-            error!("Fetch failed for branch '{current}': {e}");
-            e.to_string()
-        })?;
+        // Prefer the upstream remote for the current branch, falling back to `origin`.
+        let mut remote = "origin".to_string();
+        let mut refspec = current.clone();
+        if let Ok(Some(upstream)) = repo.inner().branch_upstream(&current) {
+            let up = upstream.trim().trim_start_matches("refs/remotes/");
+            if let Some((r, upstream_branch)) = up.split_once('/') {
+                let r = r.trim();
+                let upstream_branch = upstream_branch.trim();
+                if !r.is_empty() && !upstream_branch.is_empty() {
+                    remote = r.to_string();
+                    refspec = upstream_branch.to_string();
+                }
+            }
+        }
+
+        info!("Fetching '{refspec}' from remote '{remote}' (current branch '{current}')");
+        if let Err(e) = repo
+            .inner()
+            .fetch_with_options(&remote, &refspec, fetch_opts, on)
+        {
+            let msg = e.to_string();
+            let url = remote_url_for(repo.inner(), &remote).unwrap_or_default();
+            emit_ssh_prompt(&app, &remote, &url, &msg);
+            error!("Fetch failed for branch '{current}': {msg}");
+            return Err(msg);
+        }
 
         info!("Fetch completed successfully for branch '{current}'");
         Ok(current)
@@ -56,23 +221,61 @@ pub async fn git_fetch_all<R: Runtime>(
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
+    let fetch_opts = FetchOptions {
+        prune: state.with_config(|c| c.git.prune_on_fetch),
+    };
     run_repo_task("git_fetch_all", repo, move |repo| {
         info!("git_fetch_all called");
-        let on = Some(progress_bridge(app));
+        let on = Some(progress_bridge(app.clone()));
         let remotes = repo.inner().list_remotes().map_err(|e| {
             error!("Failed to list remotes: {e}");
             e.to_string()
         })?;
 
-        for (r, _url) in remotes.into_iter() {
+        if log::log_enabled!(log::Level::Trace) {
+            log::trace!("git_fetch_all: remotes={:?}", remotes);
+        }
+
+        let mut failures: Vec<String> = Vec::new();
+        for (r, url) in remotes.into_iter() {
             info!("Fetching all refs from remote '{r}'");
-            let refspec = format!("+refs/heads/*:refs/remotes/{r}/*");
-            if let Err(e) = repo.inner().fetch(&r, &refspec, on.clone()) {
-                error!("Fetch failed for remote '{r}': {e}");
-                return Err(e.to_string());
+            let refspec_force = format!("+refs/heads/*:refs/remotes/{r}/*");
+            let refspec = format!("refs/heads/*:refs/remotes/{r}/*");
+
+            // Some backends/environments can be picky about force-refspec syntax; fall back to a
+            // non-force refspec so we still populate `refs/remotes/<remote>/*` for the UI.
+            if let Err(e) = repo.inner().fetch_with_options(&r, &refspec_force, fetch_opts, on.clone()) {
+                warn!("Fetch (force refspec) failed for remote '{r}': {e}; retrying without '+'");
+                if let Err(e2) = repo.inner().fetch_with_options(&r, &refspec, fetch_opts, on.clone()) {
+                    let msg = e2.to_string();
+                    emit_ssh_prompt(&app, &r, &url, &msg);
+                    error!("Fetch failed for remote '{r}': {msg}");
+                    failures.push(format!("{r}: {msg}"));
+                    continue;
+                }
             }
         }
-        Ok(())
+
+        if log::log_enabled!(log::Level::Trace) {
+            match repo.inner().branches() {
+                Ok(mut branches) => {
+                    branches.sort_by(|a, b| a.full_ref.cmp(&b.full_ref));
+                    log::trace!("git_fetch_all: branches() returned {} refs", branches.len());
+                    for b in branches {
+                        log::trace!(
+                            "git_fetch_all: branch ref={} name={} kind={:?} current={}",
+                            b.full_ref,
+                            b.name,
+                            b.kind,
+                            b.current
+                        );
+                    }
+                }
+                Err(e) => log::trace!("git_fetch_all: branches() failed: {e}"),
+            }
+        }
+
+        if failures.is_empty() { Ok(()) } else { Err(failures.join("\n")) }
     })
     .await
 }
@@ -81,12 +284,12 @@ pub async fn git_fetch_all<R: Runtime>(
 pub async fn git_pull<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<PullResult, String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let current = run_repo_task("git_pull", repo, move |repo| {
+    let result = run_repo_task("git_pull", repo, move |repo| {
         info!("git_pull called");
-        let on = Some(progress_bridge(app));
+        let on = Some(progress_bridge(app.clone()));
         let current = repo
             .inner()
             .current_branch()
@@ -99,26 +302,82 @@ pub async fn git_pull<R: Runtime>(
                 "Detached HEAD; cannot determine upstream".to_string()
             })?;
 
-        info!("Fast-forward pulling branch '{current}' from origin");
-        repo.inner()
-            .pull_ff_only("origin", &current, on)
-            .map_err(|e| {
-                error!("Pull (ff-only) failed for branch '{current}': {e}");
-                e.to_string()
-            })?;
+        let upstream = repo.inner().branch_upstream(&current).map_err(|e| {
+            error!("Failed to determine upstream for branch '{current}': {e}");
+            e.to_string()
+        })?;
 
-        info!("Pull (ff-only) completed successfully for branch '{current}'");
-        Ok(current)
+        let Some(upstream) = upstream else {
+            info!("Pull skipped for branch '{current}' (no upstream configured)");
+            return Ok(PullResult {
+                pulled: false,
+                branch: current,
+                reason: Some("No upstream configured for this branch; pull skipped".to_string()),
+            });
+        };
+
+        let up = upstream.trim().trim_start_matches("refs/remotes/");
+        let Some((remote, upstream_branch)) = up.split_once('/') else {
+            warn!("Unrecognized upstream format for branch '{current}': '{upstream}'");
+            return Ok(PullResult {
+                pulled: false,
+                branch: current,
+                reason: Some("Unrecognized upstream format; pull skipped".to_string()),
+            });
+        };
+
+        let remote = remote.trim();
+        let upstream_branch = upstream_branch.trim();
+        if remote.is_empty() || upstream_branch.is_empty() {
+            warn!("Unrecognized upstream format for branch '{current}': '{upstream}'");
+            return Ok(PullResult {
+                pulled: false,
+                branch: current,
+                reason: Some("Unrecognized upstream format; pull skipped".to_string()),
+            });
+        }
+
+        info!("Fast-forward pulling '{current}' from {remote}/{upstream_branch}");
+        match repo.inner().pull_ff_only(remote, upstream_branch, on) {
+            Ok(()) => {
+                info!("Pull (ff-only) completed successfully for branch '{current}'");
+                Ok(PullResult { pulled: true, branch: current, reason: None })
+            }
+            Err(VcsError::NoUpstream) => {
+                info!("Pull skipped for branch '{current}' (no upstream configured)");
+                Ok(PullResult {
+                    pulled: false,
+                    branch: current,
+                    reason: Some("No upstream configured for this branch; pull skipped".to_string()),
+                })
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                let url = remote_url_for(repo.inner(), remote).unwrap_or_default();
+                emit_ssh_prompt(&app, remote, &url, &msg);
+                error!("Pull (ff-only) failed for branch '{current}': {msg}");
+                Err(msg)
+            }
+        }
     })
     .await?;
 
-    let _ = window.app_handle().emit(
-        "git-progress",
-        ProgressPayload {
-            message: format!("Pull complete ({current})"),
-        },
-    );
-    Ok(())
+    let msg = if result.pulled {
+        format!("Pull complete ({})", result.branch)
+    } else {
+        format!("Pull skipped ({})", result.branch)
+    };
+    let _ = window
+        .app_handle()
+        .emit("git-progress", ProgressPayload { message: msg });
+    Ok(result)
+}
+
+#[derive(serde::Serialize)]
+pub struct PullResult {
+    pub pulled: bool,
+    pub branch: String,
+    pub reason: Option<String>,
 }
 
 #[tauri::command]
@@ -128,9 +387,12 @@ pub async fn git_push<R: Runtime>(
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
+    let fetch_opts = FetchOptions {
+        prune: state.with_config(|c| c.git.prune_on_fetch),
+    };
     let current = run_repo_task("git_push", repo, move |repo| {
         info!("git_push called");
-        let on = Some(progress_bridge(app));
+        let on = Some(progress_bridge(app.clone()));
 
         let current = repo
             .inner()
@@ -151,6 +413,13 @@ pub async fn git_push<R: Runtime>(
             error!("Push failed for branch '{current}': {e}");
             e.to_string()
         })?;
+
+        // Pushing does not update local remote-tracking refs (refs/remotes/origin/*),
+        // which the UI uses for ahead/behind; refresh them best-effort.
+        let on_fetch = Some(progress_bridge(app));
+        if let Err(e) = repo.inner().fetch_with_options("origin", &current, fetch_opts, on_fetch) {
+            warn!("Post-push fetch failed for branch '{current}': {e}");
+        }
 
         info!("Push completed successfully for '{current}'");
         Ok(current)

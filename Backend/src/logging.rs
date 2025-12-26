@@ -1,9 +1,20 @@
 use std::fs::{self, OpenOptions};
-use std::io::Write;
-use std::sync::Mutex;
+use std::io::{Seek, SeekFrom, Write};
+use std::sync::{Arc, Mutex, OnceLock};
 use time::{OffsetDateTime, UtcOffset};
 use crate::settings::{AppConfig, LogLevel};
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
+
+static ACTIVE_LOG_FILE: OnceLock<Arc<Mutex<std::fs::File>>> = OnceLock::new();
+
+pub fn clear_active_log_file() -> Result<(), String> {
+    let Some(file) = ACTIVE_LOG_FILE.get() else { return Ok(()); };
+    let mut f = file.lock().map_err(|_| "log file lock poisoned".to_string())?;
+    f.set_len(0).map_err(|e| e.to_string())?;
+    f.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    f.flush().map_err(|e| e.to_string())?;
+    Ok(())
+}
 
 /// Initialize logging: console (env_logger) + append to `./logs/openvcs.log`.
 /// Respects `RUST_LOG` for filtering; sets a sensible default if missing.
@@ -13,7 +24,7 @@ pub fn init() {
 
     struct DualLogger {
         console: env_logger::Logger,
-        file: Mutex<std::fs::File>,
+        file: Arc<Mutex<std::fs::File>>,
     }
     impl log::Log for DualLogger {
         fn enabled(&self, m: &log::Metadata) -> bool {
@@ -66,7 +77,9 @@ pub fn init() {
     })();
 
     if let Some(file) = logfile {
-        let dual = DualLogger { console: console_logger, file: Mutex::new(file) };
+        let file = Arc::new(Mutex::new(file));
+        let _ = ACTIVE_LOG_FILE.set(Arc::clone(&file));
+        let dual = DualLogger { console: console_logger, file };
         let _ = log::set_boxed_logger(Box::new(dual));
         log::set_max_level(log::LevelFilter::Trace);
     } else {

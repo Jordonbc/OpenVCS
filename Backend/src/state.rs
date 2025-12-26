@@ -7,11 +7,31 @@ use parking_lot::RwLock;
 use openvcs_core::Repo;
 use crate::settings::AppConfig;
 use crate::repo_settings::RepoConfig;
+use crate::output_log::OutputLogEntry;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 // Default MRU size used as a fallback when settings are missing/invalid
 pub const MAX_RECENTS: usize = 10;
+
+fn apply_git_ssh_env(cfg: &AppConfig) {
+    // Prefer config-driven runtime env so the VCS backend (in another crate) can read it.
+    // Keep env var names stable for packaging and troubleshooting.
+    std::env::set_var(
+        "OPENVCS_SSH_MODE",
+        match cfg.git.ssh_binary {
+            crate::settings::GitSshBinary::Auto => "auto",
+            crate::settings::GitSshBinary::Host => "host",
+            crate::settings::GitSshBinary::Bundled => "bundled",
+            crate::settings::GitSshBinary::Custom => "custom",
+        },
+    );
+    if cfg.git.ssh_binary == crate::settings::GitSshBinary::Custom && !cfg.git.ssh_path.trim().is_empty() {
+        std::env::set_var("OPENVCS_SSH", cfg.git.ssh_path.trim());
+    } else {
+        std::env::remove_var("OPENVCS_SSH");
+    }
+}
 
 /// Central application state.
 /// Keeps track of the currently open repo and MRU recents.
@@ -24,6 +44,9 @@ pub struct AppState {
     /// Repository-specific settings (in-memory for now)
     repo_config: RwLock<RepoConfig>,
 
+    /// In-memory output log (VCS commands/output)
+    output_log: RwLock<Vec<OutputLogEntry>>,
+
     /// Currently open repository
     current_repo: RwLock<Option<Arc<Repo>>>,
 
@@ -34,9 +57,11 @@ pub struct AppState {
 impl AppState {
     pub fn new_with_config() -> Self {
         let cfg = AppConfig::load_or_default(); // reads ~/.config/openvcs/openvcs.conf
+        apply_git_ssh_env(&cfg);
         let s = Self {
             config: RwLock::new(cfg),
             repo_config: RwLock::new(RepoConfig::default()),
+            output_log: RwLock::new(Vec::new()),
             ..Default::default()
         };
         // Attempt to load recents from app data (not config dir)
@@ -73,6 +98,7 @@ impl AppState {
         next.migrate();
         next.validate();
         next.save().map_err(|e| e.to_string())?;
+        apply_git_ssh_env(&next);
         *self.config.write() = next;
         self.enforce_recents_limit_and_persist();
         Ok(())
@@ -89,6 +115,26 @@ impl AppState {
         Ok(())
     }
 
+    /* -------- output log -------- */
+
+    pub fn push_output_log(&self, entry: OutputLogEntry) {
+        const MAX: usize = 2000;
+        let mut log = self.output_log.write();
+        log.push(entry);
+        if log.len() > MAX {
+            let extra = log.len() - MAX;
+            log.drain(0..extra);
+        }
+    }
+
+    pub fn output_log(&self) -> Vec<OutputLogEntry> {
+        self.output_log.read().clone()
+    }
+
+    pub fn clear_output_log(&self) {
+        self.output_log.write().clear();
+    }
+
     /// Transactional edit: clone → mutate → validate → save → swap.
     /// Keep the closure FAST (no blocking/async in here).
     pub fn edit_config<F>(&self, f: F) -> Result<(), String>
@@ -101,6 +147,7 @@ impl AppState {
         next.migrate();
         next.validate();
         next.save().map_err(|e| e.to_string())?;
+        apply_git_ssh_env(&next);
         *self.config.write() = next;
         self.enforce_recents_limit_and_persist();
         Ok(())

@@ -1,19 +1,29 @@
 name: Nightly
-run-name: "OpenVCS Nightly • Run #${{ github.run_number }} • Dev @ ${{ github.sha }}"
+run-name: "OpenVCS Nightly • Run #${{ github.run_number }} • ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'Dev' }}"
 
 on:
   schedule:
     # 01:30 UTC daily (02:30 in London during BST)
     - cron: '30 1 * * *'
   workflow_dispatch:
+    inputs:
+      force:
+        description: Build even if no changes since last nightly tag
+        type: boolean
+        required: false
+        default: false
 
 # Default to least privilege; override per-job as needed
 permissions:
   contents: read
 
+env:
+  # Scheduled runs should always build from Dev. Manual runs should build from the selected branch.
+  TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'Dev' }}
+
 jobs:
   check-changes:
-    name: Check if Dev changed since last nightly
+    name: Check if target ref changed since last nightly
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -22,10 +32,10 @@ jobs:
       since_sha: ${{ steps.diff.outputs.since_sha }}
       ahead_count: ${{ steps.diff.outputs.ahead_count }}
     steps:
-      - name: Checkout Dev
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Checkout target ref
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
-          ref: Dev
+          ref: ${{ env.TARGET_REF }}
           fetch-depth: 0   # we need history and tags
           lfs: false
 
@@ -64,7 +74,7 @@ jobs:
   nightly:
     name: Build & publish Nightly (only if changed)
     needs: check-changes
-    if: needs.check-changes.outputs.changed == 'true'
+    if: needs.check-changes.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.force == true || github.event.inputs.force == 'true'))
     permissions:
       contents: write      # create/delete release + tag
       actions: write       # use GitHub Actions cache (rust-cache / sccache)
@@ -76,16 +86,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: ubuntu-22.04
+          - platform: ubuntu-24.04
             args: ''
           - platform: windows-latest
             args: ''
     runs-on: ${{ matrix.platform }}
     steps:
-      - name: Checkout Dev
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+      - name: Checkout target ref
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
-          ref: Dev
+          ref: ${{ env.TARGET_REF }}
           fetch-depth: 0
           lfs: true
 
@@ -94,13 +104,22 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
-            const short = context.sha.substring(0, 7);
             const date = new Date().toISOString().slice(0, 10); // UTC date
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const basehead = 'openvcs-nightly...Dev';
+            const target = process.env.TARGET_REF || 'Dev';
+            let branch_sha = context.sha;
+            try {
+              const branch = await github.rest.repos.getBranch({ owner, repo, branch: target });
+              branch_sha = branch?.data?.commit?.sha || context.sha;
+            } catch (e) {
+              // Fall back to workflow SHA if the branch lookup fails.
+              branch_sha = context.sha;
+            }
+            const short = branch_sha.substring(0, 7);
+            const basehead = `openvcs-nightly...${target}`;
             let compare_url = `${context.serverUrl}/${owner}/${repo}/compare/${basehead}`;
-            let commit_url = `${context.serverUrl}/${owner}/${repo}/commit/${context.sha}`;
+            let commit_url = `${context.serverUrl}/${owner}/${repo}/commit/${branch_sha}`;
             let changelog = '';
 
             try {
@@ -109,7 +128,7 @@ jobs:
               if (commits.length === 0) {
                 changelog = `No changes detected.`;
               } else {
-                // Include all commits since last nightly tag -> Dev
+                // Include all commits since last nightly tag -> target ref
                 const items = commits.map(c => {
                   const sha = (c.sha || '').substring(0, 7);
                   const msg = (c.commit?.message || '').split('\n')[0];
@@ -120,11 +139,12 @@ jobs:
               }
             } catch (e) {
               // Likely first nightly (tag missing) or compare failed for another reason
-              changelog = 'First nightly or previous tag unavailable; showing recent commits at Dev.';
-              compare_url = `${context.serverUrl}/${owner}/${repo}/tree/Dev`;
+              changelog = `First nightly or previous tag unavailable; showing recent commits at ${target}.`;
+              compare_url = `${context.serverUrl}/${owner}/${repo}/tree/${target}`;
             }
 
             core.setOutput('short_sha', short);
+            core.setOutput('branch_sha', branch_sha);
             core.setOutput('date', date);
             core.setOutput('compare_url', compare_url);
             core.setOutput('commit_url', commit_url);
@@ -132,7 +152,7 @@ jobs:
 
       # ---------- Frontend ----------
       - name: Setup Node
-        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -154,16 +174,52 @@ jobs:
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
 
       - name: Install Linux deps
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-24.04'
         run: |
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y libappindicator3-dev librsvg2-dev patchelf
           sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
 
+      # ---------- Flatpak (Linux only; artifact) ----------
+      - name: Install Flatpak tooling
+        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Platform//48 org.gnome.Sdk//48
+          # Cargo/rustc must come from the Flatpak SDK environment (not the host toolchain).
+          # Try common branches to avoid coupling this workflow to the host runner image.
+          flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//24.08 \
+            || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//25.08 \
+            || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable
+
+      - name: Verify Flatpak manifest exists
+        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        run: |
+          set -euxo pipefail
+          ls -la packaging/flatpak
+          test -f packaging/flatpak/io.github.jordonbc.OpenVCS.yml
+
+      - name: Build Flatpak bundle
+        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        run: |
+          set -euxo pipefail
+          flatpak-builder --user --force-clean --repo=repo build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml
+          flatpak build-bundle repo OpenVCS.flatpak io.github.jordonbc.OpenVCS
+
+      - name: Upload Flatpak bundle (artifact)
+        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenVCS-flatpak-nightly
+          path: OpenVCS.flatpak
+
       # ---------- Cache ----------
       - name: Rust cache
-        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
 
       # ---------- Reset rolling tag (optional but keeps things tidy) ----------
       - name: Remove existing 'openvcs-nightly' release & tag (if any)
@@ -194,14 +250,14 @@ jobs:
         with:
           projectPath: Backend
           tagName: openvcs-nightly
-          releaseName: "OpenVCS Nightly ${{ steps.meta.outputs.date }} (dev@${{ steps.meta.outputs.short_sha }})"
+          releaseName: "OpenVCS Nightly ${{ steps.meta.outputs.date }} (${{ env.TARGET_REF }}@${{ steps.meta.outputs.short_sha }})"
           releaseBody: |
-            Nightly build from Dev branch.
+            Nightly build from `${{ env.TARGET_REF }}`.
             Date (UTC): ${{ steps.meta.outputs.date }}
             Compare: ${{ steps.meta.outputs.compare_url }}
             Since: ${{ needs.check-changes.outputs.since_sha }}
             Ahead (relevant commits): ${{ needs.check-changes.outputs.ahead_count }}
-            Commit: ${{ github.sha }} (dev@${{ steps.meta.outputs.short_sha }})
+            Commit: ${{ steps.meta.outputs.branch_sha }} (${{ env.TARGET_REF }}@${{ steps.meta.outputs.short_sha }})
             Runner: ${{ runner.os }} • Run #${{ github.run_number }}
 
             Changes since last nightly:
@@ -209,3 +265,9 @@ jobs:
           releaseDraft: false
           prerelease: true
           args: ${{ matrix.args }}
+
+      - name: Upload Flatpak bundle to GitHub Release
+        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload openvcs-nightly OpenVCS.flatpak --clobber

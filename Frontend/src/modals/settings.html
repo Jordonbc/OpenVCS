@@ -105,10 +105,36 @@
                         </select>
                     </div>
 
+                    <div class="group">
+                        <label for="set-merge-message-template">Merge commit message template
+                            <span class="help-tip" title="Leave blank to use Git's default merge message. Placeholders: {branch:source}, {branch:target}, {repo:name}, {repo:username}.">?</span>
+                        </label>
+                        <input id="set-merge-message-template" type="text" placeholder="Merged branch '{branch:source}' into '{branch:target}'" />
+                    </div>
+
+                    <div class="group">
+                        <label for="set-git-ssh-binary">SSH binary (System backend)
+                            <span class="help-tip" title="Controls which ssh executable Git uses for SSH remotes. Auto prefers the host OpenSSH on Linux (helps AppImage + crypto-policies).">?</span>
+                        </label>
+                        <select id="set-git-ssh-binary">
+                            <option value="auto">Auto</option>
+                            <option value="host">Host</option>
+                            <option value="bundled">Bundled/In-PATH</option>
+                            <option value="custom">Custom path</option>
+                        </select>
+                    </div>
+
+                    <div class="group">
+                        <label for="set-git-ssh-path">Custom SSH path
+                            <span class="help-tip" title="Used only when SSH binary is set to Custom path (e.g. /usr/bin/ssh).">?</span>
+                        </label>
+                        <input id="set-git-ssh-path" type="text" placeholder="/usr/bin/ssh" />
+                    </div>
+
                     
 
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-prune-on-fetch" disabled /> Prune on fetch
+                        <label class="checkbox"><input type="checkbox" id="set-prune-on-fetch" /> Prune on fetch
                             <span class="help-tip" title="Remove remote-tracking branches that no longer exist on the server.">?</span>
                         </label>
                     </div>

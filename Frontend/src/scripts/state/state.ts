@@ -16,6 +16,7 @@ export function savePrefs() {
 export const state = {
     hasRepo: false,                 // backend truth (set after open/clone/add)
     branch: '' as string,           // current branch name
+    branchLabel: '' as string,      // display label (e.g. Detached HEAD (abc1234))
     branches: [] as Branch[],       // list of branches
     files: [] as FileStatus[],      // working tree status
     commits: [] as CommitItem[],    // recent commits
@@ -23,6 +24,8 @@ export const state = {
     ahead: 0 as number,             // commits ahead of upstream
     behind: 0 as number,            // commits behind upstream
     aheadIds: new Set<string>() as Set<string>, // IDs of commits ahead of upstream
+    mergeInProgress: false as boolean,
+    seenConflicts: new Set<string>() as Set<string>,
     defaultSelectAll: true as boolean, // by default select all files/hunks until user toggles
     selectionImplicitAll: true as boolean, // true when select-all was auto-applied (no manual picks yet)
     // Selection state
@@ -47,13 +50,23 @@ export const hasChanges = (): boolean =>
 
 export const statusLabel = (s: string) =>
     s === 'A' ? 'Added' :
+        s === '?' ? 'Untracked' :
+            s === 'R' ? 'Renamed' :
+                s === 'C' ? 'Copied' :
+                    s === 'T' ? 'Type change' :
+                        s === 'U' ? 'Conflicted' :
         s === 'M' ? 'Modified' :
             s === 'D' ? 'Deleted' : 'Changed';
 
 export const statusClass = (s: string) =>
     s === 'A' ? 'add' :
-        s === 'M' ? 'mod' :
-            s === 'D' ? 'del' : 'mod';
+        s === '?' ? 'untracked' :
+            s === 'R' ? 'ren' :
+                s === 'C' ? 'cpy' :
+                    s === 'T' ? 'type' :
+                        s === 'U' ? 'conflict' :
+                            s === 'M' ? 'mod' :
+                                s === 'D' ? 'del' : 'mod';
 
 // Disable the implicit "select all" mode. When clearImplicit is true, drop the
 // auto-filled selection set so later logic only sees explicit user picks.

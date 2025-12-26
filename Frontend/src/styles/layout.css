@@ -125,6 +125,7 @@
 
 /* Footer */
 .footer {
+    flex: 0 0 auto;
     height: 34px; border-top: 1px solid var(--border);
     background: var(--surface);
     display: flex; align-items: center; justify-content: space-between;

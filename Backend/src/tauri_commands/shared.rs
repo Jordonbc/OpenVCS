@@ -3,10 +3,11 @@ use std::sync::Arc;
 
 use openvcs_core::models::VcsEvent;
 use openvcs_core::{OnEvent, Repo};
-use tauri::{async_runtime, AppHandle, Emitter, Runtime, State};
+use tauri::{async_runtime, AppHandle, Emitter, Manager, Runtime, State};
 
 use crate::settings::Lfs;
 use crate::state::AppState;
+use crate::output_log::{OutputLevel, OutputLogEntry};
 
 #[derive(serde::Serialize, Clone)]
 pub struct ProgressPayload {
@@ -15,16 +16,27 @@ pub struct ProgressPayload {
 
 pub(crate) fn progress_bridge<R: Runtime>(app: AppHandle<R>) -> OnEvent {
     Arc::new(move |evt| {
-        let msg = match evt {
-            VcsEvent::Progress { detail, .. } => detail,
-            VcsEvent::RemoteMessage(s) => s,
-            VcsEvent::Auth { method, detail } => format!("auth[{method}]: {detail}"),
-            VcsEvent::PushStatus { refname, status } => status
-                .map(|s| format!("{refname} → {s}"))
-                .unwrap_or_else(|| format!("{refname} ok")),
-            VcsEvent::Info(s) => s.to_string(),
-            VcsEvent::Warning(s) | VcsEvent::Error(s) => s,
+        let (level, msg) = match evt {
+            VcsEvent::Progress { detail, .. } => (OutputLevel::Info, detail),
+            VcsEvent::RemoteMessage(s) => (OutputLevel::Info, s),
+            VcsEvent::Auth { method, detail } => (OutputLevel::Info, format!("auth[{method}]: {detail}")),
+            VcsEvent::PushStatus { refname, status } => (
+                OutputLevel::Info,
+                status
+                    .map(|s| format!("{refname} → {s}"))
+                    .unwrap_or_else(|| format!("{refname} ok")),
+            ),
+            VcsEvent::Info(s) => (OutputLevel::Info, s.to_string()),
+            VcsEvent::Warning(s) => (OutputLevel::Warn, s),
+            VcsEvent::Error(s) => (OutputLevel::Error, s),
         };
+
+        let ts_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
+        let entry = OutputLogEntry::new(ts_ms as i64, level, "git", msg.clone());
+        let state = app.state::<AppState>();
+        state.push_output_log(entry.clone());
+
+        let _ = app.emit("vcs:log", entry);
         let _ = app.emit("git-progress", ProgressPayload { message: msg });
     })
 }

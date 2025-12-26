@@ -5,10 +5,15 @@ import { notify } from '../lib/notify';
 import { state } from '../state/state';
 import { openModal } from '../ui/modals';
 import { openRenameBranch } from './renameBranch';
+import { openSetUpstream } from './setUpstream';
+import { confirmDeleteBranch } from './deleteBranchConfirm';
 import { buildCtxMenu, CtxItem } from '../lib/menu';
-import { renderList } from './repo';
+import { renderList, hydrateCommits, hydrateStatus } from './repo';
+import { setTab } from '../ui/layout';
+import type { ConflictDetails, FileStatus } from '../types';
+import { openConflictsSummary } from './conflicts';
 
-type Branch = { name: string; current?: boolean; kind?: { type?: string; remote?: string } };
+type Branch = { name: string; full_ref?: string; current?: boolean; kind?: { type?: string; remote?: string } };
 
 const branchBtn    = qs<HTMLButtonElement>('#branch-switch');
 const branchName   = qs<HTMLElement>('#branch-name');
@@ -16,6 +21,13 @@ const branchPop    = qs<HTMLElement>('#branch-pop');
 const branchFilter = qs<HTMLInputElement>('#branch-filter');
 const branchList   = qs<HTMLElement>('#branch-list');
 const repoBranchEl = qs<HTMLElement>('#repo-branch');
+
+function syncBranchLabelsFromState() {
+    const label = state.branchLabel || state.branch || '—';
+    if (branchName) branchName.textContent = label;
+    if (repoBranchEl) repoBranchEl.textContent = label;
+    setBranchUIEnabled(!!state.branch);
+}
 
 /* ---------------- data load ---------------- */
 
@@ -29,6 +41,7 @@ async function loadBranches() {
         if (head?.branch) state.branch = head.branch;
         const short = (head?.commit || '').slice(0, 7);
         const label = head?.detached ? `Detached HEAD ${short ? '(' + short + ')' : ''}` : (state.branch || '—');
+        state.branchLabel = label;
         if (branchName) branchName.textContent = label;
         if (repoBranchEl) repoBranchEl.textContent = label;
 
@@ -47,12 +60,28 @@ function renderBranches() {
     if (!branchList) return;
     const q = branchFilter?.value.trim().toLowerCase() || '';
     const items = (state.branches || []).filter(b => !q || b.name.toLowerCase().includes(q));
-    branchList.innerHTML = items.map(b => {
+
+    const localItems: Branch[] = [];
+    const remoteItems: Branch[] = [];
+    for (const branch of items) {
+        const kindType = (branch.kind?.type || '').toLowerCase();
+        const isRemote =
+            kindType === 'remote' ||
+            String(branch.full_ref || '').startsWith('refs/remotes/') ||
+            (branch.name.includes('/') && !String(branch.full_ref || '').startsWith('refs/heads/'));
+
+        if (isRemote) remoteItems.push(branch);
+        else localItems.push(branch);
+    }
+
+    const renderItem = (b: Branch) => {
         const kindType = b.kind?.type || '';
-        const remote   = b.kind?.remote || '';
+        const remoteFromName = b.name.includes('/') ? b.name.split('/')[0] : '';
+        const remote   = b.kind?.remote || remoteFromName || '';
         let kindLabel = '';
         if (kindType.toLowerCase() === 'local') kindLabel = '<span class="badge kind">Local</span>';
         else if (kindType.toLowerCase() === 'remote') kindLabel = `<span class="badge kind">Remote:${remote || 'remote'}</span>`;
+        else if (remote) kindLabel = `<span class="badge kind">Remote:${remote || 'remote'}</span>`;
         return `
       <li role="option" data-branch="${b.name}" aria-selected="${b.current ? 'true' : 'false'}">
         <span class="label">
@@ -61,14 +90,24 @@ function renderBranches() {
         </span>
         ${b.current ? '<span class="badge">Current</span>' : kindLabel}
       </li>`;
-    }).join('');
+    };
+
+    const parts: string[] = [];
+    parts.push(...localItems.map(renderItem));
+    if (localItems.length && remoteItems.length) {
+        parts.push(`<li class="pop-divider" role="separator" aria-label="Remote branches"><span>Remote branches</span></li>`);
+    }
+    parts.push(...remoteItems.map(renderItem));
+
+    branchList.innerHTML = parts.join('');
 }
 
 /* ---------------- popover ---------------- */
 
 async function openBranchPopover() {
     if (!branchBtn || !branchPop) return;
-    await loadBranches(); // ensure we have fresh data
+
+    await loadBranches();
     const r = branchBtn.getBoundingClientRect();
     branchPop.style.left = `${r.left}px`;
     branchPop.style.top  = `${r.bottom + 6}px`;
@@ -123,16 +162,49 @@ export function bindBranchUI() {
             if (name === cur) { notify('Cannot merge a branch into itself'); return; }
             const ok = window.confirm(`Merge '${name}' into '${cur}'?`);
             if (!ok) return;
-            try { if (TAURI.has) await TAURI.invoke('git_merge_branch', { name }); notify(`Merged '${name}' into '${cur}'`); await Promise.allSettled([renderList(), loadBranches()]); }
-            catch { notify('Merge failed'); }
+            try {
+                if (TAURI.has) await TAURI.invoke('git_merge_branch', { name });
+                notify(`Merged branch '${name}' into '${cur}'`);
+                await Promise.allSettled([renderList(), loadBranches()]);
+            } catch (e) {
+                const msg = String(e || '');
+                const looksLikeConflict =
+                    /CONFLICT/i.test(msg) ||
+                    /Automatic merge failed/i.test(msg) ||
+                    /fix conflicts and then commit/i.test(msg);
+
+                if (looksLikeConflict) {
+                    notify('Merge conflict detected');
+                    await hydrateStatus();
+                    setTab('changes');
+                    await openConflictsSummary((state.files || []) as FileStatus[]);
+                    return;
+                }
+
+                notify(`Merge failed${msg ? `: ${msg}` : ''}`);
+            }
         }});
         if (kind !== 'remote') {
             items.push({ label: '---' });
+            items.push({ label: 'Set upstream…', action: async () => {
+                await loadBranches();
+                const remoteBranches = (state.branches || [])
+                    .filter((br: any) => (br?.kind?.type || '').toLowerCase() === 'remote')
+                    .map((br: any) => String(br?.name || '').trim())
+                    .filter((s: string) => !!s);
+
+                if (remoteBranches.length === 0) {
+                    notify('No remote branches found (fetch first)');
+                    return;
+                }
+
+                openSetUpstream(name, remoteBranches);
+            }});
             items.push({ label: 'Rename…', action: () => openRenameBranch(name) });
             items.push({ label: wantForce ? 'Force delete…' : 'Delete…', action: async () => {
                 if (name === cur) { notify('Cannot delete the current branch'); return; }
-                const ok = window.confirm(`${wantForce ? 'Force delete' : 'Delete'} local branch '${name}'? This cannot be undone.`);
-                if (!ok) return;
+                const ok = await confirmDeleteBranch({ name, force: wantForce });
+                if (!ok) { notify('Delete cancelled'); return; }
                 try {
                     if (TAURI.has) await TAURI.invoke('git_delete_branch', { name, force: wantForce });
                     notify(`${wantForce ? 'Force-deleted' : 'Deleted'} '${name}'`);
@@ -141,7 +213,12 @@ export function bindBranchUI() {
                     const msg = String(e || '');
                     if (wantForce) { notify(`Force delete failed${msg ? `: ${msg}` : ''}`); return; }
                     // If not fully merged, offer force delete as a fallback
-                    const ok2 = window.confirm(`Delete failed${msg ? `: ${msg}` : ''}.\n\nForce delete '${name}' anyway? This cannot be undone.`);
+                    const ok2 = await confirmDeleteBranch({
+                        name,
+                        force: true,
+                        message: `Delete failed${msg ? `: ${msg}` : ''}. You can force delete to remove it anyway.`,
+                        hint: "Force delete cannot be undone.",
+                    });
                     if (!ok2) { notify('Delete cancelled'); return; }
                     try {
                         if (TAURI.has) await TAURI.invoke('git_delete_branch', { name, force: true });
@@ -182,11 +259,19 @@ export function bindBranchUI() {
     qs<HTMLButtonElement>('#branch-new')?.addEventListener('click', () => {
         closeBranchPopover();
         openModal('new-branch-modal');
+        const modal = document.getElementById('new-branch-modal') as HTMLElement | null;
+        const nameInput = modal?.querySelector<HTMLInputElement>('#new-branch-name') || null;
+        if (nameInput) {
+            nameInput.value = '';
+            nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+            setTimeout(() => nameInput.focus(), 0);
+        }
     });
 
     // React when a repo is selected somewhere else (add/clone/open)
     window.addEventListener('app:repo-selected', () => void loadBranches());
+    window.addEventListener('app:branches-updated', syncBranchLabelsFromState);
 
     // Initial state
-    setBranchUIEnabled(!!state.branch);
+    syncBranchLabelsFromState();
 }

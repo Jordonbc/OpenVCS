@@ -6,15 +6,24 @@ import aboutHtml from "@modals/about.html?raw";
 import { wireSettings } from "../features/settings";
 import repoSettingsHtml from "@modals/repo-settings.html?raw";
 import { wireRepoSettings } from "../features/repoSettings";
+import sshHostkeyHtml from "@modals/ssh-hostkey.html?raw";
+import sshAuthHtml from "@modals/ssh-auth.html?raw";
+import sshKeysHtml from "@modals/ssh-keys.html?raw";
 import newBranchHtml from "@modals/new-branch.html?raw";
 import { wireNewBranch } from "../features/newBranch";
 import renameBranchHtml from "@modals/rename-branch.html?raw";
 import { wireRenameBranch } from "../features/renameBranch";
+import deleteBranchHtml from "@modals/delete-branch.html?raw";
+import { wireDeleteBranchConfirm } from "../features/deleteBranchConfirm";
+import setUpstreamHtml from "@modals/set-upstream.html?raw";
+import { wireSetUpstream } from "../features/setUpstream";
 import updateHtml from "@modals/update.html?raw";
 import { wireUpdate } from "../features/update";
 import stashConfirmHtml from "@modals/stash-confirm.html?raw";
 import { wireStashConfirm } from "../features/stashConfirm";
 import mergeHtml from "@modals/merge.html?raw";
+import conflictsSummaryHtml from "@modals/conflicts-summary.html?raw";
+import { wireSshKeys } from "../features/sshKeys";
 
 // Lazy fragments (only those NOT present at load)
 const FRAGMENTS: Record<string, string> = {
@@ -22,11 +31,17 @@ const FRAGMENTS: Record<string, string> = {
     "about-modal": aboutHtml,
     "command-modal": cmdHtml,
     "repo-settings-modal": repoSettingsHtml,
+    "ssh-hostkey-modal": sshHostkeyHtml,
+    "ssh-auth-modal": sshAuthHtml,
+    "ssh-keys-modal": sshKeysHtml,
     "new-branch-modal": newBranchHtml,
     "rename-branch-modal": renameBranchHtml,
+    "delete-branch-modal": deleteBranchHtml,
+    "set-upstream-modal": setUpstreamHtml,
     "update-modal": updateHtml,
     "stash-confirm-modal": stashConfirmHtml,
     "merge-modal": mergeHtml,
+    "conflicts-summary-modal": conflictsSummaryHtml,
 };
 
 const loaded = new Set<string>();
@@ -63,8 +78,14 @@ export function hydrate(id: string): void {
 
     if (id === "settings-modal") wireSettings();
     if (id === "repo-settings-modal") wireRepoSettings();
+    if (id === "ssh-hostkey-modal") {
+        // wiring is done by the listener in the sshHostkey feature
+    }
+    if (id === "ssh-keys-modal") wireSshKeys();
     if (id === "new-branch-modal") wireNewBranch();
     if (id === "rename-branch-modal") wireRenameBranch();
+    if (id === "delete-branch-modal") wireDeleteBranchConfirm();
+    if (id === "set-upstream-modal") wireSetUpstream();
     if (id === "update-modal") wireUpdate();
     if (id === "stash-confirm-modal") wireStashConfirm();
 }

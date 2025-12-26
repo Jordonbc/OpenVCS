@@ -1,0 +1,42 @@
+<div class="modal" id="ssh-keys-modal" aria-hidden="true">
+  <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="ssh-keys-title">
+    <div class="sheet-head">
+      <h3 id="ssh-keys-title" style="margin:0">SSH Keys</h3>
+    </div>
+    <div class="sheet-body">
+      <div class="panel-form">
+        <div class="group">
+          <div style="color:var(--muted); font-size:.95rem;">
+            Add an existing SSH key to your <span style="font-family:var(--mono);">ssh-agent</span>. Encrypted keys may require running
+            <span style="font-family:var(--mono);">ssh-add</span> from a terminal so it can prompt for a passphrase.
+          </div>
+        </div>
+
+        <div class="group">
+          <label>ssh-agent status</label>
+          <pre id="ssh-keys-agent-status" class="ssh-box" style="white-space:pre-wrap;"></pre>
+        </div>
+
+        <div class="group">
+          <label>Detected keys (~/.ssh)</label>
+          <div id="ssh-keys-list"></div>
+          <div id="ssh-keys-none" style="color:var(--muted); display:none; margin-top:.25rem;">
+            No common private keys detected.
+          </div>
+        </div>
+
+        <div class="group">
+          <label>Selected key</label>
+          <div id="ssh-keys-selected" class="ssh-box" style="word-break:break-all;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button class="tbtn" id="ssh-keys-refresh" type="button">Refresh</button>
+      <button class="tbtn" id="ssh-keys-copy" type="button">Copy ssh-add command</button>
+      <button class="tbtn primary big" id="ssh-keys-add" type="button">Add to Agent</button>
+      <button class="tbtn" type="button" data-close>Close</button>
+    </div>
+  </div>
+  <div class="backdrop" data-close></div>
+</div>

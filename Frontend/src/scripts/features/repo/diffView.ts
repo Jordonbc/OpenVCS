@@ -5,11 +5,16 @@ import { notify } from '../../lib/notify';
 import { state, prefs, disableDefaultSelectAll } from '../../state/state';
 import type { FileStatus, ConflictDetails } from '../../types';
 import { buildPatchForSelectedHunks } from '../diff';
-import { diffEl, diffHeadPath, listEl } from './context';
+import { diffEl, diffHeadPath, diffMetaLfs, listEl } from './context';
 import { updateCommitButton } from './commit';
 import { hydrateStatus } from './hydrate';
 import { getVisibleFiles, updateSelectAllState } from './selectionState';
 import { openMergeModal, hasExternalMergeTool, launchExternalMergeTool } from '../conflicts';
+
+function setLfsBadge(isLfs: boolean) {
+    if (!diffMetaLfs) return;
+    diffMetaLfs.hidden = !isLfs;
+}
 
 export function highlightRow(index: number) {
     const rows = qsa<HTMLElement>((prefs.tab === 'history' ? '.row.commit' : '.row'), listEl || (undefined as any));
@@ -19,6 +24,7 @@ export function highlightRow(index: number) {
 export async function selectFile(file: FileStatus, index: number) {
     if (!diffHeadPath || !diffEl) return;
     highlightRow(index);
+    setLfsBadge(false);
     const status = String(file.status || '').toUpperCase();
     if (status === 'U') {
         diffHeadPath.textContent = `${file.path || '(unknown file)'} (conflicted)`;
@@ -29,6 +35,11 @@ export async function selectFile(file: FileStatus, index: number) {
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
 
     try {
+        if (TAURI.has && file.path) {
+            TAURI.invoke<boolean>('git_lfs_is_tracked', { path: file.path })
+                .then((isLfs) => setLfsBadge(!!isLfs))
+                .catch(() => setLfsBadge(false));
+        }
         let lines: string[] = [];
         if (TAURI.has && file.path) {
             lines = await TAURI.invoke<string[]>('git_diff_file', { path: file.path });
@@ -200,6 +211,7 @@ async function renderConflictView(file: FileStatus) {
     }
     try {
         const details = await TAURI.invoke<ConflictDetails>('git_conflict_details', { path: file.path });
+        setLfsBadge(!!details?.lfs_pointer);
         diffEl.innerHTML = renderConflictMarkup(details);
         bindConflictActions(diffEl, file, details);
     } catch (err) {

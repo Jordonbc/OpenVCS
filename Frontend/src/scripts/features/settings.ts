@@ -128,6 +128,18 @@ export function wireSettings() {
     updateMergeCustomState();
     mergeModeSel?.addEventListener('change', updateMergeCustomState);
 
+    const sshBinSel = modal.querySelector('#set-git-ssh-binary') as HTMLSelectElement | null;
+    const sshPathInput = modal.querySelector('#set-git-ssh-path') as HTMLInputElement | null;
+    const updateSshPathState = () => {
+        if (!sshPathInput) return;
+        const mode = (sshBinSel?.value || 'auto').toLowerCase();
+        const enabled = mode === 'custom';
+        sshPathInput.disabled = !enabled;
+        if (!enabled) sshPathInput.value = '';
+    };
+    updateSshPathState();
+    sshBinSel?.addEventListener('change', updateSshPathState);
+
     const updateThemePackTitle = () => {
         if (!setThemePackSel) return;
         const val = setThemePackSel.value || DEFAULT_THEME_ID;
@@ -216,7 +228,7 @@ export function wireSettings() {
             const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
 
             cur.general = { theme: 'system', theme_pack: DEFAULT_THEME_ID, language: 'system', default_backend: 'git', update_channel: 'stable', reopen_last_repos: true, checks_on_launch: true, telemetry: false, crash_reports: false };
-            cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, fetch_on_focus: true, allow_hooks: 'ask', respect_core_autocrlf: true };
+            cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, fetch_on_focus: true, allow_hooks: 'ask', respect_core_autocrlf: true, merge_commit_message_template: "Merged branch '{branch:source}' into '{branch:target}'" };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
             cur.performance = { progressive_render: true, gpu_accel: true };
@@ -255,6 +267,9 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
     o.git = {
         ...o.git,
         backend: get<HTMLSelectElement>('#set-git-backend')?.value as any,
+        merge_commit_message_template: get<HTMLInputElement>('#set-merge-message-template')?.value ?? '',
+        ssh_binary: (get<HTMLSelectElement>('#set-git-ssh-binary')?.value || 'auto') as any,
+        ssh_path: (get<HTMLInputElement>('#set-git-ssh-path')?.value || '').trim(),
         prune_on_fetch: !!get<HTMLInputElement>('#set-prune-on-fetch')?.checked,
         fetch_on_focus: !!get<HTMLInputElement>('#set-fetch-on-focus')?.checked,
         allow_hooks: get<HTMLSelectElement>('#set-hook-policy')?.value,
@@ -353,6 +368,17 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     if (elGb) {
         // Map to enum string values used by backend settings
         elGb.value = backend === 'libgit2' ? 'libgit2' : 'system';
+    }
+    const elMmt = get<HTMLInputElement>('#set-merge-message-template');
+    if (elMmt) elMmt.value = cfg.git?.merge_commit_message_template ?? '';
+    const elSshBin = get<HTMLSelectElement>('#set-git-ssh-binary');
+    if (elSshBin) elSshBin.value = toKebab(cfg.git?.ssh_binary) || 'auto';
+    const elSshPath = get<HTMLInputElement>('#set-git-ssh-path');
+    if (elSshPath) elSshPath.value = cfg.git?.ssh_path ?? '';
+    if (elSshPath) {
+        const enabled = (elSshBin?.value || 'auto') === 'custom';
+        elSshPath.disabled = !enabled;
+        if (!enabled) elSshPath.value = '';
     }
     const elPr = get<HTMLInputElement>('#set-prune-on-fetch'); if (elPr) elPr.checked = !!cfg.git?.prune_on_fetch;
     const elFoF = get<HTMLInputElement>('#set-fetch-on-focus'); if (elFoF) elFoF.checked = !!cfg.git?.fetch_on_focus;
