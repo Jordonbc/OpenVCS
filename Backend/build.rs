@@ -11,6 +11,77 @@ fn is_tauri_dev() -> bool {
     matches!(env::var("DEP_TAURI_DEV").as_deref(), Ok("true"))
 }
 
+fn is_truthy_env(key: &str) -> bool {
+    matches!(
+        env::var(key).as_deref(),
+        Ok("1") | Ok("true") | Ok("yes") | Ok("on")
+    )
+}
+
+fn run_git(args: &[&str]) -> Option<String> {
+    let out = Command::new("git").args(args).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!s.is_empty()).then_some(s)
+}
+
+fn git_branch() -> Option<String> {
+    if let Ok(v) = env::var("GITHUB_REF_NAME") {
+        let v = v.trim().to_string();
+        if !v.is_empty() {
+            return Some(v);
+        }
+    }
+    if let Ok(v) = env::var("CI_COMMIT_REF_NAME") {
+        let v = v.trim().to_string();
+        if !v.is_empty() {
+            return Some(v);
+        }
+    }
+
+    let branch = run_git(&["branch", "--show-current"])
+        .or_else(|| run_git(&["rev-parse", "--abbrev-ref", "HEAD"]))?;
+    let branch = branch.trim().to_string();
+    if branch.is_empty() || branch == "HEAD" {
+        None
+    } else {
+        Some(branch)
+    }
+}
+
+fn git_short_hash() -> Option<String> {
+    run_git(&["rev-parse", "--short=8", "HEAD"])
+}
+
+fn git_is_dirty() -> Option<bool> {
+    let s = run_git(&["status", "--porcelain"])?;
+    Some(!s.trim().is_empty())
+}
+
+fn sanitize_semver_ident(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut last_was_dash = false;
+
+    for c in s.chars() {
+        let ok = c.is_ascii_alphanumeric() || c == '-';
+        let mapped = if ok { c } else { '-' };
+        if mapped == '-' {
+            if last_was_dash {
+                continue;
+            }
+            last_was_dash = true;
+        } else {
+            last_was_dash = false;
+        }
+        out.push(mapped);
+    }
+
+    let out = out.trim_matches('-').to_string();
+    if out.is_empty() { "unknown".into() } else { out }
+}
+
 fn main() {
     // Base config path (in the Backend crate)
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
@@ -83,6 +154,9 @@ fn main() {
 
     // Re-run if the base config changes
     println!("cargo:rerun-if-changed={}", base.display());
+    println!("cargo:rerun-if-env-changed=OPENVCS_UPDATE_CHANNEL");
+    println!("cargo:rerun-if-env-changed=OPENVCS_FLATPAK");
+    println!("cargo:rerun-if-env-changed=OPENVCS_OFFICIAL_RELEASE");
 
     // Export a GIT_DESCRIBE string for About dialog and diagnostics
     let describe = Command::new("git")
@@ -93,6 +167,60 @@ fn main() {
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "dev".into());
     println!("cargo:rustc-env=GIT_DESCRIBE={}", describe);
+
+    // Dev builds (local/nightly) should show git branch+hash (+dirty) as version metadata.
+    // Official production builds should show the real package version.
+    //
+    // Rules:
+    // - `OPENVCS_OFFICIAL_RELEASE=1` forces "official" behavior.
+    // - Otherwise, we consider it official only when HEAD is exactly tagged with the package version and the tree is clean.
+    let pkg_version = env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".into());
+
+    // Ask cargo to re-run this build script when git ref changes in common cases.
+    // Note: this can't perfectly track all working tree changes, but will refresh on most branch/commit operations.
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/index");
+    println!("cargo:rerun-if-changed=.git/packed-refs");
+    println!("cargo:rerun-if-changed=src");
+
+    if let Ok(head) = fs::read_to_string(".git/HEAD") {
+        if let Some(rest) = head.trim().strip_prefix("ref: ") {
+            let ref_path = format!(".git/{rest}");
+            println!("cargo:rerun-if-changed={ref_path}");
+        }
+    }
+
+    let branch = git_branch().unwrap_or_else(|| "unknown".into());
+    let hash = git_short_hash().unwrap_or_else(|| "nogit".into());
+    let dirty = git_is_dirty().unwrap_or(false);
+
+    let build_id = format!(
+        "{}@{}{}",
+        branch,
+        hash,
+        if dirty { "-dirty" } else { "" }
+    );
+
+    let exact_tag = run_git(&["describe", "--tags", "--exact-match"]);
+    let expected_v = format!("v{pkg_version}");
+    let head_is_version_tag = exact_tag
+        .as_deref()
+        .map_or(false, |t| t == pkg_version.as_str() || t == expected_v.as_str());
+
+    let official = is_truthy_env("OPENVCS_OFFICIAL_RELEASE") || (head_is_version_tag && !dirty);
+
+    let version = if official {
+        pkg_version.clone()
+    } else {
+        let branch_ident = sanitize_semver_ident(&branch);
+        format!(
+            "{pkg_version}+git.{branch_ident}.{hash}{}",
+            if dirty { ".dirty" } else { "" }
+        )
+    };
+
+    println!("cargo:rustc-env=OPENVCS_VERSION={}", version);
+    println!("cargo:rustc-env=OPENVCS_BUILD={}", build_id);
 
     // Proceed with tauri build steps
     tauri_build::build();
