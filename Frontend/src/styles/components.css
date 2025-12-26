@@ -127,10 +127,10 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .filter-icon{ opacity:.85; }
 
 /* List items */
+.list-scroll{ flex:1 1 auto; min-height:0; overflow:auto; }
 .list{
     list-style:none; margin:0; padding:.25rem;
     display:flex; flex-direction:column; gap:.25rem;
-    flex:1 1 auto; min-height:0; overflow:auto;
 }
 .left-foot{
     flex:0 0 auto;
@@ -236,6 +236,7 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     min-height:0; overflow:auto;
     font-family:var(--mono); font-size:13px;
 }
+.diff-content{ min-width:0; }
 .hunk{ padding:.25rem 0; }
 /* Picked hunk (included in commit) — success tint */
 .hunk.picked{ background:rgba(38,162,105,.08); border-left:3px solid rgba(38,162,105,.55); }

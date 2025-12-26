@@ -1,0 +1,21 @@
+/* Custom OverlayScrollbars theme for OpenVCS */
+
+.os-theme-openvcs.os-scrollbar {
+  --os-size: 8px;
+  --os-padding-perpendicular: 2px;
+  --os-padding-axis: 2px;
+}
+
+.os-theme-openvcs.os-scrollbar .os-scrollbar-track {
+  background: transparent;
+}
+
+.os-theme-openvcs.os-scrollbar .os-scrollbar-handle {
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+  border-radius: 10px;
+  transition: background-color 0.15s ease;
+}
+
+.os-theme-openvcs.os-scrollbar .os-scrollbar-handle:hover {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}

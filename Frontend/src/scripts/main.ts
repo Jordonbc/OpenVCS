@@ -1,6 +1,7 @@
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
+import { observeOverlayScrollbars } from './lib/scrollbars';
 import { prefs, state, hasRepo } from './state/state';
 import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
@@ -36,6 +37,7 @@ const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
 async function boot() {
     // If launched as the Output Log window, render that view and skip the main app UI.
     if (await initOutputLogViewIfRequested()) return;
+    observeOverlayScrollbars();
     // theme & basic layout
     // Prefer native settings for theme; fall back to current in-memory default
     if (TAURI.has) {
@@ -231,9 +233,9 @@ async function boot() {
         if (!anchor) return;
         updateFetchUI();
         const r = anchor.getBoundingClientRect();
+        fetchPop.hidden = false;
         fetchPop.style.left = `${r.left}px`;
         fetchPop.style.top  = `${r.bottom + 6}px`;
-        fetchPop.hidden = false;
         fetchCaret.setAttribute('aria-expanded', 'true');
 
         const firstEnabled = fetchList?.querySelector<HTMLElement>('li[role="menuitem"][aria-disabled="false"]');

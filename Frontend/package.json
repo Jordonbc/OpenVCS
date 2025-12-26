@@ -5,6 +5,9 @@
   "version": "1.0.0",
   "author": "Jordon Brooks",
   "license": "ISC",
+  "dependencies": {
+    "overlayscrollbars": "^2.11.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

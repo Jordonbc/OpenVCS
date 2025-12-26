@@ -104,7 +104,9 @@
           </div>
           <span id="changes-count">0 items</span>
         </div>
-        <ul class="list" id="file-list" role="listbox" aria-label="Items"></ul>
+        <div class="list-scroll" aria-label="Items scroll area">
+          <ul class="list" id="file-list" role="listbox" aria-label="Items"></ul>
+        </div>
         <div class="left-foot" id="left-foot">
           <button class="btn" id="undo-left-btn" title="Undo last unpushed commit">Undo last commit</button>
         </div>
@@ -124,7 +126,9 @@
 	          </div>
 	        </div>
 
-        <div class="diff" id="diff" aria-live="polite" aria-label="Diff view"></div>
+        <div class="diff diff-scroll" aria-label="Diff scroll area">
+          <div class="diff-content" id="diff" aria-live="polite" aria-label="Diff view"></div>
+        </div>
 
         <!-- Commit panel (hidden on History tab via JS) -->
         <section class="commit" id="commit" aria-label="Commit changes">
@@ -158,22 +162,26 @@
       <input id="branch-filter" type="search" placeholder="Find or create branch…" aria-label="Filter branches">
       <button class="pick" id="branch-new" type="button">New…</button>
     </div>
-    <ul class="pop-list" id="branch-list" role="listbox" aria-label="Branch list"></ul>
+    <div class="pop-list-scroll" aria-label="Branch list scroll area">
+      <ul class="pop-list" id="branch-list" role="listbox" aria-label="Branch list"></ul>
+    </div>
   </div>
 
   <!-- Fetch popover -->
   <div class="popover compact" id="fetch-pop" role="menu" aria-label="Fetch options" hidden>
-    <ul class="pop-list" id="fetch-list" role="menu">
-      <li role="menuitem" tabindex="0" data-action="fetch-only">
-        <span class="label"><span class="name">Fetch</span></span>
-      </li>
-      <li role="menuitem" tabindex="0" data-action="fetch-all">
-        <span class="label"><span class="name">Fetch all remotes</span></span>
-      </li>
-      <li role="menuitem" tabindex="-1" data-action="pull" aria-disabled="true">
-        <span class="label"><span class="name">Pull</span></span>
-      </li>
-    </ul>
+    <div class="pop-list-scroll" aria-label="Fetch options scroll area">
+      <ul class="pop-list" id="fetch-list" role="menu">
+        <li role="menuitem" tabindex="0" data-action="fetch-only">
+          <span class="label"><span class="name">Fetch</span></span>
+        </li>
+        <li role="menuitem" tabindex="0" data-action="fetch-all">
+          <span class="label"><span class="name">Fetch all remotes</span></span>
+        </li>
+        <li role="menuitem" tabindex="-1" data-action="pull" aria-disabled="true">
+          <span class="label"><span class="name">Pull</span></span>
+        </li>
+      </ul>
+    </div>
   </div>
 
   <!-- Modal mount -->
