@@ -1358,6 +1358,22 @@ impl Vcs for GitSystem {
         Self::run_git(Some(&self.workdir), args)
     }
 
+    fn lfs_untrack(&self, paths: &[PathBuf]) -> Result<()> {
+        if paths.is_empty() {
+            return Ok(());
+        }
+        log::info!(
+            "git-system: lfs_untrack count={} in {}",
+            paths.len(),
+            self.workdir.display()
+        );
+        let mut args: Vec<String> = vec!["lfs".into(), "untrack".into(), "--".into()];
+        for p in paths {
+            args.push(Self::path_str(p)?.to_string());
+        }
+        Self::run_git(Some(&self.workdir), args)
+    }
+
     fn lfs_is_tracked(&self, path: &Path) -> Result<bool> {
         let p = Self::path_str(path)?;
         // `git check-attr` does not require git-lfs to be installed; it reads `.gitattributes`.

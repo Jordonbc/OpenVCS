@@ -191,7 +191,7 @@ export function toggleSelectAll(on: boolean, visible: FileStatus[]) {
     }
 }
 
-export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
+export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     ev.preventDefault();
     const x = ev.clientX, y = ev.clientY;
     const selectedPaths = Array.from(state.selectedFiles || []).filter(Boolean);
@@ -217,22 +217,23 @@ export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             },
         });
     };
-    items.push({ label: 'Discard changes', action: async () => {
-        if (!TAURI.has) return;
-        const ok = window.confirm(`Discard all changes in \n${f.path}? This cannot be undone.`);
-        if (!ok) return;
-        try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
-        catch { notify('Discard failed'); }
+
+    items.push({ label: 'Open with default application', action: async () => {
+        if (!TAURI.has) {
+            notify('Open is available in the desktop app');
+            return;
+        }
+        const target = (hasSingleSelection ? selectedPaths[0] : f.path) || '';
+        if (!target) return;
+        try {
+            await TAURI.invoke('open_repo_file', { path: target });
+        } catch {
+            notify('Open failed');
+        }
     }});
+    items.push({ label: '---' });
+
     if (explicitMultiSelection) {
-        items.push({ label: 'Discard all selected', action: async () => {
-            if (!TAURI.has) return;
-            const paths = selectedPaths.slice();
-            const ok = window.confirm(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
-            if (!ok) return;
-            try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
-            catch { notify('Discard failed'); }
-        }});
         items.push({ label: 'Create stash from selection…', action: () => {
             openStashForPaths(selectedPaths.slice(), 'WIP selection');
         }});
@@ -243,22 +244,95 @@ export function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         openStashForPaths([singleTarget], defaultMsg);
     }});
     items.push({ label: '---' });
-    items.push({ label: 'Track with Git LFS', action: () => {
+    items.push({ label: 'Add to .gitignore', action: async () => {
         if (!TAURI.has) {
-            notify('Git LFS is available in the desktop app');
+            notify('Ignore is available in the desktop app');
             return;
         }
         const targets = (explicitMultiSelection ? selectedPaths.slice() : [f.path]).filter(Boolean);
         if (!targets.length) return;
-        (async () => {
-            try {
-                await TAURI.invoke('git_lfs_track_paths', { paths: targets });
-                notify(targets.length > 1 ? 'Tracked files with Git LFS' : 'Tracked file with Git LFS');
-                await Promise.allSettled([hydrateStatus()]);
-            } catch {
-                notify('Git LFS track failed');
+        const label = targets.length > 1 ? `${targets.length} files` : targets[0];
+        const ok = window.confirm(`Add ${label} to .gitignore?`);
+        if (!ok) return;
+        try {
+            await TAURI.invoke('git_add_to_gitignore_paths', { paths: targets });
+            notify(targets.length > 1 ? 'Added to .gitignore' : 'Added to .gitignore');
+            await Promise.allSettled([hydrateStatus()]);
+        } catch {
+            notify('Ignore failed');
+        }
+    }});
+    items.push({ label: '---' });
+    const lfsTargets = (explicitMultiSelection ? selectedPaths.slice() : [f.path]).filter(Boolean);
+    let lfsTracked: string[] = [];
+    if (TAURI.has && lfsTargets.length > 0) {
+        try {
+            lfsTracked = await TAURI.invoke<string[]>('git_lfs_tracked_paths', { paths: lfsTargets });
+        } catch {
+            lfsTracked = [];
+        }
+    }
+    const trackedSet = new Set(lfsTracked);
+    const lfsToAdd = lfsTargets.filter((p) => !trackedSet.has(p));
+    const lfsToRemove = lfsTargets.filter((p) => trackedSet.has(p));
+
+    if (lfsToAdd.length > 0) {
+        items.push({ label: 'Add to Git LFS', action: () => {
+            if (!TAURI.has) {
+                notify('Git LFS is available in the desktop app');
+                return;
             }
-        })();
+            const targets = lfsToAdd.slice();
+            if (!targets.length) return;
+            (async () => {
+                try {
+                    await TAURI.invoke('git_lfs_track_paths', { paths: targets });
+                    notify(targets.length > 1 ? 'Tracked files with Git LFS' : 'Tracked file with Git LFS');
+                    await Promise.allSettled([hydrateStatus()]);
+                } catch {
+                    notify('Git LFS track failed');
+                }
+            })();
+        }});
+    }
+
+    if (lfsToRemove.length > 0) {
+        items.push({ label: 'Remove from Git LFS', action: () => {
+            if (!TAURI.has) {
+                notify('Git LFS is available in the desktop app');
+                return;
+            }
+            const targets = lfsToRemove.slice();
+            if (!targets.length) return;
+            (async () => {
+                try {
+                    await TAURI.invoke('git_lfs_untrack_paths', { paths: targets });
+                    notify(targets.length > 1 ? 'Removed from Git LFS' : 'Removed from Git LFS');
+                    await Promise.allSettled([hydrateStatus()]);
+                } catch {
+                    notify('Git LFS untrack failed');
+                }
+            })();
+        }});
+    }
+
+    items.push({ label: '---' });
+    if (explicitMultiSelection) {
+        items.push({ label: 'Discard all selected', action: async () => {
+            if (!TAURI.has) return;
+            const paths = selectedPaths.slice();
+            const ok = window.confirm(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
+            if (!ok) return;
+            try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
+            catch { notify('Discard failed'); }
+        }});
+    }
+    items.push({ label: 'Discard changes', action: async () => {
+        if (!TAURI.has) return;
+        const ok = window.confirm(`Discard all changes in \n${f.path}? This cannot be undone.`);
+        if (!ok) return;
+        try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
+        catch { notify('Discard failed'); }
     }});
     buildCtxMenu(items, x, y);
 }

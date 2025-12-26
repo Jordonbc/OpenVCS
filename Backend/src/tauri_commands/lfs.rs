@@ -80,12 +80,62 @@ pub async fn git_lfs_track_paths(
 }
 
 #[tauri::command]
+pub async fn git_lfs_untrack_paths(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    info!("git_lfs_untrack_paths called (count={})", paths.len());
+    if paths.is_empty() {
+        return Ok(());
+    }
+
+    let cfg = lfs_config(&state);
+    if !cfg.enabled {
+        return Err("Git LFS integration is disabled".into());
+    }
+
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_lfs_untrack_paths", repo, move |repo| {
+        let _guard = LfsEnvGuard::apply(&cfg);
+        let list: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        repo.inner().lfs_untrack(&list).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn git_lfs_is_tracked(state: State<'_, AppState>, path: String) -> Result<bool, String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_lfs_is_tracked", repo, move |repo| {
         repo.inner()
             .lfs_is_tracked(&PathBuf::from(path))
             .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_lfs_tracked_paths(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<Vec<String>, String> {
+    if paths.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("git_lfs_tracked_paths", repo, move |repo| {
+        let mut tracked = Vec::new();
+        for p in paths {
+            let is_tracked = repo
+                .inner()
+                .lfs_is_tracked(&PathBuf::from(&p))
+                .map_err(|e| e.to_string())?;
+            if is_tracked {
+                tracked.push(p);
+            }
+        }
+        Ok(tracked)
     })
     .await
 }

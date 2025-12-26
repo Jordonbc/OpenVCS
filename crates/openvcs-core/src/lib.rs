@@ -199,6 +199,7 @@ pub trait Vcs: Send + Sync {
     fn lfs_pull(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
     fn lfs_prune(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
     fn lfs_track(&self, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn lfs_untrack(&self, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
     fn lfs_is_tracked(&self, _path: &Path) -> Result<bool> { Err(VcsError::Unsupported(self.id())) }
 }
 
