@@ -109,6 +109,9 @@
 :root[data-theme="dark"] .modal,
 :root[data-theme="dark"] .popover{ color-scheme: dark; }
 
+:root[data-theme="light"] .modal,
+:root[data-theme="light"] .popover{ color-scheme: light; }
+
 .modal :is(
   select,
   input[type="text"],

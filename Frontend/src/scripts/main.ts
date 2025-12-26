@@ -19,7 +19,7 @@ import { openRepoSettings } from './features/repoSettings';
 import { initSshHostkeyPrompt } from './features/sshHostkey';
 import { initSshAuthPrompt } from './features/sshAuth';
 import { initOutputLogViewIfRequested } from './features/outputLog';
-import { DEFAULT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
+import { DEFAULT_LIGHT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
 
 const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
 
@@ -46,12 +46,12 @@ async function boot() {
                 const cfg = await TAURI.invoke<any>('get_global_settings');
                 const themeMode = cfg?.general?.theme as ('dark'|'light'|'system'|undefined);
                 const modeForPack = themeMode ?? 'system';
-                const themePack = String(cfg?.general?.theme_pack || DEFAULT_THEME_ID);
+                const themePack = String(cfg?.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
                 try { await refreshAvailableThemes(); } catch { /* best effort */ }
                 try {
                     await selectThemePack(themePack, { silent: true, mode: modeForPack });
                 } catch {
-                    await selectThemePack(DEFAULT_THEME_ID, { silent: true, mode: modeForPack });
+                    await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: modeForPack });
                 }
                 setTheme(themeMode || prefs.theme);
                 try {
@@ -64,7 +64,7 @@ async function boot() {
                     if (mono) root.style.setProperty('--mono', mono);
                 } catch { /* best-effort */ }
             } catch {
-                try { await selectThemePack(DEFAULT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
+                try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
                 setTheme(prefs.theme);
             }
         })();

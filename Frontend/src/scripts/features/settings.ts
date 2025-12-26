@@ -3,10 +3,26 @@ import { openModal, closeModal } from '../ui/modals';
 import { toKebab } from '../lib/dom';
 import { notify } from '../lib/notify';
 import { setTheme } from '../ui/layout';
-import { DEFAULT_THEME_ID, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
+import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
 import type { GlobalSettings, ThemeSummary } from '../types';
 
 const THEME_PACK_HINT = 'Place theme ZIP files into the themes folder to enable them.';
+const SYSTEM_DARK_MQ = matchMedia('(prefers-color-scheme: dark)');
+
+function normalizeAppearance(value: unknown): 'light' | 'dark' | 'both' | null {
+    const raw = String(value ?? '').trim().toLowerCase();
+    if (raw === 'light' || raw === 'dark' || raw === 'both') return raw;
+    return null;
+}
+
+function modeForTheme(themeId: string): 'light' | 'dark' {
+    const desired = (themeId || DEFAULT_LIGHT_THEME_ID).trim().toLowerCase() || DEFAULT_LIGHT_THEME_ID;
+    const summary = getAvailableThemes().find((t) => (t.id || '').toLowerCase() === desired);
+    const appearance = normalizeAppearance(summary?.appearance);
+    if (appearance === 'light') return 'light';
+    if (appearance === 'dark') return 'dark';
+    return SYSTEM_DARK_MQ.matches ? 'dark' : 'light';
+}
 
 function themeOptionLabel(theme: ThemeSummary): string {
     const version = theme.version?.trim();
@@ -37,7 +53,7 @@ async function rebuildThemePackOptions(
     }
 
     const themes = getAvailableThemes();
-    const desired = (desiredId ?? selectEl.value ?? DEFAULT_THEME_ID).toLowerCase();
+    const desiredLower = String(desiredId ?? selectEl.value ?? DEFAULT_LIGHT_THEME_ID).trim().toLowerCase() || DEFAULT_LIGHT_THEME_ID;
 
     selectEl.innerHTML = '';
     for (const theme of themes) {
@@ -48,9 +64,9 @@ async function rebuildThemePackOptions(
         selectEl.appendChild(opt);
     }
 
-    const match = themes.find((t) => t.id.toLowerCase() === desired);
-    selectEl.value = match ? match.id : DEFAULT_THEME_ID;
-    selectEl.title = themeTooltip(selectEl.value || DEFAULT_THEME_ID);
+    const match = themes.find((t) => t.id.toLowerCase() === desiredLower);
+    selectEl.value = match ? match.id : DEFAULT_LIGHT_THEME_ID;
+    selectEl.title = themeTooltip(selectEl.value || DEFAULT_LIGHT_THEME_ID);
 }
 
 export function openSettings(section?: string){
@@ -111,8 +127,6 @@ export function wireSettings() {
     updateLfsDependentState();
     lfsToggle?.addEventListener('change', updateLfsDependentState);
 
-    const setThemeSel = modal.querySelector('#set-theme') as HTMLSelectElement | null;
-    const setThemePackSel = modal.querySelector('#set-theme-pack') as HTMLSelectElement | null;
     const mergeModeSel = modal.querySelector('#set-merge-mode') as HTMLSelectElement | null;
     const mergeCustomGroups = Array.from(modal.querySelectorAll<HTMLElement>('[data-merge-custom]'));
 
@@ -140,42 +154,61 @@ export function wireSettings() {
     updateSshPathState();
     sshBinSel?.addEventListener('change', updateSshPathState);
 
-    const updateThemePackTitle = () => {
-        if (!setThemePackSel) return;
-        const val = setThemePackSel.value || DEFAULT_THEME_ID;
-        setThemePackSel.title = themeTooltip(val);
+    const setThemeAuto = modal.querySelector<HTMLInputElement>('#set-theme-auto');
+    const setThemeSel = modal.querySelector<HTMLSelectElement>('#set-theme');
+
+    const syncThemeTitle = () => {
+        if (!setThemeSel) return;
+        setThemeSel.title = themeTooltip(setThemeSel.value || DEFAULT_LIGHT_THEME_ID);
     };
 
-    let themePackRefreshInFlight = false;
-    setThemePackSel?.addEventListener('pointerdown', async () => {
-        if (!setThemePackSel || themePackRefreshInFlight) return;
-        themePackRefreshInFlight = true;
+    let themeRefreshInFlight = false;
+    const refreshThemeOptions = async () => {
+        if (!setThemeSel || themeRefreshInFlight) return;
+        themeRefreshInFlight = true;
         try {
-            await rebuildThemePackOptions(setThemePackSel, {
-                desiredId: setThemePackSel.value,
+            await rebuildThemePackOptions(setThemeSel, {
+                desiredId: setThemeSel.value,
                 forceReload: true,
             });
         } finally {
-            themePackRefreshInFlight = false;
+            themeRefreshInFlight = false;
         }
+    };
+
+    const applyThemeFromControls = async (opts: { silent?: boolean } = {}) => {
+        if (!setThemeSel) return;
+        const auto = !!setThemeAuto?.checked;
+        setThemeSel.disabled = auto;
+
+        const themeId = setThemeSel.value || DEFAULT_LIGHT_THEME_ID;
+        const mode: 'system' | 'light' | 'dark' = auto ? 'system' : modeForTheme(themeId);
+        setTheme(mode);
+        await selectThemePack(themeId, { silent: opts.silent, mode });
+        if (auto) {
+            setThemeSel.value = getActiveThemeId() || DEFAULT_LIGHT_THEME_ID;
+        }
+        syncThemeTitle();
+    };
+
+    setThemeSel?.addEventListener('pointerdown', () => {
+        if (setThemeAuto?.checked) return;
+        refreshThemeOptions().catch(() => {});
     });
 
     setThemeSel?.addEventListener('change', () => {
-        const v = (setThemeSel.value as ('system'|'dark'|'light')) || 'system';
-        setTheme(v);
+        applyThemeFromControls({ silent: true }).catch(() => {});
     });
 
-    setThemePackSel?.addEventListener('change', async () => {
-        if (!setThemePackSel) return;
-        const choice = setThemePackSel.value || DEFAULT_THEME_ID;
-        try {
-            await selectThemePack(choice);
-        } catch {
-            setThemePackSel.value = DEFAULT_THEME_ID;
-            try { await selectThemePack(DEFAULT_THEME_ID); } catch {}
-        } finally {
-            updateThemePackTitle();
-        }
+    setThemeAuto?.addEventListener('change', () => {
+        applyThemeFromControls({ silent: true }).catch(() => {});
+    });
+
+    window.addEventListener('openvcs:theme-pack-changed', () => {
+        if (!setThemeAuto?.checked || !setThemeSel) return;
+        setThemeSel.value = getActiveThemeId() || DEFAULT_LIGHT_THEME_ID;
+        setThemeSel.disabled = true;
+        syncThemeTitle();
     });
 
     const settingsSave  = modal.querySelector('#settings-save')  as HTMLButtonElement | null;
@@ -202,10 +235,10 @@ export function wireSettings() {
             modal.dataset.currentCfg = JSON.stringify(next);
 
             // Apply visual prefs immediately (no restart): theme, tab width, UI scale, mono font
-            const theme = next.general?.theme || 'system';
-            const pack = next.general?.theme_pack || DEFAULT_THEME_ID;
-            try { await selectThemePack(pack, { silent: true, mode: theme }); } catch {}
+            const theme = (next.general?.theme || 'system') as 'system' | 'light' | 'dark';
+            const pack = String(next.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
             setTheme(theme);
+            try { await selectThemePack(pack, { silent: true, mode: theme }); } catch {}
             try {
                 const root = document.documentElement;
                 const tabw = Number(next?.diff?.tab_width ?? 4);
@@ -227,7 +260,17 @@ export function wireSettings() {
             if (!TAURI.has) return;
             const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
 
-            cur.general = { theme: 'system', theme_pack: DEFAULT_THEME_ID, language: 'system', default_backend: 'git', update_channel: 'stable', reopen_last_repos: true, checks_on_launch: true, telemetry: false, crash_reports: false };
+            cur.general = {
+                theme: 'system',
+                theme_pack: DEFAULT_LIGHT_THEME_ID,
+                language: 'system',
+                default_backend: 'git',
+                update_channel: 'stable',
+                reopen_last_repos: true,
+                checks_on_launch: true,
+                telemetry: false,
+                crash_reports: false,
+            };
             cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, fetch_on_focus: true, allow_hooks: 'ask', respect_core_autocrlf: true, merge_commit_message_template: "Merged branch '{branch:source}' into '{branch:target}'" };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
@@ -237,8 +280,8 @@ export function wireSettings() {
 
             await TAURI.invoke('set_global_settings', { cfg: cur });
             await loadSettingsIntoForm(modal);
-            try { await selectThemePack(DEFAULT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
             setTheme('system');
+            try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
             notify('Defaults restored');
         } catch { notify('Failed to restore defaults'); }
     });
@@ -253,10 +296,14 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
 
     const o: GlobalSettings = { ...base };
 
+    const autoTheme = !!get<HTMLInputElement>('#set-theme-auto')?.checked;
+    const themePack = get<HTMLSelectElement>('#set-theme')?.value || DEFAULT_LIGHT_THEME_ID;
+    const theme = autoTheme ? 'system' : modeForTheme(themePack);
+
     o.general = {
         ...o.general,
-        theme: (get<HTMLSelectElement>('#set-theme')?.value) as any,
-        theme_pack: get<HTMLSelectElement>('#set-theme-pack')?.value || DEFAULT_THEME_ID,
+        theme,
+        theme_pack: themePack || DEFAULT_LIGHT_THEME_ID,
         language: get<HTMLSelectElement>('#set-language')?.value,
         default_backend: (get<HTMLSelectElement>('#set-default-backend')?.value || 'git') as any,
         update_channel: (() => { const v = get<HTMLSelectElement>('#set-update-channel')?.value; return v === 'beta' ? 'nightly' : v; })(),
@@ -343,16 +390,27 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
 
     m.dataset.currentCfg = JSON.stringify(cfg);
 
-    const themePackSel = get<HTMLSelectElement>('#set-theme-pack');
-    if (themePackSel) {
-        const desired = cfg.general?.theme_pack;
-        await rebuildThemePackOptions(themePackSel, {
-            desiredId: typeof desired === 'string' ? desired : undefined,
+    const themeSel = get<HTMLSelectElement>('#set-theme');
+    const elAuto = get<HTMLInputElement>('#set-theme-auto');
+    const themePref = (cfg.general?.theme || 'system') as 'system'|'light'|'dark';
+
+    if (elAuto) elAuto.checked = themePref === 'system';
+
+    if (themeSel) {
+        let desiredId = String(cfg.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
+        if (desiredId.trim().toLowerCase() === DEFAULT_THEME_ID) {
+            desiredId = themePref === 'dark' ? DEFAULT_DARK_THEME_ID : DEFAULT_LIGHT_THEME_ID;
+        }
+        await rebuildThemePackOptions(themeSel, {
+            desiredId,
             forceReload: true,
         });
+        themeSel.disabled = themePref === 'system';
+        if (themePref === 'system') {
+            themeSel.value = getActiveThemeId() || themeSel.value;
+        }
     }
 
-    const elTheme = get<HTMLSelectElement>('#set-theme'); if (elTheme) elTheme.value = toKebab(cfg.general?.theme);
     const elLang  = get<HTMLSelectElement>('#set-language'); if (elLang) elLang.value = toKebab(cfg.general?.language);
     const elDefBe = get<HTMLSelectElement>('#set-default-backend'); if (elDefBe) elDefBe.value = toKebab(cfg.general?.default_backend || 'git');
     const elChan  = get<HTMLSelectElement>('#set-update-channel'); if (elChan) {

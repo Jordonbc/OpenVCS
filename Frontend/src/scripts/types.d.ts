@@ -113,6 +113,8 @@ export interface ThemeSummary {
     description?: string;
     version?: string;
     author?: string;
+    appearance?: 'light' | 'dark' | 'both' | string;
+    paired_with?: string;
     source?: 'built-in' | 'user' | string;
 }
 
