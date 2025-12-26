@@ -3,7 +3,6 @@ use log::warn;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
-    env,
     fs::{self, File},
     io::{Read, Seek},
     path::{Path, PathBuf},
@@ -13,54 +12,8 @@ use zip::ZipArchive;
 use crate::plugins;
 
 const MANIFEST_NAME: &str = "theme.json";
-const BUILT_IN_THEMES_DIR_NAME: &str = "built-in-themes";
 
 pub const DEFAULT_THEME_ID: &str = "default";
-
-fn built_in_theme_dirs() -> Vec<PathBuf> {
-    let mut candidates: Vec<PathBuf> = Vec::new();
-
-    if let Ok(explicit) = env::var("OPENVCS_BUILTIN_THEMES") {
-        let trimmed = explicit.trim();
-        if !trimmed.is_empty() {
-            candidates.push(PathBuf::from(trimmed));
-        }
-    }
-
-    if let Ok(current_dir) = env::current_dir() {
-        candidates.push(current_dir.join(BUILT_IN_THEMES_DIR_NAME));
-    }
-
-    if let Ok(exe) = env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            candidates.push(dir.join(BUILT_IN_THEMES_DIR_NAME));
-            candidates.push(dir.join("resources").join(BUILT_IN_THEMES_DIR_NAME));
-            #[cfg(target_os = "macos")]
-            if let Some(parent) = dir.parent() {
-                candidates.push(parent.join("Resources").join(BUILT_IN_THEMES_DIR_NAME));
-            }
-        }
-    }
-
-    candidates.push(PathBuf::from("Backend").join(BUILT_IN_THEMES_DIR_NAME));
-    candidates.push(PathBuf::from(BUILT_IN_THEMES_DIR_NAME));
-    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(BUILT_IN_THEMES_DIR_NAME));
-
-    let mut seen = HashSet::new();
-    candidates
-        .into_iter()
-        .filter_map(|path| {
-            if !seen.insert(path.clone()) {
-                return None;
-            }
-            if path.is_dir() {
-                Some(path)
-            } else {
-                None
-            }
-        })
-        .collect()
-}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -290,105 +243,6 @@ pub fn list_themes() -> Vec<ThemeSummary> {
     let mut seen = HashSet::new();
     seen.insert(DEFAULT_THEME_ID.to_string());
 
-    let built_in_dirs = built_in_theme_dirs();
-    if built_in_dirs.is_empty() {
-        warn!("themes: no built-in theme directories located");
-    }
-    for dir in built_in_dirs {
-        match fs::read_dir(&dir) {
-            Ok(entries) => {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_file() && is_zip_file(&path) {
-                        match read_manifest(&path) {
-                            Ok(manifest) => {
-                                let id_trimmed = manifest.id.trim();
-                                if id_trimmed.is_empty() {
-                                    warn!(
-                                        "themes: theme {} ignored due to empty id",
-                                        path.display()
-                                    );
-                                    continue;
-                                }
-                                let norm = id_trimmed.to_ascii_lowercase();
-                                if seen.contains(&norm) {
-                                    warn!(
-                                        "themes: duplicate theme id `{}` ignored (file {})",
-                                        id_trimmed,
-                                        path.display()
-                                    );
-                                    continue;
-                                }
-                                seen.insert(norm);
-
-                                let appearance = clean_mode(manifest.appearance.clone())
-                                    .or_else(|| infer_mode_from_manifest(&manifest));
-                                let paired_with = clean_opt(manifest.paired_with.clone())
-                                    .filter(|p| !p.eq_ignore_ascii_case(id_trimmed));
-                                summaries.push(ThemeSummary {
-                                    id: id_trimmed.to_string(),
-                                    name: manifest.name.trim().to_string(),
-                                    description: clean_opt(manifest.description),
-                                    version: clean_opt(manifest.version),
-                                    author: clean_opt(manifest.author),
-                                    appearance,
-                                    paired_with,
-                                    source: ThemeSource::BuiltIn,
-                                    plugin_id: None,
-                                });
-                            }
-                            Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
-                        }
-                    } else if path.is_dir() {
-                        if !path.join(MANIFEST_NAME).is_file() {
-                            continue;
-                        }
-                        match read_manifest_from_directory(&path) {
-                            Ok(manifest) => {
-                                let id_trimmed = manifest.id.trim();
-                                if id_trimmed.is_empty() {
-                                    warn!(
-                                        "themes: theme {} ignored due to empty id",
-                                        path.display()
-                                    );
-                                    continue;
-                                }
-                                let norm = id_trimmed.to_ascii_lowercase();
-                                if seen.contains(&norm) {
-                                    warn!(
-                                        "themes: duplicate theme id `{}` ignored (dir {})",
-                                        id_trimmed,
-                                        path.display()
-                                    );
-                                    continue;
-                                }
-                                seen.insert(norm);
-
-                                let appearance = clean_mode(manifest.appearance.clone())
-                                    .or_else(|| infer_mode_from_manifest(&manifest));
-                                let paired_with = clean_opt(manifest.paired_with.clone())
-                                    .filter(|p| !p.eq_ignore_ascii_case(id_trimmed));
-                                summaries.push(ThemeSummary {
-                                    id: id_trimmed.to_string(),
-                                    name: manifest.name.trim().to_string(),
-                                    description: clean_opt(manifest.description),
-                                    version: clean_opt(manifest.version),
-                                    author: clean_opt(manifest.author),
-                                    appearance,
-                                    paired_with,
-                                    source: ThemeSource::BuiltIn,
-                                    plugin_id: None,
-                                });
-                            }
-                            Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
-                        }
-                    }
-                }
-            }
-            Err(err) => warn!("themes: failed to list {}: {}", dir.display(), err),
-        }
-    }
-
     for theme_dir in plugins::plugin_theme_dirs() {
         match read_manifest_from_directory(&theme_dir.path) {
             Ok(manifest) => {
@@ -491,60 +345,6 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
     let requested = id.trim();
     if requested.is_empty() || requested.eq_ignore_ascii_case(DEFAULT_THEME_ID) {
         return Ok(default_theme_payload());
-    }
-
-    for dir in built_in_theme_dirs() {
-        match fs::read_dir(&dir) {
-            Ok(entries) => {
-                let mut directories = Vec::new();
-                let mut archives = Vec::new();
-
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        directories.push(path);
-                    } else if path.is_file() && is_zip_file(&path) {
-                        archives.push(path);
-                    }
-                }
-
-                for path in directories {
-                    if !path.join(MANIFEST_NAME).is_file() {
-                        continue;
-                    }
-                    match read_manifest_from_directory(&path) {
-                        Ok(manifest) => {
-                            if manifest.id.trim().eq_ignore_ascii_case(requested) {
-                                return build_theme_payload_from_directory(
-                                    &path,
-                                    manifest,
-                                    ThemeSource::BuiltIn,
-                                    None,
-                                );
-                            }
-                        }
-                        Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
-                    }
-                }
-
-                for path in archives {
-                    match read_manifest(&path) {
-                        Ok(manifest) => {
-                            if manifest.id.trim().eq_ignore_ascii_case(requested) {
-                                return build_theme_payload_from_path(
-                                    &path,
-                                    manifest,
-                                    ThemeSource::BuiltIn,
-                                    None,
-                                );
-                            }
-                        }
-                        Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
-                    }
-                }
-            }
-            Err(err) => warn!("themes: failed to list {}: {}", dir.display(), err),
-        }
     }
 
     let dir = themes_dir();
