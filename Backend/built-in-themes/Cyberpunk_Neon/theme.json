@@ -6,7 +6,11 @@
   "author": "OpenVCS Team",
   "styles": {
     "global": ["global.css"],
+    "system": ["system.css"],
     "dark": ["dark.css"],
     "light": ["light.css"]
+  },
+  "markup": {
+    "body": ["background.html"]
   }
 }

@@ -1,20 +1,24 @@
 /* Cyberpunk neon dark palette */
-:root {
+:root[data-theme-pack="cyberpunk"] {
+  color-scheme: dark;
   --bg:#05010a;
-  --surface:#0b0414;
-  --surface-2:#160625;
-  --text:#f6f3ff;
-  --muted:#8481a5;
-  --border:rgba(57,243,255,.28);
-  --accent:#ff3bc7;
-  --accent-2:#38f1ff;
+  --surface:#0a0316;
+  --surface-2:#130525;
+  --text:#f7f3ff;
+  --muted:#8f8aa8;
+  --border:rgba(0,229,255,.18);
+  --accent:#ff2bd6;
+  --accent-2:#00e5ff;
   --danger:#ff5f87;
   --success:#46ffb1;
   --warning:#ffd447;
-  --shadow-1:0 18px 48px rgba(35,9,52,.72);
-  --control-bg:#0d0618;
-  --control-bg-focus:#180a29;
+  --shadow-1:
+    0 28px 70px rgba(0,0,0,.66),
+    0 0 0 1px color-mix(in oklab, var(--accent-2) 22%, transparent),
+    0 0 42px color-mix(in oklab, var(--accent) 16%, transparent);
+  --control-bg:#0b0517;
+  --control-bg-focus:#120927;
   --control-border:#2a0e40;
-  --control-text:#f6f3ff;
-  --control-muted:#7a7799;
+  --control-text:#f7f3ff;
+  --control-muted:#8f8aa8;
 }

@@ -1,20 +1,24 @@
 /* Cyberpunk neon light palette */
-[data-theme="light"] {
-  --bg:#f8f5ff;
+:root[data-theme-pack="cyberpunk"][data-theme="light"] {
+  color-scheme: light;
+  --bg:#fbf7ff;
   --surface:#ffffff;
-  --surface-2:#f1ecff;
-  --text:#211433;
-  --muted:#5a4c72;
-  --border:rgba(194,24,242,.2);
+  --surface-2:#f4efff;
+  --text:#1f1630;
+  --muted:#5a4d73;
+  --border:rgba(194,24,242,.18);
   --accent:#c218f2;
   --accent-2:#13b8ff;
   --danger:#d64574;
   --success:#1bbf7d;
   --warning:#d78f29;
-  --shadow-1:0 16px 42px rgba(194,24,242,.18);
+  --shadow-1:
+    0 20px 56px rgba(18,8,42,.16),
+    0 0 0 1px color-mix(in oklab, var(--accent) 18%, transparent),
+    0 0 36px color-mix(in oklab, var(--accent-2) 14%, transparent);
   --control-bg:#fdfaff;
-  --control-bg-focus:#f2eaff;
+  --control-bg-focus:#f3ebff;
   --control-border:#c2a8ff;
-  --control-text:#211433;
-  --control-muted:#5a4c72;
+  --control-text:#1f1630;
+  --control-muted:#5a4d73;
 }

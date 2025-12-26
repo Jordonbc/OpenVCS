@@ -9,6 +9,9 @@
     --bg:#242424; --surface:#2a2a2a; --surface-2:#313131;
     --text:#e6e6e6; --muted:#b7bcc5; --border:rgba(255,255,255,.08);
 
+    /* Global scaling (used via root font-size) */
+    --ui-scale:1;
+
     /* Brand / status */
     --accent:#3584e4; --accent-2:#4c94ea;
     --danger:#c01c28; --success:#26a269; --warning:#f59e0b;
@@ -30,7 +33,7 @@
 
     /* Global type defaults */
     font-family:var(--font);
-    font-size:15px;
+    font-size:calc(15px * var(--ui-scale, 1));
 }
 
 /* Dark theme (explicit) */
