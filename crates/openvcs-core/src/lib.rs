@@ -100,6 +100,13 @@ pub trait Vcs: Send + Sync {
     /// Unified diff for a specific commit (vs its first parent, or empty tree if none).
     fn diff_commit(&self, rev: &str) -> Result<Vec<String>>;
 
+    // history ops
+    /// Apply the given commit on top of the current HEAD (e.g. `git cherry-pick`).
+    fn cherry_pick(&self, _rev: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+
+    /// Create a new commit that reverses the given commit (e.g. `git revert`).
+    fn revert_commit(&self, _rev: &str, _no_edit: bool) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+
     /// Details about a conflicted file (three-way content where available).
     fn conflict_details(&self, _path: &Path) -> Result<models::ConflictDetails> {
         Err(VcsError::Unsupported(self.id()))
@@ -199,6 +206,7 @@ pub trait Vcs: Send + Sync {
     fn lfs_pull(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
     fn lfs_prune(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
     fn lfs_track(&self, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn lfs_untrack(&self, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
     fn lfs_is_tracked(&self, _path: &Path) -> Result<bool> { Err(VcsError::Unsupported(self.id())) }
 }
 

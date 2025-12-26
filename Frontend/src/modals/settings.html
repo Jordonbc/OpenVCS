@@ -9,7 +9,7 @@
 
         <section class="sheet-body">
             <!-- Sidebar -->
-            <nav aria-label="Settings sections">
+            <nav class="list-scroll" aria-label="Settings sections">
                 <ul id="settings-nav" class="list">
                     <li><button class="seg-btn active" data-section="general">General</button></li>
                     <li><button class="seg-btn" data-section="git">Git</button></li>
@@ -24,24 +24,22 @@
 
             <!-- Panels -->
             <div id="settings-panels">
+                <div id="settings-panels-scroll" class="list-scroll">
                 <!-- General -->
                 <form class="panel-form" data-panel="general">
                     <div class="group">
-                        <label for="set-theme">Theme
-                            <span class="help-tip" title="Choose app appearance: System follows OS theme.">?</span>
+                        <label class="checkbox">
+                            <input type="checkbox" id="set-theme-auto" />
+                            Sync to system
+                            <span class="help-tip" title="When enabled, OpenVCS follows your OS light/dark preference.">?</span>
                         </label>
-                        <select id="set-theme">
-                            <option value="system">System</option>
-                            <option value="light">Light</option>
-                            <option value="dark">Dark</option>
-                        </select>
                     </div>
 
                     <div class="group">
-                        <label for="set-theme-pack">Theme pack
-                            <span class="help-tip" title="Drop theme ZIP files into the themes folder to make them available.">?</span>
+                        <label for="set-theme">Theme
+                            <span class="help-tip" title="Select a light/dark theme. When Sync to system is enabled, the dropdown follows the OS and is locked.">?</span>
                         </label>
-                        <select id="set-theme-pack">
+                        <select id="set-theme">
                             <option value="default">Default</option>
                         </select>
                     </div>
@@ -336,6 +334,8 @@
                 </form>
 
                 <!-- Footer actions -->
+                </div>
+
                 <div class="sheet-actions">
                     <button class="tbtn" id="settings-reset" type="button">Restore defaults</button>
                     <div style="flex:1"></div>

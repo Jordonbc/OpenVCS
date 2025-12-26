@@ -1,6 +1,7 @@
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
+import { observeOverlayScrollbars } from './lib/scrollbars';
 import { prefs, state, hasRepo } from './state/state';
 import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
@@ -18,7 +19,7 @@ import { openRepoSettings } from './features/repoSettings';
 import { initSshHostkeyPrompt } from './features/sshHostkey';
 import { initSshAuthPrompt } from './features/sshAuth';
 import { initOutputLogViewIfRequested } from './features/outputLog';
-import { DEFAULT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
+import { DEFAULT_LIGHT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
 
 const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
 
@@ -36,6 +37,7 @@ const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
 async function boot() {
     // If launched as the Output Log window, render that view and skip the main app UI.
     if (await initOutputLogViewIfRequested()) return;
+    observeOverlayScrollbars();
     // theme & basic layout
     // Prefer native settings for theme; fall back to current in-memory default
     if (TAURI.has) {
@@ -44,12 +46,12 @@ async function boot() {
                 const cfg = await TAURI.invoke<any>('get_global_settings');
                 const themeMode = cfg?.general?.theme as ('dark'|'light'|'system'|undefined);
                 const modeForPack = themeMode ?? 'system';
-                const themePack = String(cfg?.general?.theme_pack || DEFAULT_THEME_ID);
+                const themePack = String(cfg?.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
                 try { await refreshAvailableThemes(); } catch { /* best effort */ }
                 try {
                     await selectThemePack(themePack, { silent: true, mode: modeForPack });
                 } catch {
-                    await selectThemePack(DEFAULT_THEME_ID, { silent: true, mode: modeForPack });
+                    await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: modeForPack });
                 }
                 setTheme(themeMode || prefs.theme);
                 try {
@@ -62,7 +64,7 @@ async function boot() {
                     if (mono) root.style.setProperty('--mono', mono);
                 } catch { /* best-effort */ }
             } catch {
-                try { await selectThemePack(DEFAULT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
+                try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
                 setTheme(prefs.theme);
             }
         })();
@@ -231,9 +233,9 @@ async function boot() {
         if (!anchor) return;
         updateFetchUI();
         const r = anchor.getBoundingClientRect();
+        fetchPop.hidden = false;
         fetchPop.style.left = `${r.left}px`;
         fetchPop.style.top  = `${r.bottom + 6}px`;
-        fetchPop.hidden = false;
         fetchCaret.setAttribute('aria-expanded', 'true');
 
         const firstEnabled = fetchList?.querySelector<HTMLElement>('li[role="menuitem"][aria-disabled="false"]');

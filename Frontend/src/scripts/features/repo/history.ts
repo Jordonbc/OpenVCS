@@ -2,11 +2,93 @@ import { escapeHtml } from '../../lib/dom';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
 import { notify } from '../../lib/notify';
-import { state, statusClass, statusLabel } from '../../state/state';
+import { prefs, state, statusClass, statusLabel } from '../../state/state';
 import { diffEl, diffHeadPath, diffMetaLfs, listEl, countEl } from './context';
 import { renderHunksReadonly, highlightRow } from './diffView';
 import { hydrateStatus, hydrateCommits } from './hydrate';
 import { updateCommitButton } from './commit';
+import { openCherryPick } from '../cherryPick';
+
+const historyActionsBtn = document.getElementById('history-actions-btn') as HTMLButtonElement | null;
+
+function updateHistoryActionsVisibility() {
+    if (!historyActionsBtn) return;
+    const on = prefs.tab === 'history' && !!(state as any)?.selectedCommit?.id;
+    historyActionsBtn.hidden = !on;
+    historyActionsBtn.disabled = !on;
+}
+
+async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: { isAhead?: boolean }) {
+    const items: CtxItem[] = [];
+    items.push({
+        label: 'Copy hash', action: async () => {
+            try {
+                await navigator.clipboard.writeText(commit?.id || '');
+                notify('Hash copied');
+            } catch { /* ignore */ }
+        },
+    });
+
+    if (TAURI.has && commit?.id) {
+        items.push({ label: '---' });
+        items.push({ label: 'Cherry-pick to branch…', action: async () => openCherryPick(commit) });
+        items.push({
+            label: 'Revert (reverse) commit…', action: async () => {
+                const short = String(commit.id || '').slice(0, 7);
+                const ok = window.confirm(`Revert commit ${short}? This will create a new commit that undoes its changes.`);
+                if (!ok) return;
+                try {
+                    await TAURI.invoke('git_revert_commit', { id: commit.id });
+                    notify('Revert complete');
+                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                } catch (e) {
+                    const msg = String(e || '').trim();
+                    notify(msg ? `Revert failed: ${msg}` : 'Revert failed');
+                }
+            },
+        });
+    }
+
+    if (opts?.isAhead) {
+        items.push({ label: '---' });
+        items.push({
+            label: 'Undo to this commit', action: async () => {
+                if (!TAURI.has) return;
+                try {
+                    await TAURI.invoke('git_undo_to_commit', { id: commit.id });
+                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                } catch { notify('Undo failed'); }
+            },
+        });
+    }
+
+    buildCtxMenu(items, x, y);
+}
+
+// Allow opening commit actions from the commit details view (no extra toolbar button).
+if (diffEl && !(diffEl as any).__historyCtxWired) {
+    (diffEl as any).__historyCtxWired = true;
+    diffEl.addEventListener('contextmenu', (ev) => {
+        if (prefs.tab !== 'history') return;
+        const commit = (state as any)?.selectedCommit;
+        if (!commit) return;
+        ev.preventDefault();
+        const x = (ev as MouseEvent).clientX, y = (ev as MouseEvent).clientY;
+        void openCommitActionsMenu(commit, x, y);
+    });
+}
+
+if (historyActionsBtn && !(historyActionsBtn as any).__wired) {
+    (historyActionsBtn as any).__wired = true;
+    historyActionsBtn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        const commit = (state as any)?.selectedCommit;
+        if (!commit) return;
+        const r = historyActionsBtn.getBoundingClientRect();
+        void openCommitActionsMenu(commit, Math.round(r.right), Math.round(r.bottom + 6));
+    });
+    window.addEventListener('app:tab-changed', () => updateHistoryActionsVisibility());
+}
 
 function setLfsBadge(isLfs: boolean) {
     if (!diffMetaLfs) return;
@@ -39,6 +121,8 @@ export function renderHistoryList(query: string): boolean {
         list.innerHTML = '<li class="row" aria-disabled="true"><div class="file">No commits loaded.</div></li>';
         head.textContent = 'Commit details';
         diff.innerHTML = '';
+        (state as any).selectedCommit = null;
+        updateHistoryActionsVisibility();
         updateCommitButton();
         return true;
     }
@@ -87,24 +171,7 @@ export function renderHistoryList(query: string): boolean {
         li.addEventListener('contextmenu', (ev) => {
             ev.preventDefault();
             const x = (ev as MouseEvent).clientX, y = (ev as MouseEvent).clientY;
-            const items: CtxItem[] = [];
-            items.push({ label: 'Copy hash', action: async () => {
-                try {
-                    await navigator.clipboard.writeText(c.id || '');
-                    notify('Hash copied');
-                } catch { /* ignore */ }
-            }});
-            if (isAhead) {
-                items.push({ label: '---' });
-                items.push({ label: 'Undo to this commit', action: async () => {
-                    if (!TAURI.has) return;
-                    try {
-                        await TAURI.invoke('git_undo_to_commit', { id: c.id });
-                        await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
-                    } catch { notify('Undo failed'); }
-                }});
-            }
-            buildCtxMenu(items, x, y);
+            void openCommitActionsMenu(c, x, y, { isAhead });
         });
         list.appendChild(li);
     });
@@ -115,6 +182,8 @@ export function renderHistoryList(query: string): boolean {
 
 export async function selectHistory(commit: any, index: number) {
     if (!diffHeadPath || !diffEl) return;
+    (state as any).selectedCommit = commit || null;
+    updateHistoryActionsVisibility();
     highlightRow(index);
     setLfsBadge(false);
     const id = (commit.id || '').slice(0, 7);
@@ -169,15 +238,73 @@ export async function selectHistory(commit: any, index: number) {
         const sideEl = diffEl.querySelector('.commit-files');
         const contentEl = diffEl.querySelector('.commit-content');
         if (sideEl && contentEl) {
+            const selectCommitFile = (idx: number) => {
+                if (idx < 0 || idx >= files.length) return;
+                sideEl.querySelectorAll('.row').forEach((r) => r.classList.remove('active'));
+                const row = sideEl.querySelector<HTMLElement>(`.row[data-idx="${idx}"]`);
+                row?.classList.add('active');
+                hydrateLfsBadgeForPath(files[idx]?.path || '');
+                (contentEl as HTMLElement).innerHTML = renderHunksReadonly(files[idx].lines);
+            };
+
             sideEl.querySelectorAll<HTMLElement>('.row').forEach((row) => {
                 row.addEventListener('click', () => {
-                    sideEl.querySelectorAll('.row').forEach((r) => r.classList.remove('active'));
-                    row.classList.add('active');
                     const idx = Number(row.getAttribute('data-idx') || '-1');
-                    if (idx >= 0 && idx < files.length) {
-                        hydrateLfsBadgeForPath(files[idx]?.path || '');
-                        (contentEl as HTMLElement).innerHTML = renderHunksReadonly(files[idx].lines);
-                    }
+                    selectCommitFile(idx);
+                });
+
+                row.addEventListener('contextmenu', (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    const idx = Number(row.getAttribute('data-idx') || '-1');
+                    if (idx < 0 || idx >= files.length) return;
+                    selectCommitFile(idx);
+
+                    const file = files[idx];
+                    const x = (ev as MouseEvent).clientX, y = (ev as MouseEvent).clientY;
+                    const items: CtxItem[] = [];
+                    items.push({
+                        label: 'Copy path', action: async () => {
+                            try {
+                                await navigator.clipboard.writeText(file?.path || '');
+                                notify('Path copied');
+                            } catch { /* ignore */ }
+                        },
+                    });
+
+                    items.push({ label: '---' });
+                    items.push({
+                        label: 'Revert this file', action: async () => {
+                            if (!TAURI.has) {
+                                notify('Revert requires the desktop app');
+                                return;
+                            }
+                            const block = Array.isArray(file?.lines) ? file.lines : [];
+                            const isBinary = block.some((l) => /GIT binary patch|Binary files /i.test(String(l || '')));
+                            if (isBinary) {
+                                notify('Cannot revert binary diffs yet');
+                                return;
+                            }
+
+                            const short = String(commit?.id || '').slice(0, 7) || '(unknown)';
+                            const ok = window.confirm(`Revert changes from commit ${short} for:\n${file?.path || '(unknown file)'}\n\nThis applies a reverse patch to your working tree and index.`);
+                            if (!ok) return;
+
+                            let patch = block.join('\n');
+                            if (patch && !patch.endsWith('\n')) patch += '\n';
+
+                            try {
+                                await TAURI.invoke('git_discard_patch', { patch });
+                                notify('Reverted file changes (review in Changes tab)');
+                                await Promise.allSettled([hydrateStatus()]);
+                            } catch (e) {
+                                const msg = String(e || '').trim();
+                                notify(msg ? `Revert failed: ${msg}` : 'Revert failed');
+                            }
+                        },
+                    });
+
+                    buildCtxMenu(items, x, y);
                 });
             });
         }

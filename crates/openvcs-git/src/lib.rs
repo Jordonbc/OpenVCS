@@ -1035,6 +1035,28 @@ impl Vcs for GitSystem {
         Ok(out.trim_end().lines().map(|l| l.to_string()).collect())
     }
 
+    fn cherry_pick(&self, rev: &str) -> Result<()> {
+        let rev = rev.trim();
+        if rev.is_empty() {
+            return Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg: "commit id cannot be empty".into() });
+        }
+        log::info!("git-system: cherry_pick {}", rev);
+        Self::run_git(Some(&self.workdir), ["cherry-pick", "--no-edit", rev])
+    }
+
+    fn revert_commit(&self, rev: &str, no_edit: bool) -> Result<()> {
+        let rev = rev.trim();
+        if rev.is_empty() {
+            return Err(VcsError::Backend { backend: GIT_SYSTEM_ID, msg: "commit id cannot be empty".into() });
+        }
+        log::info!("git-system: revert_commit {} no_edit={}", rev, no_edit);
+        if no_edit {
+            Self::run_git(Some(&self.workdir), ["revert", "--no-edit", rev])
+        } else {
+            Self::run_git(Some(&self.workdir), ["revert", rev])
+        }
+    }
+
     fn conflict_details(&self, path: &Path) -> Result<ConflictDetails> {
         log::trace!("git-system: conflict_details {}", path.display());
         let p = Self::path_str(path)?;
@@ -1352,6 +1374,22 @@ impl Vcs for GitSystem {
             self.workdir.display()
         );
         let mut args: Vec<String> = vec!["lfs".into(), "track".into(), "--".into()];
+        for p in paths {
+            args.push(Self::path_str(p)?.to_string());
+        }
+        Self::run_git(Some(&self.workdir), args)
+    }
+
+    fn lfs_untrack(&self, paths: &[PathBuf]) -> Result<()> {
+        if paths.is_empty() {
+            return Ok(());
+        }
+        log::info!(
+            "git-system: lfs_untrack count={} in {}",
+            paths.len(),
+            self.workdir.display()
+        );
+        let mut args: Vec<String> = vec!["lfs".into(), "untrack".into(), "--".into()];
         for p in paths {
             args.push(Self::path_str(p)?.to_string());
         }

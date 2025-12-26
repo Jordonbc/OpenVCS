@@ -6,6 +6,22 @@ import { setAppearanceMode } from '../themes';
 
 const workGrid = qs<HTMLElement>('.work');
 const resizer  = qs<HTMLElement>('#resizer');
+const SYSTEM_DARK_MQ = matchMedia('(prefers-color-scheme: dark)');
+let systemSyncActive = false;
+let systemSyncWired = false;
+
+function ensureSystemSyncListener() {
+    if (systemSyncWired) return;
+    systemSyncWired = true;
+    SYSTEM_DARK_MQ.addEventListener('change', () => {
+        if (!systemSyncActive) return;
+        const root = document.documentElement;
+        const effective: 'light' | 'dark' = SYSTEM_DARK_MQ.matches ? 'dark' : 'light';
+        root.setAttribute('data-theme', effective);
+        prefs.theme = effective;
+        setAppearanceMode('system');
+    });
+}
 
 const tabs      = qsa<HTMLButtonElement>('.tab');
 const commitBox = qs<HTMLElement>('#commit');
@@ -17,19 +33,19 @@ const aheadBehindEl = qs<HTMLElement>('#ahead-behind');
 
 export function setTheme(theme: 'dark'|'light'|'system') {
     const root = document.documentElement;
-    if (theme === 'system') {
-        root.removeAttribute('data-theme');
-    } else {
-        root.setAttribute('data-theme', theme);
-    }
-    // (optional) mirror into settings select if present
+    ensureSystemSyncListener();
+    systemSyncActive = theme === 'system';
+    const effective: 'light' | 'dark' = theme === 'system' ? (SYSTEM_DARK_MQ.matches ? 'dark' : 'light') : theme;
+    root.setAttribute('data-theme', effective);
+
+    // (optional) mirror into settings controls if present
+    const auto = document.querySelector<HTMLInputElement>('#settings-modal #set-theme-auto');
+    if (auto) auto.checked = theme === 'system';
     const sel = document.querySelector<HTMLSelectElement>('#settings-modal #set-theme');
-    if (sel) sel.value = theme;
+    if (sel) sel.disabled = theme === 'system';
     setAppearanceMode(theme);
     // Track effective theme in-memory (native settings persist it)
-    prefs.theme = theme === 'system'
-        ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-        : theme;
+    prefs.theme = effective;
     savePrefs();
 }
 
@@ -61,6 +77,9 @@ export function setTab(tab: 'changes'|'history'|'stash') {
         tab === 'history' ? 'Commit details'
       : tab === 'stash'   ? 'Stash details'
                           : 'Select a file to view changes');
+    const historyActionsBtn = qs<HTMLButtonElement>('#history-actions-btn');
+    if (historyActionsBtn && tab !== 'history') historyActionsBtn.hidden = true;
+    window.dispatchEvent(new CustomEvent('app:tab-changed', { detail: tab }));
 }
 
 export function bindTabs(onChange: (t: 'changes'|'history'|'stash') => void) {

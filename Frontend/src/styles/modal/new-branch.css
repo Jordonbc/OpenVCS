@@ -34,7 +34,7 @@
 
 #new-branch-modal .name-hint code{
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    background:rgba(255,255,255,.06);
+    background:color-mix(in oklab, var(--text) 8%, transparent);
     border:1px solid var(--border);
     padding:2px 6px;
     border-radius:6px;

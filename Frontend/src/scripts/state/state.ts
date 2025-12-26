@@ -20,6 +20,7 @@ export const state = {
     branches: [] as Branch[],       // list of branches
     files: [] as FileStatus[],      // working tree status
     commits: [] as CommitItem[],    // recent commits
+    selectedCommit: null as CommitItem | null,
     stash: [] as StashItem[],       // stash entries
     ahead: 0 as number,             // commits ahead of upstream
     behind: 0 as number,            // commits behind upstream

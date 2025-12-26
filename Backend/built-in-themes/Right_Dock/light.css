@@ -1,0 +1,31 @@
+:root[data-theme-pack="right-dock"][data-theme="light"]{
+    --bg:#f4f6fb;
+    --surface:#ffffff;
+    --surface-2:#eef2fb;
+    --text:#1a2233;
+    --muted:#5c667a;
+    --border:rgba(17,23,33,0.12);
+    --accent:#d9592a;
+    --accent-2:#f07f4a;
+    --danger:#d65252;
+    --success:#2f9d78;
+    --warning:#d9862a;
+    --shadow-1:0 12px 25px rgba(15,23,34,0.12);
+}
+
+:root[data-theme-pack="right-dock"][data-theme="light"] .left-head{
+    background:rgba(10,20,40,0.04);
+}
+
+:root[data-theme-pack="right-dock"][data-theme="light"] .row:hover{
+    background:rgba(217,89,42,0.08);
+}
+
+:root[data-theme-pack="right-dock"][data-theme="light"] .row.active{
+    background:rgba(217,89,42,0.16);
+    border-color:rgba(217,89,42,0.32);
+}
+
+:root[data-theme-pack="right-dock"][data-theme="light"] .btn.primary{
+    color:#ffffff;
+}

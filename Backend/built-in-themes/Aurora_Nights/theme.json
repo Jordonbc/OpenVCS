@@ -1,0 +1,12 @@
+{
+  "id": "aurora",
+  "name": "Aurora Nights",
+  "description": "Soft teal and magenta contrast for twilight hacking.",
+  "version": "0.1.0",
+  "author": "OpenVCS Team",
+  "styles": {
+    "global": ["global.css"],
+    "dark": ["dark.css"],
+    "light": ["light.css"]
+  }
+}

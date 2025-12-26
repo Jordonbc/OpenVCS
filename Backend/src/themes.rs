@@ -77,6 +77,10 @@ pub struct ThemeSummary {
     pub version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub appearance: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paired_with: Option<String>,
     pub source: ThemeSource,
 }
 
@@ -124,6 +128,10 @@ struct RawThemeManifest {
     version: Option<String>,
     #[serde(default)]
     author: Option<String>,
+    #[serde(default)]
+    appearance: Option<String>,
+    #[serde(default)]
+    paired_with: Option<String>,
     #[serde(default)]
     styles: RawThemeStyles,
     #[serde(default)]
@@ -226,6 +234,26 @@ fn clean_opt(value: Option<String>) -> Option<String> {
     })
 }
 
+fn clean_mode(value: Option<String>) -> Option<String> {
+    let raw = clean_opt(value)?;
+    let norm = raw.to_ascii_lowercase();
+    match norm.as_str() {
+        "light" | "dark" | "both" => Some(norm),
+        _ => None,
+    }
+}
+
+fn infer_mode_from_manifest(manifest: &RawThemeManifest) -> Option<String> {
+    let has_light = !manifest.styles.light.is_empty();
+    let has_dark = !manifest.styles.dark.is_empty();
+    let has_system = !manifest.styles.system.is_empty();
+    match (has_light, has_dark, has_system) {
+        (true, false, false) => Some("light".to_string()),
+        (false, true, false) => Some("dark".to_string()),
+        _ => Some("both".to_string()),
+    }
+}
+
 pub fn default_theme_summary() -> ThemeSummary {
     ThemeSummary {
         id: DEFAULT_THEME_ID.to_string(),
@@ -233,6 +261,8 @@ pub fn default_theme_summary() -> ThemeSummary {
         description: Some("Built-in OpenVCS theme".to_string()),
         version: None,
         author: None,
+        appearance: None,
+        paired_with: None,
         source: ThemeSource::BuiltIn,
     }
 }
@@ -285,12 +315,18 @@ pub fn list_themes() -> Vec<ThemeSummary> {
                                 }
                                 seen.insert(norm);
 
+                                let appearance = clean_mode(manifest.appearance.clone())
+                                    .or_else(|| infer_mode_from_manifest(&manifest));
+                                let paired_with = clean_opt(manifest.paired_with.clone())
+                                    .filter(|p| !p.eq_ignore_ascii_case(id_trimmed));
                                 summaries.push(ThemeSummary {
                                     id: id_trimmed.to_string(),
                                     name: manifest.name.trim().to_string(),
                                     description: clean_opt(manifest.description),
                                     version: clean_opt(manifest.version),
                                     author: clean_opt(manifest.author),
+                                    appearance,
+                                    paired_with,
                                     source: ThemeSource::BuiltIn,
                                 });
                             }
@@ -318,12 +354,18 @@ pub fn list_themes() -> Vec<ThemeSummary> {
                                 }
                                 seen.insert(norm);
 
+                                let appearance = clean_mode(manifest.appearance.clone())
+                                    .or_else(|| infer_mode_from_manifest(&manifest));
+                                let paired_with = clean_opt(manifest.paired_with.clone())
+                                    .filter(|p| !p.eq_ignore_ascii_case(id_trimmed));
                                 summaries.push(ThemeSummary {
                                     id: id_trimmed.to_string(),
                                     name: manifest.name.trim().to_string(),
                                     description: clean_opt(manifest.description),
                                     version: clean_opt(manifest.version),
                                     author: clean_opt(manifest.author),
+                                    appearance,
+                                    paired_with,
                                     source: ThemeSource::BuiltIn,
                                 });
                             }
@@ -361,12 +403,18 @@ pub fn list_themes() -> Vec<ThemeSummary> {
                     }
                     seen.insert(norm);
 
+                    let appearance =
+                        clean_mode(manifest.appearance.clone()).or_else(|| infer_mode_from_manifest(&manifest));
+                    let paired_with = clean_opt(manifest.paired_with.clone())
+                        .filter(|p| !p.eq_ignore_ascii_case(id_trimmed));
                     summaries.push(ThemeSummary {
                         id: id_trimmed.to_string(),
                         name: manifest.name.trim().to_string(),
                         description: clean_opt(manifest.description),
                         version: clean_opt(manifest.version),
                         author: clean_opt(manifest.author),
+                        appearance,
+                        paired_with,
                         source: ThemeSource::User,
                     });
                 }
@@ -553,18 +601,23 @@ fn build_theme_payload_from_reader<R>(
     manifest: RawThemeManifest,
     source: ThemeSource,
 ) -> Result<ThemePayload, String>
-where
-    R: Read + Seek,
-{
-    let (styles, markup, scripts) = read_assets_from_reader(name, reader, &manifest)?;
-    let summary = ThemeSummary {
-        id: manifest.id.trim().to_string(),
-        name: manifest.name.trim().to_string(),
-        description: clean_opt(manifest.description),
-        version: clean_opt(manifest.version),
-        author: clean_opt(manifest.author),
-        source,
-    };
+	where
+	    R: Read + Seek,
+	{
+	    let (styles, markup, scripts) = read_assets_from_reader(name, reader, &manifest)?;
+	    let appearance = clean_mode(manifest.appearance.clone()).or_else(|| infer_mode_from_manifest(&manifest));
+	    let paired_with = clean_opt(manifest.paired_with.clone())
+	        .filter(|p| !p.eq_ignore_ascii_case(manifest.id.trim()));
+	    let summary = ThemeSummary {
+	        id: manifest.id.trim().to_string(),
+	        name: manifest.name.trim().to_string(),
+	        description: clean_opt(manifest.description),
+	        version: clean_opt(manifest.version),
+	        author: clean_opt(manifest.author),
+	        appearance,
+	        paired_with,
+	        source,
+	    };
 
     Ok(ThemePayload {
         summary,
@@ -714,12 +767,17 @@ fn build_theme_payload_from_directory(
     source: ThemeSource,
 ) -> Result<ThemePayload, String> {
     let (styles, markup, scripts) = read_assets_from_directory(path, &manifest)?;
+    let appearance = clean_mode(manifest.appearance.clone()).or_else(|| infer_mode_from_manifest(&manifest));
+    let paired_with = clean_opt(manifest.paired_with.clone())
+        .filter(|p| !p.eq_ignore_ascii_case(manifest.id.trim()));
     let summary = ThemeSummary {
         id: manifest.id.trim().to_string(),
         name: manifest.name.trim().to_string(),
         description: clean_opt(manifest.description),
         version: clean_opt(manifest.version),
         author: clean_opt(manifest.author),
+        appearance,
+        paired_with,
         source,
     };
 
