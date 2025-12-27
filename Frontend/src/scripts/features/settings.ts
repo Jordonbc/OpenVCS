@@ -964,7 +964,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         if (!TAURI.has) return;
         try {
             const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
-            const next: GlobalSettings = { ...(cur || {}) };
+            let next: GlobalSettings = { ...(cur || {}) };
             next.plugins = { ...(next.plugins || {}) };
             next.plugins.disabled = Array.from(state.disabled.values());
             await TAURI.invoke('set_global_settings', { cfg: next });
@@ -973,8 +973,26 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             try {
                 await refreshAvailableThemes();
                 const themeSel = modal.querySelector<HTMLSelectElement>('#set-theme');
+                const themeAuto = modal.querySelector<HTMLInputElement>('#set-theme-auto');
                 if (themeSel && document.activeElement !== themeSel) {
-                    await rebuildThemePackOptions(themeSel, { desiredId: themeSel.value, forceReload: false });
+                    const before = String(themeSel.value || DEFAULT_LIGHT_THEME_ID).trim() || DEFAULT_LIGHT_THEME_ID;
+                    await rebuildThemePackOptions(themeSel, { desiredId: before, forceReload: false });
+
+                    const after = String(themeSel.value || DEFAULT_LIGHT_THEME_ID).trim() || DEFAULT_LIGHT_THEME_ID;
+                    if (after.toLowerCase() !== before.toLowerCase()) {
+                        const auto = !!themeAuto?.checked;
+                        const mode: 'system' | 'light' | 'dark' = auto ? 'system' : modeForTheme(after);
+                        setTheme(mode);
+                        try { await selectThemePack(after, { silent: true, mode }); } catch {}
+
+                        next.general = { ...(next.general || {}) };
+                        next.general.theme = mode;
+                        next.general.theme_pack = after;
+                        try {
+                            await TAURI.invoke('set_global_settings', { cfg: next });
+                            modal.dataset.currentCfg = JSON.stringify(next);
+                        } catch {}
+                    }
                 }
             } catch {}
         } catch {
@@ -1002,6 +1020,31 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             if (!row) return;
             const id = String(row.dataset.plugin || '').trim();
             if (!id) return;
+
+            const isCheckbox = !!target?.closest('input[type="checkbox"]');
+            if (!isCheckbox) {
+                const now = Date.now();
+                const idKey = id.toLowerCase();
+                const lastAt = Number((state as any).lastClickAt ?? 0) || 0;
+                const lastIdKey = String((state as any).lastClickIdKey ?? '');
+                if (lastIdKey === idKey && now - lastAt <= 450) {
+                    const checkbox =
+                        row.querySelector<HTMLInputElement>('input[type="checkbox"][data-plugin-id]') ||
+                        pane.querySelector<HTMLInputElement>(`input[type="checkbox"][data-plugin-id="${CSS.escape(id)}"]`);
+                    if (checkbox) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        checkbox.checked = !checkbox.checked;
+                        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    (state as any).lastClickAt = 0;
+                    (state as any).lastClickIdKey = '';
+                    return;
+                }
+                (state as any).lastClickAt = now;
+                (state as any).lastClickIdKey = idKey;
+            }
+
             state.selectedId = id;
             renderList();
         });
