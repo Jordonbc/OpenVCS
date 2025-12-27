@@ -59,7 +59,7 @@ Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 - 🌐 **Sync & remotes:** set remote URL, fetch (single/all), pull (fast-forward only), push.
 - 🗃 **Git LFS helpers:** fetch/pull/prune, track/untrack, inspect tracked paths.
 - 🔐 **SSH helpers:** trust host keys, list/add SSH agent keys, key discovery.
-- 🎨 **Themes:** built-in and user themes; theme packs via `.zip`; plugin-provided themes.
+- 🎨 **Themes:** built-in light/dark themes, plus plugin-provided themes (standalone theme `.zip` packs are not supported).
 - 🧩 **Plugins (early):** local plugins with manifests, hooks/actions, and UI contributions (no store yet).
 - 🔄 **Updater & logs:** update check/install, VCS output log window, app log tail/clear.
 
@@ -193,7 +193,7 @@ OpenVCS is **open source** and community‑driven. Contributions of all kinds ar
 ### Proposed Roadmap (High‑level)
 
 - **MVP:** Stable Git workflows; Linux and Windows builds; core UI.
-- **Theming:** Planned for later; will likely begin with simple theme packs (e.g. zip files in a directory) before exploring an initial gallery or store.
+- **Theming:** Planned for later; starting with plugin-provided theme packs before exploring a gallery or store.
 - **Plugins:** Planned for later; will likely begin as simple plugin bundles (e.g. zip files in a directory) before evolving toward a store with discovery UX.
 - **Multi‑VCS:** Add at least one non‑Git backend to validate the abstraction.
 
