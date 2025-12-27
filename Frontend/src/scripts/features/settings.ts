@@ -810,7 +810,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         const tags = Array.isArray(plugin.tags)
             ? plugin.tags.map((t) => String(t || '').trim()).filter(Boolean)
             : [];
-        const themeCount = Number(plugin.theme_dirs ?? 0) || 0;
 
         const head = document.createElement('div');
         head.className = 'plugin-detail-head';
@@ -819,7 +818,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         title.className = 'plugin-detail-title';
         const nameEl = document.createElement('div');
         nameEl.className = 'name';
-        nameEl.textContent = String(plugin.name || id).trim();
+        nameEl.textContent = String(plugin.name || '').trim() || 'Unnamed plugin';
         const metaEl = document.createElement('div');
         metaEl.className = 'meta';
         metaEl.textContent = [
@@ -853,26 +852,27 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             body.appendChild(desc);
         }
 
-        const kv = document.createElement('div');
-        kv.className = 'plugin-detail-kv';
-        const row = (k: string, v: string) => {
-            const kEl = document.createElement('div');
-            kEl.className = 'k';
-            kEl.textContent = k;
-            const vEl = document.createElement('div');
-            vEl.className = 'v';
-            vEl.textContent = v;
-            kv.appendChild(kEl);
-            kv.appendChild(vEl);
-        };
-        row('ID', id);
-        row('Code', plugin.entry ? 'Yes' : 'No');
-        row('Themes', themeCount ? String(themeCount) : '0');
-        if (category) row('Category', category);
-        if (tags.length) row('Tags', tags.join(', '));
-        if (author) row('Author', author);
-        if (version) row('Version', version);
-        body.appendChild(kv);
+        const kvRows: Array<[string, string]> = [];
+        if (category) kvRows.push(['Category', category]);
+        if (tags.length) kvRows.push(['Tags', tags.join(', ')]);
+        if (author) kvRows.push(['Author', author]);
+        if (version) kvRows.push(['Version', version]);
+        if (kvRows.length) {
+            const kv = document.createElement('div');
+            kv.className = 'plugin-detail-kv';
+            const row = (k: string, v: string) => {
+                const kEl = document.createElement('div');
+                kEl.className = 'k';
+                kEl.textContent = k;
+                const vEl = document.createElement('div');
+                vEl.className = 'v';
+                vEl.textContent = v;
+                kv.appendChild(kEl);
+                kv.appendChild(vEl);
+            };
+            for (const [k, v] of kvRows) row(k, v);
+            body.appendChild(kv);
+        }
 
         detailEl.appendChild(head);
         detailEl.appendChild(body);
@@ -917,13 +917,13 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
             const icon = document.createElement('div');
             icon.className = 'plugin-icon';
-            const initial = String(plugin.name || id).trim().slice(0, 1).toUpperCase() || 'P';
+            const initial = (String(plugin.name || '').trim() || 'Plugin').slice(0, 1).toUpperCase() || 'P';
             icon.textContent = initial;
             const iconUrl = String(plugin.icon_data_url || '').trim();
             if (iconUrl) {
                 const img = document.createElement('img');
                 img.className = 'plugin-icon-img';
-                img.alt = `${String(plugin.name || id).trim() || id} icon`;
+                img.alt = `${String(plugin.name || '').trim() || 'Plugin'} icon`;
                 img.decoding = 'async';
                 img.loading = 'lazy';
                 img.src = iconUrl;
@@ -943,13 +943,13 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             text.className = 'plugin-row-text';
             const name = document.createElement('div');
             name.className = 'name';
-            name.textContent = String(plugin.name || id).trim();
+            name.textContent = String(plugin.name || '').trim() || 'Unnamed plugin';
             const meta = document.createElement('div');
             meta.className = 'meta';
             const version = String(plugin.version || '').trim();
             const author = String(plugin.author || '').trim();
             const category = String(plugin.category || '').trim();
-            meta.textContent = [category, author, version ? `v${version}` : ''].filter(Boolean).join(' • ') || id;
+            meta.textContent = [category, author, version ? `v${version}` : ''].filter(Boolean).join(' • ') || ' ';
             text.appendChild(name);
             text.appendChild(meta);
 
@@ -960,7 +960,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             checkbox.type = 'checkbox';
             checkbox.checked = isEnabled;
             checkbox.dataset.pluginId = id;
-            checkbox.setAttribute('aria-label', `Enable ${plugin.name || id}`);
+            checkbox.setAttribute('aria-label', `Enable ${String(plugin.name || '').trim() || 'plugin'}`);
 
             li.appendChild(main);
             li.appendChild(checkbox);
