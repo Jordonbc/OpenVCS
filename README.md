@@ -48,16 +48,29 @@ Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 - 🪟 **Windows** builds supported
 - 🍏 **macOS** not currently planned (community interest welcome)
 
-## Features (Planned & In‑Progress)
+## Features (Current)
 
-- 🔗 **Git backend** (initial) with common operations (clone, add, commit, branch, push/pull, fetch, stash).
-- 🔌 **Backend abstraction** to enable additional VCS (Mercurial/SVN/Perforce/Fossil) in future releases.
-- 🎨 **Theming** (planned): custom themes and a potential **Theme Store**.
-- 🧩 **Plugins** (planned): plugin API with a potential **Plugin Store**.
-- 🖼 **Modern UI** focused on clarity and speed; keyboard‑first workflows.
-- 📁 **Multi‑repo** quality‑of‑life features (recents, quick switch, project workspaces).
+- 🔗 **Git support** with a selectable backend (**system Git** by default; **libgit2** optional).
+- 📁 **Repo workflows:** clone, open existing repos, recent repos list, optional reopen of last repo on launch.
+- ✅ **Status & diffs:** working tree status, per-file diff, commit diff, discard changes.
+- 🧩 **Staging & commits:** stage files, partial staging/commits via patch, commit from index.
+- 🌿 **Branches:** list local/remote, create, checkout, rename, delete, set upstream tracking.
+- 🔀 **Merge & conflicts:** merge branches, conflict details, checkout ours/theirs, save merged result, launch external merge tool, abort/continue merge.
+- 🧳 **Stash:** list, push, apply, pop, drop, show.
+- 🌐 **Sync & remotes:** set remote URL, fetch (single/all), pull (fast-forward only), push.
+- 🗃 **Git LFS helpers:** fetch/pull/prune, track/untrack, inspect tracked paths.
+- 🔐 **SSH helpers:** trust host keys, list/add SSH agent keys, key discovery.
+- 🎨 **Themes:** built-in and user themes; theme packs via `.zip`; plugin-provided themes.
+- 🧩 **Plugins (early):** local plugins with manifests, hooks/actions, and UI contributions (no store yet).
+- 🔄 **Updater & logs:** update check/install, VCS output log window, app log tail/clear.
 
-> This roadmap is exploratory; priorities may shift as we collect community feedback.
+## Planned / Exploratory
+
+- 🔌 **More VCS backends** via the existing backend abstraction.
+- 🧩 **Plugin & theme store** (distribution/discovery UX).
+- 🖼 **More UI workflows** and keyboard-first polish.
+
+> Priorities may shift as we iterate on feedback and stabilize the core Git workflows.
 
 ---
 
