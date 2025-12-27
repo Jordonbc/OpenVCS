@@ -544,6 +544,176 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
     if (!pane || !listEl || !detailEl || !groupLabelEl || !searchEl || !enableAllBtn || !disableAllBtn) return;
 
+    type ParsedPluginQuery = {
+        terms: string[];
+        authors: string[];
+        tags: string[];
+    };
+
+    const tokenize = (value: string): string[] => String(value || '')
+        .toLowerCase()
+        .split(/[^a-z0-9._-]+/g)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+    const normalizeQueryToken = (value: string): string => String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^[,.;:!?]+/g, '')
+        .replace(/[,.;:!?]+$/g, '');
+
+    const parsePluginQuery = (raw: string): ParsedPluginQuery => {
+        const parsed: ParsedPluginQuery = { terms: [], authors: [], tags: [] };
+        const input = String(raw || '').trim();
+        if (!input) return parsed;
+
+        const re = /"([^"]+)"|'([^']+)'|(\S+)/g;
+        for (const match of input.matchAll(re)) {
+            const token = normalizeQueryToken(match[1] ?? match[2] ?? match[3] ?? '');
+            if (!token) continue;
+            if (token.startsWith('@')) {
+                const author = normalizeQueryToken(token.slice(1));
+                if (author) parsed.authors.push(author);
+                continue;
+            }
+            if (token.startsWith('#')) {
+                const tag = normalizeQueryToken(token.slice(1));
+                if (tag) parsed.tags.push(tag);
+                continue;
+            }
+            parsed.terms.push(token);
+        }
+        return parsed;
+    };
+
+    const damerauLevenshtein = (aRaw: string, bRaw: string): number => {
+        const a = String(aRaw || '');
+        const b = String(bRaw || '');
+        if (a === b) return 0;
+        const aLen = a.length;
+        const bLen = b.length;
+        if (!aLen) return bLen;
+        if (!bLen) return aLen;
+
+        const da: Record<string, number> = {};
+        const maxDist = aLen + bLen;
+        const score: number[][] = Array.from({ length: aLen + 2 }, () => new Array(bLen + 2).fill(0));
+        score[0][0] = maxDist;
+        for (let i = 0; i <= aLen; i++) {
+            score[i + 1][0] = maxDist;
+            score[i + 1][1] = i;
+        }
+        for (let j = 0; j <= bLen; j++) {
+            score[0][j + 1] = maxDist;
+            score[1][j + 1] = j;
+        }
+
+        for (let i = 1; i <= aLen; i++) {
+            let db = 0;
+            for (let j = 1; j <= bLen; j++) {
+                const i1 = da[b[j - 1]] ?? 0;
+                const j1 = db;
+                let cost = 1;
+                if (a[i - 1] === b[j - 1]) {
+                    cost = 0;
+                    db = j;
+                }
+
+                score[i + 1][j + 1] = Math.min(
+                    score[i][j] + cost, // substitution
+                    score[i + 1][j] + 1, // insertion
+                    score[i][j + 1] + 1, // deletion
+                    score[i1][j1] + (i - i1 - 1) + 1 + (j - j1 - 1), // transposition
+                );
+            }
+            da[a[i - 1]] = i;
+        }
+        return score[aLen + 1][bLen + 1];
+    };
+
+    const maxDistanceFor = (len: number): number => {
+        if (len <= 3) return 0;
+        if (len <= 5) return 1;
+        if (len <= 9) return 2;
+        return 3;
+    };
+
+    const bestTokenScore = (needleRaw: string, hayTokens: string[]): number => {
+        const needle = normalizeQueryToken(needleRaw);
+        if (!needle) return 0;
+        if (!hayTokens.length) return 0;
+        if (needle.length <= 3) {
+            for (const tok of hayTokens) {
+                if (tok.includes(needle)) return 1;
+            }
+            return 0;
+        }
+
+        let best = 0;
+        for (const tok of hayTokens) {
+            if (!tok) continue;
+            if (tok.includes(needle)) return 1;
+            const maxLen = Math.max(needle.length, tok.length);
+            const maxDist = maxDistanceFor(Math.min(maxLen, 64));
+            if (maxDist <= 0) continue;
+            const dist = damerauLevenshtein(needle.slice(0, 64), tok.slice(0, 64));
+            if (dist > maxDist) continue;
+            const sim = 1 - dist / maxLen;
+            if (sim > best) best = sim;
+        }
+        return best;
+    };
+
+    const pluginSearchScore = (plugin: PluginSummary, parsed: ParsedPluginQuery): number | null => {
+        const id = String(plugin?.id || '').trim();
+        const name = String(plugin?.name || '').trim();
+        if (!id || !name) return null;
+
+        const author = String(plugin?.author || '').trim();
+        const category = String(plugin?.category || '').trim();
+        const description = String(plugin?.description || '').trim();
+        const tags = Array.isArray(plugin?.tags) ? plugin.tags.map((t) => String(t || '').trim()).filter(Boolean) : [];
+
+        const authorTokens = tokenize(author);
+        const tagTokens = tags.flatMap((t) => tokenize(t));
+        const fields: Array<{ weight: number; tokens: string[] }> = [
+            { weight: 3.6, tokens: tokenize(name) },
+            { weight: 3.0, tokens: tokenize(id) },
+            { weight: 2.2, tokens: authorTokens },
+            { weight: 2.0, tokens: tagTokens },
+            { weight: 1.6, tokens: tokenize(category) },
+            { weight: 1.0, tokens: tokenize(description) },
+        ];
+
+        let score = 0;
+
+        for (const qAuthor of parsed.authors) {
+            const s = bestTokenScore(qAuthor, authorTokens);
+            if (!s) return null;
+            score += s * 4.0;
+        }
+
+        for (const qTag of parsed.tags) {
+            const s = bestTokenScore(qTag, tagTokens);
+            if (!s) return null;
+            score += s * 3.0;
+        }
+
+        for (const term of parsed.terms) {
+            let best = 0;
+            for (const field of fields) {
+                const s = bestTokenScore(term, field.tokens);
+                if (!s) continue;
+                const weighted = s * field.weight;
+                if (weighted > best) best = weighted;
+            }
+            if (!best) return null;
+            score += best;
+        }
+
+        return score;
+    };
+
     listEl.replaceChildren();
     detailEl.replaceChildren();
     detailEl.classList.add('empty');
@@ -587,34 +757,40 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     };
     state.list = Array.isArray(list) ? list : [];
     state.disabled = disabled;
-    state.query = String(searchEl.value || '').trim().toLowerCase();
-
-    const matchesQuery = (p: PluginSummary, q: string): boolean => {
-        if (!q) return true;
-        const tags = Array.isArray(p.tags) ? String(p.tags.join(' ') || '') : '';
-        const hay = [
-            p.name,
-            p.id,
-            p.author,
-            p.description,
-            p.category,
-            tags,
-        ].filter(Boolean).join(' ').toLowerCase();
-        return hay.includes(q);
-    };
+    state.query = String(searchEl.value || '').trim();
 
     const enabledCount = state.list.filter((p) => p?.id && !state.disabled.has(String(p.id).trim().toLowerCase())).length;
     groupLabelEl.textContent = `Installed (${enabledCount} of ${state.list.length} enabled)`;
 
-    const filtered = state.list.filter((p) => p && p.id && p.name && matchesQuery(p, state.query));
+    const getFiltered = (): PluginSummary[] => {
+        const q = String(state.query || '').trim();
+        const base = state.list.filter((p) => p && p.id && p.name);
+        if (!q) return base;
 
-    const ensureSelection = () => {
+        const parsed = parsePluginQuery(q);
+        const hasParts = parsed.terms.length || parsed.authors.length || parsed.tags.length;
+        if (!hasParts) return base;
+
+        const scored: Array<{ plugin: PluginSummary; score: number }> = [];
+        for (const p of base) {
+            const s = pluginSearchScore(p, parsed);
+            if (typeof s === 'number' && s > 0) scored.push({ plugin: p, score: s });
+        }
+
+        scored.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return String(a.plugin.name || '').localeCompare(String(b.plugin.name || ''), undefined, { sensitivity: 'base' });
+        });
+        return scored.map((x) => x.plugin);
+    };
+
+    const ensureSelection = (filtered: PluginSummary[]) => {
         const current = state.selectedId ? String(state.selectedId).trim() : '';
         if (current && filtered.some((p) => String(p.id).trim() === current)) return;
         state.selectedId = filtered.length ? String(filtered[0].id).trim() : null;
     };
 
-    const renderDetails = () => {
+    const renderDetails = (filtered: PluginSummary[]) => {
         detailEl.replaceChildren();
         const selectedId = state.selectedId ? String(state.selectedId).trim() : '';
         const plugin = state.list.find((p) => String(p?.id || '').trim() === selectedId) || null;
@@ -703,6 +879,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     };
 
     const renderList = () => {
+        const filtered = getFiltered();
         listEl.replaceChildren();
         if (!state.list.length) {
             const li = document.createElement('li');
@@ -710,7 +887,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             li.setAttribute('aria-selected', 'false');
             li.textContent = 'No plugins installed.';
             listEl.appendChild(li);
-            renderDetails();
+            renderDetails(filtered);
             return;
         }
 
@@ -720,7 +897,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             li.setAttribute('aria-selected', 'false');
             li.textContent = 'No matching plugins.';
             listEl.appendChild(li);
-            renderDetails();
+            renderDetails(filtered);
             return;
         }
 
@@ -771,7 +948,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             listEl.appendChild(li);
         }
 
-        renderDetails();
+        renderDetails(filtered);
     };
 
     const updateCounts = () => {
@@ -779,7 +956,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         groupLabelEl.textContent = `Installed (${enabledNow} of ${state.list.length} enabled)`;
     };
 
-    ensureSelection();
+    ensureSelection(getFiltered());
     (modal as any)[stateKey] = state;
     renderList();
 
@@ -837,14 +1014,20 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             if (el.checked) state.disabled.delete(id);
             else state.disabled.add(id);
             updateCounts();
-            renderDetails();
+            renderDetails(getFiltered());
             persistPluginsDisabled().catch(() => {});
         });
 
         searchEl.addEventListener('input', () => {
-            state.query = String(searchEl.value || '').trim().toLowerCase();
-            ensureSelection();
+            state.query = String(searchEl.value || '').trim();
+            ensureSelection(getFiltered());
             renderList();
+        });
+
+        searchEl.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            e.stopPropagation();
         });
 
         enableAllBtn.addEventListener('click', () => {
