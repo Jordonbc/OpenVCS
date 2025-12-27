@@ -216,10 +216,15 @@ pub struct Plugins {
     /// IDs are matched case-insensitively.
     #[serde(default)]
     pub disabled: Vec<String>,
+    /// Plugin ids that are installed and explicitly enabled.
+    ///
+    /// IDs are matched case-insensitively.
+    #[serde(default)]
+    pub enabled: Vec<String>,
 }
 impl Default for Plugins {
     fn default() -> Self {
-        Self { disabled: Vec::new() }
+        Self { disabled: Vec::new(), enabled: Vec::new() }
     }
 }
 
@@ -478,6 +483,23 @@ impl AppConfig {
                 .filter(|s| !s.is_empty())
                 .filter(|s| seen.insert(s.clone()))
                 .collect();
+        }
+        {
+            let mut seen = std::collections::HashSet::new();
+            self.plugins.enabled = self
+                .plugins
+                .enabled
+                .iter()
+                .map(|s| s.trim().to_ascii_lowercase())
+                .filter(|s| !s.is_empty())
+                .filter(|s| seen.insert(s.clone()))
+                .collect();
+        }
+        // If a plugin is in both lists, treat it as disabled.
+        if !self.plugins.disabled.is_empty() && !self.plugins.enabled.is_empty() {
+            let disabled: std::collections::HashSet<&str> =
+                self.plugins.disabled.iter().map(|s| s.as_str()).collect();
+            self.plugins.enabled.retain(|id| !disabled.contains(id.as_str()));
         }
 
         // UX

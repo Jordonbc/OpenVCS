@@ -1,11 +1,41 @@
-use crate::{settings, state::AppState, themes};
+use crate::{plugins, settings, state::AppState, themes};
 use std::collections::HashSet;
 use tauri::State;
+
+fn enabled_plugins(cfg: &settings::AppConfig) -> HashSet<String> {
+    let disabled: HashSet<String> = cfg
+        .plugins
+        .disabled
+        .iter()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .collect();
+    let enabled: HashSet<String> = cfg
+        .plugins
+        .enabled
+        .iter()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .collect();
+
+    let mut out = HashSet::new();
+    for p in plugins::list_plugins() {
+        let id = p.id.trim().to_ascii_lowercase();
+        if id.is_empty() {
+            continue;
+        }
+        if disabled.contains(&id) {
+            continue;
+        }
+        if enabled.contains(&id) || p.default_enabled {
+            out.insert(id);
+        }
+    }
+    out
+}
 
 #[tauri::command]
 pub fn list_themes(state: State<'_, AppState>) -> Vec<themes::ThemeSummary> {
     let cfg: settings::AppConfig = state.config();
-    let disabled: HashSet<String> = cfg.plugins.disabled.into_iter().collect();
+    let enabled = enabled_plugins(&cfg);
 
     themes::list_themes()
         .into_iter()
@@ -18,7 +48,7 @@ pub fn list_themes(state: State<'_, AppState>) -> Vec<themes::ThemeSummary> {
                 .as_ref()
                 .map(|s| s.trim().to_ascii_lowercase())
                 .unwrap_or_default();
-            !plugin_id.is_empty() && !disabled.contains(&plugin_id)
+            !plugin_id.is_empty() && enabled.contains(&plugin_id)
         })
         .collect()
 }
@@ -26,7 +56,7 @@ pub fn list_themes(state: State<'_, AppState>) -> Vec<themes::ThemeSummary> {
 #[tauri::command]
 pub fn load_theme(state: State<'_, AppState>, id: String) -> Result<themes::ThemePayload, String> {
     let cfg: settings::AppConfig = state.config();
-    let disabled: HashSet<String> = cfg.plugins.disabled.into_iter().collect();
+    let enabled = enabled_plugins(&cfg);
 
     let payload = themes::load_theme(id.trim())?;
     if matches!(payload.summary.source, themes::ThemeSource::Plugin) {
@@ -36,7 +66,7 @@ pub fn load_theme(state: State<'_, AppState>, id: String) -> Result<themes::Them
             .as_ref()
             .map(|s| s.trim().to_ascii_lowercase())
             .unwrap_or_default();
-        if !plugin_id.is_empty() && disabled.contains(&plugin_id) {
+        if !plugin_id.is_empty() && !enabled.contains(&plugin_id) {
             return Err(format!("theme `{}` belongs to a disabled plugin", payload.summary.id));
         }
     }

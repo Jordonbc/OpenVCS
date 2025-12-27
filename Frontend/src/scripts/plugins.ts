@@ -11,6 +11,7 @@ export interface PluginSummary {
     version?: string;
     author?: string;
     entry?: string;
+    default_enabled?: boolean;
     theme_dirs?: number;
     icon_data_url?: string;
 }
@@ -88,9 +89,18 @@ const registeredThemeSummaries = new Map<string, ThemeSummary>();
 
 let initialized = false;
 let disabledPlugins = new Set<string>();
+let enabledPlugins = new Set<string>();
 
 function normalizeId(value: string): string {
     return String(value || '').trim().toLowerCase();
+}
+
+function isPluginEnabled(summary: PluginSummary): boolean {
+    const id = normalizeId(summary?.id || '');
+    if (!id) return false;
+    if (disabledPlugins.has(id)) return false;
+    if (enabledPlugins.has(id)) return true;
+    return !!summary?.default_enabled;
 }
 
 function clearPluginScripts() {
@@ -380,10 +390,13 @@ export async function initPlugins(): Promise<void> {
 
     try {
         const cfg = await TAURI.invoke<GlobalSettings>('get_global_settings');
-        const ids = Array.isArray(cfg?.plugins?.disabled) ? cfg.plugins!.disabled! : [];
-        disabledPlugins = new Set(ids.map((s) => normalizeId(s)).filter(Boolean));
+        const disabledIds = Array.isArray(cfg?.plugins?.disabled) ? cfg.plugins!.disabled! : [];
+        const enabledIds = Array.isArray(cfg?.plugins?.enabled) ? cfg.plugins!.enabled! : [];
+        disabledPlugins = new Set(disabledIds.map((s: string) => normalizeId(s)).filter(Boolean));
+        enabledPlugins = new Set(enabledIds.map((s: string) => normalizeId(s)).filter(Boolean));
     } catch {
         disabledPlugins = new Set();
+        enabledPlugins = new Set();
     }
 
     let list: PluginSummary[] = [];
@@ -398,7 +411,7 @@ export async function initPlugins(): Promise<void> {
         const pluginId = String(summary?.id || '').trim();
         if (!pluginId) continue;
         if (!summary.entry) continue;
-        if (disabledPlugins.has(normalizeId(pluginId))) continue;
+        if (!isPluginEnabled(summary)) continue;
 
         try {
             const payload = await TAURI.invoke<PluginPayload>('load_plugin', { id: pluginId });

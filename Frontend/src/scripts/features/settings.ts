@@ -300,7 +300,7 @@ export function wireSettings() {
             cur.performance = { progressive_render: true, gpu_accel: true };
             cur.ux = { ui_scale: 1.0, font_mono: 'monospace', vim_nav: false, color_blind_mode: 'none', recents_limit: 10 };
             cur.logging = { level: 'info', live_viewer: false, retain_archives: 10 };
-            cur.plugins = { disabled: [] };
+            cur.plugins = { disabled: [], enabled: [] };
 
             await TAURI.invoke('set_global_settings', { cfg: cur });
             await loadSettingsIntoForm(modal);
@@ -403,29 +403,38 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
     };
 
     const pluginsStateKey = '__pluginsPanelState';
-    const pluginsState = (root as any)[pluginsStateKey] as { disabled?: Set<string>; list?: PluginSummary[] } | undefined;
-    if (pluginsState?.disabled instanceof Set) {
+    const pluginsState = (root as any)[pluginsStateKey] as { disabled?: Set<string>; enabled?: Set<string>; list?: PluginSummary[] } | undefined;
+    if (pluginsState?.disabled instanceof Set && pluginsState?.enabled instanceof Set) {
         const byLower = new Map<string, string>();
         for (const plugin of Array.isArray(pluginsState.list) ? pluginsState.list : []) {
             const id = String(plugin?.id || '').trim();
             if (!id) continue;
             byLower.set(id.toLowerCase(), id);
         }
+
         const disabled = Array.from(pluginsState.disabled.values())
             .map((id) => String(id || '').trim().toLowerCase())
             .filter(Boolean)
             .map((id) => byLower.get(id) || id);
-        o.plugins = { ...(o.plugins || {}), disabled };
+
+        const enabled = Array.from(pluginsState.enabled.values())
+            .map((id) => String(id || '').trim().toLowerCase())
+            .filter(Boolean)
+            .map((id) => byLower.get(id) || id);
+
+        o.plugins = { ...(o.plugins || {}), disabled, enabled };
     } else {
         const pluginToggles = Array.from(root.querySelectorAll<HTMLInputElement>('[data-plugin-id]'));
         if (pluginToggles.length) {
             const disabled: string[] = [];
+            const enabled: string[] = [];
             for (const toggle of pluginToggles) {
                 const id = String(toggle.dataset.pluginId || '').trim();
                 if (!id) continue;
-                if (!toggle.checked) disabled.push(id);
+                if (toggle.checked) enabled.push(id);
+                else disabled.push(id);
             }
-            o.plugins = { ...(o.plugins || {}), disabled };
+            o.plugins = { ...(o.plugins || {}), disabled, enabled };
         }
     }
 
@@ -741,25 +750,41 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             .map((s) => String(s || '').trim().toLowerCase())
             .filter(Boolean),
     );
+    const enabled = new Set(
+        (Array.isArray(cfg.plugins?.enabled) ? cfg.plugins!.enabled! : [])
+            .map((s) => String(s || '').trim().toLowerCase())
+            .filter(Boolean),
+    );
 
     const stateKey = '__pluginsPanelState';
     type PluginsPanelState = {
         list: PluginSummary[];
         disabled: Set<string>;
+        enabled: Set<string>;
         query: string;
         selectedId: string | null;
     };
     const state: PluginsPanelState = (modal as any)[stateKey] || {
         list: [],
         disabled: new Set<string>(),
+        enabled: new Set<string>(),
         query: '',
         selectedId: null,
     };
     state.list = Array.isArray(list) ? list : [];
     state.disabled = disabled;
+    state.enabled = enabled;
     state.query = String(searchEl.value || '').trim();
 
-    const enabledCount = state.list.filter((p) => p?.id && !state.disabled.has(String(p.id).trim().toLowerCase())).length;
+    const pluginIsEnabled = (p: PluginSummary): boolean => {
+        const id = String(p?.id || '').trim().toLowerCase();
+        if (!id) return false;
+        if (state.disabled.has(id)) return false;
+        if (state.enabled.has(id)) return true;
+        return !!p.default_enabled;
+    };
+
+    const enabledCount = state.list.filter((p) => p?.id && pluginIsEnabled(p)).length;
     groupLabelEl.textContent = `Installed (${enabledCount} of ${state.list.length} enabled)`;
 
     const getFiltered = (): PluginSummary[] => {
@@ -802,8 +827,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         detailEl.classList.remove('empty');
 
         const id = String(plugin.id).trim();
-        const idLower = id.toLowerCase();
-        const isEnabled = !state.disabled.has(idLower);
+        const isEnabledNow = pluginIsEnabled(plugin);
         const version = String(plugin.version || '').trim();
         const author = String(plugin.author || '').trim();
         const category = String(plugin.category || '').trim();
@@ -835,7 +859,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         toggle.type = 'button';
         toggle.className = 'tbtn';
         toggle.id = 'plugins-toggle-selected';
-        toggle.textContent = isEnabled ? 'Disable' : 'Enable';
+        toggle.textContent = isEnabledNow ? 'Disable' : 'Enable';
         toggle.dataset.pluginToggle = id;
         actions.appendChild(toggle);
 
@@ -903,8 +927,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
         for (const plugin of filtered) {
             const id = String(plugin.id).trim();
-            const idLower = id.toLowerCase();
-            const isEnabled = !state.disabled.has(idLower);
+            const isEnabledNow = pluginIsEnabled(plugin);
 
             const li = document.createElement('li');
             li.className = 'plugin-row';
@@ -958,7 +981,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
-            checkbox.checked = isEnabled;
+            checkbox.checked = isEnabledNow;
             checkbox.dataset.pluginId = id;
             checkbox.setAttribute('aria-label', `Enable ${String(plugin.name || '').trim() || 'plugin'}`);
 
@@ -971,7 +994,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     };
 
     const updateCounts = () => {
-        const enabledNow = state.list.filter((p) => p?.id && !state.disabled.has(String(p.id).trim().toLowerCase())).length;
+        const enabledNow = state.list.filter((p) => p?.id && pluginIsEnabled(p)).length;
         groupLabelEl.textContent = `Installed (${enabledNow} of ${state.list.length} enabled)`;
     };
 
@@ -986,6 +1009,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             let next: GlobalSettings = { ...(cur || {}) };
             next.plugins = { ...(next.plugins || {}) };
             next.plugins.disabled = Array.from(state.disabled.values());
+            next.plugins.enabled = Array.from(state.enabled.values());
             await TAURI.invoke('set_global_settings', { cfg: next });
             modal.dataset.currentCfg = JSON.stringify(next);
             await reloadPlugins();
@@ -1073,8 +1097,13 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             if (!el || el.type !== 'checkbox' || !el.dataset.pluginId) return;
             const id = String(el.dataset.pluginId).trim().toLowerCase();
             if (!id) return;
-            if (el.checked) state.disabled.delete(id);
-            else state.disabled.add(id);
+            if (el.checked) {
+                state.disabled.delete(id);
+                state.enabled.add(id);
+            } else {
+                state.enabled.delete(id);
+                state.disabled.add(id);
+            }
             updateCounts();
             renderDetails(getFiltered());
             persistPluginsDisabled().catch(() => {});
@@ -1095,7 +1124,9 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         enableAllBtn.addEventListener('click', () => {
             for (const p of state.list) {
                 const id = String(p?.id || '').trim().toLowerCase();
-                if (id) state.disabled.delete(id);
+                if (!id) continue;
+                state.disabled.delete(id);
+                state.enabled.add(id);
             }
             searchEl.dispatchEvent(new Event('input'));
             updateCounts();
@@ -1105,7 +1136,9 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         disableAllBtn.addEventListener('click', () => {
             for (const p of state.list) {
                 const id = String(p?.id || '').trim().toLowerCase();
-                if (id) state.disabled.add(id);
+                if (!id) continue;
+                state.enabled.delete(id);
+                state.disabled.add(id);
             }
             searchEl.dispatchEvent(new Event('input'));
             updateCounts();

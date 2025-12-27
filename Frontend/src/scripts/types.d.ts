@@ -107,6 +107,7 @@ export interface GlobalSettings {
     };
     plugins?: {
         disabled?: string[];
+        enabled?: string[];
     };
 }
 

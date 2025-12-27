@@ -28,6 +28,9 @@ pub struct PluginSummary {
     pub author: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entry: Option<String>,
+    /// When true, the plugin is enabled by default (unless overridden in settings).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub default_enabled: bool,
     #[serde(default)]
     pub theme_dirs: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -64,7 +67,13 @@ struct RawPluginManifest {
     #[serde(default)]
     entry: Option<String>,
     #[serde(default)]
+    default_enabled: bool,
+    #[serde(default)]
     themes: Vec<String>,
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 fn plugins_dir() -> PathBuf {
@@ -312,6 +321,7 @@ fn manifest_to_summary(plugin_dir: &Path, manifest: RawPluginManifest) -> Plugin
         version: clean_opt(manifest.version),
         author: clean_opt(manifest.author),
         entry: clean_opt(manifest.entry),
+        default_enabled: manifest.default_enabled,
         theme_dirs,
         icon_data_url,
     }
