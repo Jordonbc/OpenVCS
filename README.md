@@ -40,7 +40,6 @@ Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 - 🗂 **Multi‑VCS architecture** - designed to support many backends beyond Git.
 - ⚡ **Lightweight & fast** - native shell via Tauri + Rust.
 - 🧰 **Developer‑first UX** - frictionless flows for common VCS tasks.
-- 🧱 **Local‑first** - avoids heavyweight runtimes and keeps resource use low.
 
 ## Platform Targets
 
