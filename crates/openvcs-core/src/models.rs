@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
@@ -19,8 +19,8 @@ pub struct StatusSummary {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct BranchItem {
-    pub name: String,         // branch short name ("main", "feature/x")
-    pub full_ref: String,     // full ref ("refs/heads/main", "refs/remotes/origin/main")
+    pub name: String,     // branch short name ("main", "feature/x")
+    pub full_ref: String, // full ref ("refs/heads/main", "refs/remotes/origin/main")
     pub kind: BranchKind,
     pub current: bool,
 }
@@ -70,7 +70,7 @@ pub struct StatusPayload {
 /// Lightweight commit representation for lists.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct CommitItem {
-    pub id: String,   // revision/hash as string; backend decides encoding
+    pub id: String, // revision/hash as string; backend decides encoding
     pub msg: String,
     pub meta: String, // e.g., date or short info
     pub author: String,
@@ -118,7 +118,10 @@ pub struct LogQuery {
 
 impl LogQuery {
     pub fn head(limit: u32) -> Self {
-        Self { limit, ..Default::default() }
+        Self {
+            limit,
+            ..Default::default()
+        }
     }
 }
 
@@ -160,9 +163,18 @@ pub struct Capabilities {
 pub enum VcsEvent {
     Info(&'static str),
     RemoteMessage(String),
-    Progress { phase: &'static str, detail: String },
-    Auth { method: &'static str, detail: String },
-    PushStatus { refname: String, status: Option<String> },
+    Progress {
+        phase: &'static str,
+        detail: String,
+    },
+    Auth {
+        method: &'static str,
+        detail: String,
+    },
+    PushStatus {
+        refname: String,
+        status: Option<String>,
+    },
     Warning(String),
     Error(String),
 }

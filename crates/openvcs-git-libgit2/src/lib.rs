@@ -1,16 +1,26 @@
 mod lowlevel;
 
-use std::{path::{Path, PathBuf}, sync::Arc};
 use log::{debug, error, info, trace, warn};
-use openvcs_core::*;
-use openvcs_core::backend_descriptor::{BackendDescriptor, BACKENDS};
+use openvcs_core::backend_descriptor::{BACKENDS, BackendDescriptor};
 use openvcs_core::backend_id::BackendId;
-use openvcs_core::models::{Capabilities, OnEvent, StatusSummary, VcsEvent, StashItem};
+use openvcs_core::models::{Capabilities, OnEvent, StashItem, StatusSummary, VcsEvent};
+use openvcs_core::*;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 pub const GIT_LIBGIT2_ID: BackendId = backend_id!("git-libgit2");
 
 fn caps_static() -> Capabilities {
-    Capabilities { commits: true, branches: true, tags: true, staging: true, push_pull: true, fast_forward: true }
+    Capabilities {
+        commits: true,
+        branches: true,
+        tags: true,
+        staging: true,
+        push_pull: true,
+        fast_forward: true,
+    }
 }
 fn open_factory(path: &Path) -> Result<Arc<dyn Vcs>> {
     GitLibGit2::open(path).map(|v| Arc::new(v) as Arc<dyn Vcs>)
@@ -29,8 +39,8 @@ pub static GIT_LG2_DESC: BackendDescriptor = BackendDescriptor {
 };
 
 /* =========================================================================================
-   Public wrapper: implement the openvcs-core::Vcs trait using the low-level libgit2 code.
-   ========================================================================================= */
+Public wrapper: implement the openvcs-core::Vcs trait using the low-level libgit2 code.
+========================================================================================= */
 
 /// Libgit2-backed VCS implementation.
 pub struct GitLibGit2 {
@@ -42,9 +52,11 @@ impl GitLibGit2 {
         let msg = e.to_string();
         // Loud, because this bubbles up as a user-visible failure.
         error!("backend error: {msg}");
-        VcsError::Backend { backend: GIT_LIBGIT2_ID, msg }
-}
-
+        VcsError::Backend {
+            backend: GIT_LIBGIT2_ID,
+            msg,
+        }
+    }
 
     fn adapt_progress(on: Option<OnEvent>) -> impl Fn(String) + Send + Sync + 'static {
         move |s: String| {
@@ -61,7 +73,10 @@ impl GitLibGit2 {
                 // Auth noise is critical when debugging; warn-level is intentional.
                 warn!("[auth]: {s}");
                 if let Some(cb) = &on {
-                    cb(VcsEvent::Auth { method: "ssh", detail: s });
+                    cb(VcsEvent::Auth {
+                        method: "ssh",
+                        detail: s,
+                    });
                 }
                 return;
             }
@@ -85,34 +100,54 @@ impl GitLibGit2 {
             // Generic progress falls back to trace to avoid spamming normal logs.
             trace!("{s}");
             if let Some(cb) = &on {
-                cb(VcsEvent::Progress { phase: "libgit2", detail: s });
+                cb(VcsEvent::Progress {
+                    phase: "libgit2",
+                    detail: s,
+                });
             }
         }
     }
-
 }
 
 impl Vcs for GitLibGit2 {
-    fn id(&self) -> BackendId { GIT_LIBGIT2_ID }
-    
+    fn id(&self) -> BackendId {
+        GIT_LIBGIT2_ID
+    }
+
     fn caps(&self) -> Capabilities {
-        Capabilities { commits: true, branches: true, tags: true, staging: true, push_pull: true, fast_forward: true }
+        Capabilities {
+            commits: true,
+            branches: true,
+            tags: true,
+            staging: true,
+            push_pull: true,
+            fast_forward: true,
+        }
     }
 
     fn open(path: &Path) -> Result<Self> {
         debug!("git-libgit2: open {}", path.display());
-        lowlevel::Git::open(path).map(|inner| Self { inner }).map_err(Self::map_err)
+        lowlevel::Git::open(path)
+            .map(|inner| Self { inner })
+            .map_err(Self::map_err)
     }
 
     fn clone(url: &str, dest: &Path, _on: Option<OnEvent>) -> Result<Self> {
         info!("git-libgit2: clone url={} dest={}", url, dest.display());
-        lowlevel::Git::clone(url, dest).map(|inner| Self { inner }).map_err(Self::map_err)
+        lowlevel::Git::clone(url, dest)
+            .map(|inner| Self { inner })
+            .map_err(Self::map_err)
     }
 
-    fn workdir(&self) -> &Path { self.inner.workdir() }
+    fn workdir(&self) -> &Path {
+        self.inner.workdir()
+    }
 
     fn current_branch(&self) -> Result<Option<String>> {
-        trace!("git-libgit2: current_branch in {}", self.inner.workdir().display());
+        trace!(
+            "git-libgit2: current_branch in {}",
+            self.inner.workdir().display()
+        );
         self.inner.current_branch().map_err(Self::map_err)
     }
 
@@ -122,8 +157,13 @@ impl Vcs for GitLibGit2 {
     }
 
     fn create_branch(&self, name: &str, checkout: bool) -> Result<()> {
-        info!("git-libgit2: create_branch '{}' checkout={}", name, checkout);
-        self.inner.create_branch(name, checkout).map_err(Self::map_err)
+        info!(
+            "git-libgit2: create_branch '{}' checkout={}",
+            name, checkout
+        );
+        self.inner
+            .create_branch(name, checkout)
+            .map_err(Self::map_err)
     }
 
     fn checkout_branch(&self, name: &str) -> Result<()> {
@@ -143,27 +183,38 @@ impl Vcs for GitLibGit2 {
         let res = self.inner.with_repo(|repo| {
             let cfg = repo.config().map_err(|e| Self::map_err(e))?;
             // Iterate over entries matching remote.*.url
-            let mut iter = cfg.entries(Some("remote.*.url")).map_err(|e| Self::map_err(e))?;
+            let mut iter = cfg
+                .entries(Some("remote.*.url"))
+                .map_err(|e| Self::map_err(e))?;
             while let Some(Ok(entry)) = iter.next() {
                 if let (Some(name), Some(val)) = (entry.name(), entry.value()) {
                     // name like "remote.origin.url" → extract "origin"
-                    let remote_name = name.trim_start_matches("remote.").trim_end_matches(".url").to_string();
+                    let remote_name = name
+                        .trim_start_matches("remote.")
+                        .trim_end_matches(".url")
+                        .to_string();
                     out.push((remote_name, val.to_string()));
                 }
             }
             Ok::<(), VcsError>(())
         });
-        match res { Ok(()) => Ok(out), Err(e) => Err(e) }
+        match res {
+            Ok(()) => Ok(out),
+            Err(e) => Err(e),
+        }
     }
 
     fn remove_remote(&self, name: &str) -> Result<()> {
         info!("git-libgit2: remove_remote '{}'", name);
-        self.inner.with_repo(|repo| repo.remote_delete(name)).map_err(Self::map_err)
+        self.inner
+            .with_repo(|repo| repo.remote_delete(name))
+            .map_err(Self::map_err)
     }
 
     fn fetch(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
         info!("git-libgit2: fetch {} {}", remote, refspec);
-        self.inner.fetch_with_progress(remote, refspec, Self::adapt_progress(on))
+        self.inner
+            .fetch_with_progress(remote, refspec, Self::adapt_progress(on))
             .map(|_| ())
             .map_err(Self::map_err)
     }
@@ -175,7 +226,10 @@ impl Vcs for GitLibGit2 {
         opts: FetchOptions,
         on: Option<OnEvent>,
     ) -> Result<()> {
-        info!("git-libgit2: fetch {} {} (prune={})", remote, refspec, opts.prune);
+        info!(
+            "git-libgit2: fetch {} {} (prune={})",
+            remote, refspec, opts.prune
+        );
         self.inner
             .fetch_with_progress_and_prune(remote, refspec, opts.prune, Self::adapt_progress(on))
             .map(|_| ())
@@ -184,7 +238,8 @@ impl Vcs for GitLibGit2 {
 
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> Result<()> {
         info!("git-libgit2: push {} {}", remote, refspec);
-        self.inner.push_refspec_with_progress(remote, refspec, Self::adapt_progress(on))
+        self.inner
+            .push_refspec_with_progress(remote, refspec, Self::adapt_progress(on))
             .map_err(Self::map_err)
     }
 
@@ -193,27 +248,33 @@ impl Vcs for GitLibGit2 {
         // New local branches (no upstream yet) must not attempt to pull a non-existent remote branch.
         use git2 as g;
 
-        let upstream_short = self.inner.with_repo(|repo| -> std::result::Result<Option<String>, g::Error> {
-            let local = repo.find_branch(branch, g::BranchType::Local)?;
-            let upstream = match local.upstream() {
-                Ok(up) => up,
-                Err(_) => return Ok(None),
-            };
+        let upstream_short = self
+            .inner
+            .with_repo(|repo| -> std::result::Result<Option<String>, g::Error> {
+                let local = repo.find_branch(branch, g::BranchType::Local)?;
+                let upstream = match local.upstream() {
+                    Ok(up) => up,
+                    Err(_) => return Ok(None),
+                };
 
-            let name = upstream.name()?.unwrap_or("").to_string();
-            if name.is_empty() {
-                return Ok(None);
-            }
+                let name = upstream.name()?.unwrap_or("").to_string();
+                if name.is_empty() {
+                    return Ok(None);
+                }
 
-            Ok(Some(
-                name.strip_prefix("refs/remotes/")
-                    .unwrap_or(&name)
-                    .to_string(),
-            ))
-        }).map_err(Self::map_err)?;
+                Ok(Some(
+                    name.strip_prefix("refs/remotes/")
+                        .unwrap_or(&name)
+                        .to_string(),
+                ))
+            })
+            .map_err(Self::map_err)?;
 
         let Some(upstream) = upstream_short.filter(|s| !s.trim().is_empty()) else {
-            info!("git-libgit2: pull skipped (no upstream) remote={} branch={}", remote, branch);
+            info!(
+                "git-libgit2: pull skipped (no upstream) remote={} branch={}",
+                remote, branch
+            );
             return Err(VcsError::NoUpstream);
         };
 
@@ -236,16 +297,15 @@ impl Vcs for GitLibGit2 {
         // Accept "origin/main" and "refs/remotes/origin/main". Store the standard config keys:
         // - branch.<branch>.remote = origin
         // - branch.<branch>.merge  = refs/heads/main
-        let upstream_short = upstream
-            .strip_prefix("refs/remotes/")
-            .unwrap_or(upstream);
+        let upstream_short = upstream.strip_prefix("refs/remotes/").unwrap_or(upstream);
 
-        let (remote, remote_branch) = upstream_short
-            .split_once('/')
-            .ok_or_else(|| VcsError::Backend {
-                backend: self.id(),
-                msg: "upstream must look like 'origin/main'".into(),
-            })?;
+        let (remote, remote_branch) =
+            upstream_short
+                .split_once('/')
+                .ok_or_else(|| VcsError::Backend {
+                    backend: self.id(),
+                    msg: "upstream must look like 'origin/main'".into(),
+                })?;
 
         let merge_ref = format!("refs/heads/{}", remote_branch);
         info!(
@@ -271,32 +331,35 @@ impl Vcs for GitLibGit2 {
             return Ok(None);
         }
 
-        self.inner
-            .with_repo(|repo| {
-                let cfg = repo.config().map_err(Self::map_err)?;
-                let remote_key = format!("branch.{branch}.remote");
-                let merge_key = format!("branch.{branch}.merge");
-                let remote = cfg.get_string(&remote_key).ok();
-                let merge = cfg.get_string(&merge_key).ok();
-                match (remote, merge) {
-                    (Some(remote), Some(merge)) => {
-                        let merge = merge.trim().trim_start_matches("refs/heads/");
-                        if remote.trim().is_empty() || merge.is_empty() {
-                            return Ok(None);
-                        }
-                        Ok(Some(format!("{}/{}", remote.trim(), merge)))
+        self.inner.with_repo(|repo| {
+            let cfg = repo.config().map_err(Self::map_err)?;
+            let remote_key = format!("branch.{branch}.remote");
+            let merge_key = format!("branch.{branch}.merge");
+            let remote = cfg.get_string(&remote_key).ok();
+            let merge = cfg.get_string(&merge_key).ok();
+            match (remote, merge) {
+                (Some(remote), Some(merge)) => {
+                    let merge = merge.trim().trim_start_matches("refs/heads/");
+                    if remote.trim().is_empty() || merge.is_empty() {
+                        return Ok(None);
                     }
-                    _ => Ok(None),
+                    Ok(Some(format!("{}/{}", remote.trim(), merge)))
                 }
-            })
+                _ => Ok(None),
+            }
+        })
     }
 
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String> {
         info!(
             "git-libgit2: commit message_len={} author='{} <{}>' paths={}",
-            message.len(), name, email, paths.len()
+            message.len(),
+            name,
+            email,
+            paths.len()
         );
-        self.inner.commit(message, name, email, paths)
+        self.inner
+            .commit(message, name, email, paths)
             .map(|oid| oid.to_string())
             .map_err(Self::map_err)
     }
@@ -304,9 +367,12 @@ impl Vcs for GitLibGit2 {
     fn commit_index(&self, message: &str, name: &str, email: &str) -> Result<String> {
         info!(
             "git-libgit2: commit_index message_len={} author='{} <{}>'",
-            message.len(), name, email
+            message.len(),
+            name,
+            email
         );
-        self.inner.commit_index(message, name, email)
+        self.inner
+            .commit_index(message, name, email)
             .map(|oid| oid.to_string())
             .map_err(Self::map_err)
     }
@@ -375,36 +441,42 @@ impl Vcs for GitLibGit2 {
     }
 
     fn set_identity_local(&self, name: &str, email: &str) -> Result<()> {
-        self.inner.with_repo(|repo| {
-            let mut cfg = repo.config()?;
-            cfg.set_str("user.name", name)?;
-            cfg.set_str("user.email", email)?;
-            Ok(())
-        }).map_err(Self::map_err::<git2::Error>)
+        self.inner
+            .with_repo(|repo| {
+                let mut cfg = repo.config()?;
+                cfg.set_str("user.name", name)?;
+                cfg.set_str("user.email", email)?;
+                Ok(())
+            })
+            .map_err(Self::map_err::<git2::Error>)
     }
 
     fn delete_branch(&self, name: &str, _force: bool) -> Result<()> {
-        self.inner.with_repo(|repo| {
-            use git2 as g;
-            // Do not delete current branch
-            if let Ok(head) = repo.head() {
-                if head.is_branch() && head.shorthand() == Some(name) {
-                    return Err(g::Error::from_str("cannot delete current branch"));
+        self.inner
+            .with_repo(|repo| {
+                use git2 as g;
+                // Do not delete current branch
+                if let Ok(head) = repo.head() {
+                    if head.is_branch() && head.shorthand() == Some(name) {
+                        return Err(g::Error::from_str("cannot delete current branch"));
+                    }
                 }
-            }
-            let mut br = repo.find_branch(name, g::BranchType::Local)?;
-            br.delete()?;
-            Ok(())
-        }).map_err(Self::map_err::<git2::Error>)
+                let mut br = repo.find_branch(name, g::BranchType::Local)?;
+                br.delete()?;
+                Ok(())
+            })
+            .map_err(Self::map_err::<git2::Error>)
     }
 
     fn rename_branch(&self, old: &str, new: &str) -> Result<()> {
-        self.inner.with_repo(|repo| {
-            use git2 as g;
-            let mut br = repo.find_branch(old, g::BranchType::Local)?;
-            br.rename(new, false)?; // do not force; let libgit2 report conflicts
-            Ok(())
-        }).map_err(Self::map_err::<git2::Error>)
+        self.inner
+            .with_repo(|repo| {
+                use git2 as g;
+                let mut br = repo.find_branch(old, g::BranchType::Local)?;
+                br.rename(new, false)?; // do not force; let libgit2 report conflicts
+                Ok(())
+            })
+            .map_err(Self::map_err::<git2::Error>)
     }
 
     fn merge_into_current(&self, _name: &str) -> Result<()> {
@@ -412,15 +484,40 @@ impl Vcs for GitLibGit2 {
     }
 
     // stash (unsupported in this backend for now)
-    fn stash_list(&self) -> Result<Vec<StashItem>> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
-    fn stash_push(&self, _message: &str, _include_untracked: bool, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
-    fn stash_apply(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
-    fn stash_pop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
-    fn stash_drop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
-    fn stash_show(&self, _selector: &str) -> Result<Vec<String>> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn stash_list(&self) -> Result<Vec<StashItem>> {
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
+    fn stash_push(
+        &self,
+        _message: &str,
+        _include_untracked: bool,
+        _paths: &[PathBuf],
+    ) -> Result<()> {
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
+    fn stash_apply(&self, _selector: &str) -> Result<()> {
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
+    fn stash_pop(&self, _selector: &str) -> Result<()> {
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
+    fn stash_drop(&self, _selector: &str) -> Result<()> {
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
+    fn stash_show(&self, _selector: &str) -> Result<Vec<String>> {
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
 
-    fn lfs_fetch(&self) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
-    fn lfs_pull(&self) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
-    fn lfs_prune(&self) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
-    fn lfs_track(&self, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(GIT_LIBGIT2_ID)) }
+    fn lfs_fetch(&self) -> Result<()> {
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
+    fn lfs_pull(&self) -> Result<()> {
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
+    fn lfs_prune(&self) -> Result<()> {
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
+    fn lfs_track(&self, _paths: &[PathBuf]) -> Result<()> {
+        Err(VcsError::Unsupported(GIT_LIBGIT2_ID))
+    }
 }

@@ -9,4 +9,3 @@ pub fn list_plugins() -> Vec<plugins::PluginSummary> {
 pub fn load_plugin(id: String) -> Result<plugins::PluginPayload, String> {
     plugins::load_plugin(id.trim())
 }
-

@@ -4,11 +4,11 @@ use std::{path::PathBuf, sync::Arc};
 use log::{debug, info};
 use parking_lot::RwLock;
 
-use openvcs_core::Repo;
-use crate::settings::AppConfig;
-use crate::repo_settings::RepoConfig;
 use crate::output_log::OutputLogEntry;
+use crate::repo_settings::RepoConfig;
+use crate::settings::AppConfig;
 use directories::ProjectDirs;
+use openvcs_core::Repo;
 use serde::{Deserialize, Serialize};
 
 // Default MRU size used as a fallback when settings are missing/invalid
@@ -26,7 +26,9 @@ fn apply_git_ssh_env(cfg: &AppConfig) {
             crate::settings::GitSshBinary::Custom => "custom",
         },
     );
-    if cfg.git.ssh_binary == crate::settings::GitSshBinary::Custom && !cfg.git.ssh_path.trim().is_empty() {
+    if cfg.git.ssh_binary == crate::settings::GitSshBinary::Custom
+        && !cfg.git.ssh_path.trim().is_empty()
+    {
         std::env::set_var("OPENVCS_SSH", cfg.git.ssh_path.trim());
     } else {
         std::env::remove_var("OPENVCS_SSH");
@@ -87,7 +89,7 @@ impl AppState {
     /// Read-only closure access (avoid cloning if you’re just reading).
     pub fn with_config<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&AppConfig) -> R
+        F: FnOnce(&AppConfig) -> R,
     {
         let cfg = self.config.read();
         f(&cfg)
@@ -176,7 +178,9 @@ impl AppState {
         r.insert(0, path.clone());
         let limit = self.config.read().ux.recents_limit as usize;
         let max_items = if limit == 0 { MAX_RECENTS } else { limit };
-        if r.len() > max_items { r.truncate(max_items); }
+        if r.len() > max_items {
+            r.truncate(max_items);
+        }
 
         debug!(
             "AppState: recents -> [{}]",
@@ -187,7 +191,8 @@ impl AppState {
         );
 
         // Persist recents; ignore failures but log
-        if let Err(e) = save_recents_to_disk(&r.clone()) { // clone small vec
+        if let Err(e) = save_recents_to_disk(&r.clone()) {
+            // clone small vec
             log::warn!("AppState: failed to persist recents: {}", e);
         }
     }
@@ -214,7 +219,9 @@ impl AppState {
 // ──────────────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct RecentFileEntry { path: String }
+struct RecentFileEntry {
+    path: String,
+}
 
 fn recents_file_path() -> PathBuf {
     if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
@@ -239,11 +246,15 @@ fn load_recents_from_disk() -> Result<Vec<PathBuf>, String> {
             for it in items {
                 match it {
                     serde_json::Value::String(s) => {
-                        if !s.trim().is_empty() { out.push(PathBuf::from(s)); }
+                        if !s.trim().is_empty() {
+                            out.push(PathBuf::from(s));
+                        }
                     }
                     serde_json::Value::Object(map) => {
                         if let Some(serde_json::Value::String(s)) = map.get("path") {
-                            if !s.trim().is_empty() { out.push(PathBuf::from(s)); }
+                            if !s.trim().is_empty() {
+                                out.push(PathBuf::from(s));
+                            }
                         }
                     }
                     _ => {}
@@ -257,10 +268,14 @@ fn load_recents_from_disk() -> Result<Vec<PathBuf>, String> {
 
 fn save_recents_to_disk(list: &Vec<PathBuf>) -> Result<(), String> {
     let p = recents_file_path();
-    if let Some(parent) = p.parent() { fs::create_dir_all(parent).map_err(|e| e.to_string())?; }
+    if let Some(parent) = p.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     let entries: Vec<RecentFileEntry> = list
         .iter()
-        .map(|pb| RecentFileEntry { path: pb.to_string_lossy().to_string() })
+        .map(|pb| RecentFileEntry {
+            path: pb.to_string_lossy().to_string(),
+        })
         .collect();
     let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
     fs::write(&p, json).map_err(|e| e.to_string())
@@ -271,9 +286,14 @@ impl AppState {
         let limit = self.config.read().ux.recents_limit as usize;
         let max_items = if limit == 0 { MAX_RECENTS } else { limit };
         let mut r = self.recents.write();
-        if r.len() > max_items { r.truncate(max_items); }
+        if r.len() > max_items {
+            r.truncate(max_items);
+        }
         if let Err(e) = save_recents_to_disk(&r.clone()) {
-            log::warn!("AppState: failed to persist recents after settings change: {}", e);
+            log::warn!(
+                "AppState: failed to persist recents after settings change: {}",
+                e
+            );
         }
     }
 }

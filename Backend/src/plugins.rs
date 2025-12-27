@@ -3,8 +3,7 @@ use log::warn;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -189,7 +188,11 @@ fn read_manifest_from_directory(path: &Path) -> Result<RawPluginManifest, String
 }
 
 fn icon_mime_for_path(path: &Path) -> Option<&'static str> {
-    let ext = path.extension()?.to_string_lossy().trim().to_ascii_lowercase();
+    let ext = path
+        .extension()?
+        .to_string_lossy()
+        .trim()
+        .to_ascii_lowercase();
     match ext.as_str() {
         "png" => Some("image/png"),
         "jpg" | "jpeg" => Some("image/jpeg"),
@@ -288,7 +291,8 @@ fn encode_base64(data: &[u8]) -> String {
 fn percent_encode_uri_component(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for &b in input.as_bytes() {
-        let is_unreserved = matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~');
+        let is_unreserved =
+            matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~');
         if is_unreserved {
             out.push(b as char);
             continue;

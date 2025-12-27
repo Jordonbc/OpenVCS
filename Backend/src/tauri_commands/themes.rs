@@ -67,7 +67,10 @@ pub fn load_theme(state: State<'_, AppState>, id: String) -> Result<themes::Them
             .map(|s| s.trim().to_ascii_lowercase())
             .unwrap_or_default();
         if !plugin_id.is_empty() && !enabled.contains(&plugin_id) {
-            return Err(format!("theme `{}` belongs to a disabled plugin", payload.summary.id));
+            return Err(format!(
+                "theme `{}` belongs to a disabled plugin",
+                payload.summary.id
+            ));
         }
     }
     Ok(payload)
