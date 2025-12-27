@@ -61,6 +61,7 @@
     background: var(--surface);
 }
 .title-actions { margin-left: auto; display: flex; align-items: center; gap: .45rem; }
+.plugin-title-actions { display: flex; align-items: center; gap: .45rem; }
 
 /* Repo switcher */
 .repo-switch {

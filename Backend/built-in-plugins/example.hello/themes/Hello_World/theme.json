@@ -1,0 +1,13 @@
+{
+  "id": "hello-world",
+  "name": "Hello World",
+  "description": "A bright accent theme shipped by the example plugin.",
+  "version": "0.1.0",
+  "author": "OpenVCS",
+  "styles": {
+    "global": ["global.css"],
+    "dark": ["dark.css"],
+    "light": ["light.css"]
+  }
+}
+

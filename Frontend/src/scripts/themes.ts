@@ -1,5 +1,6 @@
 import { TAURI } from './lib/tauri';
 import { notify } from './lib/notify';
+import { getRegisteredThemePayload, getRegisteredThemeSummaries } from './plugins';
 import type { ThemePayload, ThemeSummary } from './types';
 
 export const DEFAULT_THEME_ID = 'default';
@@ -278,8 +279,20 @@ export function getCurrentMode(): 'system' | 'light' | 'dark' {
 }
 
 export async function refreshAvailableThemes(): Promise<ThemeSummary[]> {
+    const pluginSummaries = getRegisteredThemeSummaries();
     if (!TAURI.has) {
-        availableThemes = [defaultLightSummary(), defaultDarkSummary()];
+        const others: ThemeSummary[] = [];
+        const seen = new Set<string>([DEFAULT_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_DARK_THEME_ID]);
+        for (const item of Array.isArray(pluginSummaries) ? pluginSummaries : []) {
+            if (!item) continue;
+            const summary = sanitizeSummary(item);
+            const norm = summary.id.toLowerCase();
+            if (seen.has(norm)) continue;
+            seen.add(norm);
+            others.push(summary);
+        }
+        others.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+        availableThemes = [defaultLightSummary(), defaultDarkSummary(), ...others];
         fetchedThemes = true;
         return availableThemes;
     }
@@ -298,12 +311,32 @@ export async function refreshAvailableThemes(): Promise<ThemeSummary[]> {
             others.push(summary);
         }
 
+        for (const item of Array.isArray(pluginSummaries) ? pluginSummaries : []) {
+            if (!item) continue;
+            const summary = sanitizeSummary(item);
+            const norm = summary.id.toLowerCase();
+            if (seen.has(norm)) continue;
+            seen.add(norm);
+            others.push(summary);
+        }
+
         others.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
         availableThemes = [defaultLightSummary(), defaultDarkSummary(), ...others];
     } catch (error) {
         console.warn('list_themes failed', error);
-        availableThemes = [defaultLightSummary(), defaultDarkSummary()];
+        const others: ThemeSummary[] = [];
+        const seen = new Set<string>([DEFAULT_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_DARK_THEME_ID]);
+        for (const item of Array.isArray(pluginSummaries) ? pluginSummaries : []) {
+            if (!item) continue;
+            const summary = sanitizeSummary(item);
+            const norm = summary.id.toLowerCase();
+            if (seen.has(norm)) continue;
+            seen.add(norm);
+            others.push(summary);
+        }
+        others.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+        availableThemes = [defaultLightSummary(), defaultDarkSummary(), ...others];
     }
 
     fetchedThemes = true;
@@ -337,6 +370,16 @@ export async function selectThemePack(
         activeStyles = null;
         activeMarkup = null;
         activeScripts = [];
+        applyModeStyles(desiredMode);
+        return;
+    }
+
+    const registered = getRegisteredThemePayload(target);
+    if (registered) {
+        activeThemeId = String(registered.summary?.id || target);
+        activeStyles = registered.styles ?? null;
+        activeMarkup = registered.markup ?? null;
+        activeScripts = Array.isArray(registered.scripts) ? registered.scripts : [];
         applyModeStyles(desiredMode);
         return;
     }

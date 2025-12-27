@@ -13,6 +13,7 @@ mod settings;
 mod repo_settings;
 mod logging;
 mod themes;
+mod plugins;
 mod output_log;
 
 #[cfg(feature = "with-git")]
@@ -190,6 +191,8 @@ fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -
         tauri_commands::open_repo_file,
         tauri_commands::list_themes,
         tauri_commands::load_theme,
+        tauri_commands::list_plugins,
+        tauri_commands::load_plugin,
         tauri_commands::get_global_settings,
         tauri_commands::set_global_settings,
         tauri_commands::get_repo_settings,

@@ -18,6 +18,7 @@
                     <li><button class="seg-btn" data-section="performance">Performance</button></li>
                     <li><button class="seg-btn" data-section="ux">UX</button></li>
                     <li><button class="seg-btn" data-section="logging">Logging</button></li>
+                    <li><button class="seg-btn" data-section="plugins">Plugins</button></li>
                     <!-- You can add: integrations, advanced, experimental, logging, network later -->
                 </ul>
             </nav>
@@ -330,6 +331,34 @@
                             <span class="help-tip" title="Number of archived log files to retain after rotation. Changes take effect after restarting the app.">?</span>
                         </label>
                         <input id="set-log-keep" type="number" min="1" max="100" value="10" />
+                    </div>
+                </form>
+
+                <!-- Plugins -->
+                <form class="panel-form hidden" data-panel="plugins">
+                    <div class="group">
+                        <h4 class="settings-section-title">Installed Plugins</h4>
+                        <div class="muted" style="font-size:.9rem">
+                            Plugins can add themes, UI actions, and hooks. Disabling a plugin prevents its code from running and hides any themes it provides.
+                        </div>
+                    </div>
+                    <div class="group">
+                        <div class="plugins-pane" id="plugins-pane">
+                            <div class="plugins-left" aria-label="Installed plugins list">
+                                <div class="plugins-toolbar">
+                                    <input id="plugins-search" type="search" placeholder="Search plugins… (use @author and #tag)" aria-label="Search installed plugins" />
+                                    <button class="tbtn" id="plugins-enable-all" type="button">Enable all</button>
+                                    <button class="tbtn" id="plugins-disable-all" type="button">Disable all</button>
+                                </div>
+                                <div class="plugins-group-label" id="plugins-group-label"></div>
+                                <div class="plugins-list-scroll" role="region" aria-label="Plugins">
+                                    <ul id="plugins-list" class="plugins-list" role="listbox" aria-label="Installed plugins"></ul>
+                                </div>
+                            </div>
+                            <div class="plugins-right" aria-label="Plugin details">
+                                <div id="plugins-detail" class="plugins-detail"></div>
+                            </div>
+                        </div>
                     </div>
                 </form>
 

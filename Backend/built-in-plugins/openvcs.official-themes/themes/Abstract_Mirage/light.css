@@ -1,0 +1,22 @@
+/* Abstract Mirage light palette */
+[data-theme="light"] {
+  --bg:#f8f8fc;
+  --surface:#ffffff;
+  --surface-2:#eef1fb;
+  --text:#1f2233;
+  --muted:#5f6784;
+  --border:rgba(102,112,153,.18);
+  --accent:#8f6be8;
+  --accent-2:#2bb7ff;
+  --danger:#d94c68;
+  --success:#2cbf8f;
+  --warning:#d99c3d;
+  --shadow-1:0 20px 56px rgba(143,107,232,.22);
+  --control-bg:#fafbff;
+  --control-bg-focus:#eef2ff;
+  --control-border:#c9d0f2;
+  --control-text:#1f2233;
+  --control-muted:#5f6784;
+  --glow-soft:0 0 0 1px rgba(143,107,232,.18),0 12px 28px rgba(43,183,255,.18);
+}
+
