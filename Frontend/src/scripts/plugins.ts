@@ -12,6 +12,7 @@ export interface PluginSummary {
     author?: string;
     entry?: string;
     theme_dirs?: number;
+    icon_data_url?: string;
 }
 
 export interface PluginPayload {

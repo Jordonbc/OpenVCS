@@ -10,6 +10,7 @@ use std::{
 
 const PLUGIN_MANIFEST_NAME: &str = "openvcs.plugin.json";
 const BUILT_IN_PLUGINS_DIR_NAME: &str = "built-in-plugins";
+const MAX_ICON_BYTES: usize = 512 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PluginSummary {
@@ -29,6 +30,8 @@ pub struct PluginSummary {
     pub entry: Option<String>,
     #[serde(default)]
     pub theme_dirs: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_data_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -177,8 +180,129 @@ fn read_manifest_from_directory(path: &Path) -> Result<RawPluginManifest, String
     Ok(manifest)
 }
 
-fn manifest_to_summary(manifest: RawPluginManifest) -> PluginSummary {
+fn icon_mime_for_path(path: &Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_string_lossy().trim().to_ascii_lowercase();
+    match ext.as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "webp" => Some("image/webp"),
+        "avif" => Some("image/avif"),
+        "svg" => Some("image/svg+xml"),
+        _ => None,
+    }
+}
+
+fn find_icon_path(plugin_dir: &Path) -> Option<PathBuf> {
+    for ext in ["png", "jpg", "jpeg", "webp", "avif", "svg"] {
+        let candidate = plugin_dir.join(format!("icon.{ext}"));
+        if candidate.is_file() && icon_mime_for_path(&candidate).is_some() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn icon_data_url(plugin_dir: &Path) -> Option<String> {
+    let path = find_icon_path(plugin_dir)?;
+    let mime = icon_mime_for_path(&path)?;
+
+    let data = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            warn!("plugins: failed to read icon {}: {}", path.display(), err);
+            return None;
+        }
+    };
+
+    if data.len() > MAX_ICON_BYTES {
+        warn!(
+            "plugins: icon {} too large ({} bytes, max {})",
+            path.display(),
+            data.len(),
+            MAX_ICON_BYTES
+        );
+        return None;
+    }
+
+    if mime == "image/svg+xml" {
+        let encoded = encode_svg_utf8_data(&data);
+        return Some(format!("data:{mime};charset=utf-8,{encoded}"));
+    }
+
+    let encoded = encode_base64(&data);
+    Some(format!("data:{mime};base64,{encoded}"))
+}
+
+fn encode_svg_utf8_data(data: &[u8]) -> String {
+    // Some WebViews are flaky with base64-encoded SVG data URLs; percent-encoded UTF-8 tends to be more reliable.
+    let text = String::from_utf8_lossy(data);
+    percent_encode_uri_component(text.trim())
+}
+
+fn encode_base64(data: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    if data.is_empty() {
+        return String::new();
+    }
+
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut i = 0usize;
+    while i < data.len() {
+        let b0 = data[i];
+        let b1 = if i + 1 < data.len() { data[i + 1] } else { 0 };
+        let b2 = if i + 2 < data.len() { data[i + 2] } else { 0 };
+
+        let n0 = (b0 >> 2) as usize;
+        let n1 = (((b0 & 0b0000_0011) << 4) | (b1 >> 4)) as usize;
+        let n2 = (((b1 & 0b0000_1111) << 2) | (b2 >> 6)) as usize;
+        let n3 = (b2 & 0b0011_1111) as usize;
+
+        out.push(TABLE[n0] as char);
+        out.push(TABLE[n1] as char);
+
+        if i + 1 < data.len() {
+            out.push(TABLE[n2] as char);
+        } else {
+            out.push('=');
+        }
+
+        if i + 2 < data.len() {
+            out.push(TABLE[n3] as char);
+        } else {
+            out.push('=');
+        }
+
+        i += 3;
+    }
+    out
+}
+
+fn percent_encode_uri_component(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for &b in input.as_bytes() {
+        let is_unreserved = matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~');
+        if is_unreserved {
+            out.push(b as char);
+            continue;
+        }
+        out.push('%');
+        out.push(nibble_hex((b >> 4) & 0xF));
+        out.push(nibble_hex(b & 0xF));
+    }
+    out
+}
+
+fn nibble_hex(v: u8) -> char {
+    match v {
+        0..=9 => (b'0' + v) as char,
+        10..=15 => (b'A' + (v - 10)) as char,
+        _ => '0',
+    }
+}
+
+fn manifest_to_summary(plugin_dir: &Path, manifest: RawPluginManifest) -> PluginSummary {
     let theme_dirs = manifest.themes.len() as u32;
+    let icon_data_url = icon_data_url(plugin_dir);
     PluginSummary {
         id: manifest.id.trim().to_string(),
         name: manifest.name.trim().to_string(),
@@ -189,6 +313,7 @@ fn manifest_to_summary(manifest: RawPluginManifest) -> PluginSummary {
         author: clean_opt(manifest.author),
         entry: clean_opt(manifest.entry),
         theme_dirs,
+        icon_data_url,
     }
 }
 
@@ -218,7 +343,7 @@ pub fn list_plugins() -> Vec<PluginSummary> {
                             if !seen.insert(norm) {
                                 continue;
                             }
-                            out.push(manifest_to_summary(manifest));
+                            out.push(manifest_to_summary(&path, manifest));
                         }
                         Err(_) => {}
                     }
@@ -269,7 +394,7 @@ pub fn load_plugin(id: &str) -> Result<PluginPayload, String> {
                 continue;
             }
 
-            let summary = manifest_to_summary(manifest);
+            let summary = manifest_to_summary(&path, manifest);
             let entry_text = if let Some(entry) = summary.entry.as_deref() {
                 let entry_path = path.join(entry.trim_start_matches("./"));
                 match fs::read_to_string(&entry_path) {

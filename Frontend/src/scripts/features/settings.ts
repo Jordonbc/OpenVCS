@@ -919,6 +919,25 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             icon.className = 'plugin-icon';
             const initial = String(plugin.name || id).trim().slice(0, 1).toUpperCase() || 'P';
             icon.textContent = initial;
+            const iconUrl = String(plugin.icon_data_url || '').trim();
+            if (iconUrl) {
+                const img = document.createElement('img');
+                img.className = 'plugin-icon-img';
+                img.alt = `${String(plugin.name || id).trim() || id} icon`;
+                img.decoding = 'async';
+                img.loading = 'lazy';
+                img.src = iconUrl;
+                img.addEventListener('load', () => {
+                    icon.classList.add('has-img');
+                    icon.replaceChildren(img);
+                });
+                img.addEventListener('error', () => {
+                    img.remove();
+                    icon.classList.remove('has-img');
+                    if (!icon.textContent?.trim()) icon.textContent = initial;
+                });
+                icon.appendChild(img);
+            }
 
             const text = document.createElement('div');
             text.className = 'plugin-row-text';
