@@ -1,13 +1,10 @@
-use directories::ProjectDirs;
 use log::warn;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
-    fs::{self, File},
-    io::{Read, Seek},
+    fs,
     path::{Path, PathBuf},
 };
-use zip::ZipArchive;
 
 use crate::plugins;
 
@@ -160,27 +157,6 @@ where
     deserializer.deserialize_any(StringOrVecVisitor)
 }
 
-fn themes_dir() -> PathBuf {
-    if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
-        pd.config_dir().join("themes")
-    } else {
-        PathBuf::from("themes")
-    }
-}
-
-fn is_zip_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e.eq_ignore_ascii_case("zip"))
-        .unwrap_or(false)
-}
-
-fn ensure_dir(path: &Path) {
-    if let Err(err) = fs::create_dir_all(path) {
-        warn!("themes: failed to create {}: {}", path.display(), err);
-    }
-}
-
 fn clean_opt(value: Option<String>) -> Option<String> {
     value.and_then(|v| {
         let trimmed = v.trim();
@@ -256,9 +232,6 @@ pub fn default_theme_payload() -> ThemePayload {
 }
 
 pub fn list_themes() -> Vec<ThemeSummary> {
-    let dir = themes_dir();
-    ensure_dir(&dir);
-
     let mut summaries: Vec<ThemeSummary> = Vec::new();
     let mut seen = HashSet::new();
     seen.insert(DEFAULT_THEME_ID.to_string());
@@ -309,54 +282,6 @@ pub fn list_themes() -> Vec<ThemeSummary> {
         }
     }
 
-    if let Ok(entries) = fs::read_dir(&dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !is_zip_file(&path) {
-                continue;
-            }
-
-            match read_manifest(&path) {
-                Ok(manifest) => {
-                    let id_trimmed = manifest.id.trim();
-                    if id_trimmed.is_empty() {
-                        warn!("themes: theme {} ignored due to empty id", path.display());
-                        continue;
-                    }
-                    let norm = id_trimmed.to_ascii_lowercase();
-                    if seen.contains(&norm) {
-                        warn!(
-                            "themes: duplicate theme id `{}` ignored (file {})",
-                            id_trimmed,
-                            path.display()
-                        );
-                        continue;
-                    }
-                    seen.insert(norm);
-
-                    let appearance =
-                        clean_mode(manifest.appearance.clone()).or_else(|| infer_mode_from_manifest(&manifest));
-                    let paired_with = clean_opt(manifest.paired_with.clone())
-                        .filter(|p| !p.eq_ignore_ascii_case(id_trimmed));
-                    summaries.push(ThemeSummary {
-                        id: id_trimmed.to_string(),
-                        name: manifest.name.trim().to_string(),
-                        description: clean_opt(manifest.description),
-                        version: clean_opt(manifest.version),
-                        author: clean_opt(manifest.author),
-                        appearance,
-                        paired_with,
-                        source: ThemeSource::User,
-                        plugin_id: None,
-                    });
-                }
-                Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
-            }
-        }
-    } else {
-        warn!("themes: unable to read themes directory {}", dir.display());
-    }
-
     summaries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
     let mut out = Vec::with_capacity(summaries.len() + 1);
@@ -369,28 +294,6 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
     let requested = id.trim();
     if requested.is_empty() || requested.eq_ignore_ascii_case(DEFAULT_THEME_ID) {
         return Ok(default_theme_payload());
-    }
-
-    let dir = themes_dir();
-    ensure_dir(&dir);
-
-    let entries =
-        fs::read_dir(&dir).map_err(|err| format!("list themes in {}: {}", dir.display(), err))?;
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !is_zip_file(&path) {
-            continue;
-        }
-
-        match read_manifest(&path) {
-            Ok(manifest) => {
-                if manifest.id.trim().eq_ignore_ascii_case(requested) {
-                    return build_theme_payload_from_path(&path, manifest, ThemeSource::User, None);
-                }
-            }
-            Err(err) => warn!("themes: failed to read {}: {}", path.display(), err),
-        }
     }
 
     for theme_dir in plugins::plugin_theme_dirs() {
@@ -449,20 +352,6 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
     Err(format!("theme `{}` not found", requested))
 }
 
-fn read_manifest(path: &Path) -> Result<RawThemeManifest, String> {
-    let file = File::open(path).map_err(|err| format!("open {}: {}", path.display(), err))?;
-    read_manifest_from_reader(&path.display().to_string(), file)
-}
-
-fn read_manifest_from_reader<R>(name: &str, reader: R) -> Result<RawThemeManifest, String>
-where
-    R: Read + Seek,
-{
-    let mut archive =
-        ZipArchive::new(reader).map_err(|err| format!("read zip {}: {}", name, err))?;
-    read_manifest_from_archive(name, &mut archive)
-}
-
 fn read_manifest_from_directory(path: &Path) -> Result<RawThemeManifest, String> {
     let manifest_path = path.join(MANIFEST_NAME);
     let text = match fs::read_to_string(&manifest_path) {
@@ -487,232 +376,6 @@ fn read_manifest_from_directory(path: &Path) -> Result<RawThemeManifest, String>
         return Err(format!("theme {} has an empty name", path.display()));
     }
     Ok(manifest)
-}
-
-fn read_manifest_from_archive<R>(
-    name: &str,
-    archive: &mut ZipArchive<R>,
-) -> Result<RawThemeManifest, String>
-where
-    R: Read + Seek,
-{
-    for idx in 0..archive.len() {
-        let mut entry = archive
-            .by_index(idx)
-            .map_err(|err| format!("read entry {}: {}", name, err))?;
-        if !entry.name().ends_with(MANIFEST_NAME) {
-            continue;
-        }
-
-        let mut buf = String::new();
-        entry
-            .read_to_string(&mut buf)
-            .map_err(|err| format!("read {} in {}: {}", entry.name(), name, err))?;
-        let manifest: RawThemeManifest = serde_json::from_str(&buf)
-            .map_err(|err| format!("parse manifest in {}: {}", name, err))?;
-        if manifest.id.trim().is_empty() {
-            return Err(format!("theme {} has an empty id", name));
-        }
-        if manifest.name.trim().is_empty() {
-            return Err(format!("theme {} has an empty name", name));
-        }
-        return Ok(manifest);
-    }
-
-    Err(format!("theme {} is missing {MANIFEST_NAME}", name))
-}
-
-fn build_theme_payload_from_path(
-    path: &Path,
-    manifest: RawThemeManifest,
-    source: ThemeSource,
-    plugin_id: Option<String>,
-) -> Result<ThemePayload, String> {
-    let file = File::open(path).map_err(|err| format!("open {}: {}", path.display(), err))?;
-    build_theme_payload_from_reader(&path.display().to_string(), file, manifest, source, plugin_id)
-}
-
-fn build_theme_payload_from_reader<R>(
-    name: &str,
-    reader: R,
-    manifest: RawThemeManifest,
-    source: ThemeSource,
-    plugin_id: Option<String>,
-) -> Result<ThemePayload, String>
-	where
-	    R: Read + Seek,
-	{
-	    let (styles, markup, scripts) = read_assets_from_reader(name, reader, &manifest)?;
-	    let appearance = clean_mode(manifest.appearance.clone()).or_else(|| infer_mode_from_manifest(&manifest));
-	    let paired_with = clean_opt(manifest.paired_with.clone())
-	        .filter(|p| !p.eq_ignore_ascii_case(manifest.id.trim()))
-	        .map(|p| match source {
-	            ThemeSource::Plugin => plugin_id
-	                .as_deref()
-	                .map(|pid| namespaced_plugin_paired_with(pid, &p))
-	                .unwrap_or(p),
-	            _ => p,
-	        })
-	        .filter(|p| !p.is_empty());
-        let id = match source {
-            ThemeSource::Plugin => plugin_id
-                .as_deref()
-                .map(|pid| namespaced_plugin_theme_id(pid, manifest.id.trim()))
-                .unwrap_or_else(|| manifest.id.trim().to_string()),
-            _ => manifest.id.trim().to_string(),
-        };
-	    let summary = ThemeSummary {
-	        id,
-	        name: manifest.name.trim().to_string(),
-	        description: clean_opt(manifest.description),
-	        version: clean_opt(manifest.version),
-	        author: clean_opt(manifest.author),
-	        appearance,
-	        paired_with,
-	        source,
-            plugin_id,
-	    };
-
-    Ok(ThemePayload {
-        summary,
-        styles,
-        markup,
-        scripts,
-    })
-}
-
-fn read_assets_from_reader<R>(
-    name: &str,
-    reader: R,
-    manifest: &RawThemeManifest,
-) -> Result<(ThemeStyles, ThemeMarkup, Vec<String>), String>
-where
-    R: Read + Seek,
-{
-    let mut archive =
-        ZipArchive::new(reader).map_err(|err| format!("read zip {}: {}", name, err))?;
-    read_assets_from_archive(name, &mut archive, manifest)
-}
-
-fn read_assets_from_archive<R>(
-    name: &str,
-    archive: &mut ZipArchive<R>,
-    manifest: &RawThemeManifest,
-) -> Result<(ThemeStyles, ThemeMarkup, Vec<String>), String>
-where
-    R: Read + Seek,
-{
-    let global = read_css_set(name, archive, &manifest.styles.global)?;
-    let system = read_css_set(name, archive, &manifest.styles.system)?;
-    let light = read_css_set(name, archive, &manifest.styles.light)?;
-    let dark = read_css_set(name, archive, &manifest.styles.dark)?;
-    let markup = read_markup_sets(name, archive, &manifest.markup)?;
-    let scripts = read_script_set(name, archive, &manifest.scripts)?;
-
-    Ok((
-        ThemeStyles {
-            global,
-            system,
-            light,
-            dark,
-        },
-        markup,
-        scripts,
-    ))
-}
-
-fn read_css_set<R>(
-    display: &str,
-    archive: &mut ZipArchive<R>,
-    files: &[String],
-) -> Result<Option<String>, String>
-where
-    R: Read + Seek,
-{
-    if files.is_empty() {
-        return Ok(None);
-    }
-
-    let mut combined = String::new();
-    for name in files {
-        let trimmed = name.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let mut entry = archive
-            .by_name(trimmed)
-            .map_err(|err| format!("missing `{}` in {}: {}", trimmed, display, err))?;
-
-        let mut buf = String::new();
-        entry
-            .read_to_string(&mut buf)
-            .map_err(|err| format!("read `{}` in {}: {}", trimmed, display, err))?;
-
-        if !buf.trim().is_empty() {
-            if !combined.is_empty() && !combined.ends_with('\n') {
-                combined.push('\n');
-            }
-            combined.push_str(&buf);
-            if !combined.ends_with('\n') {
-                combined.push('\n');
-            }
-        }
-    }
-
-    Ok(if combined.trim().is_empty() {
-        None
-    } else {
-        Some(combined)
-    })
-}
-
-fn read_markup_sets<R>(
-    display: &str,
-    archive: &mut ZipArchive<R>,
-    markup: &RawThemeMarkup,
-) -> Result<ThemeMarkup, String>
-where
-    R: Read + Seek,
-{
-    Ok(ThemeMarkup {
-        head: read_css_set(display, archive, &markup.head)?,
-        body: read_css_set(display, archive, &markup.body)?,
-    })
-}
-
-fn read_script_set<R>(
-    display: &str,
-    archive: &mut ZipArchive<R>,
-    files: &[String],
-) -> Result<Vec<String>, String>
-where
-    R: Read + Seek,
-{
-    if files.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let mut scripts = Vec::new();
-    for name in files {
-        let trimmed = name.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let mut entry = archive
-            .by_name(trimmed)
-            .map_err(|err| format!("missing `{}` in {}: {}", trimmed, display, err))?;
-
-        let mut buf = String::new();
-        entry
-            .read_to_string(&mut buf)
-            .map_err(|err| format!("read `{}` in {}: {}", trimmed, display, err))?;
-
-        if !buf.trim().is_empty() {
-            scripts.push(buf);
-        }
-    }
-
-    Ok(scripts)
 }
 
 fn build_theme_payload_from_directory(
