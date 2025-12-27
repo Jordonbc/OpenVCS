@@ -212,6 +212,26 @@ fn infer_mode_from_manifest(manifest: &RawThemeManifest) -> Option<String> {
     }
 }
 
+fn namespaced_plugin_theme_id(plugin_id: &str, theme_id: &str) -> String {
+    format!("{}.{}", plugin_id.trim(), theme_id.trim())
+}
+
+fn namespaced_plugin_paired_with(plugin_id: &str, paired_with: &str) -> String {
+    let trimmed = paired_with.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let prefix = format!("{}.", plugin_id.trim());
+    if trimmed.starts_with(&prefix) {
+        trimmed.to_string()
+    } else if trimmed.contains('.') {
+        trimmed.to_string()
+    } else {
+        namespaced_plugin_theme_id(plugin_id, trimmed)
+    }
+}
+
 pub fn default_theme_summary() -> ThemeSummary {
     ThemeSummary {
         id: DEFAULT_THEME_ID.to_string(),
@@ -246,15 +266,17 @@ pub fn list_themes() -> Vec<ThemeSummary> {
     for theme_dir in plugins::plugin_theme_dirs() {
         match read_manifest_from_directory(&theme_dir.path) {
             Ok(manifest) => {
-                let id_trimmed = manifest.id.trim();
-                if id_trimmed.is_empty() {
+                let theme_id = manifest.id.trim();
+                if theme_id.is_empty() {
                     warn!(
                         "themes: theme {} ignored due to empty id",
                         theme_dir.path.display()
                     );
                     continue;
                 }
-                let norm = id_trimmed.to_ascii_lowercase();
+
+                let namespaced_id = namespaced_plugin_theme_id(&theme_dir.plugin_id, theme_id);
+                let norm = namespaced_id.to_ascii_lowercase();
                 if seen.contains(&norm) {
                     continue;
                 }
@@ -263,10 +285,12 @@ pub fn list_themes() -> Vec<ThemeSummary> {
                 let appearance = clean_mode(manifest.appearance.clone())
                     .or_else(|| infer_mode_from_manifest(&manifest));
                 let paired_with = clean_opt(manifest.paired_with.clone())
-                    .filter(|p| !p.eq_ignore_ascii_case(id_trimmed));
+                    .filter(|p| !p.eq_ignore_ascii_case(theme_id))
+                    .map(|p| namespaced_plugin_paired_with(&theme_dir.plugin_id, &p))
+                    .filter(|p| !p.is_empty());
 
                 summaries.push(ThemeSummary {
-                    id: id_trimmed.to_string(),
+                    id: namespaced_id,
                     name: manifest.name.trim().to_string(),
                     description: clean_opt(manifest.description),
                     version: clean_opt(manifest.version),
@@ -372,7 +396,44 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
     for theme_dir in plugins::plugin_theme_dirs() {
         match read_manifest_from_directory(&theme_dir.path) {
             Ok(manifest) => {
-                if manifest.id.trim().eq_ignore_ascii_case(requested) {
+                let theme_id = manifest.id.trim();
+                let namespaced_id = namespaced_plugin_theme_id(&theme_dir.plugin_id, theme_id);
+                if namespaced_id.eq_ignore_ascii_case(requested) {
+                    return build_theme_payload_from_directory(
+                        &theme_dir.path,
+                        manifest,
+                        ThemeSource::Plugin,
+                        Some(theme_dir.plugin_id.clone()),
+                    );
+                }
+
+                // Back-compat: allow loading a plugin theme by its raw `theme.json` id iff it is unambiguous.
+                if !requested.contains('.') && theme_id.eq_ignore_ascii_case(requested) {
+                    let mut matches = 0usize;
+                    for other in plugins::plugin_theme_dirs() {
+                        if !other
+                            .plugin_id
+                            .trim()
+                            .eq_ignore_ascii_case(theme_dir.plugin_id.trim())
+                        {
+                            if let Ok(other_manifest) = read_manifest_from_directory(&other.path) {
+                                if other_manifest.id.trim().eq_ignore_ascii_case(requested) {
+                                    matches += 1;
+                                    if matches > 0 {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if matches > 0 {
+                        return Err(format!(
+                            "theme id `{}` is ambiguous; use `{}` instead",
+                            requested, namespaced_id
+                        ));
+                    }
+
                     return build_theme_payload_from_directory(
                         &theme_dir.path,
                         manifest,
@@ -484,9 +545,24 @@ fn build_theme_payload_from_reader<R>(
 	    let (styles, markup, scripts) = read_assets_from_reader(name, reader, &manifest)?;
 	    let appearance = clean_mode(manifest.appearance.clone()).or_else(|| infer_mode_from_manifest(&manifest));
 	    let paired_with = clean_opt(manifest.paired_with.clone())
-	        .filter(|p| !p.eq_ignore_ascii_case(manifest.id.trim()));
+	        .filter(|p| !p.eq_ignore_ascii_case(manifest.id.trim()))
+	        .map(|p| match source {
+	            ThemeSource::Plugin => plugin_id
+	                .as_deref()
+	                .map(|pid| namespaced_plugin_paired_with(pid, &p))
+	                .unwrap_or(p),
+	            _ => p,
+	        })
+	        .filter(|p| !p.is_empty());
+        let id = match source {
+            ThemeSource::Plugin => plugin_id
+                .as_deref()
+                .map(|pid| namespaced_plugin_theme_id(pid, manifest.id.trim()))
+                .unwrap_or_else(|| manifest.id.trim().to_string()),
+            _ => manifest.id.trim().to_string(),
+        };
 	    let summary = ThemeSummary {
-	        id: manifest.id.trim().to_string(),
+	        id,
 	        name: manifest.name.trim().to_string(),
 	        description: clean_opt(manifest.description),
 	        version: clean_opt(manifest.version),
@@ -648,9 +724,24 @@ fn build_theme_payload_from_directory(
     let (styles, markup, scripts) = read_assets_from_directory(path, &manifest)?;
     let appearance = clean_mode(manifest.appearance.clone()).or_else(|| infer_mode_from_manifest(&manifest));
     let paired_with = clean_opt(manifest.paired_with.clone())
-        .filter(|p| !p.eq_ignore_ascii_case(manifest.id.trim()));
+        .filter(|p| !p.eq_ignore_ascii_case(manifest.id.trim()))
+        .map(|p| match source {
+            ThemeSource::Plugin => plugin_id
+                .as_deref()
+                .map(|pid| namespaced_plugin_paired_with(pid, &p))
+                .unwrap_or(p),
+            _ => p,
+        })
+        .filter(|p| !p.is_empty());
+    let id = match source {
+        ThemeSource::Plugin => plugin_id
+            .as_deref()
+            .map(|pid| namespaced_plugin_theme_id(pid, manifest.id.trim()))
+            .unwrap_or_else(|| manifest.id.trim().to_string()),
+        _ => manifest.id.trim().to_string(),
+    };
     let summary = ThemeSummary {
-        id: manifest.id.trim().to_string(),
+        id,
         name: manifest.name.trim().to_string(),
         description: clean_opt(manifest.description),
         version: clean_opt(manifest.version),

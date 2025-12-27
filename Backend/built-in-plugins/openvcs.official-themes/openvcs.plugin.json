@@ -6,11 +6,5 @@
   "version": "0.1.0",
   "author": "OpenVCS Team",
   "description": "Official OpenVCS themes shipped as a plugin so they can be enabled/disabled.",
-  "default_enabled": true,
-  "themes": [
-    "themes/Abstract_Mirage",
-    "themes/Aurora_Nights",
-    "themes/Cyberpunk_Neon",
-    "themes/Right_Dock"
-  ]
+  "default_enabled": true
 }

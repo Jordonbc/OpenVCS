@@ -20,7 +20,7 @@ A plugin is a folder containing:
 
 - `openvcs.plugin.json` (manifest)
 - An optional JavaScript ESM entry file (referenced by `entry`)
-- Optional theme folders (referenced by `themes[]`), each containing a `theme.json`
+- An optional `themes/` folder containing one or more theme packs (each containing a `theme.json`)
 
 ### `openvcs.plugin.json`
 
@@ -35,8 +35,7 @@ Minimal example:
   "version": "0.1.0",
   "author": "You",
   "description": "Demonstrates OpenVCS plugins.",
-  "entry": "entry.js",
-  "themes": []
+  "entry": "entry.js"
 }
 ```
 
@@ -47,7 +46,8 @@ Fields:
 - `category` (string, optional): broad grouping for UI (e.g. `Themes`, `Integrations`, `Examples`)
 - `tags` (string[], optional): searchable keywords (e.g. `["git", "theme", "hooks"]`)
 - `entry` (string, optional): relative path to a JS ESM module to run
-- `themes` (string[], optional): relative paths to theme directories (each containing `theme.json`)
+- Theme packs are auto-detected under `themes/` within the plugin folder (no manifest field required)
+  - Theme ids are namespaced at runtime as `<plugin id>.<theme id>` to avoid collisions
 
 ## Running Code (TypeScript / JavaScript)
 

@@ -10,6 +10,7 @@ use std::{
 
 const PLUGIN_MANIFEST_NAME: &str = "openvcs.plugin.json";
 const BUILT_IN_PLUGINS_DIR_NAME: &str = "built-in-plugins";
+const PLUGIN_THEMES_DIR_NAME: &str = "themes";
 const MAX_ICON_BYTES: usize = 512 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
@@ -68,8 +69,6 @@ struct RawPluginManifest {
     entry: Option<String>,
     #[serde(default)]
     default_enabled: bool,
-    #[serde(default)]
-    themes: Vec<String>,
 }
 
 fn is_false(v: &bool) -> bool {
@@ -310,7 +309,7 @@ fn nibble_hex(v: u8) -> char {
 }
 
 fn manifest_to_summary(plugin_dir: &Path, manifest: RawPluginManifest) -> PluginSummary {
-    let theme_dirs = manifest.themes.len() as u32;
+    let theme_dirs = discover_theme_dirs(plugin_dir).len() as u32;
     let icon_data_url = icon_data_url(plugin_dir);
     PluginSummary {
         id: manifest.id.trim().to_string(),
@@ -324,6 +323,47 @@ fn manifest_to_summary(plugin_dir: &Path, manifest: RawPluginManifest) -> Plugin
         default_enabled: manifest.default_enabled,
         theme_dirs,
         icon_data_url,
+    }
+}
+
+fn discover_theme_dirs(plugin_dir: &Path) -> Vec<PathBuf> {
+    let root = plugin_dir.join(PLUGIN_THEMES_DIR_NAME);
+    let mut out: Vec<PathBuf> = Vec::new();
+    if !root.is_dir() {
+        return out;
+    }
+
+    discover_theme_dirs_recursive(&root, 4, &mut out);
+
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn discover_theme_dirs_recursive(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+    if depth == 0 {
+        return;
+    }
+
+    if dir.join("theme.json").is_file() {
+        out.push(dir.to_path_buf());
+        return;
+    }
+
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(err) => {
+            warn!("plugins: failed to list {}: {}", dir.display(), err);
+            return;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        discover_theme_dirs_recursive(&path, depth - 1, out);
     }
 }
 
@@ -467,18 +507,11 @@ pub fn plugin_theme_dirs() -> Vec<PluginThemeDir> {
                 continue;
             }
 
-            for theme_rel in manifest.themes {
-                let rel = theme_rel.trim();
-                if rel.is_empty() {
-                    continue;
-                }
-                let theme_dir = plugin_dir.join(rel.trim_start_matches("./"));
-                if theme_dir.is_dir() {
-                    out.push(PluginThemeDir {
-                        plugin_id: plugin_id.clone(),
-                        path: theme_dir,
-                    });
-                }
+            for theme_dir in discover_theme_dirs(&plugin_dir) {
+                out.push(PluginThemeDir {
+                    plugin_id: plugin_id.clone(),
+                    path: theme_dir,
+                });
             }
         }
     }

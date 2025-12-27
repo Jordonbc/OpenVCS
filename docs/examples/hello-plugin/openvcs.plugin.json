@@ -6,6 +6,5 @@
   "version": "0.1.0",
   "author": "OpenVCS Docs",
   "description": "Example plugin: menu item + titlebar button + simple hooks.",
-  "entry": "entry.js",
-  "themes": []
+  "entry": "entry.js"
 }
