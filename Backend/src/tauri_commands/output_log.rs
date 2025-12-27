@@ -1,4 +1,4 @@
-use tauri::{Manager, Runtime, Window, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, Runtime, WebviewUrl, WebviewWindowBuilder, Window};
 
 use crate::output_log::OutputLogEntry;
 use crate::state::AppState;
@@ -83,12 +83,16 @@ pub fn open_output_log_window<R: Runtime>(window: Window<R>) -> Result<(), Strin
         return Ok(());
     }
 
-    WebviewWindowBuilder::new(&app, "output-log", WebviewUrl::App("index.html?view=output-log".into()))
-        .title("Output Log")
-        .inner_size(900.0, 600.0)
-        .resizable(true)
-        .build()
-        .map_err(|e| e.to_string())?;
+    WebviewWindowBuilder::new(
+        &app,
+        "output-log",
+        WebviewUrl::App("index.html?view=output-log".into()),
+    )
+    .title("Output Log")
+    .inner_size(900.0, 600.0)
+    .resizable(true)
+    .build()
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }

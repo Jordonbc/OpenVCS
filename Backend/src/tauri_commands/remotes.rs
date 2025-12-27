@@ -2,9 +2,9 @@ use log::{error, info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window};
 
 use openvcs_core::models::{CommitItem, LogQuery, VcsEvent};
+use openvcs_core::FetchOptions;
 use openvcs_core::Vcs;
 use openvcs_core::VcsError;
-use openvcs_core::FetchOptions;
 
 use crate::state::AppState;
 
@@ -38,7 +38,10 @@ fn host_from_remote_url(url: &str) -> Option<String> {
     }
 
     // https://host/owner/repo(.git)
-    if let Some(rest) = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")) {
+    if let Some(rest) = u
+        .strip_prefix("https://")
+        .or_else(|| u.strip_prefix("http://"))
+    {
         let host = rest.split('/').next().unwrap_or("").trim();
         if !host.is_empty() {
             return Some(host.to_string());
@@ -140,7 +143,9 @@ pub async fn git_set_remote_url(
     }
 
     run_repo_task("git_set_remote_url", repo, move |repo| {
-        repo.inner().ensure_remote(&name, &url).map_err(|e| e.to_string())?;
+        repo.inner()
+            .ensure_remote(&name, &url)
+            .map_err(|e| e.to_string())?;
         Ok(())
     })
     .await?;
@@ -244,9 +249,15 @@ pub async fn git_fetch_all<R: Runtime>(
 
             // Some backends/environments can be picky about force-refspec syntax; fall back to a
             // non-force refspec so we still populate `refs/remotes/<remote>/*` for the UI.
-            if let Err(e) = repo.inner().fetch_with_options(&r, &refspec_force, fetch_opts, on.clone()) {
+            if let Err(e) =
+                repo.inner()
+                    .fetch_with_options(&r, &refspec_force, fetch_opts, on.clone())
+            {
                 warn!("Fetch (force refspec) failed for remote '{r}': {e}; retrying without '+'");
-                if let Err(e2) = repo.inner().fetch_with_options(&r, &refspec, fetch_opts, on.clone()) {
+                if let Err(e2) =
+                    repo.inner()
+                        .fetch_with_options(&r, &refspec, fetch_opts, on.clone())
+                {
                     let msg = e2.to_string();
                     emit_ssh_prompt(&app, &r, &url, &msg);
                     error!("Fetch failed for remote '{r}': {msg}");
@@ -275,7 +286,11 @@ pub async fn git_fetch_all<R: Runtime>(
             }
         }
 
-        if failures.is_empty() { Ok(()) } else { Err(failures.join("\n")) }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("\n"))
+        }
     })
     .await
 }
@@ -341,14 +356,20 @@ pub async fn git_pull<R: Runtime>(
         match repo.inner().pull_ff_only(remote, upstream_branch, on) {
             Ok(()) => {
                 info!("Pull (ff-only) completed successfully for branch '{current}'");
-                Ok(PullResult { pulled: true, branch: current, reason: None })
+                Ok(PullResult {
+                    pulled: true,
+                    branch: current,
+                    reason: None,
+                })
             }
             Err(VcsError::NoUpstream) => {
                 info!("Pull skipped for branch '{current}' (no upstream configured)");
                 Ok(PullResult {
                     pulled: false,
                     branch: current,
-                    reason: Some("No upstream configured for this branch; pull skipped".to_string()),
+                    reason: Some(
+                        "No upstream configured for this branch; pull skipped".to_string(),
+                    ),
                 })
             }
             Err(e) => {
@@ -417,7 +438,10 @@ pub async fn git_push<R: Runtime>(
         // Pushing does not update local remote-tracking refs (refs/remotes/origin/*),
         // which the UI uses for ahead/behind; refresh them best-effort.
         let on_fetch = Some(progress_bridge(app));
-        if let Err(e) = repo.inner().fetch_with_options("origin", &current, fetch_opts, on_fetch) {
+        if let Err(e) = repo
+            .inner()
+            .fetch_with_options("origin", &current, fetch_opts, on_fetch)
+        {
             warn!("Post-push fetch failed for branch '{current}': {e}");
         }
 

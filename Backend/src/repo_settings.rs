@@ -25,6 +25,11 @@ pub struct RepoConfig {
 
 impl Default for RepoConfig {
     fn default() -> Self {
-        Self { user_name: None, user_email: None, origin_url: None, remotes: None }
+        Self {
+            user_name: None,
+            user_email: None,
+            origin_url: None,
+            remotes: None,
+        }
     }
 }

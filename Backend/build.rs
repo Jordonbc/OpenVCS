@@ -79,7 +79,11 @@ fn sanitize_semver_ident(s: &str) -> String {
     }
 
     let out = out.trim_matches('-').to_string();
-    if out.is_empty() { "unknown".into() } else { out }
+    if out.is_empty() {
+        "unknown".into()
+    } else {
+        out
+    }
 }
 
 fn main() {
@@ -106,7 +110,9 @@ fn main() {
         if let Some(updater) = plugins.get_mut("updater") {
             let endpoints = match chan.as_str() {
                 // Nightly: check nightly first, then stable
-                "nightly" | "beta" => serde_json::Value::Array(vec![nightly.clone(), stable.clone()]),
+                "nightly" | "beta" => {
+                    serde_json::Value::Array(vec![nightly.clone(), stable.clone()])
+                }
                 // Stable: stable only
                 _ => serde_json::Value::Array(vec![stable.clone()]),
             };
@@ -163,7 +169,13 @@ fn main() {
         .args(["describe", "--always", "--dirty", "--tags"])
         .output()
         .ok()
-        .and_then(|o| if o.status.success() { Some(String::from_utf8_lossy(&o.stdout).trim().to_string()) } else { None })
+        .and_then(|o| {
+            if o.status.success() {
+                Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                None
+            }
+        })
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "dev".into());
     println!("cargo:rustc-env=GIT_DESCRIBE={}", describe);
@@ -194,18 +206,13 @@ fn main() {
     let hash = git_short_hash().unwrap_or_else(|| "nogit".into());
     let dirty = git_is_dirty().unwrap_or(false);
 
-    let build_id = format!(
-        "{}@{}{}",
-        branch,
-        hash,
-        if dirty { "-dirty" } else { "" }
-    );
+    let build_id = format!("{}@{}{}", branch, hash, if dirty { "-dirty" } else { "" });
 
     let exact_tag = run_git(&["describe", "--tags", "--exact-match"]);
     let expected_v = format!("v{pkg_version}");
-    let head_is_version_tag = exact_tag
-        .as_deref()
-        .map_or(false, |t| t == pkg_version.as_str() || t == expected_v.as_str());
+    let head_is_version_tag = exact_tag.as_deref().map_or(false, |t| {
+        t == pkg_version.as_str() || t == expected_v.as_str()
+    });
 
     let official = is_truthy_env("OPENVCS_OFFICIAL_RELEASE") || (head_is_version_tag && !dirty);
 

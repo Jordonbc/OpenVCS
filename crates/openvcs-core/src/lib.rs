@@ -1,12 +1,15 @@
 //! OpenVCS Core: VCS-agnostic traits, errors, events, DTOs, and a runtime backend registry.
 
-pub mod models;
-pub mod backend_id;
 pub mod backend_descriptor;
+pub mod backend_id;
+pub mod models;
 
-use std::{path::{Path, PathBuf}, sync::Arc};
 pub use crate::backend_id::BackendId;
 pub use crate::models::{Capabilities, FetchOptions, OnEvent};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 #[cfg(test)]
 pub(crate) mod test_helpers;
@@ -39,8 +42,12 @@ pub trait Vcs: Send + Sync {
     fn caps(&self) -> Capabilities;
 
     // lifecycle
-    fn open(path: &Path) -> Result<Self> where Self: Sized;
-    fn clone(url: &str, dest: &Path, on: Option<OnEvent>) -> Result<Self> where Self: Sized;
+    fn open(path: &Path) -> Result<Self>
+    where
+        Self: Sized;
+    fn clone(url: &str, dest: &Path, on: Option<OnEvent>) -> Result<Self>
+    where
+        Self: Sized;
 
     // context
     fn workdir(&self) -> &Path;
@@ -102,10 +109,14 @@ pub trait Vcs: Send + Sync {
 
     // history ops
     /// Apply the given commit on top of the current HEAD (e.g. `git cherry-pick`).
-    fn cherry_pick(&self, _rev: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn cherry_pick(&self, _rev: &str) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
 
     /// Create a new commit that reverses the given commit (e.g. `git revert`).
-    fn revert_commit(&self, _rev: &str, _no_edit: bool) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn revert_commit(&self, _rev: &str, _no_edit: bool) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
 
     /// Details about a conflicted file (three-way content where available).
     fn conflict_details(&self, _path: &Path) -> Result<models::ConflictDetails> {
@@ -179,7 +190,9 @@ pub trait Vcs: Send + Sync {
     // recovery
     fn hard_reset_head(&self) -> Result<()>;
     /// Soft-reset HEAD to the given revision, keeping changes in the index and working tree.
-    fn reset_soft_to(&self, _rev: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn reset_soft_to(&self, _rev: &str) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
 
     // config
     /// Read repository-local identity (user.name, user.email). Returns None if missing.
@@ -189,25 +202,54 @@ pub trait Vcs: Send + Sync {
 
     // stash
     /// List available stash entries (most-recent first).
-    fn stash_list(&self) -> Result<Vec<models::StashItem>> { Err(VcsError::Unsupported(self.id())) }
+    fn stash_list(&self) -> Result<Vec<models::StashItem>> {
+        Err(VcsError::Unsupported(self.id()))
+    }
     /// Create a stash entry. If `paths` is non-empty, only those paths are stashed.
-    fn stash_push(&self, _message: &str, _include_untracked: bool, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn stash_push(
+        &self,
+        _message: &str,
+        _include_untracked: bool,
+        _paths: &[PathBuf],
+    ) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
     /// Apply a stash entry without dropping it.
-    fn stash_apply(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn stash_apply(&self, _selector: &str) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
     /// Pop (apply and drop) a stash entry.
-    fn stash_pop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn stash_pop(&self, _selector: &str) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
     /// Drop a stash entry.
-    fn stash_drop(&self, _selector: &str) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
+    fn stash_drop(&self, _selector: &str) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
     /// Show a unified diff for a stash entry.
-    fn stash_show(&self, _selector: &str) -> Result<Vec<String>> { Err(VcsError::Unsupported(self.id())) }
+    fn stash_show(&self, _selector: &str) -> Result<Vec<String>> {
+        Err(VcsError::Unsupported(self.id()))
+    }
 
     // git-lfs helpers (backends may return Unsupported if not applicable)
-    fn lfs_fetch(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
-    fn lfs_pull(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
-    fn lfs_prune(&self) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
-    fn lfs_track(&self, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
-    fn lfs_untrack(&self, _paths: &[PathBuf]) -> Result<()> { Err(VcsError::Unsupported(self.id())) }
-    fn lfs_is_tracked(&self, _path: &Path) -> Result<bool> { Err(VcsError::Unsupported(self.id())) }
+    fn lfs_fetch(&self) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+    fn lfs_pull(&self) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+    fn lfs_prune(&self) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+    fn lfs_track(&self, _paths: &[PathBuf]) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+    fn lfs_untrack(&self, _paths: &[PathBuf]) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+    fn lfs_is_tracked(&self, _path: &Path) -> Result<bool> {
+        Err(VcsError::Unsupported(self.id()))
+    }
 }
 
 /// A concrete repository handle that owns a chosen backend instance.
@@ -234,7 +276,12 @@ impl Repo {
         let caps = self.inner.caps();
         log::trace!(
             "openvcs-core: Repo::caps -> commits={}, branches={}, tags={}, staging={}, push_pull={}, fast_forward={}",
-            caps.commits, caps.branches, caps.tags, caps.staging, caps.push_pull, caps.fast_forward
+            caps.commits,
+            caps.branches,
+            caps.tags,
+            caps.staging,
+            caps.push_pull,
+            caps.fast_forward
         );
         caps
     }
@@ -249,7 +296,7 @@ impl Repo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::{dummy_open, DummyVcs};
+    use crate::test_helpers::{DummyVcs, dummy_open};
     use std::path::Path;
 
     #[test]
@@ -257,6 +304,9 @@ mod tests {
         let repo = Repo::new(dummy_open(Path::new(".")).expect("dummy repo"));
         assert_eq!(repo.id().as_ref(), "dummy-test");
         assert!(repo.caps().commits);
-        assert_eq!(repo.inner().id().as_ref(), DummyVcs::open(Path::new(".")).unwrap().id().as_ref());
+        assert_eq!(
+            repo.inner().id().as_ref(),
+            DummyVcs::open(Path::new(".")).unwrap().id().as_ref()
+        );
     }
 }

@@ -210,7 +210,9 @@ pub fn open_repo_dotfile<R: Runtime>(
     state: State<'_, AppState>,
     name: String,
 ) -> Result<(), String> {
-    let repo_state = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
+    let repo_state = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
     let mut path = repo_state.inner().workdir().to_path_buf();
     path.push(name);
 

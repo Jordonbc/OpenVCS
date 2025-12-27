@@ -58,7 +58,11 @@ pub async fn git_add_to_gitignore_paths(
         let gitignore_path = workdir.join(".gitignore");
 
         let existing = std::fs::read_to_string(&gitignore_path).unwrap_or_default();
-        let line_ending = if existing.contains("\r\n") { "\r\n" } else { "\n" };
+        let line_ending = if existing.contains("\r\n") {
+            "\r\n"
+        } else {
+            "\n"
+        };
 
         let mut existing_lines: HashSet<String> = existing
             .lines()
@@ -86,7 +90,8 @@ pub async fn git_add_to_gitignore_paths(
             out.push_str(line_ending);
         }
 
-        std::fs::write(&gitignore_path, out).map_err(|e| format!("Failed to write .gitignore: {e}"))?;
+        std::fs::write(&gitignore_path, out)
+            .map_err(|e| format!("Failed to write .gitignore: {e}"))?;
         Ok(())
     })
     .await

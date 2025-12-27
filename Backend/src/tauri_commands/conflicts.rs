@@ -72,10 +72,7 @@ fn tool_args(tool: &ExternalTool) -> (String, Vec<String>) {
 }
 
 #[tauri::command]
-pub async fn git_launch_merge_tool(
-    state: State<'_, AppState>,
-    path: String,
-) -> Result<(), String> {
+pub async fn git_launch_merge_tool(state: State<'_, AppState>, path: String) -> Result<(), String> {
     let cfg = state.config();
     let tool = cfg.diff.external_merge.clone();
     if !tool.enabled || tool.path.trim().is_empty() {
@@ -90,7 +87,11 @@ pub async fn git_launch_merge_tool(
     run_repo_task("git_launch_merge_tool", repo, move |repo| {
         let repo_root = repo.inner().workdir().to_path_buf();
         let rel = PathBuf::from(&path);
-        let abs = if rel.is_absolute() { rel.clone() } else { repo_root.join(&rel) };
+        let abs = if rel.is_absolute() {
+            rel.clone()
+        } else {
+            repo_root.join(&rel)
+        };
 
         let mut cmd = Command::new(&tool_path);
         cmd.current_dir(&repo_root);
@@ -118,8 +119,7 @@ pub async fn git_launch_merge_tool(
 
         debug!(
             "git_launch_merge_tool: spawning {} with args {:?}",
-            tool_path,
-            expanded
+            tool_path, expanded
         );
 
         cmd.spawn().map(|_| ()).map_err(|e| {
@@ -129,4 +129,3 @@ pub async fn git_launch_merge_tool(
     })
     .await
 }
-

@@ -1,20 +1,20 @@
-use tauri::{Emitter, Manager};
-use std::sync::Arc;
 use openvcs_core::{backend_id, BackendId};
-use tauri_plugin_updater::UpdaterExt;
+use std::sync::Arc;
 use tauri::WindowEvent;
+use tauri::{Emitter, Manager};
+use tauri_plugin_updater::UpdaterExt;
 
-mod utilities;
-mod tauri_commands;
-mod workarounds;
-mod state;
-mod validate;
-mod settings;
-mod repo_settings;
 mod logging;
-mod themes;
-mod plugins;
 mod output_log;
+mod plugins;
+mod repo_settings;
+mod settings;
+mod state;
+mod tauri_commands;
+mod themes;
+mod utilities;
+mod validate;
+mod workarounds;
 
 #[cfg(feature = "with-git")]
 #[allow(unused_imports)]
@@ -34,7 +34,9 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
 
     let state = app_handle.state::<state::AppState>();
     let app_config = state.config();
-    if !app_config.general.reopen_last_repos { return; }
+    if !app_config.general.reopen_last_repos {
+        return;
+    }
 
     let recents = state.recents();
     if let Some(path) = recents.into_iter().find(|p| p.exists()) {
@@ -62,7 +64,6 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    
     // Initialize logging
     logging::init();
 
@@ -96,7 +97,10 @@ pub fn run() {
                     if let Ok(updater) = app_handle.updater() {
                         match updater.check().await {
                             Ok(Some(_u)) => {
-                                let _ = app_handle.emit("ui:update-available", serde_json::json!({"source":"startup"}));
+                                let _ = app_handle.emit(
+                                    "ui:update-available",
+                                    serde_json::json!({"source":"startup"}),
+                                );
                             }
                             _ => {}
                         }
@@ -123,7 +127,8 @@ pub fn run() {
 }
 
 /// Returns the set of command handlers for the app.
-fn build_invoke_handler<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
+fn build_invoke_handler<R: tauri::Runtime>(
+) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         tauri_commands::about_info,
         tauri_commands::show_licenses,

@@ -16,7 +16,10 @@ fn repo_username_from_origin(url: &str) -> Option<String> {
     }
 
     // https://host/owner/repo(.git)
-    if let Some(rest) = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")) {
+    if let Some(rest) = u
+        .strip_prefix("https://")
+        .or_else(|| u.strip_prefix("http://"))
+    {
         let path = rest.splitn(2, '/').nth(1).unwrap_or("");
         let mut seg = path.split('/').filter(|s| !s.is_empty());
         let owner = seg.next()?;
@@ -40,7 +43,10 @@ fn repo_name_from_origin(url: &str) -> Option<String> {
     }
 
     // https://host/owner/repo(.git)
-    if let Some(rest) = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")) {
+    if let Some(rest) = u
+        .strip_prefix("https://")
+        .or_else(|| u.strip_prefix("http://"))
+    {
         let path = rest.splitn(2, '/').nth(1).unwrap_or("");
         let last = path.split('/').filter(|s| !s.is_empty()).last()?;
         return Some(last.strip_suffix(".git").unwrap_or(last).to_string());
@@ -330,10 +336,7 @@ pub struct MergeContext {
 pub async fn git_merge_context(state: State<'_, AppState>) -> Result<MergeContext, String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_merge_context", repo, move |repo| {
-        let in_progress = repo
-            .inner()
-            .merge_in_progress()
-            .unwrap_or(false);
+        let in_progress = repo.inner().merge_in_progress().unwrap_or(false);
         Ok(MergeContext { in_progress })
     })
     .await

@@ -1,15 +1,19 @@
+use crate::settings::{AppConfig, LogLevel};
 use std::fs::{self, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};
 use std::sync::{Arc, Mutex, OnceLock};
 use time::{OffsetDateTime, UtcOffset};
-use crate::settings::{AppConfig, LogLevel};
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
 static ACTIVE_LOG_FILE: OnceLock<Arc<Mutex<std::fs::File>>> = OnceLock::new();
 
 pub fn clear_active_log_file() -> Result<(), String> {
-    let Some(file) = ACTIVE_LOG_FILE.get() else { return Ok(()); };
-    let mut f = file.lock().map_err(|_| "log file lock poisoned".to_string())?;
+    let Some(file) = ACTIVE_LOG_FILE.get() else {
+        return Ok(());
+    };
+    let mut f = file
+        .lock()
+        .map_err(|_| "log file lock poisoned".to_string())?;
     f.set_len(0).map_err(|e| e.to_string())?;
     f.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
     f.flush().map_err(|e| e.to_string())?;
@@ -55,8 +59,8 @@ pub fn init() {
         let level = match cfg.logging.level {
             LogLevel::Trace => log::LevelFilter::Trace,
             LogLevel::Debug => log::LevelFilter::Debug,
-            LogLevel::Info  => log::LevelFilter::Info,
-            LogLevel::Warn  => log::LevelFilter::Warn,
+            LogLevel::Info => log::LevelFilter::Info,
+            LogLevel::Warn => log::LevelFilter::Warn,
             LogLevel::Error => log::LevelFilter::Error,
         };
         builder.filter_level(level);
@@ -73,13 +77,21 @@ pub fn init() {
 
         // Open (truncate) the active log file for this session
         let active = dir.join("openvcs.log");
-        OpenOptions::new().create(true).write(true).truncate(true).open(active).ok()
+        OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(active)
+            .ok()
     })();
 
     if let Some(file) = logfile {
         let file = Arc::new(Mutex::new(file));
         let _ = ACTIVE_LOG_FILE.set(Arc::clone(&file));
-        let dual = DualLogger { console: console_logger, file };
+        let dual = DualLogger {
+            console: console_logger,
+            file,
+        };
         let _ = log::set_boxed_logger(Box::new(dual));
         log::set_max_level(log::LevelFilter::Trace);
     } else {
@@ -91,13 +103,23 @@ pub fn init() {
 
 fn rotate_existing_log(dir: &std::path::Path) {
     let active = dir.join("openvcs.log");
-    let Ok(mut src) = std::fs::File::open(&active) else { return; };
+    let Ok(mut src) = std::fs::File::open(&active) else {
+        return;
+    };
     // Skip empty files
-    let meta = match src.metadata() { Ok(m) => m, Err(_) => return };
-    if meta.len() == 0 { return; }
+    let meta = match src.metadata() {
+        Ok(m) => m,
+        Err(_) => return,
+    };
+    if meta.len() == 0 {
+        return;
+    }
 
     // Use the file's creation time if available; otherwise fall back to last modification time.
-    let created_sys = meta.created().or_else(|_| meta.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+    let created_sys = meta
+        .created()
+        .or_else(|_| meta.modified())
+        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
 
     // Convert to OffsetDateTime and then to local time.
     let created_utc = OffsetDateTime::from(created_sys);
@@ -106,12 +128,20 @@ fn rotate_existing_log(dir: &std::path::Path) {
 
     let base_name = format!(
         "openvcs-{:04}-{:02}-{:02}_{:02}-{:02}",
-        created_local.year(), u8::from(created_local.month()), created_local.day(), created_local.hour(), created_local.minute()
+        created_local.year(),
+        u8::from(created_local.month()),
+        created_local.day(),
+        created_local.hour(),
+        created_local.minute()
     );
 
     // Choose a unique archive name, prefer base.zip then -2.zip etc.
     let pick_name = |idx: u32| -> String {
-        if idx <= 1 { format!("{base_name}.zip") } else { format!("{base_name}-{idx}.zip") }
+        if idx <= 1 {
+            format!("{base_name}.zip")
+        } else {
+            format!("{base_name}-{idx}.zip")
+        }
     };
 
     let mut zip_path = dir.join(pick_name(1));
@@ -142,19 +172,32 @@ fn rotate_existing_log(dir: &std::path::Path) {
 
 fn prune_archives(dir: &std::path::Path, keep: usize) {
     use std::path::PathBuf;
-    let Ok(read) = fs::read_dir(dir) else { return; };
+    let Ok(read) = fs::read_dir(dir) else {
+        return;
+    };
     let mut entries: Vec<(PathBuf, std::time::SystemTime)> = Vec::new();
     for e in read.flatten() {
         let path = e.path();
-        if !path.is_file() { continue; }
+        if !path.is_file() {
+            continue;
+        }
         if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-            if !(name.starts_with("openvcs-") && name.ends_with(".zip")) { continue; }
-        } else { continue; }
-        let mtime = e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            if !(name.starts_with("openvcs-") && name.ends_with(".zip")) {
+                continue;
+            }
+        } else {
+            continue;
+        }
+        let mtime = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
         entries.push((path, mtime));
     }
 
-    if entries.len() <= keep { return; }
+    if entries.len() <= keep {
+        return;
+    }
     entries.sort_by_key(|(_, t)| *t);
     let to_delete = entries.len().saturating_sub(keep);
     for (path, _) in entries.into_iter().take(to_delete) {

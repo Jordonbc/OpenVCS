@@ -1,20 +1,24 @@
 /* =========================================================================================
-   Low-level module: your original git.rs, adapted to wrap Repository in Arc<Mutex<…>>.
-   ========================================================================================= */
-use std::{
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}},
-};
+Low-level module: your original git.rs, adapted to wrap Repository in Arc<Mutex<…>>.
+========================================================================================= */
 use git2::{
-    self as g,
-    AutotagOption, BranchType, FetchOptions, Oid, PushOptions,
-    Repository, ResetType, Status, StatusOptions,
+    self as g, AutotagOption, BranchType, FetchOptions, Oid, PushOptions, Repository, ResetType,
+    Status, StatusOptions,
 };
 use log::{debug, error, info, trace, warn};
+use openvcs_core::models::{
+    BranchItem, BranchKind, CommitItem, FileEntry, LogQuery, StatusPayload,
+};
+use std::{
+    path::{Path, PathBuf},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 use thiserror::Error;
-use time::{OffsetDateTime, UtcOffset};
 use time::format_description::well_known::Rfc3339;
-use openvcs_core::models::{BranchItem, BranchKind, CommitItem, FileEntry, LogQuery, StatusPayload};
+use time::{OffsetDateTime, UtcOffset};
 
 pub type Result<T> = std::result::Result<T, GitError>;
 
@@ -61,12 +65,17 @@ impl Git {
             None => {
                 // Bare repos aren’t supported by this backend wrapper.
                 warn!("bare repository at {} (unsupported)", path.display());
-                return Err(GitError::NotARepo("bare repository is not supported".into()));
+                return Err(GitError::NotARepo(
+                    "bare repository is not supported".into(),
+                ));
             }
         };
 
         info!("repository opened at {}", workdir.display());
-        Ok(Self { repo: Arc::new(Mutex::new(repo)), workdir })
+        Ok(Self {
+            repo: Arc::new(Mutex::new(repo)),
+            workdir,
+        })
     }
 
     pub fn clone(url: &str, dest: impl AsRef<Path>) -> Result<Self> {
@@ -99,7 +108,9 @@ impl Git {
             }
             None => {
                 warn!("cloned repo has no workdir (bare?), unsupported");
-                return Err(GitError::NotARepo("bare repository is not supported".into()));
+                return Err(GitError::NotARepo(
+                    "bare repository is not supported".into(),
+                ));
             }
         };
 
@@ -110,7 +121,9 @@ impl Git {
     }
 
     #[inline]
-    pub fn workdir(&self) -> &Path { &self.workdir }
+    pub fn workdir(&self) -> &Path {
+        &self.workdir
+    }
 
     #[inline]
     pub fn with_repo<T>(&self, f: impl FnOnce(&Repository) -> T) -> T {
@@ -165,21 +178,19 @@ impl Git {
 
             for branch_result in repo.branches(Some(BranchType::Local))? {
                 match branch_result {
-                    Ok((branch, _)) => {
-                        match branch.name() {
-                            Ok(Some(name)) => {
-                                trace!("found branch '{}'", name);
-                                out.push(name.to_string());
-                            }
-                            Ok(None) => {
-                                debug!("branch has no valid UTF-8 name, skipping");
-                            }
-                            Err(e) => {
-                                error!("failed to read branch name: {e}");
-                                return Err(GitError::LibGit2(e));
-                            }
+                    Ok((branch, _)) => match branch.name() {
+                        Ok(Some(name)) => {
+                            trace!("found branch '{}'", name);
+                            out.push(name.to_string());
                         }
-                    }
+                        Ok(None) => {
+                            debug!("branch has no valid UTF-8 name, skipping");
+                        }
+                        Err(e) => {
+                            error!("failed to read branch name: {e}");
+                            return Err(GitError::LibGit2(e));
+                        }
+                    },
                     Err(e) => {
                         error!("branch iteration failed: {e}");
                         return Err(GitError::LibGit2(e));
@@ -196,7 +207,8 @@ impl Git {
         info!("creating branch '{}'", name);
 
         self.with_repo(|repo| -> Result<()> {
-            let head = repo.head()
+            let head = repo
+                .head()
                 .map_err(|e| {
                     error!("failed to resolve HEAD for branch '{name}': {e}");
                     e
@@ -207,11 +219,10 @@ impl Git {
                     e
                 })?;
 
-            repo.branch(name, &head, false)
-                .map_err(|e| {
-                    error!("failed to create branch '{name}': {e}");
-                    e
-                })?;
+            repo.branch(name, &head, false).map_err(|e| {
+                error!("failed to create branch '{name}': {e}");
+                e
+            })?;
 
             debug!("branch '{name}' created");
             Ok(())
@@ -256,7 +267,10 @@ impl Git {
                     if repo.find_branch(local, g::BranchType::Local).is_err() {
                         // Create local branch at the remote target
                         let rb = repo.find_branch(name, g::BranchType::Remote)?;
-                        let target = rb.get().target().ok_or_else(|| g::Error::from_str("remote branch has no target"))?;
+                        let target = rb
+                            .get()
+                            .target()
+                            .ok_or_else(|| g::Error::from_str("remote branch has no target"))?;
                         let commit = repo.find_commit(target)?;
                         repo.branch(local, &commit, false)?;
                         // Set upstream to remote
@@ -264,25 +278,37 @@ impl Git {
                         lb.set_upstream(Some(name))?;
                     }
                     checkout_ref(repo, &format!("refs/heads/{}", local))?;
-                    info!("created and checked out tracking branch '{}' for remote '{}'", local, name);
+                    info!(
+                        "created and checked out tracking branch '{}' for remote '{}'",
+                        local, name
+                    );
                     return Ok(());
                 }
             }
 
             // 3) Try default remote "origin/<name>"
             let remote_short = format!("origin/{name}");
-            if repo.find_branch(&remote_short, g::BranchType::Remote).is_ok() {
+            if repo
+                .find_branch(&remote_short, g::BranchType::Remote)
+                .is_ok()
+            {
                 let local = name;
                 if repo.find_branch(local, g::BranchType::Local).is_err() {
                     let rb = repo.find_branch(&remote_short, g::BranchType::Remote)?;
-                    let target = rb.get().target().ok_or_else(|| g::Error::from_str("remote branch has no target"))?;
+                    let target = rb
+                        .get()
+                        .target()
+                        .ok_or_else(|| g::Error::from_str("remote branch has no target"))?;
                     let commit = repo.find_commit(target)?;
                     repo.branch(local, &commit, false)?;
                     let mut lb = repo.find_branch(local, g::BranchType::Local)?;
                     lb.set_upstream(Some(&remote_short))?;
                 }
                 checkout_ref(repo, &format!("refs/heads/{local}"))?;
-                info!("created and checked out tracking branch '{}' for remote '{}'", local, remote_short);
+                info!(
+                    "created and checked out tracking branch '{}' for remote '{}'",
+                    local, remote_short
+                );
                 return Ok(());
             }
 
@@ -347,7 +373,11 @@ impl Git {
         let mut fo = FetchOptions::new();
         fo.remote_callbacks(cb);
         fo.download_tags(AutotagOption::All);
-        fo.prune(if prune { g::FetchPrune::On } else { g::FetchPrune::Off });
+        fo.prune(if prune {
+            g::FetchPrune::On
+        } else {
+            g::FetchPrune::Off
+        });
         debug!("fetch options prepared (download_tags=All)");
 
         self.with_repo(|repo| {
@@ -363,12 +393,15 @@ impl Git {
             })?;
 
             // FETCH_HEAD is optional depending on server/refspec; log what we see.
-            let fetch_head = repo.find_reference("FETCH_HEAD").map(|r| r.target()).map_err(|e| {
-                // Not all fetches create FETCH_HEAD (e.g., if nothing fetched); treat as a soft signal.
-                // We still bubble the libgit2 error since callers expect the original behavior.
-                warn!("FETCH_HEAD not available after fetch: {e}");
-                e
-            })?;
+            let fetch_head = repo
+                .find_reference("FETCH_HEAD")
+                .map(|r| r.target())
+                .map_err(|e| {
+                    // Not all fetches create FETCH_HEAD (e.g., if nothing fetched); treat as a soft signal.
+                    // We still bubble the libgit2 error since callers expect the original behavior.
+                    warn!("FETCH_HEAD not available after fetch: {e}");
+                    e
+                })?;
 
             match fetch_head {
                 Some(oid) => debug!("fetch completed; FETCH_HEAD -> {}", oid),
@@ -385,12 +418,10 @@ impl Git {
 
         self.with_repo(|repo| -> Result<()> {
             // Parse "remote/branch"
-            let (remote_name, remote_ref) = upstream
-                .split_once('/')
-                .ok_or_else(|| {
-                    error!("invalid upstream '{upstream}' (expected remote/branch)");
-                    GitError::LibGit2(g::Error::from_str("expected remote/branch"))
-                })?;
+            let (remote_name, remote_ref) = upstream.split_once('/').ok_or_else(|| {
+                error!("invalid upstream '{upstream}' (expected remote/branch)");
+                GitError::LibGit2(g::Error::from_str("expected remote/branch"))
+            })?;
             debug!("remote='{remote_name}', ref='{remote_ref}'");
 
             // Fetch latest from remote
@@ -435,7 +466,8 @@ impl Git {
             if analysis.is_fast_forward() {
                 debug!("fast-forward possible to '{upstream}'");
 
-                let head_name = repo.head()
+                let head_name = repo
+                    .head()
                     .and_then(|h| {
                         h.name()
                             .ok_or_else(|| g::Error::from_str("HEAD name missing"))
@@ -489,7 +521,10 @@ impl Git {
         paths: &[PathBuf],
     ) -> Result<g::Oid> {
         let msg_first = message.lines().next().unwrap_or("");
-        info!("committing (author='{} <{}>', summary='{}')", name, email, msg_first);
+        info!(
+            "committing (author='{} <{}>', summary='{}')",
+            name, email, msg_first
+        );
 
         self.with_repo(|repo| {
             let mut idx = repo.index().map_err(|e| {
@@ -499,19 +534,21 @@ impl Git {
 
             if paths.is_empty() {
                 debug!("staging all changes (add_all \"*\")");
-                idx.add_all(["*"].iter(), g::IndexAddOption::DEFAULT, None).map_err(|e| {
-                    error!("add_all(\"*\") failed: {e}");
-                    e
-                })?;
+                idx.add_all(["*"].iter(), g::IndexAddOption::DEFAULT, None)
+                    .map_err(|e| {
+                        error!("add_all(\"*\") failed: {e}");
+                        e
+                    })?;
             } else {
                 debug!("staging {} path(s)", paths.len());
                 for p in paths {
                     if p.is_dir() {
                         trace!("add_all(dir='{}')", p.display());
-                        idx.add_all([p.as_path()].iter(), g::IndexAddOption::DEFAULT, None).map_err(|e| {
-                            error!("add_all('{}') failed: {e}", p.display());
-                            e
-                        })?;
+                        idx.add_all([p.as_path()].iter(), g::IndexAddOption::DEFAULT, None)
+                            .map_err(|e| {
+                                error!("add_all('{}') failed: {e}", p.display());
+                                e
+                            })?;
                     } else {
                         let rel = rel_to_workdir(&self.workdir, p).map_err(|e| {
                             error!("rel_to_workdir('{}') failed: {e}", p.display());
@@ -552,12 +589,10 @@ impl Git {
             // Parents: if HEAD is a branch, use its tip; otherwise initial commit.
             let parents = match repo.head() {
                 Ok(h) if h.is_branch() => {
-                    let c = repo.head()
-                        .and_then(|h| h.peel_to_commit())
-                        .map_err(|e| {
-                            error!("peel_to_commit() for HEAD failed: {e}");
-                            e
-                        })?;
+                    let c = repo.head().and_then(|h| h.peel_to_commit()).map_err(|e| {
+                        error!("peel_to_commit() for HEAD failed: {e}");
+                        e
+                    })?;
                     vec![c]
                 }
                 _ => Vec::new(),
@@ -574,16 +609,19 @@ impl Git {
                     .and_then(|h| h.name().map(|s| s.to_string()))
             };
 
-            let oid = repo.commit(
-                head_ref.as_deref(),
-                &sig, &sig,
-                message,
-                &tree,
-                &parent_refs,
-            ).map_err(|e| {
-                error!("commit(write) failed: {e}");
-                e
-            })?;
+            let oid = repo
+                .commit(
+                    head_ref.as_deref(),
+                    &sig,
+                    &sig,
+                    message,
+                    &tree,
+                    &parent_refs,
+                )
+                .map_err(|e| {
+                    error!("commit(write) failed: {e}");
+                    e
+                })?;
 
             info!("commit created {}", oid);
             Ok(oid)
@@ -591,12 +629,7 @@ impl Git {
     }
 
     /// Commit whatever is currently staged in the index (no additional staging).
-    pub fn commit_index(
-        &self,
-        message: &str,
-        name: &str,
-        email: &str,
-    ) -> Result<g::Oid> {
+    pub fn commit_index(&self, message: &str, name: &str, email: &str) -> Result<g::Oid> {
         self.with_repo(|repo| {
             let mut idx = repo.index()?;
             if idx.is_empty() {
@@ -619,13 +652,22 @@ impl Git {
             let head_ref = if parent_refs.is_empty() {
                 None
             } else {
-                Some(repo.head()?.name().ok_or_else(|| g::Error::from_str("HEAD name missing"))?.to_string())
+                Some(
+                    repo.head()?
+                        .name()
+                        .ok_or_else(|| g::Error::from_str("HEAD name missing"))?
+                        .to_string(),
+                )
             };
 
-            let target_ref = if let Some(name) = head_ref { Some(name) } else { None };
+            let target_ref = if let Some(name) = head_ref {
+                Some(name)
+            } else {
+                None
+            };
             let oid = match &target_ref {
                 Some(name) => repo.commit(Some(name), &sig, &sig, message, &tree, &parent_refs)?,
-                None => repo.commit(None, &sig, &sig, message, &tree, &[])?
+                None => repo.commit(None, &sig, &sig, message, &tree, &[])?,
             };
             Ok(oid)
         })
@@ -713,12 +755,24 @@ impl Git {
     pub fn log_commits(&self, q: &LogQuery) -> Result<Vec<CommitItem>> {
         debug!(
             "log_commits: rev={:?} path={:?} author~={:?} since={:?} until={:?} skip={} limit={} topo={} merges={}",
-            q.rev, q.path, q.author_contains, q.since_utc, q.until_utc, q.skip, q.limit, q.topo_order, q.include_merges
+            q.rev,
+            q.path,
+            q.author_contains,
+            q.since_utc,
+            q.until_utc,
+            q.skip,
+            q.limit,
+            q.topo_order,
+            q.include_merges
         );
 
         self.with_repo(|repo| -> Result<Vec<CommitItem>> {
             let mut walk = repo.revwalk()?;
-            let sort = if q.topo_order { g::Sort::TOPOLOGICAL | g::Sort::TIME } else { g::Sort::TIME };
+            let sort = if q.topo_order {
+                g::Sort::TOPOLOGICAL | g::Sort::TIME
+            } else {
+                g::Sort::TIME
+            };
             let _ = walk.set_sorting(sort);
 
             let rev = q.rev.as_deref().unwrap_or("HEAD");
@@ -753,10 +807,14 @@ impl Git {
                 let t = commit.time();
                 let secs = t.seconds();
                 if let Some(s) = since {
-                    if secs < s { continue; }
+                    if secs < s {
+                        continue;
+                    }
                 }
                 if let Some(u) = until {
-                    if secs > u { continue; }
+                    if secs > u {
+                        continue;
+                    }
                 }
 
                 // author filter (substring on "Name <email>")
@@ -794,7 +852,12 @@ impl Git {
                 let msg = commit.summary().unwrap_or("").to_string();
                 let meta = format!("{when} • {short}");
 
-                out.push(CommitItem { id: id_full, msg, meta, author });
+                out.push(CommitItem {
+                    id: id_full,
+                    msg,
+                    meta,
+                    author,
+                });
 
                 if out.len() as u32 >= q.limit {
                     break;
@@ -810,7 +873,8 @@ impl Git {
         self.with_repo(|repo| -> Result<StatusPayload> {
             // Gather statuses
             let mut sopts = g::StatusOptions::new();
-            sopts.include_untracked(true)
+            sopts
+                .include_untracked(true)
                 .recurse_untracked_dirs(true)
                 .renames_head_to_index(true)
                 .renames_index_to_workdir(true);
@@ -823,12 +887,20 @@ impl Git {
             for e in statuses.iter() {
                 let s = e.status();
 
-                if s.contains(g::Status::WT_NEW)                        { summary.untracked += 1; }
-                if s.intersects(g::Status::WT_MODIFIED | g::Status::WT_TYPECHANGE) { summary.modified  += 1; }
-                if s.intersects(g::Status::INDEX_NEW | g::Status::INDEX_MODIFIED | g::Status::INDEX_TYPECHANGE) {
+                if s.contains(g::Status::WT_NEW) {
+                    summary.untracked += 1;
+                }
+                if s.intersects(g::Status::WT_MODIFIED | g::Status::WT_TYPECHANGE) {
+                    summary.modified += 1;
+                }
+                if s.intersects(
+                    g::Status::INDEX_NEW | g::Status::INDEX_MODIFIED | g::Status::INDEX_TYPECHANGE,
+                ) {
                     summary.staged += 1;
                 }
-                if s.contains(g::Status::CONFLICTED)                    { summary.conflicted += 1; }
+                if s.contains(g::Status::CONFLICTED) {
+                    summary.conflicted += 1;
+                }
 
                 let code = if s.contains(g::Status::CONFLICTED) {
                     "U"
@@ -836,7 +908,8 @@ impl Git {
                     "R"
                 } else if s.intersects(g::Status::INDEX_TYPECHANGE | g::Status::WT_TYPECHANGE) {
                     "T"
-                } else if s.contains(g::Status::INDEX_DELETED) || s.contains(g::Status::WT_DELETED) {
+                } else if s.contains(g::Status::INDEX_DELETED) || s.contains(g::Status::WT_DELETED)
+                {
                     "D"
                 } else if s.contains(g::Status::WT_NEW) && !s.contains(g::Status::INDEX_NEW) {
                     "?"
@@ -870,28 +943,53 @@ impl Git {
                     (String::new(), None)
                 };
 
-                files.push(FileEntry { path, old_path, status: code, staged, resolved_conflict: false, hunks: Vec::new() });
+                files.push(FileEntry {
+                    path,
+                    old_path,
+                    status: code,
+                    staged,
+                    resolved_conflict: false,
+                    hunks: Vec::new(),
+                });
             }
 
             // ahead/behind (best effort)
             let (ahead, behind) = {
-                let branch_name = repo.head()
-                    .ok()
-                    .and_then(|h| if h.is_branch() { h.shorthand().map(|s| s.to_string()) } else { None });
+                let branch_name = repo.head().ok().and_then(|h| {
+                    if h.is_branch() {
+                        h.shorthand().map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                });
                 if let Some(name) = branch_name {
                     if let Ok(branch) = repo.find_branch(&name, g::BranchType::Local) {
                         if let Ok(up) = branch.upstream() {
                             if let (Some(h), Some(u)) = (branch.get().target(), up.get().target()) {
                                 if let Ok((a, b)) = repo.graph_ahead_behind(h, u) {
                                     (a as u32, b as u32)
-                                } else { (0, 0) }
-                            } else { (0, 0) }
-                        } else { (0, 0) }
-                    } else { (0, 0) }
-                } else { (0, 0) }
+                                } else {
+                                    (0, 0)
+                                }
+                            } else {
+                                (0, 0)
+                            }
+                        } else {
+                            (0, 0)
+                        }
+                    } else {
+                        (0, 0)
+                    }
+                } else {
+                    (0, 0)
+                }
             };
 
-            Ok(StatusPayload { files, ahead, behind })
+            Ok(StatusPayload {
+                files,
+                ahead,
+                behind,
+            })
         })
     }
 
@@ -932,8 +1030,7 @@ impl Git {
             let mut opts = g::DiffOptions::new();
             opts.pathspec(rel_str.as_ref());
             opts.context_lines(3);
-            opts.include_untracked(true)
-                .recurse_untracked_dirs(true);
+            opts.include_untracked(true).recurse_untracked_dirs(true);
 
             // 1) Unstaged: index → workdir
             let diff_unstaged = repo.diff_index_to_workdir(None, Some(&mut opts))?;
@@ -959,7 +1056,8 @@ impl Git {
             opts2.context_lines(3);
 
             let index = repo.index()?;
-            let diff_staged = repo.diff_tree_to_index(Some(&head_tree), Some(&index), Some(&mut opts2))?;
+            let diff_staged =
+                repo.diff_tree_to_index(Some(&head_tree), Some(&index), Some(&mut opts2))?;
             lines = collect_patch_lines(&diff_staged)?;
             Ok(lines)
         })
@@ -969,7 +1067,8 @@ impl Git {
         self.with_repo(|repo| -> Result<Vec<BranchItem>> {
             let mut items = Vec::new();
 
-            for br in repo.branches(None)? { // None => Local + Remote
+            for br in repo.branches(None)? {
+                // None => Local + Remote
                 let (branch, bty) = br?;
                 // short name: "main" or "origin/feature"
                 let name = branch.name()?.unwrap_or("").to_string();
@@ -993,7 +1092,12 @@ impl Git {
                 // Only local branches can be “current”
                 let current = matches!(bty, git2::BranchType::Local) && branch.is_head();
 
-                items.push(BranchItem { name, full_ref, kind, current });
+                items.push(BranchItem {
+                    name,
+                    full_ref,
+                    kind,
+                    current,
+                });
             }
 
             Ok(items)
@@ -1012,7 +1116,6 @@ pub struct StatusSummary {
 fn make_remote_callbacks() -> git2::RemoteCallbacks<'static> {
     make_remote_callbacks_with_progress(|_| {})
 }
-
 
 pub fn make_remote_callbacks_with_progress<F>(on: F) -> git2::RemoteCallbacks<'static>
 where
@@ -1110,13 +1213,15 @@ where
 
 /// Parse RFC3339/ISO8601 into epoch seconds; on failure return None (ignore filter).
 fn parse_iso_to_epoch_secs(s: &str) -> Option<i64> {
-    OffsetDateTime::parse(s, &Rfc3339).ok().map(|dt| dt.unix_timestamp())
+    OffsetDateTime::parse(s, &Rfc3339)
+        .ok()
+        .map(|dt| dt.unix_timestamp())
 }
 
 /// Convert git2::Time to RFC3339 string, honoring the embedded offset minutes.
 fn git_time_to_rfc3339(t: g::Time) -> String {
-    let offset = UtcOffset::from_whole_seconds((t.offset_minutes() * 60) as i32)
-        .unwrap_or(UtcOffset::UTC);
+    let offset =
+        UtcOffset::from_whole_seconds((t.offset_minutes() * 60) as i32).unwrap_or(UtcOffset::UTC);
     OffsetDateTime::from_unix_timestamp(t.seconds())
         .unwrap_or(OffsetDateTime::UNIX_EPOCH)
         .to_offset(offset)
@@ -1154,11 +1259,12 @@ fn commit_touches_path(repo: &Repository, oid: Oid, path_prefix: &str) -> Result
                 }
                 true
             },
-            None, None, None,
+            None,
+            None,
+            None,
         )?;
     Ok(touched)
 }
-
 
 /// Turn absolute path into repo-relative for index operations.
 pub fn rel_to_workdir(workdir: &Path, p: &Path) -> Result<PathBuf> {
@@ -1185,10 +1291,7 @@ pub fn rel_to_workdir(workdir: &Path, p: &Path) -> Result<PathBuf> {
             }
         }
     } else {
-        debug!(
-            "rel_to_workdir: keeping relative path '{}'",
-            p.display()
-        );
+        debug!("rel_to_workdir: keeping relative path '{}'", p.display());
         Ok(p.to_path_buf())
     }
 }
@@ -1200,17 +1303,22 @@ pub fn git_identity(git: &Git) -> Option<(String, String)> {
     fn read_identity_from(cfg: &g::Config) -> Option<(String, String)> {
         let name = cfg.get_string("user.name").ok()?;
         let email = cfg.get_string("user.email").ok()?;
-        if name.trim().is_empty() || email.trim().is_empty() { return None; }
+        if name.trim().is_empty() || email.trim().is_empty() {
+            return None;
+        }
         Some((name, email))
     }
 
     // Try repository config first
-    if let Some((n, e)) = git.with_repo(|repo| {
-        match repo.config() {
-            Ok(c) => read_identity_from(&c),
-            Err(e) => { warn!("Could not open repo Git config: {e}"); None }
+    if let Some((n, e)) = git.with_repo(|repo| match repo.config() {
+        Ok(c) => read_identity_from(&c),
+        Err(e) => {
+            warn!("Could not open repo Git config: {e}");
+            None
         }
-    }) { return Some((n, e)); }
+    }) {
+        return Some((n, e));
+    }
 
     // Fallback to default (global/system) config
     match g::Config::open_default() {
@@ -1218,7 +1326,9 @@ pub fn git_identity(git: &Git) -> Option<(String, String)> {
             if let Some((n, e)) = read_identity_from(&cfg) {
                 debug!("Git identity (global): {n} <{e}>");
                 Some((n, e))
-            } else { None }
+            } else {
+                None
+            }
         }
         Err(e) => {
             warn!("Could not open default Git config: {e}");

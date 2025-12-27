@@ -2,11 +2,11 @@
    Backends contribute a `BackendDescriptor` into the distributed slice below.
    The app can enumerate and pick any registered backend at runtime.
 =============================================================================*/
-use std::path::Path;
-use std::sync::Arc;
+use crate::Vcs;
 use crate::backend_id::BackendId;
 use crate::models::{Capabilities, OnEvent};
-use crate::Vcs;
+use std::path::Path;
+use std::sync::Arc;
 
 /// Factory & metadata for a backend implementation.
 pub struct BackendDescriptor {
@@ -46,7 +46,10 @@ pub fn get_backend(id: impl AsRef<str>) -> Option<&'static BackendDescriptor> {
     let id = id.as_ref();
     match BACKENDS.iter().find(|b| b.id.as_ref() == id) {
         Some(b) => {
-            debug!("openvcs-core: backend lookup succeeded → {} ({})", b.id, b.name);
+            debug!(
+                "openvcs-core: backend lookup succeeded → {} ({})",
+                b.id, b.name
+            );
             Some(b)
         }
         None => {
@@ -83,8 +86,7 @@ mod tests {
         assert_eq!(backend.name, "Dummy Backend");
         assert!((backend.caps)().commits);
 
-        let repo = (backend.open)(Path::new("."))
-            .expect("backend open to succeed");
+        let repo = (backend.open)(Path::new(".")).expect("backend open to succeed");
         assert_eq!(repo.id().as_ref(), "dummy-test");
     }
 

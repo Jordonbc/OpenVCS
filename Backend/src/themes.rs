@@ -345,7 +345,11 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
                     );
                 }
             }
-            Err(err) => warn!("themes: failed to read {}: {}", theme_dir.path.display(), err),
+            Err(err) => warn!(
+                "themes: failed to read {}: {}",
+                theme_dir.path.display(),
+                err
+            ),
         }
     }
 
@@ -385,7 +389,8 @@ fn build_theme_payload_from_directory(
     plugin_id: Option<String>,
 ) -> Result<ThemePayload, String> {
     let (styles, markup, scripts) = read_assets_from_directory(path, &manifest)?;
-    let appearance = clean_mode(manifest.appearance.clone()).or_else(|| infer_mode_from_manifest(&manifest));
+    let appearance =
+        clean_mode(manifest.appearance.clone()).or_else(|| infer_mode_from_manifest(&manifest));
     let paired_with = clean_opt(manifest.paired_with.clone())
         .filter(|p| !p.eq_ignore_ascii_case(manifest.id.trim()))
         .map(|p| match source {
@@ -446,10 +451,7 @@ fn read_assets_from_directory(
     ))
 }
 
-fn read_css_set_from_directory(
-    base: &Path,
-    files: &[String],
-) -> Result<Option<String>, String> {
+fn read_css_set_from_directory(base: &Path, files: &[String]) -> Result<Option<String>, String> {
     if files.is_empty() {
         return Ok(None);
     }
@@ -472,23 +474,21 @@ fn read_css_set_from_directory(
         }
     }
 
-    Ok(if combined.trim().is_empty() { None } else { Some(combined) })
+    Ok(if combined.trim().is_empty() {
+        None
+    } else {
+        Some(combined)
+    })
 }
 
-fn read_markup_from_directory(
-    base: &Path,
-    markup: &RawThemeMarkup,
-) -> Result<ThemeMarkup, String> {
+fn read_markup_from_directory(base: &Path, markup: &RawThemeMarkup) -> Result<ThemeMarkup, String> {
     Ok(ThemeMarkup {
         head: read_css_set_from_directory(base, &markup.head)?,
         body: read_css_set_from_directory(base, &markup.body)?,
     })
 }
 
-fn read_scripts_from_directory(
-    base: &Path,
-    files: &[String],
-) -> Result<Vec<String>, String> {
+fn read_scripts_from_directory(base: &Path, files: &[String]) -> Result<Vec<String>, String> {
     if files.is_empty() {
         return Ok(Vec::new());
     }

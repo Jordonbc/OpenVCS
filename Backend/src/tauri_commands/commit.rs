@@ -264,7 +264,10 @@ pub async fn git_cherry_pick_to_branch<R: Runtime>(
     id: String,
     branch: String,
 ) -> Result<(), String> {
-    info!("git_cherry_pick_to_branch called (id={}, branch={})", id, branch);
+    info!(
+        "git_cherry_pick_to_branch called (id={}, branch={})",
+        id, branch
+    );
 
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
@@ -279,12 +282,18 @@ pub async fn git_cherry_pick_to_branch<R: Runtime>(
         }
 
         let on = progress_bridge(app);
-        on(VcsEvent::Progress { phase: "git", detail: format!("Checking out '{branch}'…") });
+        on(VcsEvent::Progress {
+            phase: "git",
+            detail: format!("Checking out '{branch}'…"),
+        });
         repo.inner()
             .checkout_branch(&branch)
             .map_err(|e| e.to_string())?;
 
-        on(VcsEvent::Progress { phase: "git", detail: format!("Cherry-picking {id}…") });
+        on(VcsEvent::Progress {
+            phase: "git",
+            detail: format!("Cherry-picking {id}…"),
+        });
         repo.inner().cherry_pick(&id).map_err(|e| e.to_string())?;
 
         on(VcsEvent::Info("Cherry-pick complete".into()));
@@ -310,7 +319,10 @@ pub async fn git_revert_commit<R: Runtime>(
         }
 
         let on = progress_bridge(app);
-        on(VcsEvent::Progress { phase: "git", detail: format!("Reverting {id}…") });
+        on(VcsEvent::Progress {
+            phase: "git",
+            detail: format!("Reverting {id}…"),
+        });
         repo.inner()
             .revert_commit(&id, true)
             .map_err(|e| e.to_string())?;

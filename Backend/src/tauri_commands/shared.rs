@@ -5,9 +5,9 @@ use openvcs_core::models::VcsEvent;
 use openvcs_core::{OnEvent, Repo};
 use tauri::{async_runtime, AppHandle, Emitter, Manager, Runtime, State};
 
+use crate::output_log::{OutputLevel, OutputLogEntry};
 use crate::settings::Lfs;
 use crate::state::AppState;
-use crate::output_log::{OutputLevel, OutputLogEntry};
 
 #[derive(serde::Serialize, Clone)]
 pub struct ProgressPayload {
@@ -19,7 +19,9 @@ pub(crate) fn progress_bridge<R: Runtime>(app: AppHandle<R>) -> OnEvent {
         let (level, msg) = match evt {
             VcsEvent::Progress { detail, .. } => (OutputLevel::Info, detail),
             VcsEvent::RemoteMessage(s) => (OutputLevel::Info, s),
-            VcsEvent::Auth { method, detail } => (OutputLevel::Info, format!("auth[{method}]: {detail}")),
+            VcsEvent::Auth { method, detail } => {
+                (OutputLevel::Info, format!("auth[{method}]: {detail}"))
+            }
             VcsEvent::PushStatus { refname, status } => (
                 OutputLevel::Info,
                 status
