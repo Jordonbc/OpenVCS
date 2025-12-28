@@ -46,11 +46,11 @@ Example:
   "version": "0.1.0",
   "capabilities": ["workspace.read", "vcs.read", "vcs.write"],
   "backend": {
-    "exec": "openvcs-git-plugin",
+    "exec": "openvcs-git-plugin.wasm",
     "provides": ["git-system", "git-libgit2"]
   },
   "functions": {
-    "exec": "openvcs-hello-functions"
+    "exec": "openvcs-hello-functions.wasm"
   }
 }
 ```
@@ -58,7 +58,7 @@ Example:
 ### Component types
 
 - **Provider component** (`backend`): a VCS provider process. It is spawned with:
-  - executable: `bin/<backend.exec>` (platform extension applied as needed)
+  - module: `bin/<backend.exec>` (must end in `.wasm`)
   - arguments: `--backend <backendId>` for each id in `backend.provides`
   - protocol: stdio JSON-RPC using `openvcs_core::plugin_protocol` message types
 - **Function component** (`functions`): a process exposing callable functions/hooks/commands over the same stdio JSON-RPC transport.
@@ -144,4 +144,3 @@ OS-level sandboxing is optional and best-effort:
 
 - Linux: supports wrappers (e.g. `bwrap`) if configured; otherwise runs unprivileged.
 - Windows/macOS: no large dependencies; relies on install validation + capability gating + process isolation.
-

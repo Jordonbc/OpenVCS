@@ -707,34 +707,39 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
     await renderBundles();
 
-    installBundleBtn.addEventListener('click', async () => {
-        if (!TAURI.has) return;
-        try {
-            const bundlePath = await TAURI.invoke<string | null>('browse_file', { purpose: 'install_plugin' });
-            if (!bundlePath) return;
+    // This settings pane can be initialized multiple times during navigation/rerender.
+    // Avoid stacking duplicate click handlers which would open many dialogs.
+    if (!(installBundleBtn as any).dataset?.bound) {
+        (installBundleBtn as any).dataset.bound = '1';
+        installBundleBtn.addEventListener('click', async () => {
+            if (!TAURI.has) return;
+            try {
+                const bundlePath = await TAURI.invoke<string | null>('browse_file', { purpose: 'install_plugin' });
+                if (!bundlePath) return;
 
-            const installed = await TAURI.invoke<any>('install_ovcsp', { bundlePath });
-            notify(`Installed ${installed?.plugin_id || 'plugin'} ${installed?.version || ''}`.trim());
+                const installed = await TAURI.invoke<any>('install_ovcsp', { bundlePath });
+                notify(`Installed ${installed?.plugin_id || 'plugin'} ${installed?.version || ''}`.trim());
 
-            const caps = Array.isArray(installed?.requested_capabilities) ? installed.requested_capabilities : [];
-            if (caps.length) {
-                const ok = window.confirm(
-                    `Plugin requests capabilities:\n\n- ${caps.join('\n- ')}\n\nApprove and allow it to run?`
-                );
-                await TAURI.invoke('approve_plugin_capabilities', {
-                    pluginId: String(installed?.plugin_id || '').trim(),
-                    version: String(installed?.version || '').trim(),
-                    approved: ok,
-                });
-                notify(ok ? 'Capabilities approved' : 'Capabilities denied');
+                const caps = Array.isArray(installed?.requested_capabilities) ? installed.requested_capabilities : [];
+                if (caps.length) {
+                    const ok = window.confirm(
+                        `Plugin requests capabilities:\n\n- ${caps.join('\n- ')}\n\nApprove and allow it to run?`
+                    );
+                    await TAURI.invoke('approve_plugin_capabilities', {
+                        pluginId: String(installed?.plugin_id || '').trim(),
+                        version: String(installed?.version || '').trim(),
+                        approved: ok,
+                    });
+                    notify(ok ? 'Capabilities approved' : 'Capabilities denied');
+                }
+
+                await renderBundles();
+            } catch (err) {
+                const msg = String(err || '').trim();
+                notify(msg ? `Install failed: ${msg}` : 'Install failed');
             }
-
-            await renderBundles();
-        } catch (err) {
-            const msg = String(err || '').trim();
-            notify(msg ? `Install failed: ${msg}` : 'Install failed');
-        }
-    });
+        });
+    }
 
     type ParsedPluginQuery = {
         terms: string[];
@@ -1305,7 +1310,9 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             e.stopPropagation();
         });
 
-        enableAllBtn.addEventListener('click', () => {
+        if (!(enableAllBtn as any).dataset?.bound) {
+            (enableAllBtn as any).dataset.bound = '1';
+            enableAllBtn.addEventListener('click', () => {
             for (const p of state.list) {
                 const id = String(p?.id || '').trim().toLowerCase();
                 if (!id) continue;
@@ -1315,9 +1322,12 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             searchEl.dispatchEvent(new Event('input'));
             updateCounts();
             persistPluginsDisabled().catch(() => {});
-        });
+            });
+        }
 
-        disableAllBtn.addEventListener('click', () => {
+        if (!(disableAllBtn as any).dataset?.bound) {
+            (disableAllBtn as any).dataset.bound = '1';
+            disableAllBtn.addEventListener('click', () => {
             for (const p of state.list) {
                 const id = String(p?.id || '').trim().toLowerCase();
                 if (!id) continue;
@@ -1327,7 +1337,8 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             searchEl.dispatchEvent(new Event('input'));
             updateCounts();
             persistPluginsDisabled().catch(() => {});
-        });
+            });
+        }
 
         pane.addEventListener('keydown', (e: KeyboardEvent) => {
             if (e.key === '/' && document.activeElement !== searchEl) {

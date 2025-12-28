@@ -805,18 +805,7 @@ fn normalize_capabilities(mut caps: Vec<String>) -> Vec<String> {
 }
 
 fn platform_exec_name(base: &str) -> String {
-    #[cfg(windows)]
-    {
-        if base.ends_with(".exe") {
-            base.to_string()
-        } else {
-            format!("{base}.exe")
-        }
-    }
-    #[cfg(not(windows))]
-    {
-        base.to_string()
-    }
+    base.to_string()
 }
 
 fn validate_entrypoint(version_dir: &Path, exec: Option<&str>, label: &str) -> Result<(), String> {
@@ -828,6 +817,13 @@ fn validate_entrypoint(version_dir: &Path, exec: Option<&str>, label: &str) -> R
         return Ok(());
     }
 
+    if !trimmed.ends_with(".wasm") {
+        return Err(format!(
+            "{} entrypoint must be a .wasm module, got: {}",
+            label, trimmed
+        ));
+    }
+
     let exec_name = platform_exec_name(trimmed);
     let path = version_dir.join("bin").join(exec_name);
     if !path.is_file() {
@@ -836,22 +832,6 @@ fn validate_entrypoint(version_dir: &Path, exec: Option<&str>, label: &str) -> R
             label,
             path.display()
         ));
-    }
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = fs::metadata(&path)
-            .map_err(|e| format!("metadata {}: {e}", path.display()))?
-            .permissions()
-            .mode();
-        if (mode & 0o111) == 0 {
-            return Err(format!(
-                "{} entrypoint is not executable: {}",
-                label,
-                path.display()
-            ));
-        }
     }
 
     Ok(())
@@ -876,16 +856,61 @@ mod tests {
     fn make_bundle(entries: Vec<Entry>) -> Vec<u8> {
         let mut out = Vec::new();
         let mut zip = ZipWriter::new(Cursor::new(&mut out));
+        let mut unix_modes: Vec<(String, u32)> = Vec::new();
         for e in entries {
-            let mut opts = FileOptions::default().compression_method(e.method);
+            let mut opts: FileOptions<'_, ()> = FileOptions::default().compression_method(e.method);
             if let Some(mode) = e.unix_mode {
                 opts = opts.unix_permissions(mode);
+                unix_modes.push((e.name.clone(), mode));
             }
             zip.start_file(e.name, opts).unwrap();
             zip.write_all(&e.data).unwrap();
         }
         zip.finish().unwrap();
+
+        for (name, mode) in unix_modes {
+            force_unix_mode(&mut out, &name, mode);
+        }
         out
+    }
+
+    fn force_unix_mode(zip_bytes: &mut [u8], name: &str, mode: u32) {
+        // Patch the central directory "external file attributes" to include the full unix mode
+        // (including file type bits) so `ZipFile::unix_mode()` can detect symlinks.
+        //
+        // Central directory file header signature: 0x02014b50 (little-endian).
+        // Filename length is at offset 28, extra length at 30, comment length at 32.
+        // External attrs are at offset 38 (4 bytes).
+        // Version made by is at offset 4 (2 bytes): upper byte is OS (3 = Unix).
+        const SIG: [u8; 4] = [0x50, 0x4b, 0x01, 0x02];
+        let name_bytes = name.as_bytes();
+        let mut i = 0usize;
+        while i + 46 <= zip_bytes.len() {
+            if zip_bytes[i..i + 4] != SIG {
+                i += 1;
+                continue;
+            }
+            let file_name_len = u16::from_le_bytes([zip_bytes[i + 28], zip_bytes[i + 29]]) as usize;
+            let extra_len = u16::from_le_bytes([zip_bytes[i + 30], zip_bytes[i + 31]]) as usize;
+            let comment_len =
+                u16::from_le_bytes([zip_bytes[i + 32], zip_bytes[i + 33]]) as usize;
+            let name_start = i + 46;
+            let name_end = name_start.saturating_add(file_name_len);
+            if name_end > zip_bytes.len() {
+                break;
+            }
+            if zip_bytes[name_start..name_end] == *name_bytes {
+                // Set "version made by" OS to Unix (3) so unix_mode is respected.
+                let v = u16::from_le_bytes([zip_bytes[i + 4], zip_bytes[i + 5]]);
+                let v = (v & 0x00ff) | (3u16 << 8);
+                zip_bytes[i + 4..i + 6].copy_from_slice(&v.to_le_bytes());
+
+                let attrs = (mode as u32) << 16;
+                zip_bytes[i + 38..i + 42].copy_from_slice(&attrs.to_le_bytes());
+                return;
+            }
+            i = name_end + extra_len + comment_len;
+        }
     }
 
     fn write_bundle_to_temp(bytes: &[u8]) -> (tempfile::TempDir, PathBuf) {

@@ -6,8 +6,9 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, BufRead, BufReader, LineWriter, Write};
+use std::os::fd::{FromRawFd, IntoRawFd};
 use std::path::{Component, Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -56,13 +57,22 @@ struct PendingMap {
 pub struct StdioRpcProcess {
     spawn: SpawnConfig,
     cfg: RpcConfig,
-    child: Mutex<Option<Child>>,
-    stdin: Arc<Mutex<Option<LineWriter<ChildStdin>>>>,
+    child: Mutex<Option<ProcessHandle>>,
+    stdin: Arc<Mutex<Option<LineWriter<Box<dyn Write + Send>>>>>,
     pending: Arc<Mutex<PendingMap>>,
     on_event: Arc<Mutex<Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>>>>,
     crash_count: Mutex<u32>,
     backoff_ms: Mutex<u64>,
     disabled: Mutex<bool>,
+}
+
+enum ProcessHandle {
+    Wasm {
+        #[allow(dead_code)]
+        join: std::thread::JoinHandle<()>,
+        #[allow(dead_code)]
+        stdin_writer: os_pipe::PipeWriter,
+    },
 }
 
 impl StdioRpcProcess {
@@ -114,6 +124,13 @@ impl StdioRpcProcess {
             ));
         }
 
+        if !is_wasm_module(&self.spawn.exec_path) {
+            return Err(format!(
+                "invalid plugin entrypoint (expected .wasm module): {}",
+                self.spawn.exec_path.display()
+            ));
+        }
+
         // Exponential backoff between respawns after failures.
         let delay = *self.backoff_ms.lock().unwrap();
         let crashes = *self.crash_count.lock().unwrap();
@@ -130,51 +147,7 @@ impl StdioRpcProcess {
             ));
         }
 
-        let mut cmd = Command::new(&self.spawn.exec_path);
-        cmd.args(&self.spawn.args)
-            .current_dir(&self.spawn.workdir)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        cmd.env_clear();
-        for (k, v) in sanitized_env() {
-            cmd.env(k, v);
-        }
-        cmd.env("OPENVCS_PLUGIN_ID", &self.spawn.plugin_id);
-
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| format!("spawn {}: {e}", self.spawn.exec_path.display()))?;
-        let stdin = child.stdin.take().ok_or_else(|| "no stdin".to_string())?;
-        let stdout = child.stdout.take().ok_or_else(|| "no stdout".to_string())?;
-        let stderr = child.stderr.take().ok_or_else(|| "no stderr".to_string())?;
-
-        let stdin = LineWriter::new(stdin);
-        *self.stdin.lock().unwrap() = Some(stdin);
-
-        let pending = Arc::clone(&self.pending);
-        let spawn = self.spawn.clone();
-        let stdin_for_responses = Arc::clone(&self.stdin);
-        let on_event = Arc::clone(&self.on_event);
-        let stdout_log_path =
-            plugin_stdout_log_path(&self.spawn.plugin_id, &self.spawn.component_label);
-
-        std::thread::spawn(move || {
-            read_stdout_loop(
-                stdout,
-                spawn,
-                pending,
-                stdin_for_responses,
-                on_event,
-                stdout_log_path,
-            )
-        });
-
-        let stderr_path = plugin_stderr_log_path(&self.spawn.plugin_id, &self.spawn.component_label);
-        std::thread::spawn(move || read_stderr_loop(stderr, stderr_path));
-
-        *self.child.lock().unwrap() = Some(child);
-        Ok(())
+        self.spawn_wasm()
     }
 
     pub fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
@@ -274,10 +247,70 @@ impl StdioRpcProcess {
         }
 
         let mut child_lock = self.child.lock().unwrap();
-        if let Some(mut child) = child_lock.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+        if let Some(child) = child_lock.take() {
+            match child {
+                ProcessHandle::Wasm { .. } => {
+                    // Best-effort: dropping stdin should cause EOF for the guest.
+                }
+            }
         }
+    }
+
+    fn spawn_wasm(&self) -> Result<(), String> {
+        let (stdin_reader, stdin_writer) =
+            os_pipe::pipe().map_err(|e| format!("create stdin pipe: {e}"))?;
+        let (stdout_reader, stdout_writer) =
+            os_pipe::pipe().map_err(|e| format!("create stdout pipe: {e}"))?;
+        let (stderr_reader, stderr_writer) =
+            os_pipe::pipe().map_err(|e| format!("create stderr pipe: {e}"))?;
+
+        let wasm_path = self.spawn.exec_path.clone();
+        let plugin_id = self.spawn.plugin_id.clone();
+        let args = self.spawn.args.clone();
+        let (approved_caps, allowed_workspace_root) = approved_caps_and_workspace(&self.spawn);
+
+        let join = std::thread::spawn(move || {
+            if let Err(e) = run_wasi_module(
+                &wasm_path,
+                &plugin_id,
+                &args,
+                &approved_caps,
+                allowed_workspace_root.as_deref(),
+                stdin_reader,
+                stdout_writer,
+                stderr_writer,
+            ) {
+                log::error!("wasi plugin {} crashed: {}", wasm_path.display(), e);
+            }
+        });
+
+        let stdin: Box<dyn Write + Send> = Box::new(stdin_writer.try_clone().map_err(|e| format!("clone stdin pipe: {e}"))?);
+        let stdin = LineWriter::new(stdin);
+        *self.stdin.lock().unwrap() = Some(stdin);
+
+        let pending = Arc::clone(&self.pending);
+        let spawn = self.spawn.clone();
+        let stdin_for_responses = Arc::clone(&self.stdin);
+        let on_event = Arc::clone(&self.on_event);
+        let stdout_log_path =
+            plugin_stdout_log_path(&self.spawn.plugin_id, &self.spawn.component_label);
+
+        std::thread::spawn(move || {
+            read_stdout_loop(
+                stdout_reader,
+                spawn,
+                pending,
+                stdin_for_responses,
+                on_event,
+                stdout_log_path,
+            )
+        });
+
+        let stderr_path = plugin_stderr_log_path(&self.spawn.plugin_id, &self.spawn.component_label);
+        std::thread::spawn(move || read_stderr_loop(stderr_reader, stderr_path));
+
+        *self.child.lock().unwrap() = Some(ProcessHandle::Wasm { join, stdin_writer });
+        Ok(())
     }
 }
 
@@ -292,7 +325,7 @@ fn read_stdout_loop(
     stdout: impl io::Read,
     spawn: SpawnConfig,
     pending: Arc<Mutex<PendingMap>>,
-    stdin_for_responses: Arc<Mutex<Option<LineWriter<ChildStdin>>>>,
+    stdin_for_responses: Arc<Mutex<Option<LineWriter<Box<dyn Write + Send>>>>>,
     on_event: Arc<Mutex<Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>>>>,
     stdout_log_path: PathBuf,
 ) {
@@ -347,6 +380,102 @@ fn read_stderr_loop(stderr: impl io::Read, path: PathBuf) {
     }
 }
 
+fn is_wasm_module(path: &Path) -> bool {
+    path.extension().and_then(|s| s.to_str()) == Some("wasm")
+}
+
+fn approved_caps_and_workspace(spawn: &SpawnConfig) -> (Vec<String>, Option<PathBuf>) {
+    let approved_caps = match &spawn.approval {
+        ApprovalState::Approved { capabilities, .. } => capabilities.clone(),
+        _ => Vec::new(),
+    };
+    (approved_caps, spawn.allowed_workspace_root.clone())
+}
+
+fn run_wasi_module(
+    wasm_path: &Path,
+    plugin_id: &str,
+    args: &[String],
+    approved_caps: &[String],
+    allowed_workspace_root: Option<&Path>,
+    stdin: os_pipe::PipeReader,
+    stdout: os_pipe::PipeWriter,
+    stderr: os_pipe::PipeWriter,
+) -> Result<(), String> {
+    use wasmtime::{Engine, Module, Store};
+    use wasmtime_wasi::pipe::AsyncReadStream;
+    use wasmtime_wasi::{AsyncStdinStream, DirPerms, FilePerms, OutputFile, WasiCtxBuilder};
+
+    let stdin_file = unsafe { std::fs::File::from_raw_fd(stdin.into_raw_fd()) };
+    let stdout_file = unsafe { std::fs::File::from_raw_fd(stdout.into_raw_fd()) };
+    let stderr_file = unsafe { std::fs::File::from_raw_fd(stderr.into_raw_fd()) };
+
+    let engine = Engine::default();
+    let module =
+        Module::from_file(&engine, wasm_path).map_err(|e| format!("load module: {e}"))?;
+
+    let mut linker = wasmtime::Linker::new(&engine);
+    wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |cx| cx)
+        .map_err(|e| format!("{e}"))?;
+
+    let stdin_tokio = tokio::fs::File::from_std(stdin_file);
+    let stdin_stream = AsyncStdinStream::new(AsyncReadStream::new(stdin_tokio));
+    let stdout_stream = OutputFile::new(stdout_file);
+    let stderr_stream = OutputFile::new(stderr_file);
+
+    // Override args: keep deterministic while still allowing component args.
+    let mut argv = Vec::with_capacity(1 + args.len());
+    argv.push(
+        wasm_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("plugin.wasm")
+            .to_string(),
+    );
+    argv.extend(args.iter().cloned());
+
+    let mut builder = WasiCtxBuilder::new();
+    builder.stdin(stdin_stream);
+    builder.stdout(stdout_stream);
+    builder.stderr(stderr_stream);
+    builder.env("OPENVCS_PLUGIN_ID", plugin_id);
+    builder.args(&argv);
+
+    if let Some(root) = allowed_workspace_root {
+        let can_read = approved_caps.iter().any(|c| c == "workspace.read" || c == "workspace.write");
+        let can_write = approved_caps.iter().any(|c| c == "workspace.write");
+        if can_read {
+            let dir_perms = if can_write {
+                DirPerms::all()
+            } else {
+                DirPerms::READ
+            };
+            let file_perms = if can_write {
+                FilePerms::all()
+            } else {
+                FilePerms::READ
+            };
+            builder
+                .preopened_dir(root, ".", dir_perms, file_perms)
+                .map_err(|e| format!("preopen workspace: {e}"))?;
+        }
+    }
+
+    let mut store = Store::new(&engine, builder.build_p1());
+
+    let instance = linker
+        .instantiate(&mut store, &module)
+        .map_err(|e| format!("instantiate: {e}"))?;
+    let start = instance
+        .get_typed_func::<(), ()>(&mut store, "_start")
+        .map_err(|e| format!("missing _start: {e}"))?;
+    start
+        .call(&mut store, ())
+        .map_err(|e| format!("wasi trap: {e}"))?;
+
+    Ok(())
+}
+
 fn handle_host_request(spawn: &SpawnConfig, req: RpcRequest) -> RpcResponse {
     let deny = |code: &str, msg: &str| RpcResponse {
         id: req.id,
@@ -357,10 +486,7 @@ fn handle_host_request(spawn: &SpawnConfig, req: RpcRequest) -> RpcResponse {
         error_data: None,
     };
 
-    let approved_caps = match &spawn.approval {
-        ApprovalState::Approved { capabilities, .. } => capabilities.clone(),
-        _ => Vec::new(),
-    };
+    let (approved_caps, _) = approved_caps_and_workspace(spawn);
     let caps = approved_caps
         .into_iter()
         .collect::<std::collections::HashSet<_>>();
@@ -417,7 +543,189 @@ fn handle_host_request(spawn: &SpawnConfig, req: RpcRequest) -> RpcResponse {
                 Err(e) => deny("workspace.error", &e),
             }
         }
+        "process.exec" => {
+            if !caps.contains("process.exec") {
+                return deny("capability.denied", "missing capability: process.exec");
+            }
+            let program = req
+                .params
+                .get("program")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if program != "git" {
+                return deny("process.denied", "only 'git' is allowed");
+            }
+            let argv = req
+                .params
+                .get("args")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect::<Vec<_>>();
+
+            let cwd_param = req.params.get("cwd").and_then(|v| v.as_str()).unwrap_or("");
+            let cwd = if cwd_param.trim().is_empty() {
+                spawn.allowed_workspace_root.clone()
+            } else {
+                let Some(root) = spawn.allowed_workspace_root.as_ref() else {
+                    return deny("workspace.denied", "no workspace context");
+                };
+                match resolve_under_root(root, cwd_param) {
+                    Ok(p) => Some(p),
+                    Err(e) => return deny("workspace.denied", &e),
+                }
+            };
+
+            let mut cmd = Command::new("git");
+            if let Some(cwd) = cwd.as_ref() {
+                cmd.current_dir(cwd);
+            }
+            cmd.args(argv);
+            cmd.env_clear();
+            for (k, v) in sanitized_env() {
+                cmd.env(k, v);
+            }
+            if let Some(env) = req.params.get("env").and_then(|v| v.as_object()) {
+                for (k, v) in env {
+                    let Some(val) = v.as_str() else { continue };
+                    if matches!(k.as_str(), "GIT_SSH_COMMAND" | "GIT_TERMINAL_PROMPT") {
+                        cmd.env(k, val);
+                    }
+                }
+            }
+
+            let stdin_text = req.params.get("stdin").and_then(|v| v.as_str()).unwrap_or("");
+            let out = if stdin_text.is_empty() {
+                match cmd.output() {
+                    Ok(o) => o,
+                    Err(e) => return deny("process.error", &format!("spawn git: {e}")),
+                }
+            } else {
+                cmd.stdin(Stdio::piped());
+                let mut child = match cmd.spawn() {
+                    Ok(c) => c,
+                    Err(e) => return deny("process.error", &format!("spawn git: {e}")),
+                };
+                if let Some(mut stdin) = child.stdin.take() {
+                    if let Err(e) = stdin.write_all(stdin_text.as_bytes()) {
+                        let _ = child.kill();
+                        return deny("process.error", &format!("write stdin: {e}"));
+                    }
+                }
+                match child.wait_with_output() {
+                    Ok(o) => o,
+                    Err(e) => return deny("process.error", &format!("wait: {e}")),
+                }
+            };
+
+            RpcResponse {
+                id: req.id,
+                ok: true,
+                result: serde_json::json!({
+                    "status": out.status.code().unwrap_or(-1),
+                    "success": out.status.success(),
+                    "stdout": String::from_utf8_lossy(&out.stdout),
+                    "stderr": String::from_utf8_lossy(&out.stderr),
+                }),
+                error: None,
+                error_code: None,
+                error_data: None,
+            }
+        }
         _ => deny("method.not_found", "unknown host method"),
+    }
+}
+
+fn resolve_under_root(root: &Path, path: &str) -> Result<PathBuf, String> {
+    if path.contains('\0') {
+        return Err("path contains NUL".to_string());
+    }
+
+    let p = Path::new(path);
+
+    // Allow absolute paths if they are within the allowed workspace root.
+    if p.is_absolute() {
+        let root = root
+            .canonicalize()
+            .map_err(|e| format!("canonicalize root {}: {e}", root.display()))?;
+        let p = p
+            .canonicalize()
+            .map_err(|e| format!("canonicalize path {}: {e}", p.display()))?;
+        if p.starts_with(&root) {
+            return Ok(p);
+        }
+        return Err("path escapes workspace root".to_string());
+    }
+
+    // Otherwise require a clean, relative path with no `..`.
+    let mut clean = PathBuf::new();
+    for comp in p.components() {
+        match comp {
+            Component::Normal(c) => clean.push(c),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err("path must be relative and not contain '..'".to_string())
+            }
+        }
+    }
+    Ok(root.join(clean))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runs_minimal_wasm_module() {
+        // Minimal wasm module exporting an empty `_start`.
+        // (module (func (export "_start")))
+        let wasm: &[u8] = &[
+            0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, // header
+            0x01, 0x04, 0x01, 0x60, 0x00, 0x00, // type section
+            0x03, 0x02, 0x01, 0x00, // func section
+            0x07, 0x0b, 0x01, 0x06, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x00, 0x00, // export
+            0x0a, 0x04, 0x01, 0x02, 0x00, 0x0b, // code
+        ];
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let wasm_path = dir.path().join("plugin.wasm");
+        std::fs::write(&wasm_path, wasm).expect("write wasm");
+
+        let rpc = StdioRpcProcess::new(
+            SpawnConfig {
+                plugin_id: "test".into(),
+                component_label: "functions".into(),
+                exec_path: wasm_path,
+                args: Vec::new(),
+                workdir: dir.path().to_path_buf(),
+                requested_capabilities: Vec::new(),
+                approval: ApprovalState::Approved {
+                    capabilities: Vec::new(),
+                    approved_at_unix_ms: 0,
+                },
+                allowed_workspace_root: None,
+            },
+            RpcConfig::default(),
+        );
+
+        rpc.ensure_running().expect("ensure_running");
+    }
+
+    #[test]
+    fn resolve_under_root_allows_absolute_under_root() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().join("root");
+        std::fs::create_dir_all(&root).expect("mkdir root");
+        let child = root.join("child");
+        std::fs::create_dir_all(&child).expect("mkdir child");
+
+        let resolved =
+            resolve_under_root(&root, child.to_string_lossy().as_ref()).expect("resolve");
+        assert!(resolved.starts_with(&root));
     }
 }
 
