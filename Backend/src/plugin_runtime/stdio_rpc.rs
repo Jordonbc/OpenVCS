@@ -267,6 +267,7 @@ impl StdioRpcProcess {
         let wasm_path = self.spawn.exec_path.clone();
         let plugin_id = self.spawn.plugin_id.clone();
         let args = self.spawn.args.clone();
+        let host_timeout = self.cfg.timeout;
         let (approved_caps, allowed_workspace_root) = approved_caps_and_workspace(&self.spawn);
 
         let join = std::thread::spawn(move || {
@@ -274,6 +275,7 @@ impl StdioRpcProcess {
                 &wasm_path,
                 &plugin_id,
                 &args,
+                host_timeout,
                 &approved_caps,
                 allowed_workspace_root.as_deref(),
                 stdin_reader,
@@ -396,6 +398,7 @@ fn run_wasi_module(
     wasm_path: &Path,
     plugin_id: &str,
     args: &[String],
+    host_timeout: Duration,
     approved_caps: &[String],
     allowed_workspace_root: Option<&Path>,
     stdin: os_pipe::PipeReader,
@@ -439,6 +442,10 @@ fn run_wasi_module(
     builder.stdout(stdout_stream);
     builder.stderr(stderr_stream);
     builder.env("OPENVCS_PLUGIN_ID", plugin_id);
+    builder.env(
+        "OPENVCS_PLUGIN_HOST_TIMEOUT_MS",
+        host_timeout.as_millis().to_string(),
+    );
     builder.args(&argv);
 
     // Do not preopen the host filesystem into WASI. All file I/O must go through
