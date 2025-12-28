@@ -404,7 +404,7 @@ fn run_wasi_module(
 ) -> Result<(), String> {
     use wasmtime::{Engine, Module, Store};
     use wasmtime_wasi::pipe::AsyncReadStream;
-    use wasmtime_wasi::{AsyncStdinStream, DirPerms, FilePerms, OutputFile, WasiCtxBuilder};
+    use wasmtime_wasi::{AsyncStdinStream, OutputFile, WasiCtxBuilder};
 
     let stdin_file = unsafe { std::fs::File::from_raw_fd(stdin.into_raw_fd()) };
     let stdout_file = unsafe { std::fs::File::from_raw_fd(stdout.into_raw_fd()) };
@@ -441,25 +441,9 @@ fn run_wasi_module(
     builder.env("OPENVCS_PLUGIN_ID", plugin_id);
     builder.args(&argv);
 
-    if let Some(root) = allowed_workspace_root {
-        let can_read = approved_caps.iter().any(|c| c == "workspace.read" || c == "workspace.write");
-        let can_write = approved_caps.iter().any(|c| c == "workspace.write");
-        if can_read {
-            let dir_perms = if can_write {
-                DirPerms::all()
-            } else {
-                DirPerms::READ
-            };
-            let file_perms = if can_write {
-                FilePerms::all()
-            } else {
-                FilePerms::READ
-            };
-            builder
-                .preopened_dir(root, ".", dir_perms, file_perms)
-                .map_err(|e| format!("preopen workspace: {e}"))?;
-        }
-    }
+    // Do not preopen the host filesystem into WASI. All file I/O must go through
+    // host RPCs which are scoped to `allowed_workspace_root` and capability-gated.
+    let _ = (approved_caps, allowed_workspace_root);
 
     let mut store = Store::new(&engine, builder.build_p1());
 
@@ -519,8 +503,11 @@ fn handle_host_request(spawn: &SpawnConfig, req: RpcRequest) -> RpcResponse {
             }
         }
         "workspace.readFile" => {
-            if !caps.contains("workspace.read") {
-                return deny("capability.denied", "missing capability: workspace.read");
+            if !caps.contains("workspace.read") && !caps.contains("workspace.write") {
+                return deny(
+                    "capability.denied",
+                    "missing capability: workspace.read (or workspace.write)",
+                );
             }
             let Some(root) = spawn.allowed_workspace_root.as_ref() else {
                 return deny("workspace.denied", "no workspace context");
@@ -536,6 +523,37 @@ fn handle_host_request(spawn: &SpawnConfig, req: RpcRequest) -> RpcResponse {
                     id: req.id,
                     ok: true,
                     result: Value::String(String::from_utf8_lossy(&bytes).to_string()),
+                    error: None,
+                    error_code: None,
+                    error_data: None,
+                },
+                Err(e) => deny("workspace.error", &e),
+            }
+        }
+        "workspace.writeFile" => {
+            if !caps.contains("workspace.write") {
+                return deny("capability.denied", "missing capability: workspace.write");
+            }
+            let Some(root) = spawn.allowed_workspace_root.as_ref() else {
+                return deny("workspace.denied", "no workspace context");
+            };
+            let rel = req
+                .params
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let data = req
+                .params
+                .get("content")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            match write_file_under_root(root, &rel, data.as_bytes()) {
+                Ok(()) => RpcResponse {
+                    id: req.id,
+                    ok: true,
+                    result: Value::Null,
                     error: None,
                     error_code: None,
                     error_data: None,
@@ -675,6 +693,14 @@ fn resolve_under_root(root: &Path, path: &str) -> Result<PathBuf, String> {
     Ok(root.join(clean))
 }
 
+fn write_file_under_root(root: &Path, rel: &str, bytes: &[u8]) -> Result<(), String> {
+    let path = resolve_under_root(root, rel)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+    }
+    fs::write(&path, bytes).map_err(|e| format!("write {}: {e}", path.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -726,6 +752,16 @@ mod tests {
         let resolved =
             resolve_under_root(&root, child.to_string_lossy().as_ref()).expect("resolve");
         assert!(resolved.starts_with(&root));
+    }
+
+    #[test]
+    fn write_file_under_root_rejects_parent_dir_escape() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().join("root");
+        std::fs::create_dir_all(&root).expect("mkdir root");
+
+        let err = write_file_under_root(&root, "../escape.txt", b"nope").unwrap_err();
+        assert!(err.contains("relative") || err.contains("escape") || err.contains(".."));
     }
 }
 
