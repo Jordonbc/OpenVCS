@@ -1,4 +1,5 @@
 use crate::plugin_bundles::ApprovalState;
+use crate::plugin_runtime::events::{PluginIoHandle, register_plugin_io};
 use openvcs_core::models::VcsEvent;
 use openvcs_core::plugin_protocol::{PluginMessage, RpcRequest, RpcResponse};
 use serde_json::Value;
@@ -286,9 +287,20 @@ impl StdioRpcProcess {
             }
         });
 
-        let stdin: Box<dyn Write + Send> = Box::new(stdin_writer.try_clone().map_err(|e| format!("clone stdin pipe: {e}"))?);
+        let stdin: Box<dyn Write + Send> = Box::new(
+            stdin_writer
+                .try_clone()
+                .map_err(|e| format!("clone stdin pipe: {e}"))?,
+        );
         let stdin = LineWriter::new(stdin);
         *self.stdin.lock().unwrap() = Some(stdin);
+
+        register_plugin_io(
+            &self.spawn.plugin_id,
+            PluginIoHandle {
+                stdin: Arc::clone(&self.stdin),
+            },
+        );
 
         let pending = Arc::clone(&self.pending);
         let spawn = self.spawn.clone();
@@ -483,6 +495,49 @@ fn handle_host_request(spawn: &SpawnConfig, req: RpcRequest) -> RpcResponse {
         .collect::<std::collections::HashSet<_>>();
 
     match req.method.as_str() {
+        "events.subscribe" => {
+            let name = req
+                .params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if name.is_empty() {
+                return deny("invalid.params", "missing params.name");
+            }
+            crate::plugin_runtime::events::subscribe(&spawn.plugin_id, &name);
+            RpcResponse {
+                id: req.id,
+                ok: true,
+                result: Value::Null,
+                error: None,
+                error_code: None,
+                error_data: None,
+            }
+        }
+        "events.emit" => {
+            let name = req
+                .params
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if name.is_empty() {
+                return deny("invalid.params", "missing params.name");
+            }
+            let payload = req.params.get("payload").cloned().unwrap_or(Value::Null);
+            crate::plugin_runtime::events::emit_from_plugin(&spawn.plugin_id, &name, payload);
+            RpcResponse {
+                id: req.id,
+                ok: true,
+                result: Value::Null,
+                error: None,
+                error_code: None,
+                error_data: None,
+            }
+        }
         "ui.notify" => {
             if !caps.contains("ui.notifications") {
                 return deny(
