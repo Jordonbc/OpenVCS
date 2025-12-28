@@ -12,7 +12,7 @@ import { renderList, hydrateCommits, hydrateStatus } from './repo';
 import { setTab } from '../ui/layout';
 import type { ConflictDetails, FileStatus } from '../types';
 import { openConflictsSummary } from './conflicts';
-import { runHook } from '../plugins';
+import { getPluginContextMenuItems, runHook, runPluginAction } from '../plugins';
 
 type Branch = { name: string; full_ref?: string; current?: boolean; kind?: { type?: string; remote?: string } };
 
@@ -263,6 +263,19 @@ export function bindBranchUI() {
                     } catch { notify('Force delete failed'); }
                 }
             }});
+        }
+
+        const pluginItems = getPluginContextMenuItems('branches');
+        if (pluginItems.length > 0) {
+            items.push({ label: '---' });
+            for (const it of pluginItems) {
+                items.push({
+                    label: it.label,
+                    action: async () => {
+                        await runPluginAction(it.action, { branch: b || { name, kind }, current: cur });
+                    },
+                });
+            }
         }
         buildCtxMenu(items, x, y);
     });

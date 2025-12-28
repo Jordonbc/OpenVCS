@@ -1,6 +1,7 @@
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { notify } from '../../lib/notify';
 import { TAURI } from '../../lib/tauri';
+import { getPluginContextMenuItems, runPluginAction } from '../../plugins';
 import { state, disableDefaultSelectAll } from '../../state/state';
 import type { FileStatus } from '../../types';
 import { openStashConfirm } from '../stashConfirm';
@@ -334,6 +335,20 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
         catch { notify('Discard failed'); }
     }});
+
+    const pluginTargets = (explicitMultiSelection ? selectedPaths.slice() : [singleTarget]).filter(Boolean);
+    const pluginItems = getPluginContextMenuItems('files');
+    if (pluginItems.length > 0) {
+        items.push({ label: '---' });
+        for (const it of pluginItems) {
+            items.push({
+                label: it.label,
+                action: async () => {
+                    await runPluginAction(it.action, { paths: pluginTargets, clickedPath: singleTarget, file: f });
+                },
+            });
+        }
+    }
     buildCtxMenu(items, x, y);
 }
 

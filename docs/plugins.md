@@ -6,6 +6,7 @@ OpenVCS plugins are local, user-installed extensions that can:
 - Run JavaScript/TypeScript-authored code in the UI
 - Hook into app actions like commit/push/branch switch
 - Add basic UI contributions (menu items + titlebar buttons)
+- Add context menu items (right-click actions) in lists like files/commits/branches
 
 ## Plugin Location
 
@@ -68,6 +69,22 @@ Plugin entry code can call the global `window.OpenVCS` API:
 - `window.OpenVCS.invoke(cmd, args)` / `window.OpenVCS.listen(event, cb)`
 
 Menu items appear under the `Plugins` menu. Titlebar buttons appear next to `Push`.
+
+### Context menus
+
+Plugins can add items to existing right-click menus by including `contextMenus` in `registerPlugin(...)`.
+
+```js
+window.OpenVCS?.registerPlugin({
+  contextMenus: {
+    files: [{ label: 'Copy selected paths', action: 'my.plugin:copyPaths' }],
+    commits: [{ label: 'Copy commit hash', action: 'my.plugin:copyHash' }],
+    branches: [{ label: 'Copy branch name', action: 'my.plugin:copyBranch' }],
+  },
+});
+```
+
+When the user clicks one of these items, OpenVCS runs the referenced action with a payload that describes the clicked object (e.g. `payload.paths` / `payload.commit` / `payload.branch`).
 
 ## Hooks
 

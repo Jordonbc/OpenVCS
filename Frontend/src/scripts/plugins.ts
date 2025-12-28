@@ -51,6 +51,20 @@ export interface PluginTitleButton {
     title?: string;
 }
 
+export type PluginContextMenuTarget = 'files' | 'commits' | 'branches';
+
+export interface PluginContextMenuItem {
+    label: string;
+    action: string;
+    title?: string;
+}
+
+export interface PluginContextMenus {
+    files?: PluginContextMenuItem[];
+    commits?: PluginContextMenuItem[];
+    branches?: PluginContextMenuItem[];
+}
+
 export interface PluginRegistration {
     id?: string;
     name?: string;
@@ -58,6 +72,7 @@ export interface PluginRegistration {
     actions?: Record<string, PluginAction>;
     menuItems?: PluginMenuItem[];
     titlebarButtons?: PluginTitleButton[];
+    contextMenus?: PluginContextMenus;
     themes?: ThemePayload[];
     themeSummaries?: ThemeSummary[];
 }
@@ -86,6 +101,7 @@ const actionHandlers = new Map<string, PluginAction>();
 const hookHandlers = new Map<HookName, Array<{ pluginId: string; handler: HookHandler }>>();
 const registeredThemePayloads = new Map<string, ThemePayload>();
 const registeredThemeSummaries = new Map<string, ThemeSummary>();
+const contextMenuItems = new Map<PluginContextMenuTarget, PluginContextMenuItem[]>();
 
 let initialized = false;
 let disabledPlugins = new Set<string>();
@@ -122,6 +138,7 @@ function resetPluginRuntime() {
     hookHandlers.clear();
     registeredThemePayloads.clear();
     registeredThemeSummaries.clear();
+    contextMenuItems.clear();
 
     const menu = pluginsMenuList();
     if (menu) menu.replaceChildren();
@@ -298,6 +315,23 @@ function registerPlugin(reg: PluginRegistration) {
             if (btn) addTitlebarButton(pluginId, btn);
         }
     }
+
+    const menus = reg?.contextMenus;
+    if (menus) {
+        const merge = (target: PluginContextMenuTarget, items?: PluginContextMenuItem[]) => {
+            const list = contextMenuItems.get(target) || [];
+            for (const it of Array.isArray(items) ? items : []) {
+                const label = String(it?.label || '').trim();
+                const action = String(it?.action || '').trim();
+                if (!label || !action) continue;
+                list.push({ label, action, title: it?.title });
+            }
+            contextMenuItems.set(target, list);
+        };
+        merge('files', menus.files);
+        merge('commits', menus.commits);
+        merge('branches', menus.branches);
+    }
 }
 
 function installGlobalApi() {
@@ -374,6 +408,12 @@ export async function runPluginAction(actionId: string, payload?: unknown): Prom
         notify(msg ? `Plugin action failed: ${msg}` : 'Plugin action failed');
     }
     return true;
+}
+
+export function getPluginContextMenuItems(
+    target: PluginContextMenuTarget,
+): PluginContextMenuItem[] {
+    return (contextMenuItems.get(target) || []).slice();
 }
 
 export async function initPlugins(): Promise<void> {

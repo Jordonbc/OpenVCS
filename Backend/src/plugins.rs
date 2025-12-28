@@ -475,16 +475,32 @@ pub fn load_plugin(id: &str) -> Result<PluginPayload, String> {
                 Ok(m) => m,
                 Err(_) => continue,
             };
+            let entry_path = clean_opt(manifest.entry.clone());
             if manifest.id.trim().to_ascii_lowercase() != requested_lower {
                 continue;
             }
 
             let summary = manifest_to_summary(&resolved, manifest);
+            let entry_code = entry_path.and_then(|entry| {
+                let target = resolved.join(entry.trim());
+                match fs::read_to_string(&target) {
+                    Ok(text) => Some(text),
+                    Err(err) => {
+                        warn!(
+                            "plugins: failed to read entry {} for {}: {}",
+                            target.display(),
+                            summary.id,
+                            err
+                        );
+                        None
+                    }
+                }
+            });
 
             return Ok(PluginPayload {
                 summary,
                 // Plugin code does not execute in-process; the UI runtime uses out-of-process components.
-                entry: None,
+                entry: entry_code,
             });
         }
     }
