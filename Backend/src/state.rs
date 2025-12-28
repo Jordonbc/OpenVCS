@@ -6,9 +6,9 @@ use parking_lot::RwLock;
 
 use crate::output_log::OutputLogEntry;
 use crate::repo_settings::RepoConfig;
+use crate::repo::Repo;
 use crate::settings::AppConfig;
 use directories::ProjectDirs;
-use openvcs_core::Repo;
 use serde::{Deserialize, Serialize};
 
 // Default MRU size used as a fallback when settings are missing/invalid

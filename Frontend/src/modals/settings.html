@@ -99,8 +99,7 @@
                             <span class="help-tip" title="Choose Git implementation. System uses your installed git; Libgit2 uses embedded library.">?</span>
                         </label>
                         <select id="set-git-backend">
-                            <option value="system">System</option>
-                            <option value="libgit2">Libgit2</option>
+                            <option value="" disabled selected>Loading…</option>
                         </select>
                     </div>
 
@@ -343,10 +342,17 @@
                         </div>
                     </div>
                     <div class="group">
+                        <h4 class="settings-section-title">Installed Bundles (.ovcsp)</h4>
+                        <div id="plugin-bundles-pane" class="muted" style="font-size:.9rem">
+                            <div id="plugin-bundles-list"></div>
+                        </div>
+                    </div>
+                    <div class="group">
                         <div class="plugins-pane" id="plugins-pane">
                             <div class="plugins-left" aria-label="Installed plugins list">
                                 <div class="plugins-toolbar">
                                     <input id="plugins-search" type="search" placeholder="Search plugins… (use @author and #tag)" aria-label="Search installed plugins" />
+                                    <button class="tbtn" id="plugins-install-bundle" type="button">Install .ovcsp…</button>
                                     <button class="tbtn" id="plugins-enable-all" type="button">Enable all</button>
                                     <button class="tbtn" id="plugins-disable-all" type="button">Disable all</button>
                                 </div>

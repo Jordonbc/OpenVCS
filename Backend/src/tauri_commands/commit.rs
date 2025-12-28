@@ -32,7 +32,9 @@ pub async fn commit_changes<R: Runtime>(
 
     async_runtime::spawn_blocking(move || {
         let on = progress_bridge(app);
-        on(VcsEvent::Info("Staging changes…"));
+        on(VcsEvent::Info {
+            msg: "Staging changes…".into(),
+        });
         info!("Staging changes for commit");
 
         let (name, email) = repo
@@ -51,7 +53,9 @@ pub async fn commit_changes<R: Runtime>(
             .unwrap_or_else(|| ("OpenVCS".into(), "openvcs@example".into()));
         info!("Using identity: {} <{}>", name, email);
 
-        on(VcsEvent::Info("Writing commit…"));
+        on(VcsEvent::Info {
+            msg: "Writing commit…".into(),
+        });
         let oid = repo
             .inner()
             .commit(&message, &name, &email, &[])
@@ -61,7 +65,9 @@ pub async fn commit_changes<R: Runtime>(
             })?;
         info!("Commit created successfully: {oid}");
 
-        on(VcsEvent::Info("Commit created."));
+        on(VcsEvent::Info {
+            msg: "Commit created.".into(),
+        });
         Ok(oid)
     })
     .await
@@ -95,7 +101,9 @@ pub async fn commit_selected<R: Runtime>(
 
     async_runtime::spawn_blocking(move || {
         let on = progress_bridge(app);
-        on(VcsEvent::Info("Staging selected files…"));
+        on(VcsEvent::Info {
+            msg: "Staging selected files…".into(),
+        });
 
         let (name, email) = repo
             .inner()
@@ -114,7 +122,9 @@ pub async fn commit_selected<R: Runtime>(
 
         let paths: Vec<PathBuf> = files.into_iter().map(PathBuf::from).collect();
 
-        on(VcsEvent::Info("Writing commit…"));
+        on(VcsEvent::Info {
+            msg: "Writing commit…".into(),
+        });
         let oid = repo
             .inner()
             .commit(&message, &name, &email, &paths)
@@ -151,7 +161,9 @@ pub async fn commit_patch<R: Runtime>(
 
     async_runtime::spawn_blocking(move || {
         let on = progress_bridge(app);
-        on(VcsEvent::Info("Staging selected hunks…"));
+        on(VcsEvent::Info {
+            msg: "Staging selected hunks…".into(),
+        });
 
         repo.inner().stage_patch(&patch).map_err(|e| {
             error!("stage_patch failed: {e}");
@@ -173,7 +185,9 @@ pub async fn commit_patch<R: Runtime>(
             })
             .unwrap_or_else(|| ("OpenVCS".into(), "openvcs@example".into()));
 
-        on(VcsEvent::Info("Committing staged hunks…"));
+        on(VcsEvent::Info {
+            msg: "Committing staged hunks…".into(),
+        });
         let oid = repo
             .inner()
             .commit_index(&message, &name, &email)
@@ -215,7 +229,9 @@ pub async fn commit_patch_and_files<R: Runtime>(
 
     async_runtime::spawn_blocking(move || {
         let on = progress_bridge(app);
-        on(VcsEvent::Info("Staging selected hunks…"));
+        on(VcsEvent::Info {
+            msg: "Staging selected hunks…".into(),
+        });
 
         if !patch.trim().is_empty() {
             repo.inner().stage_patch(&patch).map_err(|e| {
@@ -239,7 +255,9 @@ pub async fn commit_patch_and_files<R: Runtime>(
             })
             .unwrap_or_else(|| ("OpenVCS".into(), "openvcs@example".into()));
 
-        on(VcsEvent::Info("Writing commit…"));
+        on(VcsEvent::Info {
+            msg: "Writing commit…".into(),
+        });
         let oid = if files.is_empty() {
             repo.inner()
                 .commit_index(&message, &name, &email)
@@ -250,7 +268,9 @@ pub async fn commit_patch_and_files<R: Runtime>(
                 .commit(&message, &name, &email, &paths)
                 .map_err(|e| e.to_string())?
         };
-        on(VcsEvent::Info("Commit complete"));
+        on(VcsEvent::Info {
+            msg: "Commit complete".into(),
+        });
         Ok(oid)
     })
     .await
@@ -283,7 +303,7 @@ pub async fn git_cherry_pick_to_branch<R: Runtime>(
 
         let on = progress_bridge(app);
         on(VcsEvent::Progress {
-            phase: "git",
+            phase: "git".into(),
             detail: format!("Checking out '{branch}'…"),
         });
         repo.inner()
@@ -291,12 +311,14 @@ pub async fn git_cherry_pick_to_branch<R: Runtime>(
             .map_err(|e| e.to_string())?;
 
         on(VcsEvent::Progress {
-            phase: "git",
+            phase: "git".into(),
             detail: format!("Cherry-picking {id}…"),
         });
         repo.inner().cherry_pick(&id).map_err(|e| e.to_string())?;
 
-        on(VcsEvent::Info("Cherry-pick complete".into()));
+        on(VcsEvent::Info {
+            msg: "Cherry-pick complete".into(),
+        });
         Ok(())
     })
     .await
@@ -320,13 +342,15 @@ pub async fn git_revert_commit<R: Runtime>(
 
         let on = progress_bridge(app);
         on(VcsEvent::Progress {
-            phase: "git",
+            phase: "git".into(),
             detail: format!("Reverting {id}…"),
         });
         repo.inner()
             .revert_commit(&id, true)
             .map_err(|e| e.to_string())?;
-        on(VcsEvent::Info("Revert complete".into()));
+        on(VcsEvent::Info {
+            msg: "Revert complete".into(),
+        });
         Ok(())
     })
     .await

@@ -2,12 +2,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use openvcs_core::models::VcsEvent;
-use openvcs_core::{OnEvent, Repo};
+use openvcs_core::OnEvent;
 use tauri::{async_runtime, AppHandle, Emitter, Manager, Runtime, State};
 
 use crate::output_log::{OutputLevel, OutputLogEntry};
+use crate::repo::Repo;
 use crate::settings::Lfs;
 use crate::state::AppState;
+use crate::{plugin_backends};
 
 #[derive(serde::Serialize, Clone)]
 pub struct ProgressPayload {
@@ -28,7 +30,7 @@ pub(crate) fn progress_bridge<R: Runtime>(app: AppHandle<R>) -> OnEvent {
                     .map(|s| format!("{refname} → {s}"))
                     .unwrap_or_else(|| format!("{refname} ok")),
             ),
-            VcsEvent::Info(s) => (OutputLevel::Info, s.to_string()),
+            VcsEvent::Info { msg } => (OutputLevel::Info, msg),
             VcsEvent::Warning(s) => (OutputLevel::Warn, s),
             VcsEvent::Error(s) => (OutputLevel::Error, s),
         };
@@ -44,10 +46,23 @@ pub(crate) fn progress_bridge<R: Runtime>(app: AppHandle<R>) -> OnEvent {
 }
 
 pub(crate) fn current_repo_or_err(state: &State<'_, AppState>) -> Result<Arc<Repo>, String> {
-    state
+    let repo = state
         .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())
-        .map(|repo| Arc::clone(&repo))
+        .ok_or_else(|| "No repository selected".to_string())?;
+
+    let backend_id = repo.id();
+    let is_available = plugin_backends::has_plugin_backend(&backend_id);
+
+    if !is_available {
+        // If the backend disappears (e.g. plugin disabled), prevent further operations on a stale handle.
+        state.clear_current_repo();
+        return Err(format!(
+            "Backend `{}` is no longer available (plugin disabled?). Reopen the repository.",
+            backend_id.as_ref()
+        ));
+    }
+
+    Ok(Arc::clone(&repo))
 }
 
 pub(crate) async fn run_repo_task<T, F>(

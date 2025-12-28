@@ -12,6 +12,11 @@ const BUILT_IN_PLUGINS_DIR_NAME: &str = "built-in-plugins";
 const PLUGIN_THEMES_DIR_NAME: &str = "themes";
 const MAX_ICON_BYTES: usize = 512 * 1024;
 
+#[derive(Debug, Deserialize)]
+struct CurrentPointer {
+    version: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PluginSummary {
     pub id: String,
@@ -161,15 +166,41 @@ fn built_in_plugin_dirs() -> Vec<PathBuf> {
         .collect()
 }
 
-fn read_manifest_from_directory(path: &Path) -> Result<RawPluginManifest, String> {
-    let manifest_path = path.join(PLUGIN_MANIFEST_NAME);
+fn resolve_plugin_dir(path: &Path) -> Option<PathBuf> {
+    let direct = path.join(PLUGIN_MANIFEST_NAME);
+    if direct.is_file() {
+        return Some(path.to_path_buf());
+    }
+
+    let current_path = path.join("current.json");
+    if !current_path.is_file() {
+        return None;
+    }
+    let text = fs::read_to_string(&current_path).ok()?;
+    let cur: CurrentPointer = serde_json::from_str(&text).ok()?;
+    let ver = cur.version.trim();
+    if ver.is_empty() {
+        return None;
+    }
+    let version_dir = path.join(ver);
+    let manifest = version_dir.join(PLUGIN_MANIFEST_NAME);
+    if manifest.is_file() {
+        Some(version_dir)
+    } else {
+        None
+    }
+}
+
+fn read_manifest_from_directory(path: &Path) -> Result<(PathBuf, RawPluginManifest), String> {
+    let resolved = resolve_plugin_dir(path).unwrap_or_else(|| path.to_path_buf());
+    let manifest_path = resolved.join(PLUGIN_MANIFEST_NAME);
     let text = match fs::read_to_string(&manifest_path) {
         Ok(text) => text,
         Err(err) => {
             if err.kind() == std::io::ErrorKind::NotFound {
                 return Err(format!(
                     "plugin {} is missing {PLUGIN_MANIFEST_NAME}",
-                    path.display()
+                    resolved.display()
                 ));
             }
             return Err(format!("read {}: {}", manifest_path.display(), err));
@@ -177,14 +208,14 @@ fn read_manifest_from_directory(path: &Path) -> Result<RawPluginManifest, String
     };
 
     let manifest: RawPluginManifest = serde_json::from_str(&text)
-        .map_err(|err| format!("parse plugin manifest in {}: {}", path.display(), err))?;
+        .map_err(|err| format!("parse plugin manifest in {}: {}", resolved.display(), err))?;
     if manifest.id.trim().is_empty() {
-        return Err(format!("plugin {} has an empty id", path.display()));
+        return Err(format!("plugin {} has an empty id", resolved.display()));
     }
     if manifest.name.trim().is_empty() {
-        return Err(format!("plugin {} has an empty name", path.display()));
+        return Err(format!("plugin {} has an empty name", resolved.display()));
     }
-    Ok(manifest)
+    Ok((resolved, manifest))
 }
 
 fn icon_mime_for_path(path: &Path) -> Option<&'static str> {
@@ -392,12 +423,12 @@ pub fn list_plugins() -> Vec<PluginSummary> {
                         continue;
                     }
                     match read_manifest_from_directory(&path) {
-                        Ok(manifest) => {
+                        Ok((resolved, manifest)) => {
                             let norm = manifest.id.trim().to_ascii_lowercase();
                             if !seen.insert(norm) {
                                 continue;
                             }
-                            out.push(manifest_to_summary(&path, manifest));
+                            out.push(manifest_to_summary(&resolved, manifest));
                         }
                         Err(_) => {}
                     }
@@ -440,7 +471,7 @@ pub fn load_plugin(id: &str) -> Result<PluginPayload, String> {
             if !path.is_dir() {
                 continue;
             }
-            let manifest = match read_manifest_from_directory(&path) {
+            let (resolved, manifest) = match read_manifest_from_directory(&path) {
                 Ok(m) => m,
                 Err(_) => continue,
             };
@@ -448,26 +479,12 @@ pub fn load_plugin(id: &str) -> Result<PluginPayload, String> {
                 continue;
             }
 
-            let summary = manifest_to_summary(&path, manifest);
-            let entry_text = if let Some(entry) = summary.entry.as_deref() {
-                let entry_path = path.join(entry.trim_start_matches("./"));
-                match fs::read_to_string(&entry_path) {
-                    Ok(text) => Some(text),
-                    Err(err) => {
-                        return Err(format!(
-                            "read plugin entry {}: {}",
-                            entry_path.display(),
-                            err
-                        ));
-                    }
-                }
-            } else {
-                None
-            };
+            let summary = manifest_to_summary(&resolved, manifest);
 
             return Ok(PluginPayload {
                 summary,
-                entry: entry_text,
+                // Plugin code does not execute in-process; the UI runtime uses out-of-process components.
+                entry: None,
             });
         }
     }
@@ -501,7 +518,7 @@ pub fn plugin_theme_dirs() -> Vec<PluginThemeDir> {
             if !plugin_dir.is_dir() {
                 continue;
             }
-            let manifest = match read_manifest_from_directory(&plugin_dir) {
+            let (resolved, manifest) = match read_manifest_from_directory(&plugin_dir) {
                 Ok(m) => m,
                 Err(_) => continue,
             };
@@ -511,7 +528,7 @@ pub fn plugin_theme_dirs() -> Vec<PluginThemeDir> {
                 continue;
             }
 
-            for theme_dir in discover_theme_dirs(&plugin_dir) {
+            for theme_dir in discover_theme_dirs(&resolved) {
                 out.push(PluginThemeDir {
                     plugin_id: plugin_id.clone(),
                     path: theme_dir,

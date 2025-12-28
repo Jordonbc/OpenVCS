@@ -96,7 +96,7 @@ fn default_theme_pack() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Git {
     #[serde(default)]
-    pub backend: GitBackend,
+    pub backend: String,
     /// Default branch name used when creating new repos or inferring defaults
     #[serde(default)]
     pub default_branch: String,
@@ -127,7 +127,7 @@ pub struct Git {
 impl Default for Git {
     fn default() -> Self {
         Self {
-            backend: GitBackend::System,
+            backend: String::new(),
             default_branch: "main".into(),
             ssh_binary: GitSshBinary::Auto,
             ssh_path: String::new(),
@@ -415,18 +415,6 @@ impl Default for UpdateChannel {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum GitBackend {
-    System,
-    Libgit2,
-}
-impl Default for GitBackend {
-    fn default() -> Self {
-        GitBackend::System
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
 pub enum GitSshBinary {
     Auto,
     Host,
@@ -685,6 +673,7 @@ impl AppConfig {
         }
 
         // Git
+        self.git.backend = self.git.backend.trim().to_string();
         if self.git.default_branch.trim().is_empty() {
             self.git.default_branch = "main".into();
         }

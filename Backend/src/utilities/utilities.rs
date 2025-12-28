@@ -61,3 +61,22 @@ pub async fn browse_directory_async<R: tauri::Runtime>(
 
     rx.await.unwrap_or(None)
 }
+
+pub async fn browse_file_async<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    title: &str,
+    extensions: &[&str],
+) -> Option<String> {
+    let dialog = tauri_plugin_dialog::DialogExt::dialog(&app).clone();
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<Option<String>>();
+    let mut builder = tauri_plugin_dialog::FileDialogBuilder::new(dialog).set_title(title);
+    if !extensions.is_empty() {
+        builder = builder.add_filter("Plugin bundle", extensions);
+    }
+    builder.pick_file(move |res| {
+        let _ = tx.send(res.map(|p| p.to_string()));
+    });
+
+    rx.await.unwrap_or(None)
+}
