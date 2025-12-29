@@ -89,7 +89,9 @@ declare global {
             invoke<T = unknown>(cmd: string, args?: Json): Promise<T>;
             listen<T = unknown>(event: string, cb: (evt: { payload: T }) => void): Promise<{ unlisten: () => void }>;
             notify(msg: string): void;
+            callPlugin?(pluginId: string, method: string, params?: Json): Promise<unknown>;
         };
+        callPluginMethod?: (pluginId: string, method: string, params?: Json) => Promise<unknown>;
         __openvcsPluginContext?: { id: string } | null;
     }
 }
@@ -336,6 +338,17 @@ function registerPlugin(reg: PluginRegistration) {
 
 function installGlobalApi() {
     if (window.OpenVCS) return;
+    const callPluginMethod = (
+        pluginId: string,
+        method: string,
+        params?: Json,
+    ) => {
+        return TAURI.invoke('call_plugin_method', {
+            pluginId,
+            method,
+            params: params ?? null,
+        });
+    };
     window.OpenVCS = {
         registerPlugin,
         registerTheme,
@@ -358,7 +371,14 @@ function installGlobalApi() {
         notify(msg: string) {
             notify(msg);
         },
+        callPlugin(pluginId: string, method: string, params?: Json) {
+            return callPluginMethod(pluginId, method, params);
+        },
     };
+    if (!window.callPluginMethod) {
+        window.callPluginMethod = (pluginId: string, method: string, params?: Json) =>
+            callPluginMethod(pluginId, method, params);
+    }
 }
 
 export function getRegisteredThemeSummaries(): ThemeSummary[] {

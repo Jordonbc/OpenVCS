@@ -86,6 +86,28 @@ window.OpenVCS?.registerPlugin({
 
 When the user clicks one of these items, OpenVCS runs the referenced action with a payload that describes the clicked object (e.g. `payload.paths` / `payload.commit` / `payload.branch`).
 
+### Calling backend plugin RPC from the console
+
+Backend plugins register RPC methods (e.g. `example.notify.ping`) via `openvcs_core::plugin_runtime::register_delegate`, and you can hit those endpoints from the dev console using the new `window.callPluginMethod` helper (it wraps `call_plugin_method` so you don’t have to go through `window.OpenVCS.invoke` manually). Example:
+
+```js
+await window.callPluginMethod(
+  'example.notify',
+  'example.notify.ping',
+  { message: 'hello from the console' },
+);
+```
+
+The helper spawns the plugin’s backend process, passes the JSON-RPC request, waits for the response, and enforces any requested capabilities (you must have approved them in Settings → Plugins). There’s also a matching API on `window.OpenVCS` (`window.OpenVCS.callPlugin(...)`) if you breezily interact through that object. If you prefer a named shortcut, register a simple global after loading the plugin:
+
+```js
+window.example = window.example || {};
+window.example.notify = (message) =>
+  window.callPluginMethod('example.notify', 'example.notify.ping', { message });
+```
+
+After that you can call `example.notify('hi')` in the console, and the helper will forward the call to the backend.
+
 ## Hooks
 
 Plugins can register hook handlers via `registerPlugin({ hooks: { ... } })`.

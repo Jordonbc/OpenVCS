@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Tauri Dev
+Exec=konsole -e /projects/OpenVCS/OpenVCS-Client/Dev.sh
+Terminal=false
+Categories=Development;

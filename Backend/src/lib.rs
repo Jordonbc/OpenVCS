@@ -214,6 +214,7 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::approve_plugin_capabilities,
         tauri_commands::list_plugin_functions,
         tauri_commands::invoke_plugin_function,
+        tauri_commands::call_plugin_method,
         tauri_commands::get_global_settings,
         tauri_commands::set_global_settings,
         tauri_commands::get_repo_settings,

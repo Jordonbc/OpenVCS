@@ -135,3 +135,47 @@ pub fn invoke_plugin_function(
         .map_err(|e| format!("{}: {}", e.code, e.message))?;
     Ok(v)
 }
+
+#[tauri::command]
+pub fn call_plugin_method(
+    plugin_id: String,
+    method: String,
+    params: Option<Value>,
+) -> Result<Value, String> {
+    let store = PluginBundleStore::new_default();
+    let Some(components) = store.load_current_components(plugin_id.trim())? else {
+        return Err("plugin not installed".to_string());
+    };
+    let Some(backend) = components.backend else {
+        return Err("plugin has no backend component".to_string());
+    };
+
+    let installed = store
+        .get_current_installed(&components.plugin_id)?
+        .ok_or_else(|| "plugin is not installed".to_string())?;
+
+    let method = method.trim();
+    if method.is_empty() {
+        return Err("method is empty".to_string());
+    }
+
+    let rpc = StdioRpcProcess::new(
+        SpawnConfig {
+            plugin_id: components.plugin_id,
+            component_label: "backend".into(),
+            exec_path: backend.exec_path,
+            args: Vec::new(),
+            workdir: components.install_dir,
+            requested_capabilities: installed.requested_capabilities,
+            approval: installed.approval,
+            allowed_workspace_root: None,
+        },
+        RpcConfig::default(),
+    );
+
+    let params = params.unwrap_or(Value::Null);
+    let v = rpc
+        .call(method, params)
+        .map_err(|e| format!("{}: {}", e.code, e.message))?;
+    Ok(v)
+}
