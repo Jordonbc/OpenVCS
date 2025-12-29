@@ -25,13 +25,6 @@ pub fn ensure_dir(path: &Path) {
 pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
 
-    if let Ok(explicit) = env::var("OPENVCS_BUILTIN_PLUGINS") {
-        let trimmed = explicit.trim();
-        if !trimmed.is_empty() {
-            candidates.push(PathBuf::from(trimmed));
-        }
-    }
-
     if let Ok(current_dir) = env::current_dir() {
         candidates.push(current_dir.join(BUILT_IN_PLUGINS_DIR_NAME));
     }
