@@ -545,6 +545,12 @@ impl PluginBundleStore {
             }
         }
         self.install_ovcsp_with_limits(bundle_path, InstallerLimits::default())?;
+        if let Err(err) = self.approve_capabilities(&plugin_id, &version, true) {
+            warn!(
+                "plugins: failed to auto-approve built-in {} ({}): {}",
+                plugin_id, version, err
+            );
+        }
         Ok(())
     }
 
