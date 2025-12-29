@@ -10,6 +10,7 @@ export interface PluginSummary {
     tags?: string[];
     version?: string;
     author?: string;
+    source?: 'built-in' | 'user' | string;
     entry?: string;
     default_enabled?: boolean;
     theme_dirs?: number;

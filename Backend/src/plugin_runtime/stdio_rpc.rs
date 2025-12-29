@@ -1,5 +1,5 @@
 use crate::plugin_bundles::ApprovalState;
-use crate::plugin_runtime::events::{PluginIoHandle, register_plugin_io};
+use crate::plugin_runtime::events::{register_plugin_io, PluginIoHandle};
 use openvcs_core::models::VcsEvent;
 use openvcs_core::plugin_protocol::{PluginMessage, RpcRequest, RpcResponse};
 use serde_json::Value;
@@ -108,13 +108,7 @@ impl StdioRpcProcess {
             ));
         }
 
-        if self
-            .child
-            .lock()
-            .ok()
-            .map(|c| c.is_some())
-            .unwrap_or(false)
-        {
+        if self.child.lock().ok().map(|c| c.is_some()).unwrap_or(false) {
             return Ok(());
         }
 
@@ -180,21 +174,20 @@ impl StdioRpcProcess {
             params,
         };
 
-        self.write_message(&PluginMessage::Request(req)).map_err(|e| RpcError {
-            code: "plugin.io".into(),
-            message: e,
-        })?;
-
-        let resp = rx
-            .recv_timeout(self.cfg.timeout)
-            .map_err(|_| {
-                self.record_crash();
-                self.kill_process();
-                RpcError {
-                    code: "plugin.timeout".into(),
-                    message: "plugin request timed out".into(),
-                }
+        self.write_message(&PluginMessage::Request(req))
+            .map_err(|e| RpcError {
+                code: "plugin.io".into(),
+                message: e,
             })?;
+
+        let resp = rx.recv_timeout(self.cfg.timeout).map_err(|_| {
+            self.record_crash();
+            self.kill_process();
+            RpcError {
+                code: "plugin.timeout".into(),
+                message: "plugin request timed out".into(),
+            }
+        })?;
 
         if resp.ok {
             Ok(resp.result)
@@ -320,7 +313,8 @@ impl StdioRpcProcess {
             )
         });
 
-        let stderr_path = plugin_stderr_log_path(&self.spawn.plugin_id, &self.spawn.component_label);
+        let stderr_path =
+            plugin_stderr_log_path(&self.spawn.plugin_id, &self.spawn.component_label);
         std::thread::spawn(move || read_stderr_loop(stderr_reader, stderr_path));
 
         *self.child.lock().unwrap() = Some(ProcessHandle::Wasm { join, stdin_writer });
@@ -358,7 +352,10 @@ fn read_stdout_loop(
         };
         match msg {
             PluginMessage::Response(resp) => {
-                let tx = pending.lock().ok().and_then(|mut p| p.pending.remove(&resp.id));
+                let tx = pending
+                    .lock()
+                    .ok()
+                    .and_then(|mut p| p.pending.remove(&resp.id));
                 if let Some(tx) = tx {
                     let _ = tx.send(resp);
                 }
@@ -374,9 +371,7 @@ fn read_stdout_loop(
                 let resp = handle_host_request(&spawn, req);
                 if let Ok(mut lock) = stdin_for_responses.lock() {
                     if let Some(stdin) = lock.as_mut() {
-                        if let Ok(line) =
-                            serde_json::to_string(&PluginMessage::Response(resp))
-                        {
+                        if let Ok(line) = serde_json::to_string(&PluginMessage::Response(resp)) {
                             let _ = writeln!(stdin, "{line}");
                             let _ = stdin.flush();
                         }
@@ -426,8 +421,7 @@ fn run_wasi_module(
     let stderr_file = unsafe { std::fs::File::from_raw_fd(stderr.into_raw_fd()) };
 
     let engine = Engine::default();
-    let module =
-        Module::from_file(&engine, wasm_path).map_err(|e| format!("load module: {e}"))?;
+    let module = Module::from_file(&engine, wasm_path).map_err(|e| format!("load module: {e}"))?;
 
     let mut linker = wasmtime::Linker::new(&engine);
     wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |cx| cx)
@@ -540,10 +534,7 @@ fn handle_host_request(spawn: &SpawnConfig, req: RpcRequest) -> RpcResponse {
         }
         "ui.notify" => {
             if !caps.contains("ui.notifications") {
-                return deny(
-                    "capability.denied",
-                    "missing capability: ui.notifications",
-                );
+                return deny("capability.denied", "missing capability: ui.notifications");
             }
             let msg = req
                 .params
@@ -678,7 +669,11 @@ fn handle_host_request(spawn: &SpawnConfig, req: RpcRequest) -> RpcResponse {
                 }
             }
 
-            let stdin_text = req.params.get("stdin").and_then(|v| v.as_str()).unwrap_or("");
+            let stdin_text = req
+                .params
+                .get("stdin")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let out = if stdin_text.is_empty() {
                 match cmd.output() {
                     Ok(o) => o,
@@ -831,15 +826,17 @@ fn read_file_under_root(root: &Path, rel: &str) -> Result<Vec<u8>, String> {
     let rel = rel.replace('\\', "/");
     let p = Path::new(&rel);
     for c in p.components() {
-        if matches!(c, Component::ParentDir | Component::RootDir | Component::Prefix(_)) {
+        if matches!(
+            c,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        ) {
             return Err("invalid path".to_string());
         }
     }
     let joined = root.join(p);
     let root_canon = fs::canonicalize(root).map_err(|e| format!("canonicalize root: {e}"))?;
     let parent = joined.parent().ok_or_else(|| "invalid path".to_string())?;
-    let parent_canon =
-        fs::canonicalize(parent).map_err(|e| format!("canonicalize parent: {e}"))?;
+    let parent_canon = fs::canonicalize(parent).map_err(|e| format!("canonicalize parent: {e}"))?;
     if !parent_canon.starts_with(&root_canon) {
         return Err("path escapes workspace".to_string());
     }
@@ -904,7 +901,10 @@ fn append_log_line(path: &Path, line: &str) -> io::Result<()> {
         let _ = fs::create_dir_all(parent);
     }
     rotate_if_needed(path)?;
-    let mut f = fs::OpenOptions::new().create(true).append(true).open(path)?;
+    let mut f = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()

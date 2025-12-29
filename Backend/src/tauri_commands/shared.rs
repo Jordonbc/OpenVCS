@@ -6,10 +6,10 @@ use openvcs_core::OnEvent;
 use tauri::{async_runtime, AppHandle, Emitter, Manager, Runtime, State};
 
 use crate::output_log::{OutputLevel, OutputLogEntry};
+use crate::plugin_backends;
 use crate::repo::Repo;
 use crate::settings::Lfs;
 use crate::state::AppState;
-use crate::{plugin_backends};
 
 #[derive(serde::Serialize, Clone)]
 pub struct ProgressPayload {

@@ -5,8 +5,8 @@ use log::{debug, info};
 use parking_lot::RwLock;
 
 use crate::output_log::OutputLogEntry;
-use crate::repo_settings::RepoConfig;
 use crate::repo::Repo;
+use crate::repo_settings::RepoConfig;
 use crate::settings::AppConfig;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};

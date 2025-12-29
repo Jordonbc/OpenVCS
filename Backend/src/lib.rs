@@ -7,6 +7,7 @@ use tauri_plugin_updater::UpdaterExt;
 mod logging;
 mod output_log;
 mod plugin_bundles;
+mod plugin_paths;
 mod plugin_backends;
 mod plugin_runtime;
 mod plugins;

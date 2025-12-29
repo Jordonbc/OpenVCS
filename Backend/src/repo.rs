@@ -19,4 +19,3 @@ impl Repo {
         self.inner.id()
     }
 }
-

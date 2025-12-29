@@ -1,4 +1,4 @@
-use directories::ProjectDirs;
+use crate::plugin_paths::{ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -6,8 +6,6 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use zip::ZipArchive;
-
-const PLUGIN_MANIFEST_NAME: &str = "openvcs.plugin.json";
 
 #[derive(Debug, Clone, Copy)]
 pub struct InstallerLimits {
@@ -81,46 +79,42 @@ pub struct InstalledPlugin {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-enum BackendProvide {
+pub enum BackendProvide {
     Id(String),
-    Named { id: String, #[serde(default)] name: Option<String> },
+    Named {
+        id: String,
+        #[serde(default)]
+        name: Option<String>,
+    },
 }
 
 #[derive(Debug, Deserialize)]
-struct PluginManifestBackend {
+pub struct PluginManifestBackend {
     #[serde(default)]
-    exec: Option<String>,
+    pub exec: Option<String>,
     #[serde(default)]
-    provides: Vec<BackendProvide>,
+    pub provides: Vec<BackendProvide>,
 }
 
 #[derive(Debug, Deserialize)]
-struct PluginManifestFunctions {
+pub struct PluginManifestFunctions {
     #[serde(default)]
-    exec: Option<String>,
+    pub exec: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct PluginManifest {
-    id: String,
+pub struct PluginManifest {
+    pub id: String,
     #[serde(default)]
-    name: Option<String>,
+    pub name: Option<String>,
     #[serde(default)]
-    version: Option<String>,
+    pub version: Option<String>,
     #[serde(default)]
-    capabilities: Vec<String>,
+    pub capabilities: Vec<String>,
     #[serde(default)]
-    backend: Option<PluginManifestBackend>,
+    pub backend: Option<PluginManifestBackend>,
     #[serde(default)]
-    functions: Option<PluginManifestFunctions>,
-}
-
-fn plugins_root_dir() -> PathBuf {
-    if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
-        pd.config_dir().join("plugins")
-    } else {
-        PathBuf::from("plugins")
-    }
+    pub functions: Option<PluginManifestFunctions>,
 }
 
 fn now_unix_ms() -> u64 {
@@ -136,7 +130,9 @@ fn sha256_hex_file(path: &Path) -> Result<String, String> {
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 8192];
     loop {
-        let n = f.read(&mut buf).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let n = f
+            .read(&mut buf)
+            .map_err(|e| format!("read {}: {e}", path.display()))?;
         if n == 0 {
             break;
         }
@@ -176,8 +172,7 @@ fn sanitize_zip_name(name: &str) -> Result<PathBuf, String> {
 
 fn is_zip_symlink<R: Read>(file: &zip::read::ZipFile<'_, R>) -> bool {
     // Unix symlink bit: 0120000 (S_IFLNK)
-    file.unix_mode()
-        .is_some_and(|m| (m & 0o170000) == 0o120000)
+    file.unix_mode().is_some_and(|m| (m & 0o170000) == 0o120000)
 }
 
 pub struct PluginBundleStore {
@@ -210,9 +205,9 @@ pub struct InstalledPluginComponents {
 
 impl PluginBundleStore {
     pub fn new_default() -> Self {
-        Self {
-            root: plugins_root_dir(),
-        }
+        let root = plugins_dir();
+        ensure_dir(&root);
+        Self { root }
     }
 
     pub fn plugin_root_dir(&self, plugin_id: &str) -> PathBuf {
@@ -278,8 +273,8 @@ impl PluginBundleStore {
             }
         }
 
-        let manifest_zip_path = manifest_zip_path
-            .ok_or_else(|| format!("bundle is missing {PLUGIN_MANIFEST_NAME}"))?;
+        let manifest_zip_path =
+            manifest_zip_path.ok_or_else(|| format!("bundle is missing {PLUGIN_MANIFEST_NAME}"))?;
         let manifest_json = manifest_json.expect("manifest bytes to exist");
 
         let manifest: PluginManifest = serde_json::from_slice(&manifest_json)
@@ -320,8 +315,7 @@ impl PluginBundleStore {
         if staging.exists() {
             let _ = fs::remove_dir_all(&staging);
         }
-        fs::create_dir_all(&staging)
-            .map_err(|e| format!("create {}: {e}", staging.display()))?;
+        fs::create_dir_all(&staging).map_err(|e| format!("create {}: {e}", staging.display()))?;
         let staging_version_dir = staging.join(&version);
         fs::create_dir_all(&staging_version_dir)
             .map_err(|e| format!("create {}: {e}", staging_version_dir.display()))?;
@@ -378,7 +372,10 @@ impl PluginBundleStore {
 
             total_files += 1;
             if total_files > limits.max_files {
-                return Err(format!("bundle exceeds max file count ({})", limits.max_files));
+                return Err(format!(
+                    "bundle exceeds max file count ({})",
+                    limits.max_files
+                ));
             }
 
             let declared_size = entry.size();
@@ -391,7 +388,11 @@ impl PluginBundleStore {
 
             let compressed = entry.compressed_size();
             let ratio = if compressed == 0 {
-                if declared_size == 0 { 1 } else { u64::MAX }
+                if declared_size == 0 {
+                    1
+                } else {
+                    u64::MAX
+                }
             } else {
                 (declared_size / compressed).max(1)
             };
@@ -450,7 +451,10 @@ impl PluginBundleStore {
                 use std::os::unix::fs::PermissionsExt;
                 let mut mode = entry.unix_mode().unwrap_or(0o644) & 0o777;
                 // For files under bin/, ensure executable.
-                if stripped.components().next().is_some_and(|c| c.as_os_str() == "bin")
+                if stripped
+                    .components()
+                    .next()
+                    .is_some_and(|c| c.as_os_str() == "bin")
                     && (mode & 0o111) == 0
                 {
                     mode |= 0o111;
@@ -483,7 +487,10 @@ impl PluginBundleStore {
         }
 
         let (backend_exec, functions_exec) = (
-            manifest.backend.and_then(|b| b.exec).map(|s| s.trim().to_string()),
+            manifest
+                .backend
+                .and_then(|b| b.exec)
+                .map(|s| s.trim().to_string()),
             manifest
                 .functions
                 .and_then(|f| f.exec)
@@ -531,9 +538,12 @@ impl PluginBundleStore {
             },
         );
         self.write_index(&plugin_id, &index)?;
-        self.write_current(&plugin_id, &CurrentPointer {
-            version: version.clone(),
-        })?;
+        self.write_current(
+            &plugin_id,
+            &CurrentPointer {
+                version: version.clone(),
+            },
+        )?;
 
         Ok(InstalledPlugin {
             plugin_id,
@@ -562,7 +572,8 @@ impl PluginBundleStore {
             return Ok(Vec::new());
         }
         let mut out = Vec::new();
-        let entries = fs::read_dir(&self.root).map_err(|e| format!("read {}: {e}", self.root.display()))?;
+        let entries =
+            fs::read_dir(&self.root).map_err(|e| format!("read {}: {e}", self.root.display()))?;
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_dir() {
@@ -592,8 +603,8 @@ impl PluginBundleStore {
         if !current_path.is_file() {
             return Ok(None);
         }
-        let text =
-            fs::read_to_string(&current_path).map_err(|e| format!("read {}: {e}", current_path.display()))?;
+        let text = fs::read_to_string(&current_path)
+            .map_err(|e| format!("read {}: {e}", current_path.display()))?;
         let cur: CurrentPointer = serde_json::from_str(&text)
             .map_err(|e| format!("parse {}: {e}", current_path.display()))?;
         let version_dir = plugin_dir.join(cur.version);
@@ -657,8 +668,8 @@ impl PluginBundleStore {
             return Ok(None);
         };
         let manifest_path = version_dir.join(PLUGIN_MANIFEST_NAME);
-        let text =
-            fs::read_to_string(&manifest_path).map_err(|e| format!("read {}: {e}", manifest_path.display()))?;
+        let text = fs::read_to_string(&manifest_path)
+            .map_err(|e| format!("read {}: {e}", manifest_path.display()))?;
         let manifest: PluginManifest = serde_json::from_str(&text)
             .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
         let id = manifest.id.trim().to_string();
@@ -679,7 +690,13 @@ impl PluginBundleStore {
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_string)
-            .unwrap_or_else(|| version_dir.file_name().unwrap_or_default().to_string_lossy().to_string());
+            .unwrap_or_else(|| {
+                version_dir
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string()
+            });
 
         let requested_capabilities = normalize_capabilities(manifest.capabilities);
 
@@ -736,7 +753,10 @@ impl PluginBundleStore {
 
         Ok(Some(InstalledPluginComponents {
             plugin_id: id,
-            name: manifest.name.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+            name: manifest
+                .name
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
             version,
             install_dir: version_dir,
             requested_capabilities,
@@ -778,7 +798,8 @@ impl PluginBundleStore {
     fn write_index(&self, plugin_id: &str, index: &InstalledPluginIndex) -> Result<(), String> {
         let p = self.root.join(plugin_id).join("index.json");
         let tmp = p.with_extension("json.tmp");
-        let text = serde_json::to_string_pretty(index).map_err(|e| format!("serialize index: {e}"))?;
+        let text =
+            serde_json::to_string_pretty(index).map_err(|e| format!("serialize index: {e}"))?;
         fs::write(&tmp, text).map_err(|e| format!("write {}: {e}", tmp.display()))?;
         fs::rename(&tmp, &p).map_err(|e| format!("rename {}: {e}", p.display()))?;
         Ok(())
@@ -787,7 +808,8 @@ impl PluginBundleStore {
     fn write_current(&self, plugin_id: &str, cur: &CurrentPointer) -> Result<(), String> {
         let p = self.root.join(plugin_id).join("current.json");
         let tmp = p.with_extension("json.tmp");
-        let text = serde_json::to_string_pretty(cur).map_err(|e| format!("serialize current: {e}"))?;
+        let text =
+            serde_json::to_string_pretty(cur).map_err(|e| format!("serialize current: {e}"))?;
         fs::write(&tmp, text).map_err(|e| format!("write {}: {e}", tmp.display()))?;
         fs::rename(&tmp, &p).map_err(|e| format!("rename {}: {e}", p.display()))?;
         Ok(())
@@ -892,8 +914,7 @@ mod tests {
             }
             let file_name_len = u16::from_le_bytes([zip_bytes[i + 28], zip_bytes[i + 29]]) as usize;
             let extra_len = u16::from_le_bytes([zip_bytes[i + 30], zip_bytes[i + 31]]) as usize;
-            let comment_len =
-                u16::from_le_bytes([zip_bytes[i + 32], zip_bytes[i + 33]]) as usize;
+            let comment_len = u16::from_le_bytes([zip_bytes[i + 32], zip_bytes[i + 33]]) as usize;
             let name_start = i + 46;
             let name_end = name_start.saturating_add(file_name_len);
             if name_end > zip_bytes.len() {
@@ -921,10 +942,7 @@ mod tests {
     }
 
     fn basic_manifest(id: &str, extra: &str) -> Vec<u8> {
-        format!(
-            "{{\"id\":\"{id}\",\"name\":\"Test\",\"version\":\"1.0.0\"{extra}}}"
-        )
-        .into_bytes()
+        format!("{{\"id\":\"{id}\",\"name\":\"Test\",\"version\":\"1.0.0\"{extra}}}").into_bytes()
     }
 
     #[test]
@@ -1069,7 +1087,10 @@ mod tests {
     fn install_validates_declared_entrypoints_exist() {
         let bundle = make_bundle(vec![Entry {
             name: "test.plugin/openvcs.plugin.json".into(),
-            data: basic_manifest("test.plugin", ",\"backend\":{\"exec\":\"missing\",\"provides\":[\"x\"]}"),
+            data: basic_manifest(
+                "test.plugin",
+                ",\"backend\":{\"exec\":\"missing\",\"provides\":[\"x\"]}",
+            ),
             unix_mode: None,
             method: CompressionMethod::Stored,
         }]);

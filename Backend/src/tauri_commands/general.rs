@@ -95,18 +95,21 @@ pub async fn add_repo_internal<R: Runtime>(
     let backend_id_for_task = backend_id.clone();
     let handle = async_runtime::spawn_blocking(move || {
         if prefer_plugin {
-            plugin_backends::open_repo_via_plugin_backend(backend_id_for_task, Path::new(&open_path))
+            plugin_backends::open_repo_via_plugin_backend(
+                backend_id_for_task,
+                Path::new(&open_path),
+            )
         } else {
             Err(openvcs_core::VcsError::Unsupported(backend_id_for_task))
         }
     })
-        .await
-        .map_err(|e| format!("add_repo task failed: {e}"))?
-        .map_err(|e| {
-            let m = format!("Failed to open repo with backend `{backend_label}`: {e}");
-            error!("{m}");
-            m
-        })?;
+    .await
+    .map_err(|e| format!("add_repo task failed: {e}"))?
+    .map_err(|e| {
+        let m = format!("Failed to open repo with backend `{backend_label}`: {e}");
+        error!("{m}");
+        m
+    })?;
 
     let repo = Arc::new(Repo::new(handle));
     state.set_current_repo(repo);
@@ -158,9 +161,9 @@ pub async fn clone_repo<R: Runtime>(
         );
         // Plugin backends currently do not support clone in the host.
         let _ = on;
-        Err(openvcs_core::VcsError::Unsupported(openvcs_core::BackendId::from(
-            be_label.as_str(),
-        )))
+        Err(openvcs_core::VcsError::Unsupported(
+            openvcs_core::BackendId::from(be_label.as_str()),
+        ))
     });
     handle
         .await

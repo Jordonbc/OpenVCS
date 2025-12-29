@@ -734,6 +734,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
                 }
 
                 await renderBundles();
+                await reloadPluginSummaries();
             } catch (err) {
                 const msg = String(err || '').trim();
                 notify(msg ? `Install failed: ${msg}` : 'Install failed');
@@ -1186,6 +1187,22 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         groupLabelEl.textContent = `Installed (${enabledNow} of ${state.list.length} enabled)`;
     };
 
+    async function reloadPluginSummaries(): Promise<void> {
+        if (!TAURI.has) return;
+        let list: PluginSummary[] = [];
+        try {
+            list = await TAURI.invoke<PluginSummary[]>('list_plugins');
+        } catch (err) {
+            console.warn('reload list_plugins failed', err);
+            return;
+        }
+
+        state.list = Array.isArray(list) ? list : [];
+        ensureSelection(getFiltered());
+        renderList();
+        updateCounts();
+    }
+
     ensureSelection(getFiltered());
     (modal as any)[stateKey] = state;
     renderList();
@@ -1234,6 +1251,140 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
     if (!(pane as any).__wired) {
         (pane as any).__wired = true;
+
+        const viewportPadding = 8;
+        const contextMenu = document.createElement('div');
+        contextMenu.className = 'plugins-context-menu';
+        contextMenu.setAttribute('role', 'menu');
+        contextMenu.tabIndex = -1;
+
+        const toggleAction = document.createElement('button');
+        toggleAction.type = 'button';
+        toggleAction.className = 'plugins-context-menu-item';
+        toggleAction.dataset.action = 'toggle';
+        toggleAction.textContent = 'Toggle plugin';
+
+        const removeAction = document.createElement('button');
+        removeAction.type = 'button';
+        removeAction.className = 'plugins-context-menu-item destructive';
+        removeAction.dataset.action = 'remove';
+        removeAction.textContent = 'Remove plugin';
+
+        contextMenu.appendChild(toggleAction);
+        contextMenu.appendChild(removeAction);
+        modal.appendChild(contextMenu);
+
+        let contextMenuPluginId: string | null = null;
+        let contextMenuVisible = false;
+
+        const hideContextMenu = () => {
+            if (!contextMenuVisible) return;
+            contextMenuVisible = false;
+            contextMenuPluginId = null;
+            contextMenu.classList.remove('visible');
+            contextMenu.style.visibility = 'visible';
+        };
+
+        const showContextMenu = (pluginId: string, plugin: PluginSummary | null, x: number, y: number) => {
+            hideContextMenu();
+            contextMenuPluginId = pluginId;
+            const enabled = plugin ? pluginIsEnabled(plugin) : false;
+            toggleAction.textContent = enabled ? 'Disable plugin' : 'Enable plugin';
+
+            const isBuiltIn = (plugin?.source || '') === 'built-in';
+            removeAction.disabled = isBuiltIn;
+            if (isBuiltIn) {
+                removeAction.title = 'Built-in plugins cannot be removed.';
+            } else {
+                removeAction.removeAttribute('title');
+            }
+
+            contextMenu.style.left = `${x}px`;
+            contextMenu.style.top = `${y}px`;
+            contextMenu.classList.add('visible');
+            contextMenu.style.visibility = 'hidden';
+            const rect = contextMenu.getBoundingClientRect();
+            let left = x;
+            let top = y;
+            if (rect.right > window.innerWidth - viewportPadding) {
+                left = Math.max(viewportPadding, window.innerWidth - rect.width - viewportPadding);
+            }
+            if (rect.bottom > window.innerHeight - viewportPadding) {
+                top = Math.max(viewportPadding, window.innerHeight - rect.height - viewportPadding);
+            }
+            contextMenu.style.left = `${left}px`;
+            contextMenu.style.top = `${top}px`;
+            contextMenu.style.visibility = 'visible';
+            contextMenuVisible = true;
+        };
+
+        toggleAction.addEventListener('click', () => {
+            const id = contextMenuPluginId;
+            hideContextMenu();
+            if (!id) return;
+            const checkbox = pane.querySelector<HTMLInputElement>(`input[type="checkbox"][data-plugin-id="${CSS.escape(id)}"]`);
+            if (!checkbox) return;
+            checkbox.checked = !checkbox.checked;
+            checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        removeAction.addEventListener('click', async () => {
+            if (removeAction.disabled) return;
+            const id = contextMenuPluginId;
+            hideContextMenu();
+            if (!id) return;
+            const plugin = state.list.find((p) => String(p?.id || '').trim() === id) || null;
+            if (!plugin) return;
+            const label = String(plugin.name || plugin.id || 'plugin');
+            if (!window.confirm(`Remove ${label}? This will delete the plugin bundle.`)) return;
+            if (!TAURI.has) {
+                notify('Plugin removal is only available in the desktop app.');
+                return;
+            }
+            try {
+                await TAURI.invoke('uninstall_plugin', { pluginId: id });
+                notify(`Removed ${label}`);
+                const normalized = String(id || '').trim();
+                const normalizedLower = normalized.toLowerCase();
+                state.disabled.delete(normalizedLower);
+                state.enabled.delete(normalizedLower);
+                await reloadPluginSummaries();
+                persistPluginsDisabled().catch(() => {});
+            } catch (err) {
+                const msg = String(err || '').trim();
+                notify(msg ? `Remove failed: ${msg}` : 'Failed to remove plugin');
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!contextMenuVisible) return;
+            if (!contextMenu.contains(e.target as Node)) {
+                hideContextMenu();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') hideContextMenu();
+        });
+
+        pane.addEventListener('contextmenu', (e) => {
+            const row = (e.target as HTMLElement).closest<HTMLElement>('.plugin-row[data-plugin]');
+            if (!row) {
+                hideContextMenu();
+                return;
+            }
+            const pluginId = String(row.dataset.plugin || '').trim();
+            if (!pluginId) {
+                hideContextMenu();
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            state.selectedId = pluginId;
+            renderList();
+            const plugin = state.list.find((p) => String(p?.id || '').trim() === pluginId) || null;
+            showContextMenu(pluginId, plugin, e.clientX, e.clientY);
+        });
 
         pane.addEventListener('click', (e) => {
             const target = e.target as HTMLElement | null;

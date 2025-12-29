@@ -85,7 +85,10 @@ pub async fn set_backend_cmd(
             path.display()
         );
     } else {
-        info!("set_backend_cmd: no repo open; will use `{}` when opening a repo", backend_id);
+        info!(
+            "set_backend_cmd: no repo open; will use `{}` when opening a repo",
+            backend_id
+        );
     }
 
     Ok(())

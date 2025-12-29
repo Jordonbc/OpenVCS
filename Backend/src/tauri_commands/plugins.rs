@@ -1,6 +1,6 @@
-use crate::plugins;
 use crate::plugin_bundles::{InstalledPlugin, InstalledPluginIndex, PluginBundleStore};
 use crate::plugin_runtime::stdio_rpc::{RpcConfig, SpawnConfig, StdioRpcProcess};
+use crate::plugins;
 use serde_json::Value;
 use tauri::Emitter;
 use tauri::Manager;

@@ -1,6 +1,9 @@
 use crate::plugin_bundles::ApprovalState;
 use crate::plugin_runtime::stdio_rpc::{RpcConfig, RpcError, SpawnConfig, StdioRpcProcess};
-use openvcs_core::models::{Capabilities, ConflictDetails, ConflictSide, FetchOptions, LogQuery, StatusPayload, StatusSummary, StashItem, VcsEvent};
+use openvcs_core::models::{
+    Capabilities, ConflictDetails, ConflictSide, FetchOptions, LogQuery, StashItem, StatusPayload,
+    StatusSummary, VcsEvent,
+};
 use openvcs_core::{BackendId, OnEvent, Result as VcsResult, Vcs, VcsError};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
@@ -121,7 +124,10 @@ impl Vcs for PluginVcsProxy {
     }
 
     fn create_branch(&self, name: &str, checkout: bool) -> VcsResult<()> {
-        self.call_unit("create_branch", json!({ "name": name, "checkout": checkout }))
+        self.call_unit(
+            "create_branch",
+            json!({ "name": name, "checkout": checkout }),
+        )
     }
 
     fn checkout_branch(&self, name: &str) -> VcsResult<()> {
@@ -141,7 +147,9 @@ impl Vcs for PluginVcsProxy {
     }
 
     fn fetch(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> VcsResult<()> {
-        self.with_events(on, || self.call_unit("fetch", json!({ "remote": remote, "refspec": refspec })))
+        self.with_events(on, || {
+            self.call_unit("fetch", json!({ "remote": remote, "refspec": refspec }))
+        })
     }
 
     fn fetch_with_options(
@@ -160,15 +168,31 @@ impl Vcs for PluginVcsProxy {
     }
 
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> VcsResult<()> {
-        self.with_events(on, || self.call_unit("push", json!({ "remote": remote, "refspec": refspec })))
+        self.with_events(on, || {
+            self.call_unit("push", json!({ "remote": remote, "refspec": refspec }))
+        })
     }
 
     fn pull_ff_only(&self, remote: &str, branch: &str, on: Option<OnEvent>) -> VcsResult<()> {
-        self.with_events(on, || self.call_unit("pull_ff_only", json!({ "remote": remote, "branch": branch })))
+        self.with_events(on, || {
+            self.call_unit(
+                "pull_ff_only",
+                json!({ "remote": remote, "branch": branch }),
+            )
+        })
     }
 
-    fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> VcsResult<String> {
-        let paths: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+    fn commit(
+        &self,
+        message: &str,
+        name: &str,
+        email: &str,
+        paths: &[PathBuf],
+    ) -> VcsResult<String> {
+        let paths: Vec<String> = paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
         self.call_json(
             "commit",
             json!({ "message": message, "name": name, "email": email, "paths": paths }),
@@ -207,12 +231,18 @@ impl Vcs for PluginVcsProxy {
     }
 
     fn checkout_conflict_side(&self, path: &Path, side: ConflictSide) -> VcsResult<()> {
-        self.call_unit("checkout_conflict_side", json!({ "path": path_to_utf8(path)?, "side": side }))
+        self.call_unit(
+            "checkout_conflict_side",
+            json!({ "path": path_to_utf8(path)?, "side": side }),
+        )
     }
 
     fn write_merge_result(&self, path: &Path, content: &[u8]) -> VcsResult<()> {
         let content = String::from_utf8_lossy(content).to_string();
-        self.call_unit("write_merge_result", json!({ "path": path_to_utf8(path)?, "content": content }))
+        self.call_unit(
+            "write_merge_result",
+            json!({ "path": path_to_utf8(path)?, "content": content }),
+        )
     }
 
     fn stage_patch(&self, patch: &str) -> VcsResult<()> {
@@ -220,7 +250,10 @@ impl Vcs for PluginVcsProxy {
     }
 
     fn discard_paths(&self, paths: &[PathBuf]) -> VcsResult<()> {
-        let paths: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        let paths: Vec<String> = paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
         self.call_unit("discard_paths", json!({ "paths": paths }))
     }
 
@@ -253,7 +286,10 @@ impl Vcs for PluginVcsProxy {
     }
 
     fn set_branch_upstream(&self, branch: &str, upstream: &str) -> VcsResult<()> {
-        self.call_unit("set_branch_upstream", json!({ "branch": branch, "upstream": upstream }))
+        self.call_unit(
+            "set_branch_upstream",
+            json!({ "branch": branch, "upstream": upstream }),
+        )
     }
 
     fn branch_upstream(&self, branch: &str) -> VcsResult<Option<String>> {
@@ -273,16 +309,30 @@ impl Vcs for PluginVcsProxy {
     }
 
     fn set_identity_local(&self, name: &str, email: &str) -> VcsResult<()> {
-        self.call_unit("set_identity_local", json!({ "name": name, "email": email }))
+        self.call_unit(
+            "set_identity_local",
+            json!({ "name": name, "email": email }),
+        )
     }
 
     fn stash_list(&self) -> VcsResult<Vec<StashItem>> {
         self.call_json("stash_list", Value::Null)
     }
 
-    fn stash_push(&self, message: &str, include_untracked: bool, paths: &[PathBuf]) -> VcsResult<()> {
-        let paths: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
-        self.call_unit("stash_push", json!({ "message": message, "include_untracked": include_untracked, "paths": paths }))
+    fn stash_push(
+        &self,
+        message: &str,
+        include_untracked: bool,
+        paths: &[PathBuf],
+    ) -> VcsResult<()> {
+        let paths: Vec<String> = paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        self.call_unit(
+            "stash_push",
+            json!({ "message": message, "include_untracked": include_untracked, "paths": paths }),
+        )
     }
 
     fn stash_apply(&self, selector: &str) -> VcsResult<()> {
@@ -310,8 +360,10 @@ fn map_rpc_err(err: RpcError) -> VcsError {
 }
 
 fn path_to_utf8(path: &Path) -> Result<String, VcsError> {
-    path.to_str().map(|s| s.to_string()).ok_or_else(|| VcsError::Backend {
-        backend: BackendId::from("plugin"),
-        msg: "non-utf8 path".into(),
-    })
+    path.to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| VcsError::Backend {
+            backend: BackendId::from("plugin"),
+            msg: "non-utf8 path".into(),
+        })
 }
