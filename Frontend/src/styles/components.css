@@ -248,6 +248,7 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .code{ white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; min-width:0; }
 .hline.add{ background:color-mix(in oklab, var(--success) 12%, transparent); }
 .hline.del{ background:color-mix(in oklab, var(--danger) 12%, transparent); }
+.binary-placeholder{ color:var(--muted); font-style:italic; }
 
 /* Compact selection toggles */
 .row input.pick, .pick-hunk{ appearance:none; -webkit-appearance:none; width:14px; height:14px;
