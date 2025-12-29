@@ -125,17 +125,17 @@ fn plugin_roots() -> Vec<(PathBuf, PluginOrigin)> {
     let mut roots: Vec<(PathBuf, PluginOrigin)> = Vec::new();
     let mut seen = HashSet::new();
 
+    let dir = plugins_dir();
+    ensure_dir(&dir);
+    if seen.insert(dir.clone()) {
+        roots.push((dir, PluginOrigin::User));
+    }
+
     for path in built_in_plugin_dirs() {
         if !seen.insert(path.clone()) {
             continue;
         }
         roots.push((path, PluginOrigin::BuiltIn));
-    }
-
-    let dir = plugins_dir();
-    ensure_dir(&dir);
-    if seen.insert(dir.clone()) {
-        roots.push((dir, PluginOrigin::User));
     }
 
     roots

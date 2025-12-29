@@ -1,3 +1,4 @@
+use log::warn;
 use openvcs_core::{backend_id, BackendId};
 use std::sync::Arc;
 use tauri::WindowEvent;
@@ -93,6 +94,10 @@ pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::new_with_config())
         .setup(|app| {
+            let store = crate::plugin_bundles::PluginBundleStore::new_default();
+            if let Err(err) = store.sync_built_in_plugins() {
+                warn!("plugins: failed to sync built-in bundles: {}", err);
+            }
             // On startup, optionally reopen the last repository if enabled in settings.
             try_reopen_last_repo(&app.handle());
 

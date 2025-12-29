@@ -1,9 +1,12 @@
-use crate::plugin_paths::{ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME};
+use crate::plugin_paths::{
+    built_in_plugin_dirs, ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME,
+};
+use log::warn;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, Write};
 use std::path::{Component, Path, PathBuf};
 use zip::ZipArchive;
 
@@ -239,46 +242,7 @@ impl PluginBundleStore {
         let f = fs::File::open(bundle_path)
             .map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
         let mut zip = ZipArchive::new(f).map_err(|e| format!("read zip: {e}"))?;
-
-        // Locate and parse the manifest first so we can enforce a single top-level folder.
-        let mut manifest_zip_path: Option<PathBuf> = None;
-        let mut manifest_json: Option<Vec<u8>> = None;
-
-        for i in 0..zip.len() {
-            let mut entry = zip.by_index(i).map_err(|e| format!("zip entry {i}: {e}"))?;
-            let raw_name = entry.name().to_string();
-            let name = sanitize_zip_name(&raw_name)?;
-
-            if name
-                .file_name()
-                .and_then(|s| s.to_str())
-                .is_some_and(|s| s == PLUGIN_MANIFEST_NAME)
-            {
-                // Require `<pluginId>/openvcs.plugin.json` (depth=2).
-                let comps: Vec<_> = name.components().collect();
-                if comps.len() != 2 {
-                    continue;
-                }
-                if manifest_zip_path.is_some() {
-                    return Err(format!(
-                        "bundle contains multiple {PLUGIN_MANIFEST_NAME} files"
-                    ));
-                }
-                let mut bytes = Vec::new();
-                entry
-                    .read_to_end(&mut bytes)
-                    .map_err(|e| format!("read manifest: {e}"))?;
-                manifest_zip_path = Some(name);
-                manifest_json = Some(bytes);
-            }
-        }
-
-        let manifest_zip_path =
-            manifest_zip_path.ok_or_else(|| format!("bundle is missing {PLUGIN_MANIFEST_NAME}"))?;
-        let manifest_json = manifest_json.expect("manifest bytes to exist");
-
-        let manifest: PluginManifest = serde_json::from_slice(&manifest_json)
-            .map_err(|e| format!("parse {PLUGIN_MANIFEST_NAME}: {e}"))?;
+        let (manifest_zip_path, manifest) = locate_manifest(&mut zip)?;
         let plugin_id = manifest.id.trim().to_string();
         if plugin_id.is_empty() {
             return Err("manifest id is empty".to_string());
@@ -298,20 +262,14 @@ impl PluginBundleStore {
             ));
         }
 
-        let requested_capabilities = normalize_capabilities(manifest.capabilities);
-        let version = manifest
-            .version
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| format!("sha256-{}", &bundle_sha256[..12]));
+        let requested_capabilities = normalize_capabilities(manifest.capabilities.clone());
+        let version = derive_install_version(&manifest, &bundle_sha256);
 
         let plugin_dir = self.root.join(&plugin_id);
-        fs::create_dir_all(&plugin_dir)
-            .map_err(|e| format!("create {}: {e}", plugin_dir.display()))?;
+        fs::create_dir_all(&self.root)
+            .map_err(|e| format!("create {}: {e}", self.root.display()))?;
 
-        let staging = plugin_dir.join(format!(".staging-{}", now_unix_ms()));
+        let staging = self.root.join(format!(".staging-{}", now_unix_ms()));
         if staging.exists() {
             let _ = fs::remove_dir_all(&staging);
         }
@@ -325,7 +283,7 @@ impl PluginBundleStore {
         let root_canon = fs::canonicalize(&staging_version_dir)
             .map_err(|e| format!("canonicalize {}: {e}", staging_version_dir.display()))?;
 
-        // Extract all entries under `<pluginId>/...` into the version directory.
+        // Extract all entries under `<pluginId>/...` into the staging version directory.
         for i in 0..zip.len() {
             let mut entry = zip.by_index(i).map_err(|e| format!("zip entry {i}: {e}"))?;
             let raw_name = entry.name().to_string();
@@ -500,19 +458,16 @@ impl PluginBundleStore {
         validate_entrypoint(&staging_version_dir, backend_exec.as_deref(), "backend")?;
         validate_entrypoint(&staging_version_dir, functions_exec.as_deref(), "functions")?;
 
-        // Promote staged version into place.
-        let final_version_dir = plugin_dir.join(&version);
-        if final_version_dir.exists() {
-            return Err(format!(
-                "plugin {} version {} is already installed",
-                plugin_id, version
-            ));
+        // Promote staged version into place (flat layout, drop old version directory).
+        if plugin_dir.exists() {
+            fs::remove_dir_all(&plugin_dir)
+                .map_err(|e| format!("remove {}: {e}", plugin_dir.display()))?;
         }
-        fs::rename(&staging_version_dir, &final_version_dir).map_err(|e| {
+        fs::rename(&staging_version_dir, &plugin_dir).map_err(|e| {
             format!(
                 "move installed plugin into place {} -> {}: {e}",
                 staging_version_dir.display(),
-                final_version_dir.display()
+                plugin_dir.display()
             )
         })?;
         let _ = fs::remove_dir_all(&staging);
@@ -551,8 +506,46 @@ impl PluginBundleStore {
             bundle_sha256,
             requested_capabilities,
             approval,
-            install_dir: final_version_dir,
+            install_dir: plugin_dir,
         })
+    }
+
+    pub fn sync_built_in_plugins(&self) -> Result<(), String> {
+        let mut errors = Vec::new();
+        for bundle in builtin_bundle_paths() {
+            if let Err(err) = self.ensure_built_in_bundle(&bundle) {
+                let msg = format!("{}: {}", bundle.display(), err);
+                warn!("plugins: failed to sync built-in bundle: {}", msg);
+                errors.push(msg);
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
+    }
+
+    fn ensure_built_in_bundle(&self, bundle_path: &Path) -> Result<(), String> {
+        let bundle_sha256 = sha256_hex_file(bundle_path)?;
+        let file = fs::File::open(bundle_path)
+            .map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
+        let mut zip = ZipArchive::new(file)
+            .map_err(|e| format!("read {}: {e}", bundle_path.display()))?;
+        let (_manifest_path, manifest) = locate_manifest(&mut zip)?;
+        let plugin_id = manifest.id.trim();
+        if plugin_id.is_empty() {
+            return Err("bundle manifest id is empty".to_string());
+        }
+        let plugin_id = plugin_id.to_string();
+        let version = derive_install_version(&manifest, &bundle_sha256);
+        if let Some(installed) = self.get_current_installed(&plugin_id)? {
+            if installed.bundle_sha256 == bundle_sha256 && installed.version == version {
+                return Ok(());
+            }
+        }
+        self.install_ovcsp_with_limits(bundle_path, InstallerLimits::default())?;
+        Ok(())
     }
 
     pub fn uninstall_plugin(&self, plugin_id: &str) -> Result<(), String> {
@@ -610,6 +603,8 @@ impl PluginBundleStore {
         let version_dir = plugin_dir.join(cur.version);
         if version_dir.is_dir() {
             Ok(Some(version_dir))
+        } else if plugin_dir.join(PLUGIN_MANIFEST_NAME).is_file() {
+            Ok(Some(plugin_dir))
         } else {
             Ok(None)
         }
@@ -698,7 +693,7 @@ impl PluginBundleStore {
                     .to_string()
             });
 
-        let requested_capabilities = normalize_capabilities(manifest.capabilities);
+        let requested_capabilities = normalize_capabilities(manifest.capabilities.clone());
 
         let backend = manifest.backend.and_then(|b| {
             let exec = b.exec?.trim().to_string();
@@ -814,6 +809,86 @@ impl PluginBundleStore {
         fs::rename(&tmp, &p).map_err(|e| format!("rename {}: {e}", p.display()))?;
         Ok(())
     }
+}
+
+fn builtin_bundle_paths() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for root in built_in_plugin_dirs() {
+        if !root.is_dir() {
+            continue;
+        }
+        let entries = match fs::read_dir(&root) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                if ext.eq_ignore_ascii_case("ovcsp") {
+                    out.push(path);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn derive_install_version(manifest: &PluginManifest, bundle_sha256: &str) -> String {
+    manifest
+        .version
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("sha256-{}", &bundle_sha256[..12]))
+}
+
+fn locate_manifest<R: Read + Seek>(
+    zip: &mut ZipArchive<R>,
+) -> Result<(PathBuf, PluginManifest), String> {
+    let mut manifest_zip_path: Option<PathBuf> = None;
+    let mut manifest_json: Option<Vec<u8>> = None;
+
+    for i in 0..zip.len() {
+        let mut entry = zip
+            .by_index(i)
+            .map_err(|e| format!("zip entry {i}: {e}"))?;
+        let raw_name = entry.name().to_string();
+        let name = sanitize_zip_name(&raw_name)?;
+
+        if name
+            .file_name()
+            .and_then(|s| s.to_str())
+            .is_some_and(|s| s == PLUGIN_MANIFEST_NAME)
+        {
+            let comps: Vec<_> = name.components().collect();
+            if comps.len() != 2 {
+                continue;
+            }
+            if manifest_zip_path.is_some() {
+                return Err(format!(
+                    "bundle contains multiple {PLUGIN_MANIFEST_NAME} files"
+                ));
+            }
+            let mut bytes = Vec::new();
+            entry
+                .read_to_end(&mut bytes)
+                .map_err(|e| format!("read manifest: {e}"))?;
+            manifest_zip_path = Some(name);
+            manifest_json = Some(bytes);
+        }
+    }
+
+    let manifest_zip_path = manifest_zip_path
+        .ok_or_else(|| format!("bundle is missing {PLUGIN_MANIFEST_NAME}"))?;
+    let manifest_json = manifest_json.expect("manifest bytes to exist");
+
+    let manifest: PluginManifest = serde_json::from_slice(&manifest_json)
+        .map_err(|e| format!("parse {PLUGIN_MANIFEST_NAME}: {e}"))?;
+    Ok((manifest_zip_path, manifest))
 }
 
 fn normalize_capabilities(mut caps: Vec<String>) -> Vec<String> {
