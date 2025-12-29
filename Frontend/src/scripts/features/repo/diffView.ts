@@ -16,6 +16,16 @@ function setLfsBadge(isLfs: boolean) {
     diffMetaLfs.hidden = !isLfs;
 }
 
+function scrollDiffToTop() {
+    if (!diffEl) return;
+    const host = diffEl.closest('.diff-scroll') as HTMLElement | null;
+    const viewport = host?.querySelector<HTMLElement>('[data-overlayscrollbars-viewport]') || host || diffEl.parentElement || diffEl;
+    if (viewport) {
+        viewport.scrollTop = 0;
+        viewport.scrollLeft = 0;
+    }
+}
+
 const BINARY_DIFF_INDICATORS = [
     /^binary files /i,
     /^git binary patch/i,
@@ -57,6 +67,9 @@ export async function selectFile(file: FileStatus, index: number) {
     }
     diffHeadPath.textContent = file.path || '(unknown file)';
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
+    scrollDiffToTop();
+
+    
 
     try {
         if (TAURI.has && file.path) {
@@ -75,6 +88,8 @@ export async function selectFile(file: FileStatus, index: number) {
         diffEl.innerHTML = isBinary
             ? renderBinaryDiffPlaceholder(file.path)
             : renderHunksWithSelection(state.currentDiff);
+        scrollDiffToTop();
+        
         if (!isBinary) {
             bindHunkToggles(diffEl);
         }
@@ -181,12 +196,14 @@ export async function selectFile(file: FileStatus, index: number) {
     } catch (e) {
         console.error(e);
         diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load diff</div></div></div>';
+        scrollDiffToTop();
     }
 }
 
 export async function selectStashDiff(selector: string) {
     if (!diffHeadPath || !diffEl) return;
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
+    scrollDiffToTop();
     try {
         let lines: string[] = [];
         if (TAURI.has && selector) {
@@ -194,9 +211,11 @@ export async function selectStashDiff(selector: string) {
         }
         state.currentDiff = lines || [];
         diffEl.innerHTML = renderHunksReadonly(state.currentDiff);
+        scrollDiffToTop();
     } catch (e) {
         console.warn('git_stash_show failed', e);
         diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load stash diff</div></div></div>';
+        scrollDiffToTop();
     }
 }
 
@@ -206,6 +225,7 @@ export async function renderCombinedDiff(paths: string[]) {
     const files = Array.from(new Set(paths)).filter(Boolean);
     diffHeadPath.textContent = `Multiple files (${files.length})`;
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
+    scrollDiffToTop();
     let html = '';
     for (const p of files) {
         try {
@@ -222,6 +242,7 @@ export async function renderCombinedDiff(paths: string[]) {
         }
     }
     diffEl.innerHTML = html || '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">No diffs</div></div></div>';
+    scrollDiffToTop();
 }
 
 export function clearDiffSelection() {
@@ -248,8 +269,10 @@ async function renderConflictView(file: FileStatus) {
         delete (state as any).selectedHunksByFile[file.path];
     }
     diffEl.innerHTML = '<div class="conflict-view"><div class="conflict-loading">Loading conflict…</div></div>';
+    scrollDiffToTop();
     if (!TAURI.has) {
         diffEl.innerHTML = '<div class="conflict-view"><div class="conflict-error">Conflict details are only available in the desktop app.</div></div>';
+        scrollDiffToTop();
         return;
     }
     try {
@@ -257,9 +280,11 @@ async function renderConflictView(file: FileStatus) {
         setLfsBadge(!!details?.lfs_pointer);
         diffEl.innerHTML = renderConflictMarkup(details);
         bindConflictActions(diffEl, file, details);
+        scrollDiffToTop();
     } catch (err) {
         console.error(err);
         diffEl.innerHTML = '<div class="conflict-view"><div class="conflict-error">Failed to load conflict details.</div></div>';
+        scrollDiffToTop();
     }
 }
 

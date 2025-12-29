@@ -203,6 +203,10 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     display:grid; grid-template-rows:auto 1fr auto; min-height:0;
 }
 
+/* Reserve scrollbar space for the right column header so the header width
+   doesn't change when the diff area shows or hides a vertical scrollbar. */
+.right { box-sizing: border-box; padding-right: var(--os-scrollbar-gutter); }
+
 /* Diff header (fixed) */
 .diff-head{
     display:flex; align-items:center; justify-content:space-between; gap:.6rem;
@@ -233,10 +237,41 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 
 /* Diff body (scrolls) */
 .diff{
-    min-height:0; overflow:auto;
+    min-height:0;
+    height: 100%;
+    /* Keep the vertical scrollbar present even when content doesn't overflow
+       so switching between binary (short) and text (long) diffs doesn't
+       cause a scrollbar to appear/disappear and nudge layout. */
+    overflow-y: scroll;
     font-family:var(--mono); font-size:13px;
+    overflow-anchor:none;
+    /* Reserve space for the scrollbar to avoid layout shifts when content grows */
+    scrollbar-gutter: stable both-edges;
+    /* Also reserve horizontal space via padding as a fallback for browsers
+       that don't fully honor scrollbar-gutter or when custom overlay
+       scrollbars are used. */
+    box-sizing: border-box;
+    padding-right: var(--os-scrollbar-gutter);
 }
+:root{ --os-scrollbar-gutter: 12px; }
+
 .diff-content{ min-width:0; }
+/* Ensure diff content won't collapse when toggling or loading hunks and keep
+   a consistent layout when scrollbar appears. This avoids subtle vertical
+   shifts when diff height changes. */
+.diff-content{
+    min-height: 0;
+    box-sizing: border-box;
+}
+
+/* Reserve space for the vertical scrollbar inside the diff so showing or
+   hiding the scrollbar doesn't nudge surrounding layout. The actual value
+   is computed at runtime and written to `--os-scrollbar-gutter`. */
+.diff .diff-content {
+    /* keep a small inner padding but avoid double-reserving space; the main
+       right-column padding handles layout stability for the header */
+    padding-right: calc(var(--os-scrollbar-gutter) / 2);
+}
 .hunk{ padding:.25rem 0; }
 /* Picked hunk (included in commit) — success tint */
 .hunk.picked{ background:color-mix(in oklab, var(--success) 10%, transparent); border-left:3px solid color-mix(in oklab, var(--success) 65%, transparent); }
