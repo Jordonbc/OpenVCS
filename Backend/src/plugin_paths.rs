@@ -25,13 +25,8 @@ pub fn ensure_dir(path: &Path) {
 pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
 
-    if let Ok(current_dir) = env::current_dir() {
-        candidates.push(current_dir.join(BUILT_IN_PLUGINS_DIR_NAME));
-    }
-
     if let Ok(exe) = env::current_exe() {
         if let Some(dir) = exe.parent() {
-            candidates.push(dir.join(BUILT_IN_PLUGINS_DIR_NAME));
             candidates.push(dir.join("resources").join(BUILT_IN_PLUGINS_DIR_NAME));
             #[cfg(target_os = "macos")]
             if let Some(parent) = dir.parent() {
@@ -40,8 +35,6 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
         }
     }
 
-    candidates.push(PathBuf::from("Backend").join(BUILT_IN_PLUGINS_DIR_NAME));
-    candidates.push(PathBuf::from(BUILT_IN_PLUGINS_DIR_NAME));
     candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(BUILT_IN_PLUGINS_DIR_NAME));
 
     let mut seen = std::collections::HashSet::new();
