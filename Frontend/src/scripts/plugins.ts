@@ -1,5 +1,6 @@
 import { TAURI } from './lib/tauri';
 import { notify } from './lib/notify';
+import { destroyOverlayScrollbarsFor, initOverlayScrollbars } from './lib/scrollbars';
 import type { GlobalSettings, Json, ThemePayload, ThemeSummary } from './types';
 
 export interface PluginSummary {
@@ -486,7 +487,18 @@ export function applyPluginSettingsSections(modal?: HTMLElement | null): void {
 
     // OverlayScrollbars wraps `.list-scroll` containers and moves children into a `.os-content` node.
     // If we append to the host after initialization, the content ends up outside the viewport.
-    const panelsContent = panelsScroll.querySelector<HTMLElement>('.os-content') || panelsScroll;
+    let panelsContent: HTMLElement = panelsScroll;
+    for (const child of Array.from(panelsScroll.children)) {
+        if (!(child instanceof HTMLElement)) continue;
+        if (!child.classList.contains('os-host')) continue;
+        const hostContent = child.querySelector<HTMLElement>('.os-content');
+        if (hostContent) {
+            panelsContent = hostContent;
+        }
+        break;
+    }
+
+    let insertedAny = false;
 
     for (const [pluginId, sections] of settingsSections.entries()) {
         for (const section of Array.isArray(sections) ? sections : []) {
@@ -539,7 +551,13 @@ export function applyPluginSettingsSections(modal?: HTMLElement | null): void {
             } catch (err) {
                 console.warn(`plugin settings section mount failed (${pluginId}:${id})`, err);
             }
+            insertedAny = true;
         }
+    }
+
+    if (insertedAny) {
+        destroyOverlayScrollbarsFor('#settings-panels-scroll');
+        initOverlayScrollbars();
     }
 }
 
