@@ -385,6 +385,7 @@ fn discover_theme_dirs_recursive(dir: &Path, depth: usize, out: &mut Vec<PathBuf
 pub fn list_plugins() -> Vec<PluginSummary> {
     let mut out: Vec<PluginSummary> = Vec::new();
     let mut seen = HashSet::new();
+    let built_in_ids = crate::plugin_bundles::built_in_plugin_ids();
 
     let roots = plugin_roots();
 
@@ -399,10 +400,16 @@ pub fn list_plugins() -> Vec<PluginSummary> {
                     match read_manifest_from_directory(&path) {
                         Ok((resolved, manifest)) => {
                             let norm = manifest.id.trim().to_ascii_lowercase();
+                            let is_built_in = built_in_ids.contains(&norm);
                             if !seen.insert(norm) {
                                 continue;
                             }
-                            out.push(manifest_to_summary(&resolved, manifest, origin));
+                            let effective_origin = if is_built_in {
+                                PluginOrigin::BuiltIn
+                            } else {
+                                origin
+                            };
+                            out.push(manifest_to_summary(&resolved, manifest, effective_origin));
                         }
                         Err(_) => {}
                     }
@@ -422,6 +429,7 @@ pub fn load_plugin(id: &str) -> Result<PluginPayload, String> {
         return Err("plugin id is empty".to_string());
     }
     let requested_lower = requested.to_ascii_lowercase();
+    let built_in_ids = crate::plugin_bundles::built_in_plugin_ids();
 
     let roots = plugin_roots();
 
@@ -448,7 +456,12 @@ pub fn load_plugin(id: &str) -> Result<PluginPayload, String> {
                 continue;
             }
 
-            let summary = manifest_to_summary(&resolved, manifest, origin);
+            let effective_origin = if built_in_ids.contains(&requested_lower) {
+                PluginOrigin::BuiltIn
+            } else {
+                origin
+            };
+            let summary = manifest_to_summary(&resolved, manifest, effective_origin);
             let entry_code = entry_path.and_then(|entry| {
                 let target = resolved.join(entry.trim());
                 match fs::read_to_string(&target) {

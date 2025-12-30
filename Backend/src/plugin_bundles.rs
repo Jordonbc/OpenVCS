@@ -4,10 +4,11 @@ use crate::plugin_paths::{
 use log::warn;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::{Read, Seek, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::OnceLock;
 use zip::ZipArchive;
 
 #[derive(Debug, Clone, Copy)]
@@ -559,6 +560,10 @@ impl PluginBundleStore {
         if id.is_empty() {
             return Err("plugin id is empty".to_string());
         }
+        let lower = id.to_ascii_lowercase();
+        if built_in_plugin_ids().contains(&lower) {
+            return Err("built-in plugins cannot be removed".to_string());
+        }
         let dir = self.root.join(id);
         if !dir.exists() {
             return Ok(());
@@ -815,6 +820,62 @@ impl PluginBundleStore {
         fs::rename(&tmp, &p).map_err(|e| format!("rename {}: {e}", p.display()))?;
         Ok(())
     }
+}
+
+static BUILT_IN_PLUGIN_IDS: OnceLock<HashSet<String>> = OnceLock::new();
+
+pub fn built_in_plugin_ids() -> &'static HashSet<String> {
+    BUILT_IN_PLUGIN_IDS.get_or_init(read_built_in_plugin_ids)
+}
+
+fn read_built_in_plugin_ids() -> HashSet<String> {
+    let mut out: HashSet<String> = HashSet::new();
+
+    for bundle_path in builtin_bundle_paths() {
+        let file = match fs::File::open(&bundle_path) {
+            Ok(file) => file,
+            Err(err) => {
+                warn!(
+                    "plugins: failed to open built-in bundle {}: {}",
+                    bundle_path.display(),
+                    err
+                );
+                continue;
+            }
+        };
+
+        let mut zip = match ZipArchive::new(file) {
+            Ok(zip) => zip,
+            Err(err) => {
+                warn!(
+                    "plugins: failed to read built-in bundle {}: {}",
+                    bundle_path.display(),
+                    err
+                );
+                continue;
+            }
+        };
+
+        let (_manifest_path, manifest) = match locate_manifest(&mut zip) {
+            Ok(v) => v,
+            Err(err) => {
+                warn!(
+                    "plugins: failed to locate manifest in built-in bundle {}: {}",
+                    bundle_path.display(),
+                    err
+                );
+                continue;
+            }
+        };
+
+        let id = manifest.id.trim();
+        if id.is_empty() {
+            continue;
+        }
+        out.insert(id.to_ascii_lowercase());
+    }
+
+    out
 }
 
 fn builtin_bundle_paths() -> Vec<PathBuf> {
