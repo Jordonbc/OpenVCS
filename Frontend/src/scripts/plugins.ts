@@ -52,6 +52,22 @@ export interface PluginTitleButton {
     title?: string;
 }
 
+export interface PluginSettingsSection {
+    id: string;
+    label: string;
+    html: string;
+    before?: string;
+    after?: string;
+    onMount?: (ctx: { modal: HTMLElement; panel: HTMLElement }) => void;
+}
+
+export interface PluginMenubarMenu {
+    id: string;
+    html: string;
+    before?: string;
+    after?: string;
+}
+
 export type PluginContextMenuTarget = 'files' | 'commits' | 'branches';
 
 export interface PluginContextMenuItem {
@@ -73,6 +89,8 @@ export interface PluginRegistration {
     actions?: Record<string, PluginAction>;
     menuItems?: PluginMenuItem[];
     titlebarButtons?: PluginTitleButton[];
+    settingsSections?: PluginSettingsSection[];
+    menubarMenus?: PluginMenubarMenu[];
     contextMenus?: PluginContextMenus;
     themes?: ThemePayload[];
     themeSummaries?: ThemeSummary[];
@@ -87,6 +105,8 @@ declare global {
             registerAction(id: string, handler: PluginAction): void;
             addMenuItem(item: PluginMenuItem): void;
             addTitlebarButton(btn: PluginTitleButton): void;
+            addSettingsSection?(section: PluginSettingsSection): void;
+            addMenubarMenu?(menu: PluginMenubarMenu): void;
             invoke<T = unknown>(cmd: string, args?: Json): Promise<T>;
             listen<T = unknown>(event: string, cb: (evt: { payload: T }) => void): Promise<{ unlisten: () => void }>;
             notify(msg: string): void;
@@ -105,6 +125,8 @@ const hookHandlers = new Map<HookName, Array<{ pluginId: string; handler: HookHa
 const registeredThemePayloads = new Map<string, ThemePayload>();
 const registeredThemeSummaries = new Map<string, ThemeSummary>();
 const contextMenuItems = new Map<PluginContextMenuTarget, PluginContextMenuItem[]>();
+const settingsSections = new Map<string, PluginSettingsSection[]>();
+const menubarMenus = new Map<string, PluginMenubarMenu[]>();
 
 let initialized = false;
 let disabledPlugins = new Set<string>();
@@ -142,6 +164,8 @@ function resetPluginRuntime() {
     registeredThemePayloads.clear();
     registeredThemeSummaries.clear();
     contextMenuItems.clear();
+    settingsSections.clear();
+    menubarMenus.clear();
 
     const menu = pluginsMenuList();
     if (menu) menu.replaceChildren();
@@ -268,6 +292,52 @@ function addTitlebarButton(pluginId: string, btn: PluginTitleButton) {
     trackUiNode(pluginId, el);
 }
 
+function upsertSettingsSection(pluginId: string, section: PluginSettingsSection) {
+    const id = String(section?.id || '').trim();
+    const label = String(section?.label || '').trim();
+    const html = String(section?.html || '');
+    if (!id || !label || !html.trim()) return;
+
+    const list = settingsSections.get(pluginId) || [];
+    const filtered = list.filter((s) => String(s.id || '').trim() !== id);
+    filtered.push({ ...section, id, label, html });
+    settingsSections.set(pluginId, filtered);
+
+    // Best-effort apply immediately if the modal is already in the DOM.
+    const modal = document.getElementById('settings-modal') as HTMLElement | null;
+    if (modal) applyPluginSettingsSections(modal);
+}
+
+function applyMenubarMenu(pluginId: string, menu: PluginMenubarMenu) {
+    const id = String(menu?.id || '').trim();
+    const html = String(menu?.html || '');
+    if (!id || !html.trim()) return;
+
+    const root = document.querySelector<HTMLElement>('.menubar');
+    if (!root) return;
+
+    const template = document.createElement('template');
+    template.innerHTML = html.trim();
+    const node = template.content.firstElementChild as HTMLElement | null;
+    if (!node) return;
+
+    const before = String(menu?.before || '').trim();
+    const after = String(menu?.after || '').trim();
+    const existing = root.querySelector<HTMLElement>(`.menu[data-menu="${CSS.escape(id)}"]`);
+    if (existing) existing.remove();
+
+    const afterEl = after ? root.querySelector<HTMLElement>(`.menu[data-menu="${CSS.escape(after)}"]`) : null;
+    const beforeEl = before ? root.querySelector<HTMLElement>(`.menu[data-menu="${CSS.escape(before)}"]`) : null;
+    if (afterEl) {
+        afterEl.insertAdjacentElement('afterend', node);
+    } else if (beforeEl) {
+        beforeEl.insertAdjacentElement('beforebegin', node);
+    } else {
+        root.appendChild(node);
+    }
+    trackUiNode(pluginId, node);
+}
+
 function currentPluginIdForRegistration(explicit?: string): string | null {
     const id = String(explicit || '').trim();
     if (id) return id;
@@ -319,6 +389,22 @@ function registerPlugin(reg: PluginRegistration) {
         }
     }
 
+    if (Array.isArray(reg?.settingsSections)) {
+        for (const section of reg.settingsSections) {
+            if (section) upsertSettingsSection(pluginId, section);
+        }
+    }
+
+    if (Array.isArray(reg?.menubarMenus)) {
+        for (const menu of reg.menubarMenus) {
+            if (!menu) continue;
+            const id = String(menu?.id || '').trim();
+            const list = menubarMenus.get(pluginId) || [];
+            menubarMenus.set(pluginId, list.filter((m) => String(m.id || '').trim() !== id).concat(menu));
+            applyMenubarMenu(pluginId, menu);
+        }
+    }
+
     const menus = reg?.contextMenus;
     if (menus) {
         const merge = (target: PluginContextMenuTarget, items?: PluginContextMenuItem[]) => {
@@ -363,6 +449,14 @@ function installGlobalApi() {
             const pluginId = currentPluginIdForRegistration() || 'unknown';
             addTitlebarButton(pluginId, btn);
         },
+        addSettingsSection(section: PluginSettingsSection) {
+            const pluginId = currentPluginIdForRegistration() || 'unknown';
+            upsertSettingsSection(pluginId, section);
+        },
+        addMenubarMenu(menu: PluginMenubarMenu) {
+            const pluginId = currentPluginIdForRegistration() || 'unknown';
+            applyMenubarMenu(pluginId, menu);
+        },
         invoke<T = unknown>(cmd: string, args?: Json) {
             return TAURI.invoke<T>(cmd, args);
         },
@@ -379,6 +473,73 @@ function installGlobalApi() {
     if (!window.callPluginMethod) {
         window.callPluginMethod = (pluginId: string, method: string, params?: Json) =>
             callPluginMethod(pluginId, method, params);
+    }
+}
+
+export function applyPluginSettingsSections(modal?: HTMLElement | null): void {
+    const m = modal || (document.getElementById('settings-modal') as HTMLElement | null);
+    if (!m) return;
+
+    const nav = m.querySelector<HTMLElement>('#settings-nav');
+    const panelsScroll = m.querySelector<HTMLElement>('#settings-panels-scroll');
+    if (!nav || !panelsScroll) return;
+
+    // OverlayScrollbars wraps `.list-scroll` containers and moves children into a `.os-content` node.
+    // If we append to the host after initialization, the content ends up outside the viewport.
+    const panelsContent = panelsScroll.querySelector<HTMLElement>('.os-content') || panelsScroll;
+
+    for (const [pluginId, sections] of settingsSections.entries()) {
+        for (const section of Array.isArray(sections) ? sections : []) {
+            const id = String(section?.id || '').trim();
+            const label = String(section?.label || '').trim();
+            const html = String(section?.html || '');
+            if (!id || !label || !html.trim()) continue;
+
+            // Avoid duplicate insertion.
+            const existingNav = nav.querySelector<HTMLElement>(`[data-section="${CSS.escape(id)}"]`);
+            const existingPanel = panelsScroll.querySelector<HTMLElement>(`.panel-form[data-panel="${CSS.escape(id)}"]`);
+            if (existingNav && existingPanel) continue;
+
+            const li = document.createElement('li');
+            const btn = document.createElement('button');
+            btn.className = 'seg-btn';
+            btn.setAttribute('data-section', id);
+            btn.textContent = label;
+            li.appendChild(btn);
+
+            const template = document.createElement('template');
+            template.innerHTML = html.trim();
+            const panel = template.content.firstElementChild as HTMLElement | null;
+            if (!panel) continue;
+
+            if (!panel.classList.contains('panel-form')) panel.classList.add('panel-form');
+            if (!panel.getAttribute('data-panel')) panel.setAttribute('data-panel', id);
+            panel.classList.add('hidden');
+
+            const before = String(section?.before || '').trim();
+            const after = String(section?.after || '').trim();
+            const beforeBtn = before ? nav.querySelector<HTMLElement>(`[data-section="${CSS.escape(before)}"]`) : null;
+            const afterBtn = after ? nav.querySelector<HTMLElement>(`[data-section="${CSS.escape(after)}"]`) : null;
+
+            if (afterBtn?.parentElement?.tagName.toLowerCase() === 'li') {
+                afterBtn.parentElement.insertAdjacentElement('afterend', li);
+            } else if (beforeBtn?.parentElement?.tagName.toLowerCase() === 'li') {
+                beforeBtn.parentElement.insertAdjacentElement('beforebegin', li);
+            } else {
+                nav.appendChild(li);
+            }
+
+            panelsContent.appendChild(panel);
+
+            trackUiNode(pluginId, li);
+            trackUiNode(pluginId, panel);
+
+            try {
+                section.onMount?.({ modal: m, panel });
+            } catch (err) {
+                console.warn(`plugin settings section mount failed (${pluginId}:${id})`, err);
+            }
+        }
     }
 }
 

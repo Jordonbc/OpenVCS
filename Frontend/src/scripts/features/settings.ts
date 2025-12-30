@@ -6,6 +6,7 @@ import { setTheme } from '../ui/layout';
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
 import { reloadPlugins } from '../plugins';
 import type { PluginSummary } from '../plugins';
+import { applyPluginSettingsSections } from '../plugins';
 import type { GlobalSettings, ThemeSummary } from '../types';
 
 const THEME_PACK_HINT = 'Install a theme ZIP into the themes folder, or install a plugin that provides themes.';
@@ -75,6 +76,7 @@ export function openSettings(section?: string){
     openModal('settings-modal');
     const modal = document.getElementById('settings-modal') as HTMLElement | null;
     if (!modal) return;
+    applyPluginSettingsSections(modal);
     if (section) activateSection(modal, section);
 
     // Prevent a "double-click to refresh" feel where the user opens the Theme dropdown
@@ -107,23 +109,32 @@ function activateSection(modal: HTMLElement, section: string) {
     const nav = modal.querySelector('#settings-nav');
     const panels = modal.querySelector('#settings-panels');
     if (!nav || !panels) return;
-    const btn = nav.querySelector<HTMLElement>(`[data-section="${section}"]`);
+
+    const safeSection = (() => {
+        const requested = String(section || '').trim();
+        if (requested && nav.querySelector<HTMLElement>(`[data-section="${requested}"]`)) return requested;
+        return 'general';
+    })();
+
+    const btn = nav.querySelector<HTMLElement>(`[data-section="${safeSection}"]`);
     nav.querySelectorAll<HTMLElement>('.seg-btn').forEach(b => {
         b.classList.toggle('active', b === btn);
     });
     panels.querySelectorAll<HTMLElement>('.panel-form').forEach(p => {
-        p.classList.toggle('hidden', p.getAttribute('data-panel') !== section);
+        p.classList.toggle('hidden', p.getAttribute('data-panel') !== safeSection);
     });
 
     // Plugins are applied immediately (no Save/Cancel).
     const actions = modal.querySelector<HTMLElement>('.sheet-actions');
-    if (actions) actions.classList.toggle('hidden', section === 'plugins');
+    if (actions) actions.classList.toggle('hidden', safeSection === 'plugins');
 }
 
 export function wireSettings() {
     const modal = document.getElementById('settings-modal') as HTMLElement | null;
     if (!modal || (modal as any).__wired) return;
     (modal as any).__wired = true;
+
+    applyPluginSettingsSections(modal);
 
     // Close on backdrop / [data-close]
     modal.addEventListener('click', (e) => {
@@ -335,17 +346,19 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         checks_on_launch: !!get<HTMLInputElement>('#set-checks-on-launch')?.checked,
     };
 
-    o.git = {
-        ...o.git,
-        backend: get<HTMLSelectElement>('#set-git-backend')?.value as any,
-        merge_commit_message_template: get<HTMLInputElement>('#set-merge-message-template')?.value ?? '',
-        ssh_binary: (get<HTMLSelectElement>('#set-git-ssh-binary')?.value || 'auto') as any,
-        ssh_path: (get<HTMLInputElement>('#set-git-ssh-path')?.value || '').trim(),
-        prune_on_fetch: !!get<HTMLInputElement>('#set-prune-on-fetch')?.checked,
-        fetch_on_focus: !!get<HTMLInputElement>('#set-fetch-on-focus')?.checked,
-        allow_hooks: get<HTMLSelectElement>('#set-hook-policy')?.value,
-        respect_core_autocrlf: !!get<HTMLInputElement>('#set-respect-autocrlf')?.checked,
-    };
+    if (get('#set-git-backend') || get('#set-merge-message-template') || get('#set-git-ssh-binary')) {
+        o.git = {
+            ...o.git,
+            backend: get<HTMLSelectElement>('#set-git-backend')?.value as any,
+            merge_commit_message_template: get<HTMLInputElement>('#set-merge-message-template')?.value ?? '',
+            ssh_binary: (get<HTMLSelectElement>('#set-git-ssh-binary')?.value || 'auto') as any,
+            ssh_path: (get<HTMLInputElement>('#set-git-ssh-path')?.value || '').trim(),
+            prune_on_fetch: !!get<HTMLInputElement>('#set-prune-on-fetch')?.checked,
+            fetch_on_focus: !!get<HTMLInputElement>('#set-fetch-on-focus')?.checked,
+            allow_hooks: get<HTMLSelectElement>('#set-hook-policy')?.value,
+            respect_core_autocrlf: !!get<HTMLInputElement>('#set-respect-autocrlf')?.checked,
+        };
+    }
 
     o.diff = {
         ...o.diff,
@@ -366,15 +379,17 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         })(),
     };
 
-    const rawConc = Number(get<HTMLInputElement>('#set-lfs-concurrency')?.value ?? 0);
-    const conc = rawConc && isFinite(rawConc) ? Math.max(1, Math.min(16, rawConc)) : 4;
-    o.lfs = {
-        ...o.lfs,
-        enabled: !!get<HTMLInputElement>('#set-lfs-enabled')?.checked,
-        concurrency: conc,
-        require_lock_before_edit: !!get<HTMLInputElement>('#set-lfs-require-lock')?.checked,
-        background_fetch_on_checkout: !!get<HTMLInputElement>('#set-lfs-bg-fetch')?.checked,
-    };
+    if (get('#set-lfs-enabled') || get('#set-lfs-concurrency') || get('#set-lfs-require-lock')) {
+        const rawConc = Number(get<HTMLInputElement>('#set-lfs-concurrency')?.value ?? 0);
+        const conc = rawConc && isFinite(rawConc) ? Math.max(1, Math.min(16, rawConc)) : 4;
+        o.lfs = {
+            ...o.lfs,
+            enabled: !!get<HTMLInputElement>('#set-lfs-enabled')?.checked,
+            concurrency: conc,
+            require_lock_before_edit: !!get<HTMLInputElement>('#set-lfs-require-lock')?.checked,
+            background_fetch_on_checkout: !!get<HTMLInputElement>('#set-lfs-bg-fetch')?.checked,
+        };
+    }
 
     o.performance = {
         ...o.performance,

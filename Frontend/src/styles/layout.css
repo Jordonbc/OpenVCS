@@ -23,7 +23,7 @@
     top: 0; left: 0; right: 0;
     z-index: 30;
     box-sizing: border-box;
-    overflow: hidden;
+    overflow: visible;
     will-change: transform;
 }
 .menubar .menu { position: relative; }
