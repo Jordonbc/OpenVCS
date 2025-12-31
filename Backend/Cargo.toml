@@ -49,8 +49,8 @@ shlex = "1.2"
 sha2 = "0.10"
 hex = "0.4"
 os_pipe = "1.2"
-wasmtime = "27"
-wasmtime-wasi = "27"
+wasmtime = "40"
+wasmtime-wasi = "40"
 
 [dev-dependencies]
 tempfile = "3"
