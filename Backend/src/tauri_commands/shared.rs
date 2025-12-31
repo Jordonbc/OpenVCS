@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use openvcs_core::models::VcsEvent;
@@ -20,7 +19,7 @@ pub(crate) fn progress_bridge<R: Runtime>(app: AppHandle<R>) -> OnEvent {
     Arc::new(move |evt| {
         let (level, msg) = match evt {
             VcsEvent::Progress { detail, .. } => (OutputLevel::Info, detail),
-            VcsEvent::RemoteMessage(s) => (OutputLevel::Info, s),
+            VcsEvent::RemoteMessage { msg } => (OutputLevel::Info, msg),
             VcsEvent::Auth { method, detail } => {
                 (OutputLevel::Info, format!("auth[{method}]: {detail}"))
             }
@@ -31,8 +30,8 @@ pub(crate) fn progress_bridge<R: Runtime>(app: AppHandle<R>) -> OnEvent {
                     .unwrap_or_else(|| format!("{refname} ok")),
             ),
             VcsEvent::Info { msg } => (OutputLevel::Info, msg),
-            VcsEvent::Warning(s) => (OutputLevel::Warn, s),
-            VcsEvent::Error(s) => (OutputLevel::Error, s),
+            VcsEvent::Warning { msg } => (OutputLevel::Warn, msg),
+            VcsEvent::Error { msg } => (OutputLevel::Error, msg),
         };
 
         let ts_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
