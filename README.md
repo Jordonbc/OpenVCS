@@ -171,6 +171,18 @@ cargo build
 - **Crates:** All modular logic (e.g., Git backend, core abstractions) lives under `crates/`.
 - **Bridge:** Tauri `invoke` is used to call Rust from the UI; events are used for progress/streaming.
 
+---
+
+## Testing
+
+- Use `just test` to run the full project test/check flow (runs `cargo test --workspace`, then frontend typecheck and tests).
+- Use `just fix` to run formatting and quick fixes; it now also builds the frontend and typechecks (`npm run build` and `npm exec tsc -- -p tsconfig.json --noEmit`).
+- Frontend-only commands (from `Frontend/`):
+  - `npm exec tsc -- -p tsconfig.json --noEmit` — TypeScript typecheck for the frontend.
+  - `npm test` — run Vitest unit tests (added to the frontend devDependencies).
+
+Note: Some commands (installing Node deps, running Tauri dev/build) may require network access and native toolchain components.
+
 Design principles:
 
 1. **Separation of concerns** - UI logic stays in the frontend; VCS logic lives in backend crates.

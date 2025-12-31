@@ -97,7 +97,12 @@ Run commands from the **workspace root** unless stated otherwise.
 ## Testing & CI
 
 - CI runs `cargo fmt --all -- --check` followed by `cargo clippy --all-targets -- -D warnings`.
-- No formal tests yet. Avoid adding test scaffolding without a maintainer proposal.
+- Frontend unit tests are supported using Vitest. Small, focused tests are welcome for pure/UI‑independent logic (utilities, parsers, formatting helpers).
+- Local test helpers:
+  - `just test` — runs `cargo test --workspace`, then frontend typecheck and Vitest (`npm exec tsc -- -p tsconfig.json --noEmit` and `npm test`).
+  - `just fix` — runs formatting/quick fixes and also builds and typechecks the frontend (`cd Frontend && npm run build` and `npm exec tsc -- -p tsconfig.json --noEmit`).
+
+Note: Adding tests is fine for modules that are pure or have clear boundaries; avoid adding extensive UI integration tests without a maintainer proposal. Some commands (installing Node deps, running Tauri dev/build) may require network access and native toolchain components.
 
 ## Contribution Flow
 
