@@ -17,6 +17,8 @@
 - After applying a patch, run `just fix` (the project Justfile target) to auto-fix formatting, lint, and other small issues before committing.
 - Commit changes locally with a clear, conventional commit message, but do NOT push to any remote; leave pushing/PR creation to a human maintainer.
 
+**Sandbox note**: Running `just fix` and some `cargo` commands (for example `cargo build`, `cargo tauri dev`, or commands that fetch dependencies or build native binaries) may require network access or host-level tooling and therefore need to be run outside a restricted sandbox or container. If you are operating with sandboxing or restricted network access, request approval before executing these commands or run them on the host machine.
+
 
 ## Project Summary
 
