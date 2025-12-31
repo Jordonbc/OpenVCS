@@ -1,7 +1,7 @@
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
-import { observeOverlayScrollbars } from './lib/scrollbars';
+import { observeOverlayScrollbars, destroyOverlayScrollbarsFor } from './lib/scrollbars';
 import { prefs, state, hasRepo } from './state/state';
 import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
@@ -36,9 +36,34 @@ const commitBtn = qs<HTMLButtonElement>('#commit-btn');
 const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
 
 async function boot() {
+    // Measure native scrollbar width and set a CSS variable so we can reserve
+    // the same horizontal space in the diff content. This prevents layout
+    // shifts when the vertical scrollbar appears or disappears.
+    function computeAndSetScrollbarGutter() {
+        try {
+            const el = document.createElement('div');
+            el.style.width = '100px';
+            el.style.height = '100px';
+            el.style.overflow = 'scroll';
+            el.style.position = 'absolute';
+            el.style.top = '-9999px';
+            document.body.appendChild(el);
+            const gutter = Math.max(0, el.offsetWidth - el.clientWidth) || 0;
+            document.documentElement.style.setProperty('--os-scrollbar-gutter', `${gutter}px`);
+            document.body.removeChild(el);
+        } catch (e) {
+            /* best-effort: ignore failures */
+        }
+    }
+
+    // Compute once and update on resize so changes in zoom/OS settings are handled.
+    computeAndSetScrollbarGutter();
+    window.addEventListener('resize', computeAndSetScrollbarGutter);
     // If launched as the Output Log window, render that view and skip the main app UI.
     if (await initOutputLogViewIfRequested()) return;
     observeOverlayScrollbars();
+    // Ensure the diff scroll area uses the native scrollbar (not OverlayScrollbars).
+    try { destroyOverlayScrollbarsFor('.diff-scroll'); } catch {}
     await initPlugins();
     // theme & basic layout
     // Prefer native settings for theme; fall back to current in-memory default

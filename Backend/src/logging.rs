@@ -54,6 +54,15 @@ pub fn init() {
     // Build console logger (with timestamps) and then mirror to a file if possible.
     let mut builder = env_logger::Builder::from_default_env();
     builder.format_timestamp_millis();
+
+    // Wasmtime/Cranelift can be extremely verbose at TRACE/DEBUG and drown out OpenVCS logs.
+    // Keep these at WARN+ even if the user enables a global TRACE filter.
+    builder.filter_module("wasmtime", log::LevelFilter::Warn);
+    builder.filter_module("cranelift", log::LevelFilter::Warn);
+    builder.filter_module("cranelift_codegen", log::LevelFilter::Warn);
+    builder.filter_module("cranelift_wasm", log::LevelFilter::Warn);
+    builder.filter_module("cranelift_native", log::LevelFilter::Warn);
+
     // If RUST_LOG is unset, apply level from settings
     if std::env::var_os("RUST_LOG").is_none() {
         let level = match cfg.logging.level {
@@ -68,7 +77,7 @@ pub fn init() {
     let console_logger = builder.build();
 
     // Ensure ./logs exists and rotate existing openvcs.log into a timestamped .zip archive
-    let logfile = (|| -> Option<std::fs::File> {
+    let logfile = {
         let dir = std::path::Path::new("logs");
         let _ = fs::create_dir_all(dir); // best effort
 
@@ -83,7 +92,7 @@ pub fn init() {
             .truncate(true)
             .open(active)
             .ok()
-    })();
+    };
 
     if let Some(file) = logfile {
         let file = Arc::new(Mutex::new(file));

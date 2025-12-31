@@ -14,6 +14,11 @@
 - After applying a patch, run only read-only verification commands unless explicitly approved.
 - If a shell-write is ever proposed, replace it with `apply_patch` before proceeding.
 
+- After applying a patch, run `just fix` (the project Justfile target) to auto-fix formatting, lint, and other small issues before committing.
+- Commit changes locally with a clear, conventional commit message, but do NOT push to any remote; leave pushing/PR creation to a human maintainer.
+
+**Sandbox note**: Running `just fix` and some `cargo` commands (for example `cargo build`, `cargo tauri dev`, or commands that fetch dependencies or build native binaries) may require network access or host-level tooling and therefore need to be run outside a restricted sandbox or container. If you are operating with sandboxing or restricted network access, request approval before executing these commands or run them on the host machine.
+
 
 ## Project Summary
 
@@ -70,7 +75,11 @@ Run commands from the **workspace root** unless stated otherwise.
 - **Rust:** Stable toolchain, idiomatic Rust, small crates with clear ownership boundaries.
 - **TypeScript:** Strict TS in `Frontend/`.
 - **Formatting:** Use default `rustfmt`; ESLint rules for TS (to be added; assume defaults).
+- **Linting:** Keep `cargo clippy --all-targets -- -D warnings` clean (CI runs this after rustfmt).
 - **Commits:** Conventional style, e.g., `backend:`, `frontend:`, `core:`, `git:`.
+- Commit message format: agents must format commit messages with a short
+  title of at most 72 characters, followed by a blank line and any
+  additional explanatory text in the body.
 - **License:** All contributions under **GPL‑3.0**.
 
 ## Architecture Notes
@@ -87,7 +96,13 @@ Run commands from the **workspace root** unless stated otherwise.
 
 ## Testing & CI
 
-- No formal tests yet. Avoid adding test scaffolding without a maintainer proposal.
+- CI runs `cargo fmt --all -- --check` followed by `cargo clippy --all-targets -- -D warnings`.
+- Frontend unit tests are supported using Vitest. Small, focused tests are welcome for pure/UI‑independent logic (utilities, parsers, formatting helpers).
+- Local test helpers:
+  - `just test` — runs `cargo test --workspace`, then frontend typecheck and Vitest (`npm exec tsc -- -p tsconfig.json --noEmit` and `npm test`).
+  - `just fix` — runs formatting/quick fixes and also builds and typechecks the frontend (`cd Frontend && npm run build` and `npm exec tsc -- -p tsconfig.json --noEmit`).
+
+Note: Adding tests is fine for modules that are pure or have clear boundaries; avoid adding extensive UI integration tests without a maintainer proposal. Some commands (installing Node deps, running Tauri dev/build) may require network access and native toolchain components.
 
 ## Contribution Flow
 

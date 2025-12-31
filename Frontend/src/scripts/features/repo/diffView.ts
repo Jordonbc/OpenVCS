@@ -16,6 +16,40 @@ function setLfsBadge(isLfs: boolean) {
     diffMetaLfs.hidden = !isLfs;
 }
 
+function scrollDiffToTop() {
+    if (!diffEl) return;
+    const host = diffEl.closest('.diff-scroll') as HTMLElement | null;
+    const viewport = host?.querySelector<HTMLElement>('[data-overlayscrollbars-viewport]') || host || diffEl.parentElement || diffEl;
+    if (viewport) {
+        viewport.scrollTop = 0;
+        viewport.scrollLeft = 0;
+    }
+}
+
+const BINARY_DIFF_INDICATORS = [
+    /^binary files /i,
+    /^git binary patch/i,
+    /^literal /i,
+];
+
+function detectBinaryDiff(lines: string[] = []) {
+    if (!Array.isArray(lines) || lines.length === 0) {
+        return true;
+    }
+    const hasHunks = lines.some((line) => (line || '').startsWith('@@'));
+    if (hasHunks) {
+        return false;
+    }
+    return lines.some((line) =>
+        BINARY_DIFF_INDICATORS.some((rx) => rx.test(String(line || '')))
+    );
+}
+
+function renderBinaryDiffPlaceholder(path?: string) {
+    const label = path ? ` (${escapeHtml(path)})` : '';
+    return `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code binary-placeholder">Diff not supported on this file type${label}.</div></div></div>`;
+}
+
 export function highlightRow(index: number) {
     const rows = qsa<HTMLElement>((prefs.tab === 'history' ? '.row.commit' : '.row'), listEl || (undefined as any));
     rows.forEach((el, i) => el.classList.toggle('active', i === index));
@@ -33,6 +67,9 @@ export async function selectFile(file: FileStatus, index: number) {
     }
     diffHeadPath.textContent = file.path || '(unknown file)';
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
+    scrollDiffToTop();
+
+    
 
     try {
         if (TAURI.has && file.path) {
@@ -46,8 +83,16 @@ export async function selectFile(file: FileStatus, index: number) {
         }
         state.currentFile = file.path;
         state.currentDiff = lines || [];
-        diffEl.innerHTML = renderHunksWithSelection(state.currentDiff);
-        bindHunkToggles(diffEl);
+        const isBinary = detectBinaryDiff(state.currentDiff);
+        state.currentDiffBinary = isBinary;
+        diffEl.innerHTML = isBinary
+            ? renderBinaryDiffPlaceholder(file.path)
+            : renderHunksWithSelection(state.currentDiff);
+        scrollDiffToTop();
+        
+        if (!isBinary) {
+            bindHunkToggles(diffEl);
+        }
 
         const onCtx = (ev: Event) => {
             const mev = ev as MouseEvent;
@@ -113,42 +158,52 @@ export async function selectFile(file: FileStatus, index: number) {
         };
         diffEl.addEventListener('contextmenu', onCtx, { once: true });
 
-        const cached = (state as any).selectedHunksByFile?.[file.path] as number[] | undefined;
-        if (Array.isArray(cached)) {
-            state.selectedHunks = cached.slice();
-            updateHunkCheckboxes();
-        } else if (state.selectedFiles.has(file.path) || state.defaultSelectAll) {
-            state.selectedHunks = allHunkIndices(state.currentDiff);
-            updateHunkCheckboxes();
-            const recExisting: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
-            const root = diffEl as HTMLElement;
-            const rec: Record<number, number[]> = { ...recExisting };
-            state.selectedHunks.forEach((h) => {
-                if (rec[h] && rec[h].length > 0) return;
-                const boxes = root.querySelectorAll<HTMLInputElement>(`input.pick-line[data-hunk="${h}"]`);
-                const picked: number[] = [];
-                boxes.forEach((b) => {
-                    b.checked = true;
-                    picked.push(Number(b.dataset.line || -1));
+        if (!state.currentDiffBinary) {
+            const cached = (state as any).selectedHunksByFile?.[file.path] as number[] | undefined;
+            if (Array.isArray(cached)) {
+                state.selectedHunks = cached.slice();
+                updateHunkCheckboxes();
+            } else if (state.selectedFiles.has(file.path) || state.defaultSelectAll) {
+                state.selectedHunks = allHunkIndices(state.currentDiff);
+                updateHunkCheckboxes();
+                const recExisting: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
+                const root = diffEl as HTMLElement;
+                const rec: Record<number, number[]> = { ...recExisting };
+                state.selectedHunks.forEach((h) => {
+                    if (rec[h] && rec[h].length > 0) return;
+                    const boxes = root.querySelectorAll<HTMLInputElement>(`input.pick-line[data-hunk="${h}"]`);
+                    const picked: number[] = [];
+                    boxes.forEach((b) => {
+                        b.checked = true;
+                        picked.push(Number(b.dataset.line || -1));
+                    });
+                    if (picked.length > 0) rec[h] = Array.from(new Set(picked)).sort((a, b) => a - b);
                 });
-                if (picked.length > 0) rec[h] = Array.from(new Set(picked)).sort((a, b) => a - b);
-            });
-            (state as any).selectedLinesByFile[state.currentFile] = rec;
-            updateHunkCheckboxes();
+                (state as any).selectedLinesByFile[state.currentFile] = rec;
+                updateHunkCheckboxes();
+            } else {
+                state.selectedHunks = [];
+            }
         } else {
             state.selectedHunks = [];
+            if (state.currentFile) {
+                delete (state as any).selectedHunksByFile[state.currentFile];
+                delete (state as any).selectedLinesByFile[state.currentFile];
+            }
         }
         syncFileCheckboxWithHunks();
         updateCommitButton();
     } catch (e) {
         console.error(e);
         diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load diff</div></div></div>';
+        scrollDiffToTop();
     }
 }
 
 export async function selectStashDiff(selector: string) {
     if (!diffHeadPath || !diffEl) return;
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
+    scrollDiffToTop();
     try {
         let lines: string[] = [];
         if (TAURI.has && selector) {
@@ -156,9 +211,11 @@ export async function selectStashDiff(selector: string) {
         }
         state.currentDiff = lines || [];
         diffEl.innerHTML = renderHunksReadonly(state.currentDiff);
+        scrollDiffToTop();
     } catch (e) {
         console.warn('git_stash_show failed', e);
         diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load stash diff</div></div></div>';
+        scrollDiffToTop();
     }
 }
 
@@ -168,17 +225,24 @@ export async function renderCombinedDiff(paths: string[]) {
     const files = Array.from(new Set(paths)).filter(Boolean);
     diffHeadPath.textContent = `Multiple files (${files.length})`;
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
+    scrollDiffToTop();
     let html = '';
     for (const p of files) {
         try {
             const lines = TAURI.has ? await TAURI.invoke<string[]>('git_diff_file', { path: p }) : [];
             html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)}</div></div></div>`;
-            html += renderHunksWithSelection(lines || []);
+            const fileLines = Array.isArray(lines) ? lines : [];
+            if (detectBinaryDiff(fileLines)) {
+                html += renderBinaryDiffPlaceholder(p);
+            } else {
+                html += renderHunksWithSelection(fileLines);
+            }
         } catch {
             html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)} (failed to load diff)</div></div></div>`;
         }
     }
     diffEl.innerHTML = html || '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">No diffs</div></div></div>';
+    scrollDiffToTop();
 }
 
 export function clearDiffSelection() {
@@ -205,8 +269,10 @@ async function renderConflictView(file: FileStatus) {
         delete (state as any).selectedHunksByFile[file.path];
     }
     diffEl.innerHTML = '<div class="conflict-view"><div class="conflict-loading">Loading conflict…</div></div>';
+    scrollDiffToTop();
     if (!TAURI.has) {
         diffEl.innerHTML = '<div class="conflict-view"><div class="conflict-error">Conflict details are only available in the desktop app.</div></div>';
+        scrollDiffToTop();
         return;
     }
     try {
@@ -214,9 +280,11 @@ async function renderConflictView(file: FileStatus) {
         setLfsBadge(!!details?.lfs_pointer);
         diffEl.innerHTML = renderConflictMarkup(details);
         bindConflictActions(diffEl, file, details);
+        scrollDiffToTop();
     } catch (err) {
         console.error(err);
         diffEl.innerHTML = '<div class="conflict-view"><div class="conflict-error">Failed to load conflict details.</div></div>';
+        scrollDiffToTop();
     }
 }
 
@@ -448,6 +516,11 @@ function bindHunkToggles(root: HTMLElement) {
 
 function syncFileCheckboxWithHunks() {
     if (!state.currentFile) return;
+    if (state.currentDiffBinary) {
+        const on = state.selectedFiles.has(state.currentFile);
+        updateListCheckboxForPath(state.currentFile, on, false);
+        return;
+    }
     const totalHunks = allHunkIndices(state.currentDiff).length;
     const selHunks = (state.selectedHunks || []).length;
     if (totalHunks === 0) {

@@ -1,16 +1,19 @@
-use directories::ProjectDirs;
+use crate::plugin_paths::{built_in_plugin_dirs, ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME};
 use log::warn;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
-    env, fs,
+    fs,
     path::{Path, PathBuf},
 };
 
-const PLUGIN_MANIFEST_NAME: &str = "openvcs.plugin.json";
-const BUILT_IN_PLUGINS_DIR_NAME: &str = "built-in-plugins";
 const PLUGIN_THEMES_DIR_NAME: &str = "themes";
 const MAX_ICON_BYTES: usize = 512 * 1024;
+
+#[derive(Debug, Deserialize)]
+struct CurrentPointer {
+    version: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PluginSummary {
@@ -35,6 +38,7 @@ pub struct PluginSummary {
     pub theme_dirs: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon_data_url: Option<String>,
+    pub source: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -74,20 +78,6 @@ fn is_false(v: &bool) -> bool {
     !*v
 }
 
-fn plugins_dir() -> PathBuf {
-    if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
-        pd.config_dir().join("plugins")
-    } else {
-        PathBuf::from("plugins")
-    }
-}
-
-fn ensure_dir(path: &Path) {
-    if let Err(err) = fs::create_dir_all(path) {
-        warn!("plugins: failed to create {}: {}", path.display(), err);
-    }
-}
-
 fn clean_opt(value: Option<String>) -> Option<String> {
     value.and_then(|v| {
         let trimmed = v.trim();
@@ -116,60 +106,76 @@ fn clean_tags(tags: Vec<String>) -> Vec<String> {
     out
 }
 
-fn built_in_plugin_dirs() -> Vec<PathBuf> {
-    let mut candidates: Vec<PathBuf> = Vec::new();
-
-    if let Ok(explicit) = env::var("OPENVCS_BUILTIN_PLUGINS") {
-        let trimmed = explicit.trim();
-        if !trimmed.is_empty() {
-            candidates.push(PathBuf::from(trimmed));
-        }
-    }
-
-    if let Ok(current_dir) = env::current_dir() {
-        candidates.push(current_dir.join(BUILT_IN_PLUGINS_DIR_NAME));
-    }
-
-    if let Ok(exe) = env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            candidates.push(dir.join(BUILT_IN_PLUGINS_DIR_NAME));
-            candidates.push(dir.join("resources").join(BUILT_IN_PLUGINS_DIR_NAME));
-            #[cfg(target_os = "macos")]
-            if let Some(parent) = dir.parent() {
-                candidates.push(parent.join("Resources").join(BUILT_IN_PLUGINS_DIR_NAME));
-            }
-        }
-    }
-
-    candidates.push(PathBuf::from("Backend").join(BUILT_IN_PLUGINS_DIR_NAME));
-    candidates.push(PathBuf::from(BUILT_IN_PLUGINS_DIR_NAME));
-    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(BUILT_IN_PLUGINS_DIR_NAME));
-
-    let mut seen = HashSet::new();
-    candidates
-        .into_iter()
-        .filter_map(|path| {
-            if !seen.insert(path.clone()) {
-                return None;
-            }
-            if path.is_dir() {
-                Some(path)
-            } else {
-                None
-            }
-        })
-        .collect()
+#[derive(Debug, Copy, Clone)]
+enum PluginOrigin {
+    BuiltIn,
+    User,
 }
 
-fn read_manifest_from_directory(path: &Path) -> Result<RawPluginManifest, String> {
-    let manifest_path = path.join(PLUGIN_MANIFEST_NAME);
+impl PluginOrigin {
+    fn as_str(&self) -> &'static str {
+        match self {
+            PluginOrigin::BuiltIn => "built-in",
+            PluginOrigin::User => "user",
+        }
+    }
+}
+
+fn plugin_roots() -> Vec<(PathBuf, PluginOrigin)> {
+    let mut roots: Vec<(PathBuf, PluginOrigin)> = Vec::new();
+    let mut seen = HashSet::new();
+
+    let dir = plugins_dir();
+    ensure_dir(&dir);
+    if seen.insert(dir.clone()) {
+        roots.push((dir, PluginOrigin::User));
+    }
+
+    for path in built_in_plugin_dirs() {
+        if !seen.insert(path.clone()) {
+            continue;
+        }
+        roots.push((path, PluginOrigin::BuiltIn));
+    }
+
+    roots
+}
+
+fn resolve_plugin_dir(path: &Path) -> Option<PathBuf> {
+    let direct = path.join(PLUGIN_MANIFEST_NAME);
+    if direct.is_file() {
+        return Some(path.to_path_buf());
+    }
+
+    let current_path = path.join("current.json");
+    if !current_path.is_file() {
+        return None;
+    }
+    let text = fs::read_to_string(&current_path).ok()?;
+    let cur: CurrentPointer = serde_json::from_str(&text).ok()?;
+    let ver = cur.version.trim();
+    if ver.is_empty() {
+        return None;
+    }
+    let version_dir = path.join(ver);
+    let manifest = version_dir.join(PLUGIN_MANIFEST_NAME);
+    if manifest.is_file() {
+        Some(version_dir)
+    } else {
+        None
+    }
+}
+
+fn read_manifest_from_directory(path: &Path) -> Result<(PathBuf, RawPluginManifest), String> {
+    let resolved = resolve_plugin_dir(path).unwrap_or_else(|| path.to_path_buf());
+    let manifest_path = resolved.join(PLUGIN_MANIFEST_NAME);
     let text = match fs::read_to_string(&manifest_path) {
         Ok(text) => text,
         Err(err) => {
             if err.kind() == std::io::ErrorKind::NotFound {
                 return Err(format!(
                     "plugin {} is missing {PLUGIN_MANIFEST_NAME}",
-                    path.display()
+                    resolved.display()
                 ));
             }
             return Err(format!("read {}: {}", manifest_path.display(), err));
@@ -177,14 +183,14 @@ fn read_manifest_from_directory(path: &Path) -> Result<RawPluginManifest, String
     };
 
     let manifest: RawPluginManifest = serde_json::from_str(&text)
-        .map_err(|err| format!("parse plugin manifest in {}: {}", path.display(), err))?;
+        .map_err(|err| format!("parse plugin manifest in {}: {}", resolved.display(), err))?;
     if manifest.id.trim().is_empty() {
-        return Err(format!("plugin {} has an empty id", path.display()));
+        return Err(format!("plugin {} has an empty id", resolved.display()));
     }
     if manifest.name.trim().is_empty() {
-        return Err(format!("plugin {} has an empty name", path.display()));
+        return Err(format!("plugin {} has an empty name", resolved.display()));
     }
-    Ok(manifest)
+    Ok((resolved, manifest))
 }
 
 fn icon_mime_for_path(path: &Path) -> Option<&'static str> {
@@ -256,7 +262,7 @@ fn encode_base64(data: &[u8]) -> String {
         return String::new();
     }
 
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     let mut i = 0usize;
     while i < data.len() {
         let b0 = data[i];
@@ -312,7 +318,11 @@ fn nibble_hex(v: u8) -> char {
     }
 }
 
-fn manifest_to_summary(plugin_dir: &Path, manifest: RawPluginManifest) -> PluginSummary {
+fn manifest_to_summary(
+    plugin_dir: &Path,
+    manifest: RawPluginManifest,
+    source: PluginOrigin,
+) -> PluginSummary {
     let theme_dirs = discover_theme_dirs(plugin_dir).len() as u32;
     let icon_data_url = icon_data_url(plugin_dir);
     PluginSummary {
@@ -327,6 +337,7 @@ fn manifest_to_summary(plugin_dir: &Path, manifest: RawPluginManifest) -> Plugin
         default_enabled: manifest.default_enabled,
         theme_dirs,
         icon_data_url,
+        source: source.as_str().to_string(),
     }
 }
 
@@ -372,18 +383,13 @@ fn discover_theme_dirs_recursive(dir: &Path, depth: usize, out: &mut Vec<PathBuf
 }
 
 pub fn list_plugins() -> Vec<PluginSummary> {
-    let dir = plugins_dir();
-    ensure_dir(&dir);
-
     let mut out: Vec<PluginSummary> = Vec::new();
     let mut seen = HashSet::new();
+    let built_in_ids = crate::plugin_bundles::built_in_plugin_ids();
 
-    let roots = built_in_plugin_dirs()
-        .into_iter()
-        .chain(std::iter::once(dir))
-        .collect::<Vec<_>>();
+    let roots = plugin_roots();
 
-    for root in roots {
+    for (root, origin) in roots {
         match fs::read_dir(&root) {
             Ok(entries) => {
                 for entry in entries.flatten() {
@@ -391,15 +397,18 @@ pub fn list_plugins() -> Vec<PluginSummary> {
                     if !path.is_dir() {
                         continue;
                     }
-                    match read_manifest_from_directory(&path) {
-                        Ok(manifest) => {
-                            let norm = manifest.id.trim().to_ascii_lowercase();
-                            if !seen.insert(norm) {
-                                continue;
-                            }
-                            out.push(manifest_to_summary(&path, manifest));
+                    if let Ok((resolved, manifest)) = read_manifest_from_directory(&path) {
+                        let norm = manifest.id.trim().to_ascii_lowercase();
+                        let is_built_in = built_in_ids.contains(&norm);
+                        if !seen.insert(norm) {
+                            continue;
                         }
-                        Err(_) => {}
+                        let effective_origin = if is_built_in {
+                            PluginOrigin::BuiltIn
+                        } else {
+                            origin
+                        };
+                        out.push(manifest_to_summary(&resolved, manifest, effective_origin));
                     }
                 }
             }
@@ -417,16 +426,11 @@ pub fn load_plugin(id: &str) -> Result<PluginPayload, String> {
         return Err("plugin id is empty".to_string());
     }
     let requested_lower = requested.to_ascii_lowercase();
+    let built_in_ids = crate::plugin_bundles::built_in_plugin_ids();
 
-    let dir = plugins_dir();
-    ensure_dir(&dir);
+    let roots = plugin_roots();
 
-    let roots = built_in_plugin_dirs()
-        .into_iter()
-        .chain(std::iter::once(dir))
-        .collect::<Vec<_>>();
-
-    for root in roots {
+    for (root, origin) in roots {
         let entries = match fs::read_dir(&root) {
             Ok(entries) => entries,
             Err(err) => {
@@ -440,34 +444,41 @@ pub fn load_plugin(id: &str) -> Result<PluginPayload, String> {
             if !path.is_dir() {
                 continue;
             }
-            let manifest = match read_manifest_from_directory(&path) {
+            let (resolved, manifest) = match read_manifest_from_directory(&path) {
                 Ok(m) => m,
                 Err(_) => continue,
             };
+            let entry_path = clean_opt(manifest.entry.clone());
             if manifest.id.trim().to_ascii_lowercase() != requested_lower {
                 continue;
             }
 
-            let summary = manifest_to_summary(&path, manifest);
-            let entry_text = if let Some(entry) = summary.entry.as_deref() {
-                let entry_path = path.join(entry.trim_start_matches("./"));
-                match fs::read_to_string(&entry_path) {
+            let effective_origin = if built_in_ids.contains(&requested_lower) {
+                PluginOrigin::BuiltIn
+            } else {
+                origin
+            };
+            let summary = manifest_to_summary(&resolved, manifest, effective_origin);
+            let entry_code = entry_path.and_then(|entry| {
+                let target = resolved.join(entry.trim());
+                match fs::read_to_string(&target) {
                     Ok(text) => Some(text),
                     Err(err) => {
-                        return Err(format!(
-                            "read plugin entry {}: {}",
-                            entry_path.display(),
+                        warn!(
+                            "plugins: failed to read entry {} for {}: {}",
+                            target.display(),
+                            summary.id,
                             err
-                        ));
+                        );
+                        None
                     }
                 }
-            } else {
-                None
-            };
+            });
 
             return Ok(PluginPayload {
                 summary,
-                entry: entry_text,
+                // Plugin code does not execute in-process; the UI runtime uses out-of-process components.
+                entry: entry_code,
             });
         }
     }
@@ -476,18 +487,10 @@ pub fn load_plugin(id: &str) -> Result<PluginPayload, String> {
 }
 
 pub fn plugin_theme_dirs() -> Vec<PluginThemeDir> {
-    let dir = plugins_dir();
-    ensure_dir(&dir);
-
-    let roots = built_in_plugin_dirs()
-        .into_iter()
-        .chain(std::iter::once(dir))
-        .collect::<Vec<_>>();
-
     let mut out = Vec::new();
     let mut seen = HashSet::new();
 
-    for root in roots {
+    for (root, _) in plugin_roots() {
         let entries = match fs::read_dir(&root) {
             Ok(entries) => entries,
             Err(err) => {
@@ -501,7 +504,7 @@ pub fn plugin_theme_dirs() -> Vec<PluginThemeDir> {
             if !plugin_dir.is_dir() {
                 continue;
             }
-            let manifest = match read_manifest_from_directory(&plugin_dir) {
+            let (resolved, manifest) = match read_manifest_from_directory(&plugin_dir) {
                 Ok(m) => m,
                 Err(_) => continue,
             };
@@ -511,7 +514,7 @@ pub fn plugin_theme_dirs() -> Vec<PluginThemeDir> {
                 continue;
             }
 
-            for theme_dir in discover_theme_dirs(&plugin_dir) {
+            for theme_dir in discover_theme_dirs(&resolved) {
                 out.push(PluginThemeDir {
                     plugin_id: plugin_id.clone(),
                     path: theme_dir,

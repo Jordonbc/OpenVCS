@@ -96,7 +96,7 @@ fn default_theme_pack() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Git {
     #[serde(default)]
-    pub backend: GitBackend,
+    pub backend: String,
     /// Default branch name used when creating new repos or inferring defaults
     #[serde(default)]
     pub default_branch: String,
@@ -127,7 +127,7 @@ pub struct Git {
 impl Default for Git {
     fn default() -> Self {
         Self {
-            backend: GitBackend::System,
+            backend: String::new(),
             default_branch: "main".into(),
             ssh_binary: GitSshBinary::Auto,
             ssh_path: String::new(),
@@ -263,7 +263,7 @@ impl Default for Integrations {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Plugins {
     /// Plugin ids that are installed but disabled.
     ///
@@ -275,14 +275,6 @@ pub struct Plugins {
     /// IDs are matched case-insensitively.
     #[serde(default)]
     pub enabled: Vec<String>,
-}
-impl Default for Plugins {
-    fn default() -> Self {
-        Self {
-            disabled: Vec::new(),
-            enabled: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -330,7 +322,7 @@ impl Default for Advanced {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Experimental {
     #[serde(default)]
     pub parallel_history_scan: bool,
@@ -338,15 +330,6 @@ pub struct Experimental {
     pub background_blame_index: bool,
     #[serde(default)]
     pub sparse_checkout_ui: bool,
-}
-impl Default for Experimental {
-    fn default() -> Self {
-        Self {
-            parallel_history_scan: false,
-            background_blame_index: false,
-            sparse_checkout_ui: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -377,129 +360,90 @@ fn default_retain_archives() -> u32 {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum Theme {
     Light,
     Dark,
+    #[default]
     System,
-}
-impl Default for Theme {
-    fn default() -> Self {
-        Theme::System
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum Language {
+    #[default]
     System,
     EN,
 }
-impl Default for Language {
-    fn default() -> Self {
-        Language::System
-    }
-}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum UpdateChannel {
+    #[default]
     Stable,
     Beta,
     Nightly,
 }
-impl Default for UpdateChannel {
-    fn default() -> Self {
-        UpdateChannel::Stable
-    }
-}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum GitBackend {
-    System,
-    Libgit2,
-}
-impl Default for GitBackend {
-    fn default() -> Self {
-        GitBackend::System
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum GitSshBinary {
+    #[default]
     Auto,
     Host,
     Bundled,
     Custom,
 }
-impl Default for GitSshBinary {
-    fn default() -> Self {
-        GitSshBinary::Auto
-    }
-}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum DefaultBackend {
+    #[default]
     Git,
 }
-impl Default for DefaultBackend {
-    fn default() -> Self {
-        DefaultBackend::Git
-    }
-}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum HookPolicy {
     Deny,
+    #[default]
     Ask,
     Allow,
 }
-impl Default for HookPolicy {
-    fn default() -> Self {
-        HookPolicy::Ask
-    }
-}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum CredentialHelper {
+    #[default]
     OsKeychain,
     None,
 }
-impl Default for CredentialHelper {
-    fn default() -> Self {
-        CredentialHelper::OsKeychain
-    }
-}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum SshAgent {
+    #[default]
     Env,
     OnePassword,
     Pageant,
     None,
 }
-impl Default for SshAgent {
-    fn default() -> Self {
-        SshAgent::Env
-    }
-}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum WhitespaceMode {
+    #[default]
     None,
     Eol,
     All,
-}
-impl Default for WhitespaceMode {
-    fn default() -> Self {
-        WhitespaceMode::None
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -528,7 +472,9 @@ impl Default for ExternalTool {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum EditorChoice {
+    #[default]
     System,
     Code,
     Clion,
@@ -536,51 +482,37 @@ pub enum EditorChoice {
     Neovim,
     Custom,
 }
-impl Default for EditorChoice {
-    fn default() -> Self {
-        EditorChoice::System
-    }
-}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum IssueProvider {
+    #[default]
     Auto,
     Github,
     Gitlab,
     Forgejo,
 }
-impl Default for IssueProvider {
-    fn default() -> Self {
-        IssueProvider::Auto
-    }
-}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum ColorBlindMode {
+    #[default]
     None,
     Protanopia,
     Deuteranopia,
     Tritanopia,
 }
-impl Default for ColorBlindMode {
-    fn default() -> Self {
-        ColorBlindMode::None
-    }
-}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum ForcePushPolicy {
+    #[default]
     Always,
     TrackedRemotes,
     Never,
-}
-impl Default for ForcePushPolicy {
-    fn default() -> Self {
-        ForcePushPolicy::Always
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -606,30 +538,24 @@ impl Default for Proxy {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum ProxyMode {
+    #[default]
     System,
     Manual,
     Off,
 }
-impl Default for ProxyMode {
-    fn default() -> Self {
-        ProxyMode::System
-    }
-}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+#[derive(Default)]
 pub enum LogLevel {
     Trace,
     Debug,
+    #[default]
     Info,
     Warn,
     Error,
-}
-impl Default for LogLevel {
-    fn default() -> Self {
-        LogLevel::Info
-    }
 }
 
 //
@@ -685,6 +611,7 @@ impl AppConfig {
         }
 
         // Git
+        self.git.backend = self.git.backend.trim().to_string();
         if self.git.default_branch.trim().is_empty() {
             self.git.default_branch = "main".into();
         }

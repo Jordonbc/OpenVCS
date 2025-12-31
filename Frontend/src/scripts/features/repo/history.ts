@@ -2,6 +2,7 @@ import { escapeHtml } from '../../lib/dom';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
 import { notify } from '../../lib/notify';
+import { getPluginContextMenuItems, runPluginAction } from '../../plugins';
 import { prefs, state, statusClass, statusLabel } from '../../state/state';
 import { diffEl, diffHeadPath, diffMetaLfs, listEl, countEl } from './context';
 import { renderHunksReadonly, highlightRow } from './diffView';
@@ -28,6 +29,19 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: {
             } catch { /* ignore */ }
         },
     });
+
+    const pluginItems = getPluginContextMenuItems('commits');
+    if (pluginItems.length > 0) {
+        items.push({ label: '---' });
+        for (const it of pluginItems) {
+            items.push({
+                label: it.label,
+                action: async () => {
+                    await runPluginAction(it.action, { commit });
+                },
+            });
+        }
+    }
 
     if (TAURI.has && commit?.id) {
         items.push({ label: '---' });

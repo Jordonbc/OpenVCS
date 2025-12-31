@@ -33,6 +33,7 @@ export const state = {
     selectedFiles: new Set<string>(),
     currentFile: '' as string,
     currentDiff: [] as string[],
+    currentDiffBinary: false as boolean,
     currentStash: '' as string,     // selector of selected stash
     selectedHunks: [] as number[],  // indices of selected hunks for current file
     selectedHunksByFile: {} as Record<string, number[]>,

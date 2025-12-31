@@ -210,9 +210,9 @@ fn main() {
 
     let exact_tag = run_git(&["describe", "--tags", "--exact-match"]);
     let expected_v = format!("v{pkg_version}");
-    let head_is_version_tag = exact_tag.as_deref().map_or(false, |t| {
-        t == pkg_version.as_str() || t == expected_v.as_str()
-    });
+    let head_is_version_tag = exact_tag
+        .as_deref()
+        .is_some_and(|t| t == pkg_version.as_str() || t == expected_v.as_str());
 
     let official = is_truthy_env("OPENVCS_OFFICIAL_RELEASE") || (head_is_version_tag && !dirty);
 

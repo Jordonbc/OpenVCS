@@ -1,8 +1,5 @@
 [workspace]
 members = [
-  "crates/openvcs-core",
-  "crates/openvcs-git",
-  "crates/openvcs-git-libgit2",
   "Backend",
 ]
 resolver = "2"

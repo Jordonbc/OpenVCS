@@ -32,7 +32,6 @@ function queryScrollableElements(root: ParentNode): HTMLElement[] {
       [
         // Main panes (use wrappers so re-rendering content doesn't destroy OS structure)
         '.list-scroll',
-        '.diff-scroll',
         // Popovers/menus that scroll (use wrappers)
         '.pop-list-scroll',
       ].join(','),
@@ -42,6 +41,27 @@ function queryScrollableElements(root: ParentNode): HTMLElement[] {
 
 export function initOverlayScrollbars(root: ParentNode = document) {
   queryScrollableElements(root).forEach(initOne);
+}
+
+/**
+ * Destroy any OverlayScrollbars instance attached to elements matching
+ * `selector`. This is useful to ensure certain containers (like the diff
+ * view) keep native scrollbars and don't get wrapped by OverlayScrollbars.
+ */
+export function destroyOverlayScrollbarsFor(selector: string) {
+  try {
+    const els = Array.from(document.querySelectorAll<HTMLElement>(selector));
+    els.forEach((el) => {
+      try {
+        const inst = (OverlayScrollbars as any)(el) as any;
+        if (inst && typeof inst.destroy === 'function') {
+          inst.destroy();
+        }
+      } catch {}
+      // remove any initialization marker so future attempts can reapply if needed
+      if (el.hasAttribute(OS_ATTR)) el.removeAttribute(OS_ATTR);
+    });
+  } catch {}
 }
 
 export function observeOverlayScrollbars() {

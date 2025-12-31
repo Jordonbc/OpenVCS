@@ -1,3 +1,4 @@
+use log::warn;
 use openvcs_core::{backend_id, BackendId};
 use std::sync::Arc;
 use tauri::WindowEvent;
@@ -6,7 +7,12 @@ use tauri_plugin_updater::UpdaterExt;
 
 mod logging;
 mod output_log;
+mod plugin_bundles;
+mod plugin_paths;
+mod plugin_runtime;
+mod plugin_vcs_backends;
 mod plugins;
+mod repo;
 mod repo_settings;
 mod settings;
 mod state;
@@ -16,20 +22,33 @@ mod utilities;
 mod validate;
 mod workarounds;
 
-#[cfg(feature = "with-git")]
-#[allow(unused_imports)]
-use openvcs_git as _;
-
-#[cfg(feature = "with-git-libgit2")]
-#[allow(unused_imports)]
-use openvcs_git_libgit2 as _;
-
 pub const GIT_SYSTEM_ID: BackendId = backend_id!("git-system");
+
+fn preferred_git_backend_id(cfg: &settings::AppConfig) -> Option<BackendId> {
+    let configured = cfg.git.backend.trim();
+    if !configured.is_empty() {
+        return Some(BackendId::from(configured.to_string()));
+    }
+
+    // No configured backend: pick a git backend from enabled plugins (if any exist).
+    let mut git_ids: Vec<String> = Vec::new();
+    if let Ok(plugin_bes) = crate::plugin_vcs_backends::list_plugin_vcs_backends() {
+        for p in plugin_bes {
+            let id = p.backend_id.as_ref();
+            if id.starts_with("git-") {
+                git_ids.push(id.to_string());
+            }
+        }
+    }
+    git_ids.sort();
+    git_ids.dedup();
+    git_ids.into_iter().next().map(BackendId::from)
+}
 
 /// Attempt to reopen the most recent repository at startup if the
 /// global setting `general.reopen_last_repos` is enabled.
 fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
-    use openvcs_core::{backend_descriptor::get_backend, Repo};
+    use crate::repo::Repo;
     use std::path::Path;
 
     let state = app_handle.state::<state::AppState>();
@@ -40,14 +59,17 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
 
     let recents = state.recents();
     if let Some(path) = recents.into_iter().find(|p| p.exists()) {
-        let backend: BackendId = match app_config.git.backend {
-            settings::GitBackend::System => GIT_SYSTEM_ID,
-            settings::GitBackend::Libgit2 => backend_id!("git-libgit2"),
+        let Some(backend) = preferred_git_backend_id(&app_config) else {
+            log::warn!("startup reopen: no git backend available");
+            return;
         };
 
         let path_str = path.to_string_lossy().to_string();
-        match get_backend(&backend) {
-            Some(description) => match (description.open)(Path::new(&path)) {
+        if crate::plugin_vcs_backends::has_plugin_vcs_backend(&backend) {
+            match crate::plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
+                backend,
+                Path::new(&path),
+            ) {
                 Ok(backend_handle) => {
                     let existing_repo = Arc::new(Repo::new(backend_handle));
                     state.set_current_repo(existing_repo);
@@ -56,8 +78,9 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
                     }
                 }
                 Err(error) => log::warn!("startup reopen: failed to open repo: {}", error),
-            },
-            None => log::warn!("startup reopen: unknown backend `{}`", backend),
+            }
+        } else {
+            log::warn!("startup reopen: backend not available");
         }
     }
 }
@@ -67,15 +90,6 @@ pub fn run() {
     // Initialize logging
     logging::init();
 
-    {
-        use openvcs_core::backend_descriptor;
-
-        // (Optional) prove the registry is populated at startup
-        for backend in backend_descriptor::list_backends() {
-            log::info!("backend loaded: {} ({})", backend.id, backend.name);
-        }
-    }
-
     workarounds::apply_linux_nvidia_workaround();
 
     println!("Running OpenVCS...");
@@ -83,8 +97,12 @@ pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::new_with_config())
         .setup(|app| {
+            let store = crate::plugin_bundles::PluginBundleStore::new_default();
+            if let Err(err) = store.sync_built_in_plugins() {
+                warn!("plugins: failed to sync built-in bundles: {}", err);
+            }
             // On startup, optionally reopen the last repository if enabled in settings.
-            try_reopen_last_repo(&app.handle());
+            try_reopen_last_repo(app.handle());
 
             // Optionally check for updates on launch and show custom dialog when available.
             let app_handle = app.handle().clone();
@@ -95,14 +113,11 @@ pub fn run() {
             if check_updates {
                 tauri::async_runtime::spawn(async move {
                     if let Ok(updater) = app_handle.updater() {
-                        match updater.check().await {
-                            Ok(Some(_u)) => {
-                                let _ = app_handle.emit(
-                                    "ui:update-available",
-                                    serde_json::json!({"source":"startup"}),
-                                );
-                            }
-                            _ => {}
+                        if let Ok(Some(_u)) = updater.check().await {
+                            let _ = app_handle.emit(
+                                "ui:update-available",
+                                serde_json::json!({"source":"startup"}),
+                            );
                         }
                     }
                 });
@@ -133,9 +148,10 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::about_info,
         tauri_commands::show_licenses,
         tauri_commands::browse_directory,
+        tauri_commands::browse_file,
         tauri_commands::add_repo,
-        tauri_commands::list_backends_cmd,
-        tauri_commands::set_backend_cmd,
+        tauri_commands::list_vcs_backends_cmd,
+        tauri_commands::set_vcs_backend_cmd,
         tauri_commands::validate_git_url,
         tauri_commands::validate_add_path,
         tauri_commands::validate_clone_input,
@@ -198,6 +214,13 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::load_theme,
         tauri_commands::list_plugins,
         tauri_commands::load_plugin,
+        tauri_commands::install_ovcsp,
+        tauri_commands::list_installed_bundles,
+        tauri_commands::uninstall_plugin,
+        tauri_commands::approve_plugin_capabilities,
+        tauri_commands::list_plugin_functions,
+        tauri_commands::invoke_plugin_function,
+        tauri_commands::call_plugin_module_method,
         tauri_commands::get_global_settings,
         tauri_commands::set_global_settings,
         tauri_commands::get_repo_settings,

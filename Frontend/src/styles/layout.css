@@ -10,6 +10,8 @@
 /* Titlebar */
 .menubar {
     height: 32px;
+    min-height: 32px;
+    max-height: 32px;
     display: flex;
     align-items: center;
     gap: .35rem;
@@ -17,8 +19,12 @@
     border-bottom: 1px solid var(--border);
     background: var(--surface-2);
     user-select: none;
-    position: relative;
-    z-index: 10;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 30;
+    box-sizing: border-box;
+    overflow: visible;
+    will-change: transform;
 }
 .menubar .menu { position: relative; }
 .menubar .menu-trigger {
@@ -53,12 +59,19 @@
 
 .titlebar {
     height: 40px;
+    min-height: 40px;
+    max-height: 40px;
     display: flex;
     align-items: center;
     gap: .6rem;
     padding: 0 .6rem;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
+    position: fixed;
+    top: 32px; left: 0; right: 0;
+    z-index: 25;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 .title-actions { margin-left: auto; display: flex; align-items: center; gap: .45rem; }
 .plugin-title-actions { display: flex; align-items: center; gap: .45rem; }
@@ -81,6 +94,12 @@
     border-bottom: 1px solid var(--border);
     background: var(--surface);
     padding: 0 .5rem; height: 36px;
+    min-height: 36px; max-height: 36px;
+    position: fixed;
+    top: 72px; left: 0; right: 0;
+    z-index: 20;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 .tab {
     border: none; background: transparent; color: var(--muted);
@@ -94,6 +113,10 @@
     flex: 1 1 auto; display: grid;
     grid-template-columns: minmax(320px, 32vw) 6px 1fr;
     min-height: 0; width: 100%; overflow: hidden;
+    /* Reserve vertical space for the fixed header area (menubar + titlebar + tabs)
+       to keep the work area positioned consistently and avoid jumps when
+       header sizes fluctuate. */
+    margin-top: 108px;
 }
 .panel { min-width: 0; min-height: 0; }
 
@@ -112,10 +135,19 @@
     grid-template-rows: auto 1fr auto;
     min-height: 0;
     overflow: hidden;
+    /* Isolate internal layout changes so the rest of the app doesn't reflow
+       when diff content grows/shrinks. */
+    contain: layout paint;
 }
 
-/* ensure nested scroller works */
-.diff { min-height: 0; overflow: auto; }
+/* ensure nested scroller works: make diff fill its grid cell and keep scrollbar
+   space stable so adding/removing content doesn't nudge surrounding layout */
+.diff {
+    min-height: 0;
+    height: 100%;
+    overflow: auto;
+    scrollbar-gutter: stable both-edges;
+}
 
 /* prevent accidental shrinking */
 .panel, .left, .right, .diff { min-width: 0; }

@@ -475,7 +475,9 @@ pub async fn git_undo_since_push<R: Runtime>(
             return Err("Nothing to undo (no unpushed commits)".into());
         }
         let on = progress_bridge(app);
-        on(VcsEvent::Info("Undoing unpushed commits (soft reset)…"));
+        on(VcsEvent::Info {
+            msg: "Undoing unpushed commits (soft reset)…".into(),
+        });
         match repo.inner().reset_soft_to("@{upstream}") {
             Ok(_) => Ok(()),
             Err(_e) => {
@@ -532,7 +534,9 @@ pub async fn git_undo_to_commit<R: Runtime>(
         }
 
         let on = progress_bridge(app);
-        on(VcsEvent::Info("Undoing to selected commit (soft reset)…"));
+        on(VcsEvent::Info {
+            msg: "Undoing to selected commit (soft reset)…".into(),
+        });
         let rev = target.to_string();
         repo.inner()
             .reset_soft_to(&rev)

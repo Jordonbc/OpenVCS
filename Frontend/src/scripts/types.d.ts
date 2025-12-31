@@ -63,7 +63,7 @@ export interface GlobalSettings {
         crash_reports?: boolean;
     };
     git?: {
-        backend?: 'system'|'libgit2'|string;
+        backend?: string;
         default_branch?: string;
         ssh_binary?: 'auto'|'host'|'bundled'|'custom'|string;
         ssh_path?: string;
