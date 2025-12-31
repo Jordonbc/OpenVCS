@@ -95,3 +95,13 @@ jobs:
 
       - name: Cargo check
         run: cargo check
+
+      - name: Install `just`
+        run: |
+          # Install `just` via cargo so it's available on the runner
+          cargo install --locked just || true
+
+      - name: Run `just test`
+        run: |
+          just --version || true
+          just test
