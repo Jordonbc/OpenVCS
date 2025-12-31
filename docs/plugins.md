@@ -86,9 +86,9 @@ window.OpenVCS?.registerPlugin({
 
 When the user clicks one of these items, OpenVCS runs the referenced action with a payload that describes the clicked object (e.g. `payload.paths` / `payload.commit` / `payload.branch`).
 
-### Calling backend plugin RPC from the console
+### Calling plugin module RPC from the console
 
-Backend plugins register RPC methods (e.g. `example.notify.ping`) via `openvcs_core::plugin_runtime::register_delegate`, and you can hit those endpoints from the dev console using the new `window.callPluginMethod` helper (it wraps `call_plugin_method` so you don’t have to go through `window.OpenVCS.invoke` manually). Example:
+Plugin modules register RPC methods (e.g. `example.notify.ping`) via `openvcs_core::plugin_runtime::register_delegate`, and you can hit those endpoints from the dev console using the new `window.callPluginMethod` helper (it wraps `call_plugin_module_method` so you don’t have to go through `window.OpenVCS.invoke` manually). Example:
 
 ```js
 await window.callPluginMethod(
@@ -98,7 +98,7 @@ await window.callPluginMethod(
 );
 ```
 
-The helper spawns the plugin’s backend process, passes the JSON-RPC request, waits for the response, and enforces any requested capabilities (you must have approved them in Settings → Plugins). There’s also a matching API on `window.OpenVCS` (`window.OpenVCS.callPlugin(...)`) if you breezily interact through that object. If you prefer a named shortcut, register a simple global after loading the plugin:
+The helper spawns the plugin’s module process, passes the JSON-RPC request, waits for the response, and enforces any requested capabilities (you must have approved them in Settings → Plugins). There’s also a matching API on `window.OpenVCS` (`window.OpenVCS.callPlugin(...)`) if you breezily interact through that object. If you prefer a named shortcut, register a simple global after loading the plugin:
 
 ```js
 window.example = window.example || {};
@@ -106,7 +106,31 @@ window.example.notify = (message) =>
   window.callPluginMethod('example.notify', 'example.notify.ping', { message });
 ```
 
-After that you can call `example.notify('hi')` in the console, and the helper will forward the call to the backend.
+After that you can call `example.notify('hi')` in the console, and the helper will forward the call to the module.
+
+## Logging from plugin modules (Rust/WASI)
+
+Plugin modules should write logs to **stderr** (never stdout) so they don’t interfere with the JSON message protocol.
+
+To keep plugin crates lightweight, `openvcs-core` provides logging macros so you don’t need to add a logging crate dependency:
+
+```rs
+openvcs_core::trace!("trace details");
+openvcs_core::debug!("debug details");
+openvcs_core::info!("hello from a plugin");
+openvcs_core::warn!("something looks off");
+openvcs_core::error!("something failed");
+```
+
+If you prefer calling them without a prefix, import the macros you use:
+
+```rs
+use openvcs_core::{debug, info, trace};
+
+info!("hello");
+debug!("details");
+trace!("very verbose");
+```
 
 ## Hooks
 

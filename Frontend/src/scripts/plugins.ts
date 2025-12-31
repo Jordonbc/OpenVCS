@@ -431,7 +431,7 @@ function installGlobalApi() {
         method: string,
         params?: Json,
     ) => {
-        return TAURI.invoke('call_plugin_method', {
+        return TAURI.invoke('call_plugin_module_method', {
             pluginId,
             method,
             params: params ?? null,

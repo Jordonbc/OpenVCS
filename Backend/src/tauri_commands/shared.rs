@@ -6,7 +6,7 @@ use openvcs_core::OnEvent;
 use tauri::{async_runtime, AppHandle, Emitter, Manager, Runtime, State};
 
 use crate::output_log::{OutputLevel, OutputLogEntry};
-use crate::plugin_backends;
+use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::settings::Lfs;
 use crate::state::AppState;
@@ -51,7 +51,7 @@ pub(crate) fn current_repo_or_err(state: &State<'_, AppState>) -> Result<Arc<Rep
         .ok_or_else(|| "No repository selected".to_string())?;
 
     let backend_id = repo.id();
-    let is_available = plugin_backends::has_plugin_backend(&backend_id);
+    let is_available = plugin_vcs_backends::has_plugin_vcs_backend(&backend_id);
 
     if !is_available {
         // If the backend disappears (e.g. plugin disabled), prevent further operations on a stale handle.

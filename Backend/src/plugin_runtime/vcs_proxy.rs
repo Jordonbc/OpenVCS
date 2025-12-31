@@ -28,7 +28,7 @@ impl PluginVcsProxy {
         let workdir = repo_path.to_path_buf();
         let spawn = SpawnConfig {
             plugin_id,
-            component_label: format!("backend-{}", backend_id.as_ref()),
+            component_label: format!("vcs-backend-{}", backend_id.as_ref()),
             exec_path,
             args: vec!["--backend".into(), backend_id.as_ref().to_string()],
             workdir: workdir.clone(),

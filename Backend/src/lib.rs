@@ -9,7 +9,7 @@ mod logging;
 mod output_log;
 mod plugin_bundles;
 mod plugin_paths;
-mod plugin_backends;
+mod plugin_vcs_backends;
 mod plugin_runtime;
 mod plugins;
 mod repo_settings;
@@ -32,7 +32,7 @@ fn preferred_git_backend_id(cfg: &settings::AppConfig) -> Option<BackendId> {
 
     // No configured backend: pick a git backend from enabled plugins (if any exist).
     let mut git_ids: Vec<String> = Vec::new();
-    if let Ok(plugin_bes) = crate::plugin_backends::list_plugin_backends() {
+    if let Ok(plugin_bes) = crate::plugin_vcs_backends::list_plugin_vcs_backends() {
         for p in plugin_bes {
             let id = p.backend_id.as_ref();
             if id.starts_with("git-") {
@@ -65,8 +65,11 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
         };
 
         let path_str = path.to_string_lossy().to_string();
-        if crate::plugin_backends::has_plugin_backend(&backend) {
-            match crate::plugin_backends::open_repo_via_plugin_backend(backend, Path::new(&path)) {
+        if crate::plugin_vcs_backends::has_plugin_vcs_backend(&backend) {
+            match crate::plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
+                backend,
+                Path::new(&path),
+            ) {
                 Ok(backend_handle) => {
                     let existing_repo = Arc::new(Repo::new(backend_handle));
                     state.set_current_repo(existing_repo);
@@ -150,8 +153,8 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::browse_directory,
         tauri_commands::browse_file,
         tauri_commands::add_repo,
-        tauri_commands::list_backends_cmd,
-        tauri_commands::set_backend_cmd,
+        tauri_commands::list_vcs_backends_cmd,
+        tauri_commands::set_vcs_backend_cmd,
         tauri_commands::validate_git_url,
         tauri_commands::validate_add_path,
         tauri_commands::validate_clone_input,
@@ -220,7 +223,7 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::approve_plugin_capabilities,
         tauri_commands::list_plugin_functions,
         tauri_commands::invoke_plugin_function,
-        tauri_commands::call_plugin_method,
+        tauri_commands::call_plugin_module_method,
         tauri_commands::get_global_settings,
         tauri_commands::set_global_settings,
         tauri_commands::get_repo_settings,

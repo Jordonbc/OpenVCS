@@ -315,7 +315,11 @@ impl StdioRpcProcess {
 
         let stderr_path =
             plugin_stderr_log_path(&self.spawn.plugin_id, &self.spawn.component_label);
-        std::thread::spawn(move || read_stderr_loop(stderr_reader, stderr_path));
+        let stderr_plugin_id = self.spawn.plugin_id.clone();
+        let stderr_component = self.spawn.component_label.clone();
+        std::thread::spawn(move || {
+            read_stderr_loop(stderr_reader, stderr_path, stderr_plugin_id, stderr_component)
+        });
 
         *self.child.lock().unwrap() = Some(ProcessHandle::Wasm { join, stdin_writer });
         Ok(())
@@ -382,15 +386,47 @@ fn read_stdout_loop(
     }
 }
 
-fn read_stderr_loop(stderr: impl io::Read, path: PathBuf) {
+fn read_stderr_loop(stderr: impl io::Read, path: PathBuf, plugin_id: String, component: String) {
     let reader = BufReader::new(stderr);
     for line in reader.lines().map_while(Result::ok) {
         let _ = append_log_line(&path, &line);
+
+        // Also forward plugin stderr into the main OpenVCS-Client logs.
+        //
+        // openvcs-core's plugin logger prints:
+        //   [INFO] some::target: message
+        // Parse the level prefix when present; otherwise treat it as INFO.
+        let prefix = format!("[plugin:{plugin_id}:{component}] ");
+        if let Some((lvl, rest)) = parse_plugin_stderr_level(&line) {
+            log::log!(lvl, "{}{}", prefix, rest);
+        } else {
+            log::info!("{}{}", prefix, line);
+        }
     }
 }
 
 fn is_wasm_module(path: &Path) -> bool {
     path.extension().and_then(|s| s.to_str()) == Some("wasm")
+}
+
+fn parse_plugin_stderr_level(line: &str) -> Option<(log::Level, &str)> {
+    let line = line.trim();
+    if !line.starts_with('[') {
+        return None;
+    }
+    let end = line.find(']')?;
+    let level = &line[1..end];
+    let level = match level {
+        "ERROR" => log::Level::Error,
+        "WARN" | "WARNING" => log::Level::Warn,
+        "INFO" => log::Level::Info,
+        "DEBUG" => log::Level::Debug,
+        "TRACE" => log::Level::Trace,
+        _ => return None,
+    };
+
+    let rest = line[end + 1..].trim_start();
+    Some((level, rest))
 }
 
 fn approved_caps_and_workspace(spawn: &SpawnConfig) -> (Vec<String>, Option<PathBuf>) {

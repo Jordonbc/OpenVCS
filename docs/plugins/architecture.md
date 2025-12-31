@@ -32,7 +32,7 @@ Notes:
 
 Existing fields like `id`, `name`, `version`, etc. remain unchanged.
 
-This system reuses the existing `backend` section (used by `OpenVCS-Plugin-Git`) and adds:
+This system uses the `module` section (used by `OpenVCS-Plugin-Git`) and adds:
 
 - `capabilities`: string array of requested capabilities.
 - `functions`: optional function component descriptor.
@@ -45,9 +45,12 @@ Example:
   "name": "Git Backends",
   "version": "0.1.0",
   "capabilities": ["workspace.read", "vcs.read", "vcs.write"],
-  "backend": {
+  "module": {
     "exec": "openvcs-git-plugin.wasm",
-    "provides": ["git-system", "git-libgit2"]
+    "vcs_backends": [
+      { "id": "git-system", "name": "System" },
+      { "id": "git-libgit2", "name": "Libgit2" }
+    ]
   },
   "functions": {
     "exec": "openvcs-hello-functions.wasm"
@@ -57,9 +60,9 @@ Example:
 
 ### Component types
 
-- **Provider component** (`backend`): a VCS provider process. It is spawned with:
-  - module: `bin/<backend.exec>` (must end in `.wasm`)
-  - arguments: `--backend <backendId>` for each id in `backend.provides`
+- **Module component** (`module`): a plugin-executed WASI module. It is spawned with:
+  - module: `bin/<module.exec>` (must end in `.wasm`)
+  - arguments: `--backend <backendId>` for each id in `module.vcs_backends`
   - protocol: stdio JSON-RPC using `openvcs_core::plugin_protocol` message types
 - **Function component** (`functions`): a process exposing callable functions/hooks/commands over the same stdio JSON-RPC transport.
 

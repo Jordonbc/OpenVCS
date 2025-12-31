@@ -83,7 +83,7 @@ pub struct InstalledPlugin {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-pub enum BackendProvide {
+pub enum VcsBackendProvide {
     Id(String),
     Named {
         id: String,
@@ -93,11 +93,11 @@ pub enum BackendProvide {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct PluginManifestBackend {
+pub struct PluginManifestModule {
     #[serde(default)]
     pub exec: Option<String>,
     #[serde(default)]
-    pub provides: Vec<BackendProvide>,
+    pub vcs_backends: Vec<VcsBackendProvide>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,9 +114,11 @@ pub struct PluginManifest {
     #[serde(default)]
     pub version: Option<String>,
     #[serde(default)]
+    pub default_enabled: bool,
+    #[serde(default)]
     pub capabilities: Vec<String>,
     #[serde(default)]
-    pub backend: Option<PluginManifestBackend>,
+    pub module: Option<PluginManifestModule>,
     #[serde(default)]
     pub functions: Option<PluginManifestFunctions>,
 }
@@ -184,10 +186,10 @@ pub struct PluginBundleStore {
 }
 
 #[derive(Debug, Clone)]
-pub struct BackendComponent {
+pub struct ModuleComponent {
     pub exec: String,
     pub exec_path: PathBuf,
-    pub provides: Vec<(String, Option<String>)>,
+    pub vcs_backends: Vec<(String, Option<String>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -201,9 +203,10 @@ pub struct InstalledPluginComponents {
     pub plugin_id: String,
     pub name: Option<String>,
     pub version: String,
+    pub default_enabled: bool,
     pub install_dir: PathBuf,
     pub requested_capabilities: Vec<String>,
-    pub backend: Option<BackendComponent>,
+    pub module: Option<ModuleComponent>,
     pub functions: Option<FunctionsComponent>,
 }
 
@@ -445,10 +448,10 @@ impl PluginBundleStore {
             ));
         }
 
-        let (backend_exec, functions_exec) = (
+        let (module_exec, functions_exec) = (
             manifest
-                .backend
-                .and_then(|b| b.exec)
+                .module
+                .and_then(|m| m.exec)
                 .map(|s| s.trim().to_string()),
             manifest
                 .functions
@@ -456,7 +459,7 @@ impl PluginBundleStore {
                 .map(|s| s.trim().to_string()),
         );
 
-        validate_entrypoint(&staging_version_dir, backend_exec.as_deref(), "backend")?;
+        validate_entrypoint(&staging_version_dir, module_exec.as_deref(), "module")?;
         validate_entrypoint(&staging_version_dir, functions_exec.as_deref(), "functions")?;
 
         // Promote staged version into place (flat layout, drop old version directory).
@@ -706,24 +709,24 @@ impl PluginBundleStore {
 
         let requested_capabilities = normalize_capabilities(manifest.capabilities.clone());
 
-        let backend = manifest.backend.and_then(|b| {
-            let exec = b.exec?.trim().to_string();
+        let module = manifest.module.and_then(|m| {
+            let exec = m.exec?.trim().to_string();
             if exec.is_empty() {
                 return None;
             }
             let exec_path = version_dir.join("bin").join(platform_exec_name(&exec));
-            Some(BackendComponent {
+            Some(ModuleComponent {
                 exec,
                 exec_path,
-                provides: b
-                    .provides
+                vcs_backends: m
+                    .vcs_backends
                     .into_iter()
                     .filter_map(|p| match p {
-                        BackendProvide::Id(id) => {
+                        VcsBackendProvide::Id(id) => {
                             let id = id.trim().to_string();
                             (!id.is_empty()).then_some((id, None))
                         }
-                        BackendProvide::Named { id, name } => {
+                        VcsBackendProvide::Named { id, name } => {
                             let id = id.trim().to_string();
                             if id.is_empty() {
                                 return None;
@@ -750,8 +753,8 @@ impl PluginBundleStore {
         });
 
         // Validate that declared entrypoints exist (defense-in-depth; installer should have ensured).
-        if let Some(b) = &backend {
-            validate_entrypoint(&version_dir, Some(&b.exec), "backend")?;
+        if let Some(m) = &module {
+            validate_entrypoint(&version_dir, Some(&m.exec), "module")?;
         }
         if let Some(f) = &functions {
             validate_entrypoint(&version_dir, Some(&f.exec), "functions")?;
@@ -764,9 +767,10 @@ impl PluginBundleStore {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
             version,
+            default_enabled: manifest.default_enabled,
             install_dir: version_dir,
             requested_capabilities,
-            backend,
+            module,
             functions,
         }))
     }
@@ -1231,7 +1235,7 @@ mod tests {
             name: "test.plugin/openvcs.plugin.json".into(),
             data: basic_manifest(
                 "test.plugin",
-                ",\"backend\":{\"exec\":\"missing\",\"provides\":[\"x\"]}",
+                ",\"module\":{\"exec\":\"missing.wasm\",\"vcs_backends\":[\"x\"]}",
             ),
             unix_mode: None,
             method: CompressionMethod::Stored,

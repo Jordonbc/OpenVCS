@@ -137,7 +137,7 @@ pub fn invoke_plugin_function(
 }
 
 #[tauri::command]
-pub fn call_plugin_method(
+pub fn call_plugin_module_method(
     plugin_id: String,
     method: String,
     params: Option<Value>,
@@ -146,8 +146,8 @@ pub fn call_plugin_method(
     let Some(components) = store.load_current_components(plugin_id.trim())? else {
         return Err("plugin not installed".to_string());
     };
-    let Some(backend) = components.backend else {
-        return Err("plugin has no backend component".to_string());
+    let Some(module) = components.module else {
+        return Err("plugin has no module component".to_string());
     };
 
     let installed = store
@@ -162,8 +162,8 @@ pub fn call_plugin_method(
     let rpc = StdioRpcProcess::new(
         SpawnConfig {
             plugin_id: components.plugin_id,
-            component_label: "backend".into(),
-            exec_path: backend.exec_path,
+            component_label: "module".into(),
+            exec_path: module.exec_path,
             args: Vec::new(),
             workdir: components.install_dir,
             requested_capabilities: installed.requested_capabilities,

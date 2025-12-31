@@ -1,4 +1,4 @@
-use crate::plugin_bundles::{ApprovalState, BackendProvide, PluginBundleStore, PluginManifest};
+use crate::plugin_bundles::{ApprovalState, PluginBundleStore, PluginManifest, VcsBackendProvide};
 use crate::plugin_paths::{built_in_plugin_dirs, PLUGIN_MANIFEST_NAME};
 use crate::plugin_runtime::vcs_proxy::PluginVcsProxy;
 use crate::settings::AppConfig;
@@ -12,7 +12,7 @@ use std::{
     sync::Arc,
 };
 
-fn is_plugin_enabled_in_settings(plugin_id: &str) -> bool {
+fn is_plugin_enabled_in_settings(plugin_id: &str, default_enabled: bool) -> bool {
     let plugin_id = plugin_id.trim().to_lowercase();
     if plugin_id.is_empty() {
         return false;
@@ -41,7 +41,7 @@ fn is_plugin_enabled_in_settings(plugin_id: &str) -> bool {
     if !enabled.is_empty() {
         enabled.iter().any(|id| id == &plugin_id)
     } else {
-        true
+        default_enabled
     }
 }
 
@@ -95,16 +95,16 @@ fn builtin_plugin_manifests() -> Vec<(PathBuf, PluginManifest)> {
     out
 }
 
-pub fn list_plugin_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
+pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
     let store = PluginBundleStore::new_default();
     let plugins = store.list_current_components()?;
     let mut map: BTreeMap<String, PluginBackendDescriptor> = BTreeMap::new();
 
     for p in plugins {
-        if !is_plugin_enabled_in_settings(&p.plugin_id) {
+        if !is_plugin_enabled_in_settings(&p.plugin_id, p.default_enabled) {
             continue;
         }
-        let Some(backend) = p.backend else {
+        let Some(module) = p.module else {
             continue;
         };
         let installed = store
@@ -117,7 +117,7 @@ pub fn list_plugin_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
                 approval: ApprovalState::Pending,
             });
 
-        for (id, name) in backend.provides {
+        for (id, name) in module.vcs_backends {
             let backend_id = BackendId::from(id.as_str());
             let key = backend_id.as_ref().to_string();
             map.insert(
@@ -127,7 +127,7 @@ pub fn list_plugin_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
                     backend_name: name,
                     plugin_id: p.plugin_id.clone(),
                     plugin_name: p.name.clone(),
-                    exec_path: backend.exec_path.clone(),
+                    exec_path: module.exec_path.clone(),
                     requested_capabilities: installed.requested_capabilities.clone(),
                     approval: installed.approval.clone(),
                 },
@@ -140,13 +140,13 @@ pub fn list_plugin_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
         if plugin_id.is_empty() {
             continue;
         }
-        if !is_plugin_enabled_in_settings(plugin_id) {
+        if !is_plugin_enabled_in_settings(plugin_id, manifest.default_enabled) {
             continue;
         }
-        let Some(backend) = &manifest.backend else {
+        let Some(module) = &manifest.module else {
             continue;
         };
-        let Some(exec_name) = backend
+        let Some(exec_name) = module
             .exec
             .as_deref()
             .map(str::trim)
@@ -157,7 +157,7 @@ pub fn list_plugin_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
         let exec_path = plugin_dir.join("bin").join(exec_name);
         if !exec_path.is_file() {
             warn!(
-                "plugin_backends: built-in plugin {} is missing exec {}",
+                "plugin_vcs_backends: built-in plugin {} is missing module exec {}",
                 plugin_id,
                 exec_path.display()
             );
@@ -166,10 +166,10 @@ pub fn list_plugin_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
         let requested_capabilities = normalize_capabilities(manifest.capabilities.clone());
         let approval_caps = requested_capabilities.clone();
         let plugin_name = manifest.name.clone();
-        for provide in &backend.provides {
+        for provide in &module.vcs_backends {
             let (id, label) = match provide {
-                BackendProvide::Id(id) => (id.clone(), None),
-                BackendProvide::Named { id, name } => (id.clone(), name.clone()),
+                VcsBackendProvide::Id(id) => (id.clone(), None),
+                VcsBackendProvide::Named { id, name } => (id.clone(), name.clone()),
             };
             let backend_id = BackendId::from(id.as_str());
             let key = backend_id.as_ref().to_string();
@@ -197,16 +197,19 @@ pub fn list_plugin_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
     Ok(map.into_values().collect())
 }
 
-pub fn has_plugin_backend(backend_id: &BackendId) -> bool {
-    list_plugin_backends().ok().is_some_and(|v| {
+pub fn has_plugin_vcs_backend(backend_id: &BackendId) -> bool {
+    list_plugin_vcs_backends().ok().is_some_and(|v| {
         v.iter()
             .any(|b| b.backend_id.as_ref() == backend_id.as_ref())
     })
 }
 
-pub fn open_repo_via_plugin_backend(backend_id: BackendId, path: &Path) -> VcsResult<Arc<dyn Vcs>> {
+pub fn open_repo_via_plugin_vcs_backend(
+    backend_id: BackendId,
+    path: &Path,
+) -> VcsResult<Arc<dyn Vcs>> {
     let backend_id_for_err = backend_id.clone();
-    let list = list_plugin_backends().map_err(|e| VcsError::Backend {
+    let list = list_plugin_vcs_backends().map_err(|e| VcsError::Backend {
         backend: backend_id_for_err,
         msg: e,
     })?;

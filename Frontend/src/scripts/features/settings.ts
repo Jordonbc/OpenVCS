@@ -262,7 +262,7 @@ export function wireSettings() {
                 const newBackend: string = String(next?.git?.backend || 'system');
                 if (newBackend && newBackend !== prevBackend) {
                     const backend_id = (newBackend === 'libgit2') ? 'git-libgit2' : 'git-system';
-                    try { await TAURI.invoke('set_backend_cmd', { backend_id }); } catch {}
+                    try { await TAURI.invoke('set_vcs_backend_cmd', { backend_id }); } catch {}
                 }
             }
 
@@ -561,7 +561,7 @@ async function refreshGitBackendOptions(modal: HTMLElement, cfg: GlobalSettings)
     let available: Array<[string, string]> = [];
     if (TAURI.has) {
         try {
-            available = await TAURI.invoke<Array<[string, string]>>('list_backends_cmd');
+            available = await TAURI.invoke<Array<[string, string]>>('list_vcs_backends_cmd');
         } catch {}
     }
 

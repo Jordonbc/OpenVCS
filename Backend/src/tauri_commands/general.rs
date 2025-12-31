@@ -9,7 +9,7 @@ use tauri_plugin_updater::UpdaterExt;
 
 use openvcs_core::{backend_id, BackendId};
 
-use crate::plugin_backends;
+use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::state::AppState;
 use crate::utilities::utilities;
@@ -91,11 +91,11 @@ pub async fn add_repo_internal<R: Runtime>(
 
     let open_path = path.clone();
     let backend_label = backend_id.as_ref().to_string();
-    let prefer_plugin = plugin_backends::has_plugin_backend(&backend_id);
+    let prefer_plugin = plugin_vcs_backends::has_plugin_vcs_backend(&backend_id);
     let backend_id_for_task = backend_id.clone();
     let handle = async_runtime::spawn_blocking(move || {
         if prefer_plugin {
-            plugin_backends::open_repo_via_plugin_backend(
+            plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
                 backend_id_for_task,
                 Path::new(&open_path),
             )
@@ -138,7 +138,7 @@ pub async fn clone_repo<R: Runtime>(
     backend_id: Option<BackendId>,
 ) -> Result<(), String> {
     let be = backend_id.unwrap_or_else(|| backend_id!("git-system"));
-    let _prefer_plugin = plugin_backends::has_plugin_backend(&be);
+    let _prefer_plugin = plugin_vcs_backends::has_plugin_vcs_backend(&be);
 
     let folder = infer_repo_dir_from_url(&url);
     if folder.is_empty() {
