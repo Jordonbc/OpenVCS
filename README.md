@@ -191,6 +191,8 @@ OpenVCS is **open source** and community‑driven. Contributions of all kinds ar
 Formatting requirement (Rust):
 - Run `cargo fmt --all` before pushing.
 - CI enforces `cargo fmt --all -- --check` and will fail if formatting is off.
+- CI also runs `cargo clippy --all-targets -- -D warnings` and will fail on warnings.
+Convenience (if you have `just` installed): `just fix`
 
 > See `CONTRIBUTING.md` (coming soon). Until then, feel free to open an issue or a discussion to propose changes.
 

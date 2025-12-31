@@ -70,6 +70,7 @@ Run commands from the **workspace root** unless stated otherwise.
 - **Rust:** Stable toolchain, idiomatic Rust, small crates with clear ownership boundaries.
 - **TypeScript:** Strict TS in `Frontend/`.
 - **Formatting:** Use default `rustfmt`; ESLint rules for TS (to be added; assume defaults).
+- **Linting:** Keep `cargo clippy --all-targets -- -D warnings` clean (CI runs this after rustfmt).
 - **Commits:** Conventional style, e.g., `backend:`, `frontend:`, `core:`, `git:`.
 - **License:** All contributions under **GPL‑3.0**.
 
@@ -87,6 +88,7 @@ Run commands from the **workspace root** unless stated otherwise.
 
 ## Testing & CI
 
+- CI runs `cargo fmt --all -- --check` followed by `cargo clippy --all-targets -- -D warnings`.
 - No formal tests yet. Avoid adding test scaffolding without a maintainer proposal.
 
 ## Contribution Flow
