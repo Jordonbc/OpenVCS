@@ -7,7 +7,7 @@ use tauri::{async_runtime, Emitter, Manager, Runtime, State, Window};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 
-use openvcs_core::{backend_id, BackendId};
+use openvcs_core::BackendId;
 
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
@@ -68,7 +68,7 @@ pub async fn add_repo<R: Runtime>(
     path: String,
     backend_id: Option<BackendId>,
 ) -> Result<(), String> {
-    let be = backend_id.unwrap_or_else(|| backend_id!("git-system"));
+    let be = backend_id.unwrap_or_else(|| BackendId::from("git-system"));
     add_repo_internal(window, state, path, be).await
 }
 
@@ -137,7 +137,7 @@ pub async fn clone_repo<R: Runtime>(
     dest: String,
     backend_id: Option<BackendId>,
 ) -> Result<(), String> {
-    let be = backend_id.unwrap_or_else(|| backend_id!("git-system"));
+    let be = backend_id.unwrap_or_else(|| BackendId::from("git-system"));
     let _prefer_plugin = plugin_vcs_backends::has_plugin_vcs_backend(&be);
 
     let folder = infer_repo_dir_from_url(&url);
@@ -148,7 +148,7 @@ pub async fn clone_repo<R: Runtime>(
 
     fs::create_dir_all(&dest).map_err(|e| format!("Failed to create dest: {e}"))?;
 
-    let clone_url = url.clone();
+    let _clone_url = url.clone();
     let clone_target = target.clone();
     let be_label = be.as_ref().to_string();
     let app_handle = window.app_handle().clone();
@@ -226,7 +226,7 @@ pub async fn open_repo<R: Runtime>(
     path: String,
     backend_id: Option<BackendId>,
 ) -> Result<(), String> {
-    let be = backend_id.unwrap_or_else(|| backend_id!("git-system"));
+    let be = backend_id.unwrap_or_else(|| BackendId::from("git-system"));
     add_repo_internal(window, state, path, be).await
 }
 
@@ -245,6 +245,7 @@ pub fn open_repo_dotfile<R: Runtime>(
     if !path.exists() {
         fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(&path)
             .map_err(|e| format!("Unable to create file: {e}"))?;
