@@ -63,6 +63,11 @@ jobs:
       # ---------- Rust toolchain & deps ----------
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
+        with:
+          components: rustfmt
+
+      - name: Cargo fmt (check)
+        run: cargo fmt --all -- --check
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9

@@ -318,7 +318,12 @@ impl StdioRpcProcess {
         let stderr_plugin_id = self.spawn.plugin_id.clone();
         let stderr_component = self.spawn.component_label.clone();
         std::thread::spawn(move || {
-            read_stderr_loop(stderr_reader, stderr_path, stderr_plugin_id, stderr_component)
+            read_stderr_loop(
+                stderr_reader,
+                stderr_path,
+                stderr_plugin_id,
+                stderr_component,
+            )
         });
 
         *self.child.lock().unwrap() = Some(ProcessHandle::Wasm { join, stdin_writer });

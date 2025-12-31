@@ -44,7 +44,10 @@ pub async fn set_vcs_backend_cmd(
     state: State<'_, AppState>,
     backend_id: BackendId,
 ) -> Result<(), String> {
-    info!("set_vcs_backend_cmd: requested VCS backend = {}", backend_id);
+    info!(
+        "set_vcs_backend_cmd: requested VCS backend = {}",
+        backend_id
+    );
 
     let prefer_plugin = plugin_vcs_backends::has_plugin_vcs_backend(&backend_id);
     if !prefer_plugin {

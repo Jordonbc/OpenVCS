@@ -188,6 +188,10 @@ OpenVCS is **open source** and community‑driven. Contributions of all kinds ar
 - Backend adapters for other VCS
 - Theme prototypes and early plugin experiments
 
+Formatting requirement (Rust):
+- Run `cargo fmt --all` before pushing.
+- CI enforces `cargo fmt --all -- --check` and will fail if formatting is off.
+
 > See `CONTRIBUTING.md` (coming soon). Until then, feel free to open an issue or a discussion to propose changes.
 
 ### Proposed Roadmap (High‑level)

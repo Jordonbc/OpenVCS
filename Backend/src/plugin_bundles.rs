@@ -1,6 +1,4 @@
-use crate::plugin_paths::{
-    built_in_plugin_dirs, ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME,
-};
+use crate::plugin_paths::{built_in_plugin_dirs, ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME};
 use log::warn;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -534,8 +532,8 @@ impl PluginBundleStore {
         let bundle_sha256 = sha256_hex_file(bundle_path)?;
         let file = fs::File::open(bundle_path)
             .map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
-        let mut zip = ZipArchive::new(file)
-            .map_err(|e| format!("read {}: {e}", bundle_path.display()))?;
+        let mut zip =
+            ZipArchive::new(file).map_err(|e| format!("read {}: {e}", bundle_path.display()))?;
         let (_manifest_path, manifest) = locate_manifest(&mut zip)?;
         let plugin_id = manifest.id.trim();
         if plugin_id.is_empty() {
@@ -924,9 +922,7 @@ fn locate_manifest<R: Read + Seek>(
     let mut manifest_json: Option<Vec<u8>> = None;
 
     for i in 0..zip.len() {
-        let mut entry = zip
-            .by_index(i)
-            .map_err(|e| format!("zip entry {i}: {e}"))?;
+        let mut entry = zip.by_index(i).map_err(|e| format!("zip entry {i}: {e}"))?;
         let raw_name = entry.name().to_string();
         let name = sanitize_zip_name(&raw_name)?;
 
@@ -953,8 +949,8 @@ fn locate_manifest<R: Read + Seek>(
         }
     }
 
-    let manifest_zip_path = manifest_zip_path
-        .ok_or_else(|| format!("bundle is missing {PLUGIN_MANIFEST_NAME}"))?;
+    let manifest_zip_path =
+        manifest_zip_path.ok_or_else(|| format!("bundle is missing {PLUGIN_MANIFEST_NAME}"))?;
     let manifest_json = manifest_json.expect("manifest bytes to exist");
 
     let manifest: PluginManifest = serde_json::from_slice(&manifest_json)
