@@ -75,6 +75,9 @@ Run commands from the **workspace root** unless stated otherwise.
 - **Formatting:** Use default `rustfmt`; ESLint rules for TS (to be added; assume defaults).
 - **Linting:** Keep `cargo clippy --all-targets -- -D warnings` clean (CI runs this after rustfmt).
 - **Commits:** Conventional style, e.g., `backend:`, `frontend:`, `core:`, `git:`.
+- Commit message format: agents must format commit messages with a short
+  title of at most 72 characters, followed by a blank line and any
+  additional explanatory text in the body.
 - **License:** All contributions under **GPL‑3.0**.
 
 ## Architecture Notes
