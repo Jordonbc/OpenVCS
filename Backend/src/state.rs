@@ -73,11 +73,7 @@ impl AppState {
         s
     }
 
-    /// Persist current config to disk.
-    pub fn save_config(&self) -> Result<(), String> {
-        let cfg = self.config.read().clone();
-        cfg.save().map_err(|e| e.to_string())
-    }
+    // Persist current config to disk.
 
     /* -------- config access -------- */
 
@@ -137,29 +133,7 @@ impl AppState {
         self.output_log.write().clear();
     }
 
-    /// Transactional edit: clone → mutate → validate → save → swap.
-    /// Keep the closure FAST (no blocking/async in here).
-    pub fn edit_config<F>(&self, f: F) -> Result<(), String>
-    where
-        F: FnOnce(&mut AppConfig),
-    {
-        let cur = self.config.read().clone();
-        let mut next = cur.clone();
-        f(&mut next);
-        next.migrate();
-        next.validate();
-        next.save().map_err(|e| e.to_string())?;
-        apply_git_ssh_env(&next);
-        *self.config.write() = next;
-        self.enforce_recents_limit_and_persist();
-        Ok(())
-    }
-
     /* -------- repo lifecycle -------- */
-
-    pub fn has_repo(&self) -> bool {
-        self.current_repo.read().is_some()
-    }
 
     pub fn set_current_repo(&self, repo: Arc<Repo>) {
         let path = repo.inner().workdir().to_path_buf();
@@ -241,32 +215,29 @@ fn load_recents_from_disk() -> Result<Vec<PathBuf>, String> {
 
     // Accept: [ { path }, ... ] or ["/path", ...]
     let mut out: Vec<PathBuf> = Vec::new();
-    match serde_json::from_str::<serde_json::Value>(&data) {
-        Ok(serde_json::Value::Array(items)) => {
-            for it in items {
-                match it {
-                    serde_json::Value::String(s) => {
+    if let Ok(serde_json::Value::Array(items)) = serde_json::from_str::<serde_json::Value>(&data) {
+        for it in items {
+            match it {
+                serde_json::Value::String(s) => {
+                    if !s.trim().is_empty() {
+                        out.push(PathBuf::from(s));
+                    }
+                }
+                serde_json::Value::Object(map) => {
+                    if let Some(serde_json::Value::String(s)) = map.get("path") {
                         if !s.trim().is_empty() {
                             out.push(PathBuf::from(s));
                         }
                     }
-                    serde_json::Value::Object(map) => {
-                        if let Some(serde_json::Value::String(s)) = map.get("path") {
-                            if !s.trim().is_empty() {
-                                out.push(PathBuf::from(s));
-                            }
-                        }
-                    }
-                    _ => {}
                 }
+                _ => {}
             }
         }
-        _ => {}
     }
     Ok(out)
 }
 
-fn save_recents_to_disk(list: &Vec<PathBuf>) -> Result<(), String> {
+fn save_recents_to_disk(list: &[PathBuf]) -> Result<(), String> {
     let p = recents_file_path();
     if let Some(parent) = p.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;

@@ -102,7 +102,7 @@ pub fn run() {
                 warn!("plugins: failed to sync built-in bundles: {}", err);
             }
             // On startup, optionally reopen the last repository if enabled in settings.
-            try_reopen_last_repo(&app.handle());
+            try_reopen_last_repo(app.handle());
 
             // Optionally check for updates on launch and show custom dialog when available.
             let app_handle = app.handle().clone();
@@ -113,14 +113,11 @@ pub fn run() {
             if check_updates {
                 tauri::async_runtime::spawn(async move {
                     if let Ok(updater) = app_handle.updater() {
-                        match updater.check().await {
-                            Ok(Some(_u)) => {
-                                let _ = app_handle.emit(
-                                    "ui:update-available",
-                                    serde_json::json!({"source":"startup"}),
-                                );
-                            }
-                            _ => {}
+                        if let Ok(Some(_u)) = updater.check().await {
+                            let _ = app_handle.emit(
+                                "ui:update-available",
+                                serde_json::json!({"source":"startup"}),
+                            );
                         }
                     }
                 });

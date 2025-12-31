@@ -6,7 +6,7 @@ pub struct RemoteConfig {
     pub url: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RepoConfig {
     /// Repository-local user.name (if set)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -21,15 +21,4 @@ pub struct RepoConfig {
     /// ensure these exist and remove any others.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remotes: Option<Vec<RemoteConfig>>,
-}
-
-impl Default for RepoConfig {
-    fn default() -> Self {
-        Self {
-            user_name: None,
-            user_email: None,
-            origin_url: None,
-            remotes: None,
-        }
-    }
 }

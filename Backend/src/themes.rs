@@ -1,10 +1,6 @@
 use log::warn;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashSet,
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashSet, fs, path::Path};
 
 use crate::plugins;
 
@@ -12,6 +8,7 @@ const MANIFEST_NAME: &str = "theme.json";
 
 pub const DEFAULT_THEME_ID: &str = "default";
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ThemeSource {
@@ -199,9 +196,7 @@ fn namespaced_plugin_paired_with(plugin_id: &str, paired_with: &str) -> String {
     }
 
     let prefix = format!("{}.", plugin_id.trim());
-    if trimmed.starts_with(&prefix) {
-        trimmed.to_string()
-    } else if trimmed.contains('.') {
+    if trimmed.starts_with(&prefix) || trimmed.contains('.') {
         trimmed.to_string()
     } else {
         namespaced_plugin_theme_id(plugin_id, trimmed)

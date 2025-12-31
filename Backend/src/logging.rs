@@ -77,7 +77,7 @@ pub fn init() {
     let console_logger = builder.build();
 
     // Ensure ./logs exists and rotate existing openvcs.log into a timestamped .zip archive
-    let logfile = (|| -> Option<std::fs::File> {
+    let logfile = {
         let dir = std::path::Path::new("logs");
         let _ = fs::create_dir_all(dir); // best effort
 
@@ -92,7 +92,7 @@ pub fn init() {
             .truncate(true)
             .open(active)
             .ok()
-    })();
+    };
 
     if let Some(file) = logfile {
         let file = Arc::new(Mutex::new(file));
