@@ -14,6 +14,9 @@
 - After applying a patch, run only read-only verification commands unless explicitly approved.
 - If a shell-write is ever proposed, replace it with `apply_patch` before proceeding.
 
+- After applying a patch, run `just fix` (the project Justfile target) to auto-fix formatting, lint, and other small issues before committing.
+- Commit changes locally with a clear, conventional commit message, but do NOT push to any remote; leave pushing/PR creation to a human maintainer.
+
 
 ## Project Summary
 
