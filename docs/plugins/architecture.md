@@ -6,12 +6,12 @@ This document describes OpenVCS’s **secure, out-of-process** plugin system for
 
 - The OpenVCS-Client process **never loads third-party dynamic libraries** and **never runs third-party plugin code in-process**.
 - Every plugin component executes **out-of-process** and communicates over **JSON-RPC (line-delimited JSON) via stdio**.
-- Plugins are **installed (unpacked) before execution**; nothing executes directly from inside a ZIP archive.
+- Plugins are **installed (unpacked) before execution**; nothing executes directly from inside a tar.xz archive.
 - The bundle manifest uses the existing `openvcs.plugin.json` format and extends it minimally.
 
 ## Bundle format
 
-An `.ovcsp` is a ZIP archive containing exactly one top-level plugin folder named by plugin id:
+An `.ovcsp` is a tar.xz archive containing exactly one top-level plugin folder named by plugin id:
 
 ```
 <pluginId>/
@@ -26,7 +26,7 @@ An `.ovcsp` is a ZIP archive containing exactly one top-level plugin folder name
 Notes:
 
 - Bundles are currently **platform-specific** (a bundle contains binaries for one OS/arch).
-- ZIP entry paths must be relative and use `/` separators (the installer normalizes and validates).
+- Bundle entry paths must be relative and use `/` separators (the installer normalizes and validates).
 
 ## Manifest (`openvcs.plugin.json`)
 

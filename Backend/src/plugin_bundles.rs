@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::io::{Read, Seek, Write};
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
-use zip::ZipArchive;
+use xz2::read::XzDecoder;
 
 #[derive(Debug, Clone, Copy)]
 pub struct InstallerLimits {
@@ -145,38 +145,32 @@ fn sha256_hex_file(path: &Path) -> Result<String, String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn sanitize_zip_name(name: &str) -> Result<PathBuf, String> {
+fn sanitize_tar_name(name: &str) -> Result<PathBuf, String> {
     if name.contains('\0') {
-        return Err("zip entry contains NUL".to_string());
+        return Err("tar entry contains NUL".to_string());
     }
     let normalized = name.replace('\\', "/");
     if normalized.starts_with('/') {
-        return Err(format!("zip entry has an absolute path: {name}"));
+        return Err(format!("tar entry has an absolute path: {name}"));
     }
-    // Reject Windows-style drive prefixes even on Unix hosts (e.g. "C:/...").
     if normalized.len() >= 2 && normalized.as_bytes()[1] == b':' {
-        return Err(format!("zip entry has a drive prefix: {name}"));
+        return Err(format!("tar entry has a drive prefix: {name}"));
     }
     let p = Path::new(&normalized);
 
     for c in p.components() {
         match c {
             Component::Prefix(_) | Component::RootDir => {
-                return Err(format!("zip entry has an absolute path: {name}"));
+                return Err(format!("tar entry has an absolute path: {name}"));
             }
             Component::ParentDir => {
-                return Err(format!("zip entry contains '..': {name}"));
+                return Err(format!("tar entry contains '..': {name}"));
             }
             _ => {}
         }
     }
 
     Ok(p.to_path_buf())
-}
-
-fn is_zip_symlink<R: Read>(file: &zip::read::ZipFile<'_, R>) -> bool {
-    // Unix symlink bit: 0120000 (S_IFLNK)
-    file.unix_mode().is_some_and(|m| (m & 0o170000) == 0o120000)
 }
 
 pub struct PluginBundleStore {
@@ -241,26 +235,27 @@ impl PluginBundleStore {
             .map_err(|e| format!("create {}: {e}", self.root.display()))?;
 
         let bundle_sha256 = sha256_hex_file(bundle_path)?;
-        let f = fs::File::open(bundle_path)
-            .map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
-        let mut zip = ZipArchive::new(f).map_err(|e| format!("read zip: {e}"))?;
-        let (manifest_zip_path, manifest) = locate_manifest(&mut zip)?;
+        let bundle_compressed_bytes = fs::metadata(bundle_path)
+            .map_err(|e| format!("metadata {}: {e}", bundle_path.display()))?
+            .len();
+
+        let (manifest_bundle_path, manifest) = locate_manifest_tar_xz(bundle_path)?;
         let plugin_id = manifest.id.trim().to_string();
         if plugin_id.is_empty() {
             return Err("manifest id is empty".to_string());
         }
 
         // Enforce that the top-level directory name matches the manifest id.
-        let zip_root = manifest_zip_path
+        let bundle_root = manifest_bundle_path
             .parent()
             .and_then(|p| p.file_name())
             .and_then(|s| s.to_str())
             .unwrap_or_default()
             .to_string();
-        if zip_root != plugin_id {
+        if bundle_root != plugin_id {
             return Err(format!(
                 "bundle root folder '{}' does not match manifest id '{}'",
-                zip_root, plugin_id
+                bundle_root, plugin_id
             ));
         }
 
@@ -286,13 +281,27 @@ impl PluginBundleStore {
             .map_err(|e| format!("canonicalize {}: {e}", staging_version_dir.display()))?;
 
         // Extract all entries under `<pluginId>/...` into the staging version directory.
-        for i in 0..zip.len() {
-            let mut entry = zip.by_index(i).map_err(|e| format!("zip entry {i}: {e}"))?;
-            let raw_name = entry.name().to_string();
-            let name = sanitize_zip_name(&raw_name)?;
+        let f = fs::File::open(bundle_path).map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
+        let decoder = XzDecoder::new(f);
+        let mut tar = tar::Archive::new(decoder);
 
-            // Reject symlinks outright.
-            if is_zip_symlink(&entry) {
+        for entry in tar.entries().map_err(|e| format!("read tar: {e}"))? {
+            let mut entry = entry.map_err(|e| format!("tar entry: {e}"))?;
+            let entry_type = entry.header().entry_type();
+            let declared_size = entry
+                .header()
+                .size()
+                .map_err(|e| format!("read tar header size: {e}"))?;
+
+            #[cfg(unix)]
+            let mut unix_mode = entry.header().mode().unwrap_or(0o644) & 0o777;
+
+            let raw_path = entry.path().map_err(|e| format!("tar entry path: {e}"))?;
+            let raw_name = raw_path.to_string_lossy().to_string();
+            let name = sanitize_tar_name(&raw_name)?;
+
+            // Reject symlinks/hardlinks outright.
+            if entry_type.is_symlink() || entry_type.is_hard_link() {
                 return Err(format!("bundle contains a symlink entry: {}", raw_name));
             }
 
@@ -318,16 +327,20 @@ impl PluginBundleStore {
                 continue;
             }
 
-            if entry.is_dir() {
+            if entry_type.is_dir() {
                 let dir_path = staging_version_dir.join(&stripped);
                 fs::create_dir_all(&dir_path)
                     .map_err(|e| format!("create {}: {e}", dir_path.display()))?;
                 let dir_canon = fs::canonicalize(&dir_path)
                     .map_err(|e| format!("canonicalize {}: {e}", dir_path.display()))?;
                 if !dir_canon.starts_with(&root_canon) {
-                    return Err("zip extraction escaped install directory".to_string());
+                    return Err("tar extraction escaped install directory".to_string());
                 }
                 continue;
+            }
+
+            if !entry_type.is_file() {
+                return Err(format!("unsupported tar entry type: {}", raw_name));
             }
 
             total_files += 1;
@@ -338,26 +351,11 @@ impl PluginBundleStore {
                 ));
             }
 
-            let declared_size = entry.size();
             if declared_size > limits.max_file_bytes {
                 return Err(format!(
                     "bundle contains an oversized file ({} bytes, max {})",
                     declared_size, limits.max_file_bytes
                 ));
-            }
-
-            let compressed = entry.compressed_size();
-            let ratio = if compressed == 0 {
-                if declared_size == 0 {
-                    1
-                } else {
-                    u64::MAX
-                }
-            } else {
-                (declared_size / compressed).max(1)
-            };
-            if ratio > limits.max_compression_ratio && declared_size > 1024 * 1024 {
-                return Err("bundle rejected due to suspicious compression ratio".to_string());
             }
 
             total_uncompressed = total_uncompressed
@@ -370,6 +368,12 @@ impl PluginBundleStore {
                 ));
             }
 
+            let compressed = bundle_compressed_bytes.max(1);
+            let ratio = (total_uncompressed / compressed).max(1);
+            if ratio > limits.max_compression_ratio && total_uncompressed > 1024 * 1024 {
+                return Err("bundle rejected due to suspicious compression ratio".to_string());
+            }
+
             let out_path = staging_version_dir.join(&stripped);
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent)
@@ -377,7 +381,7 @@ impl PluginBundleStore {
                 let parent_canon = fs::canonicalize(parent)
                     .map_err(|e| format!("canonicalize {}: {e}", parent.display()))?;
                 if !parent_canon.starts_with(&root_canon) {
-                    return Err("zip extraction escaped install directory".to_string());
+                    return Err("tar extraction escaped install directory".to_string());
                 }
             }
 
@@ -390,7 +394,7 @@ impl PluginBundleStore {
             let mut written = 0u64;
             let mut buf = [0u8; 8192];
             loop {
-                let n = entry.read(&mut buf).map_err(|e| format!("read zip: {e}"))?;
+                let n = entry.read(&mut buf).map_err(|e| format!("read tar: {e}"))?;
                 if n == 0 {
                     break;
                 }
@@ -409,24 +413,23 @@ impl PluginBundleStore {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                let mut mode = entry.unix_mode().unwrap_or(0o644) & 0o777;
                 // For files under bin/, ensure executable.
                 if stripped
                     .components()
                     .next()
                     .is_some_and(|c| c.as_os_str() == "bin")
-                    && (mode & 0o111) == 0
+                    && (unix_mode & 0o111) == 0
                 {
-                    mode |= 0o111;
+                    unix_mode |= 0o111;
                 }
-                let _ = fs::set_permissions(&out_path, fs::Permissions::from_mode(mode));
+                let _ = fs::set_permissions(&out_path, fs::Permissions::from_mode(unix_mode));
             }
 
             // Canonicalize the written file and ensure it still lives under the version dir.
             let out_canon = fs::canonicalize(&out_path)
                 .map_err(|e| format!("canonicalize {}: {e}", out_path.display()))?;
             if !out_canon.starts_with(&root_canon) {
-                return Err("zip extraction escaped install directory".to_string());
+                return Err("tar extraction escaped install directory".to_string());
             }
 
             // Ensure we did not create a symlink (defense-in-depth).
@@ -530,11 +533,7 @@ impl PluginBundleStore {
 
     fn ensure_built_in_bundle(&self, bundle_path: &Path) -> Result<(), String> {
         let bundle_sha256 = sha256_hex_file(bundle_path)?;
-        let file = fs::File::open(bundle_path)
-            .map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
-        let mut zip =
-            ZipArchive::new(file).map_err(|e| format!("read {}: {e}", bundle_path.display()))?;
-        let (_manifest_path, manifest) = locate_manifest(&mut zip)?;
+        let (_manifest_path, manifest) = locate_manifest_tar_xz(bundle_path)?;
         let plugin_id = manifest.id.trim();
         if plugin_id.is_empty() {
             return Err("bundle manifest id is empty".to_string());
@@ -834,31 +833,7 @@ fn read_built_in_plugin_ids() -> HashSet<String> {
     let mut out: HashSet<String> = HashSet::new();
 
     for bundle_path in builtin_bundle_paths() {
-        let file = match fs::File::open(&bundle_path) {
-            Ok(file) => file,
-            Err(err) => {
-                warn!(
-                    "plugins: failed to open built-in bundle {}: {}",
-                    bundle_path.display(),
-                    err
-                );
-                continue;
-            }
-        };
-
-        let mut zip = match ZipArchive::new(file) {
-            Ok(zip) => zip,
-            Err(err) => {
-                warn!(
-                    "plugins: failed to read built-in bundle {}: {}",
-                    bundle_path.display(),
-                    err
-                );
-                continue;
-            }
-        };
-
-        let (_manifest_path, manifest) = match locate_manifest(&mut zip) {
+        let (_manifest_path, manifest) = match locate_manifest_tar_xz(&bundle_path) {
             Ok(v) => v,
             Err(err) => {
                 warn!(
@@ -915,16 +890,27 @@ fn derive_install_version(manifest: &PluginManifest, bundle_sha256: &str) -> Str
         .unwrap_or_else(|| format!("sha256-{}", &bundle_sha256[..12]))
 }
 
-fn locate_manifest<R: Read + Seek>(
-    zip: &mut ZipArchive<R>,
-) -> Result<(PathBuf, PluginManifest), String> {
-    let mut manifest_zip_path: Option<PathBuf> = None;
+fn locate_manifest_tar_xz(bundle_path: &Path) -> Result<(PathBuf, PluginManifest), String> {
+    let file = fs::File::open(bundle_path)
+        .map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
+    let decoder = XzDecoder::new(file);
+    let mut tar = tar::Archive::new(decoder);
+
+    let mut manifest_path: Option<PathBuf> = None;
     let mut manifest_json: Option<Vec<u8>> = None;
 
-    for i in 0..zip.len() {
-        let mut entry = zip.by_index(i).map_err(|e| format!("zip entry {i}: {e}"))?;
-        let raw_name = entry.name().to_string();
-        let name = sanitize_zip_name(&raw_name)?;
+    for entry in tar
+        .entries()
+        .map_err(|e| format!("read tar: {e}"))?
+    {
+        let mut entry = entry.map_err(|e| format!("tar entry: {e}"))?;
+        if !entry.header().entry_type().is_file() {
+            continue;
+        }
+
+        let raw_path = entry.path().map_err(|e| format!("tar entry path: {e}"))?;
+        let raw_name = raw_path.to_string_lossy().to_string();
+        let name = sanitize_tar_name(&raw_name)?;
 
         if name
             .file_name()
@@ -935,7 +921,7 @@ fn locate_manifest<R: Read + Seek>(
             if comps.len() != 2 {
                 continue;
             }
-            if manifest_zip_path.is_some() {
+            if manifest_path.is_some() {
                 return Err(format!(
                     "bundle contains multiple {PLUGIN_MANIFEST_NAME} files"
                 ));
@@ -944,18 +930,18 @@ fn locate_manifest<R: Read + Seek>(
             entry
                 .read_to_end(&mut bytes)
                 .map_err(|e| format!("read manifest: {e}"))?;
-            manifest_zip_path = Some(name);
+            manifest_path = Some(name);
             manifest_json = Some(bytes);
         }
     }
 
-    let manifest_zip_path =
-        manifest_zip_path.ok_or_else(|| format!("bundle is missing {PLUGIN_MANIFEST_NAME}"))?;
+    let manifest_path =
+        manifest_path.ok_or_else(|| format!("bundle is missing {PLUGIN_MANIFEST_NAME}"))?;
     let manifest_json = manifest_json.expect("manifest bytes to exist");
 
     let manifest: PluginManifest = serde_json::from_slice(&manifest_json)
         .map_err(|e| format!("parse {PLUGIN_MANIFEST_NAME}: {e}"))?;
-    Ok((manifest_zip_path, manifest))
+    Ok((manifest_path, manifest))
 }
 
 fn normalize_capabilities(mut caps: Vec<String>) -> Vec<String> {
@@ -1006,74 +992,108 @@ mod tests {
     use super::*;
     use std::io::Cursor;
     use tempfile::tempdir;
-    use zip::write::FileOptions;
-    use zip::CompressionMethod;
-    use zip::ZipWriter;
+    use xz2::write::XzEncoder;
 
-    struct Entry {
+    enum TarEntryKind {
+        File,
+        Symlink { target: String },
+    }
+
+    struct TarEntry {
         name: String,
         data: Vec<u8>,
         unix_mode: Option<u32>,
-        method: CompressionMethod,
+        kind: TarEntryKind,
     }
 
-    fn make_bundle(entries: Vec<Entry>) -> Vec<u8> {
-        let mut out = Vec::new();
-        let mut zip = ZipWriter::new(Cursor::new(&mut out));
-        let mut unix_modes: Vec<(String, u32)> = Vec::new();
+    fn make_tar_xz_bundle(entries: Vec<TarEntry>) -> Vec<u8> {
+        let cursor = Cursor::new(Vec::<u8>::new());
+        let encoder = XzEncoder::new(cursor, 6);
+        let mut tar = tar::Builder::new(encoder);
+
         for e in entries {
-            let mut opts: FileOptions<'_, ()> = FileOptions::default().compression_method(e.method);
+            let mut header = tar::Header::new_gnu();
             if let Some(mode) = e.unix_mode {
-                opts = opts.unix_permissions(mode);
-                unix_modes.push((e.name.clone(), mode));
+                header.set_mode(mode);
             }
-            zip.start_file(e.name, opts).unwrap();
-            zip.write_all(&e.data).unwrap();
-        }
-        zip.finish().unwrap();
+            header.set_uid(0);
+            header.set_gid(0);
+            header.set_mtime(0);
 
-        for (name, mode) in unix_modes {
-            force_unix_mode(&mut out, &name, mode);
+            match e.kind {
+                TarEntryKind::File => {
+                    header.set_entry_type(tar::EntryType::Regular);
+                    header.set_size(e.data.len() as u64);
+                    header.set_cksum();
+                    tar.append_data(&mut header, e.name, e.data.as_slice()).unwrap();
+                }
+                TarEntryKind::Symlink { target } => {
+                    header.set_entry_type(tar::EntryType::Symlink);
+                    header.set_size(0);
+                    header.set_link_name(target).unwrap();
+                    header.set_cksum();
+                    tar.append_data(&mut header, e.name, [].as_slice()).unwrap();
+                }
+            }
         }
-        out
+
+        let encoder = tar.into_inner().unwrap();
+        encoder.finish().unwrap().into_inner()
     }
 
-    fn force_unix_mode(zip_bytes: &mut [u8], name: &str, mode: u32) {
-        // Patch the central directory "external file attributes" to include the full unix mode
-        // (including file type bits) so `ZipFile::unix_mode()` can detect symlinks.
-        //
-        // Central directory file header signature: 0x02014b50 (little-endian).
-        // Filename length is at offset 28, extra length at 30, comment length at 32.
-        // External attrs are at offset 38 (4 bytes).
-        // Version made by is at offset 4 (2 bytes): upper byte is OS (3 = Unix).
-        const SIG: [u8; 4] = [0x50, 0x4b, 0x01, 0x02];
-        let name_bytes = name.as_bytes();
-        let mut i = 0usize;
-        while i + 46 <= zip_bytes.len() {
-            if zip_bytes[i..i + 4] != SIG {
-                i += 1;
-                continue;
+    fn make_raw_tar_xz_bundle(entries: Vec<(String, Vec<u8>)>) -> Vec<u8> {
+        fn write_octal(field: &mut [u8], value: u64) {
+            field.fill(0);
+            let width = field.len();
+            let s = format!("{:0width$o}", value, width = width.saturating_sub(1));
+            let bytes = s.as_bytes();
+            let n = bytes.len().min(width.saturating_sub(1));
+            field[..n].copy_from_slice(&bytes[..n]);
+            if width > 0 {
+                field[width - 1] = 0;
             }
-            let file_name_len = u16::from_le_bytes([zip_bytes[i + 28], zip_bytes[i + 29]]) as usize;
-            let extra_len = u16::from_le_bytes([zip_bytes[i + 30], zip_bytes[i + 31]]) as usize;
-            let comment_len = u16::from_le_bytes([zip_bytes[i + 32], zip_bytes[i + 33]]) as usize;
-            let name_start = i + 46;
-            let name_end = name_start.saturating_add(file_name_len);
-            if name_end > zip_bytes.len() {
-                break;
-            }
-            if zip_bytes[name_start..name_end] == *name_bytes {
-                // Set "version made by" OS to Unix (3) so unix_mode is respected.
-                let v = u16::from_le_bytes([zip_bytes[i + 4], zip_bytes[i + 5]]);
-                let v = (v & 0x00ff) | (3u16 << 8);
-                zip_bytes[i + 4..i + 6].copy_from_slice(&v.to_le_bytes());
-
-                let attrs = (mode as u32) << 16;
-                zip_bytes[i + 38..i + 42].copy_from_slice(&attrs.to_le_bytes());
-                return;
-            }
-            i = name_end + extra_len + comment_len;
         }
+
+        fn tar_header(name: &str, size: u64) -> [u8; 512] {
+            let mut h = [0u8; 512];
+            let name_bytes = name.as_bytes();
+            let n = name_bytes.len().min(100);
+            h[..n].copy_from_slice(&name_bytes[..n]);
+
+            write_octal(&mut h[100..108], 0o644);
+            write_octal(&mut h[108..116], 0);
+            write_octal(&mut h[116..124], 0);
+            write_octal(&mut h[124..136], size);
+            write_octal(&mut h[136..148], 0);
+
+            // chksum (spaces for calculation)
+            h[148..156].fill(b' ');
+            h[156] = b'0'; // regular file
+            h[257..263].copy_from_slice(b"ustar\0");
+            h[263..265].copy_from_slice(b"00");
+
+            let sum: u32 = h.iter().map(|b| *b as u32).sum();
+            write_octal(&mut h[148..156], sum as u64);
+            // tar convention: NUL then space
+            h[154] = 0;
+            h[155] = b' ';
+            h
+        }
+
+        let mut tar_bytes = Vec::<u8>::new();
+        for (name, data) in entries {
+            tar_bytes.extend_from_slice(&tar_header(&name, data.len() as u64));
+            tar_bytes.extend_from_slice(&data);
+            let pad = (512 - (data.len() % 512)) % 512;
+            tar_bytes.extend(std::iter::repeat(0u8).take(pad));
+        }
+        tar_bytes.extend(std::iter::repeat(0u8).take(1024));
+
+        let mut out = Vec::<u8>::new();
+        let mut enc = XzEncoder::new(&mut out, 6);
+        enc.write_all(&tar_bytes).unwrap();
+        enc.finish().unwrap();
+        out
     }
 
     fn write_bundle_to_temp(bytes: &[u8]) -> (tempfile::TempDir, PathBuf) {
@@ -1088,78 +1108,22 @@ mod tests {
     }
 
     #[test]
-    fn install_rejects_zipslip_parent_dir() {
-        let bundle = make_bundle(vec![
-            Entry {
-                name: "test.plugin/openvcs.plugin.json".into(),
-                data: basic_manifest("test.plugin", ",\"functions\":{\"exec\":\"fn\"}"),
-                unix_mode: None,
-                method: CompressionMethod::Stored,
-            },
-            Entry {
-                name: "test.plugin/bin/fn".into(),
-                data: b"#!/bin/sh\necho hi\n".to_vec(),
-                unix_mode: Some(0o100755),
-                method: CompressionMethod::Stored,
-            },
-            Entry {
-                name: "test.plugin/../evil.txt".into(),
-                data: b"nope".to_vec(),
-                unix_mode: None,
-                method: CompressionMethod::Stored,
-            },
-        ]);
-
-        let (_tmp, bundle_path) = write_bundle_to_temp(&bundle);
-        let store_root = tempdir().unwrap();
-        let store = PluginBundleStore::new_at(store_root.path().to_path_buf());
-
-        let err = store.install_ovcsp_with_limits(&bundle_path, InstallerLimits::default());
-        assert!(err.is_err());
-    }
-
-    #[test]
-    fn install_rejects_symlink_entries() {
-        let bundle = make_bundle(vec![
-            Entry {
-                name: "test.plugin/openvcs.plugin.json".into(),
-                data: basic_manifest("test.plugin", ""),
-                unix_mode: None,
-                method: CompressionMethod::Stored,
-            },
-            Entry {
-                name: "test.plugin/bin/link".into(),
-                data: b"target".to_vec(),
-                unix_mode: Some(0o120777),
-                method: CompressionMethod::Stored,
-            },
-        ]);
-
-        let (_tmp, bundle_path) = write_bundle_to_temp(&bundle);
-        let store_root = tempdir().unwrap();
-        let store = PluginBundleStore::new_at(store_root.path().to_path_buf());
-
-        let err = store.install_ovcsp_with_limits(&bundle_path, InstallerLimits::default());
-        assert!(err.is_err());
-    }
-
-    #[test]
     fn install_enforces_file_count_and_size_limits() {
-        let mut entries = vec![Entry {
+        let mut entries = vec![TarEntry {
             name: "test.plugin/openvcs.plugin.json".into(),
             data: basic_manifest("test.plugin", ""),
             unix_mode: None,
-            method: CompressionMethod::Stored,
+            kind: TarEntryKind::File,
         }];
         for i in 0..5 {
-            entries.push(Entry {
+            entries.push(TarEntry {
                 name: format!("test.plugin/assets/{i}.txt"),
                 data: b"1234".to_vec(),
                 unix_mode: None,
-                method: CompressionMethod::Stored,
+                kind: TarEntryKind::File,
             });
         }
-        let bundle = make_bundle(entries);
+        let bundle = make_tar_xz_bundle(entries);
 
         let (_tmp, bundle_path) = write_bundle_to_temp(&bundle);
         let store_root = tempdir().unwrap();
@@ -1176,20 +1140,131 @@ mod tests {
     }
 
     #[test]
-    fn install_rejects_suspicious_compression_ratio() {
-        let big = vec![0u8; 2 * 1024 * 1024];
-        let bundle = make_bundle(vec![
-            Entry {
+    fn install_requires_manifest_at_expected_location() {
+        let bundle = make_tar_xz_bundle(vec![TarEntry {
+            name: "test.plugin/other.json".into(),
+            data: b"{}".to_vec(),
+            unix_mode: None,
+            kind: TarEntryKind::File,
+        }]);
+
+        let (_tmp, bundle_path) = write_bundle_to_temp(&bundle);
+        let store_root = tempdir().unwrap();
+        let store = PluginBundleStore::new_at(store_root.path().to_path_buf());
+
+        let err = store.install_ovcsp(&bundle_path);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn install_validates_declared_entrypoints_exist() {
+        let bundle = make_tar_xz_bundle(vec![TarEntry {
+            name: "test.plugin/openvcs.plugin.json".into(),
+            data: basic_manifest(
+                "test.plugin",
+                ",\"module\":{\"exec\":\"missing.wasm\",\"vcs_backends\":[\"x\"]}",
+            ),
+            unix_mode: None,
+            kind: TarEntryKind::File,
+        }]);
+
+        let (_tmp, bundle_path) = write_bundle_to_temp(&bundle);
+        let store_root = tempdir().unwrap();
+        let store = PluginBundleStore::new_at(store_root.path().to_path_buf());
+
+        let err = store.install_ovcsp(&bundle_path);
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn install_accepts_tar_xz_bundles() {
+        let bundle = make_tar_xz_bundle(vec![
+            TarEntry {
+                name: "test.plugin/openvcs.plugin.json".into(),
+                data: basic_manifest(
+                    "test.plugin",
+                    ",\"module\":{\"exec\":\"mod.wasm\",\"vcs_backends\":[]}",
+                ),
+                unix_mode: None,
+                kind: TarEntryKind::File,
+            },
+            TarEntry {
+                name: "test.plugin/bin/mod.wasm".into(),
+                data: b"\0asm".to_vec(),
+                unix_mode: Some(0o100644),
+                kind: TarEntryKind::File,
+            },
+        ]);
+
+        let (_tmp, bundle_path) = write_bundle_to_temp(&bundle);
+        let store_root = tempdir().unwrap();
+        let store = PluginBundleStore::new_at(store_root.path().to_path_buf());
+
+        let installed = store.install_ovcsp(&bundle_path).unwrap();
+        assert_eq!(installed.plugin_id, "test.plugin");
+        assert!(installed.install_dir.join(PLUGIN_MANIFEST_NAME).is_file());
+    }
+
+    #[test]
+    fn install_rejects_tar_zipslip_parent_dir() {
+        let bundle = make_raw_tar_xz_bundle(vec![
+            (
+                "test.plugin/openvcs.plugin.json".into(),
+                basic_manifest("test.plugin", ""),
+            ),
+            ("test.plugin/../evil.txt".into(), b"nope".to_vec()),
+        ]);
+
+        let (_tmp, bundle_path) = write_bundle_to_temp(&bundle);
+        let store_root = tempdir().unwrap();
+        let store = PluginBundleStore::new_at(store_root.path().to_path_buf());
+
+        let err = store.install_ovcsp_with_limits(&bundle_path, InstallerLimits::default());
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn install_rejects_tar_symlink_entries() {
+        let bundle = make_tar_xz_bundle(vec![
+            TarEntry {
                 name: "test.plugin/openvcs.plugin.json".into(),
                 data: basic_manifest("test.plugin", ""),
                 unix_mode: None,
-                method: CompressionMethod::Stored,
+                kind: TarEntryKind::File,
             },
-            Entry {
+            TarEntry {
+                name: "test.plugin/bin/link".into(),
+                data: Vec::new(),
+                unix_mode: Some(0o120777),
+                kind: TarEntryKind::Symlink {
+                    target: "target".into(),
+                },
+            },
+        ]);
+
+        let (_tmp, bundle_path) = write_bundle_to_temp(&bundle);
+        let store_root = tempdir().unwrap();
+        let store = PluginBundleStore::new_at(store_root.path().to_path_buf());
+
+        let err = store.install_ovcsp_with_limits(&bundle_path, InstallerLimits::default());
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn install_rejects_tar_suspicious_compression_ratio() {
+        let big = vec![0u8; 2 * 1024 * 1024];
+        let bundle = make_tar_xz_bundle(vec![
+            TarEntry {
+                name: "test.plugin/openvcs.plugin.json".into(),
+                data: basic_manifest("test.plugin", ""),
+                unix_mode: None,
+                kind: TarEntryKind::File,
+            },
+            TarEntry {
                 name: "test.plugin/assets/big.bin".into(),
                 data: big,
                 unix_mode: Some(0o100644),
-                method: CompressionMethod::Deflated,
+                kind: TarEntryKind::File,
             },
         ]);
 
@@ -1205,43 +1280,6 @@ mod tests {
         };
 
         let err = store.install_ovcsp_with_limits(&bundle_path, limits);
-        assert!(err.is_err());
-    }
-
-    #[test]
-    fn install_requires_manifest_at_expected_location() {
-        let bundle = make_bundle(vec![Entry {
-            name: "test.plugin/other.json".into(),
-            data: b"{}".to_vec(),
-            unix_mode: None,
-            method: CompressionMethod::Stored,
-        }]);
-
-        let (_tmp, bundle_path) = write_bundle_to_temp(&bundle);
-        let store_root = tempdir().unwrap();
-        let store = PluginBundleStore::new_at(store_root.path().to_path_buf());
-
-        let err = store.install_ovcsp(&bundle_path);
-        assert!(err.is_err());
-    }
-
-    #[test]
-    fn install_validates_declared_entrypoints_exist() {
-        let bundle = make_bundle(vec![Entry {
-            name: "test.plugin/openvcs.plugin.json".into(),
-            data: basic_manifest(
-                "test.plugin",
-                ",\"module\":{\"exec\":\"missing.wasm\",\"vcs_backends\":[\"x\"]}",
-            ),
-            unix_mode: None,
-            method: CompressionMethod::Stored,
-        }]);
-
-        let (_tmp, bundle_path) = write_bundle_to_temp(&bundle);
-        let store_root = tempdir().unwrap();
-        let store = PluginBundleStore::new_at(store_root.path().to_path_buf());
-
-        let err = store.install_ovcsp(&bundle_path);
         assert!(err.is_err());
     }
 }
