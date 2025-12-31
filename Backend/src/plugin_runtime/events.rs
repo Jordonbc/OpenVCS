@@ -5,9 +5,11 @@ use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::sync::{Arc, Mutex, OnceLock};
 
+pub type PluginStdin = Arc<Mutex<Option<std::io::LineWriter<Box<dyn Write + Send>>>>>;
+
 #[derive(Clone)]
 pub struct PluginIoHandle {
-    pub stdin: Arc<Mutex<Option<std::io::LineWriter<Box<dyn Write + Send>>>>>,
+    pub stdin: PluginStdin,
 }
 
 struct Registry {
@@ -36,6 +38,7 @@ pub fn register_plugin_io(plugin_id: &str, stdin: PluginIoHandle) {
     }
 }
 
+#[allow(dead_code)]
 pub fn unregister_plugin(plugin_id: &str) {
     if let Ok(mut lock) = registry().lock() {
         lock.io.remove(plugin_id);

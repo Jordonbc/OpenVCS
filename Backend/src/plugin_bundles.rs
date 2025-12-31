@@ -196,7 +196,6 @@ pub struct InstalledPluginComponents {
     pub name: Option<String>,
     pub version: String,
     pub default_enabled: bool,
-    pub install_dir: PathBuf,
     pub requested_capabilities: Vec<String>,
     pub module: Option<ModuleComponent>,
     pub functions: Option<FunctionsComponent>,
@@ -281,7 +280,8 @@ impl PluginBundleStore {
             .map_err(|e| format!("canonicalize {}: {e}", staging_version_dir.display()))?;
 
         // Extract all entries under `<pluginId>/...` into the staging version directory.
-        let f = fs::File::open(bundle_path).map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
+        let f = fs::File::open(bundle_path)
+            .map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
         let decoder = XzDecoder::new(f);
         let mut tar = tar::Archive::new(decoder);
 
@@ -765,7 +765,7 @@ impl PluginBundleStore {
                 .filter(|s| !s.is_empty()),
             version,
             default_enabled: manifest.default_enabled,
-            install_dir: version_dir,
+
             requested_capabilities,
             module,
             functions,
@@ -891,18 +891,15 @@ fn derive_install_version(manifest: &PluginManifest, bundle_sha256: &str) -> Str
 }
 
 fn locate_manifest_tar_xz(bundle_path: &Path) -> Result<(PathBuf, PluginManifest), String> {
-    let file = fs::File::open(bundle_path)
-        .map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
+    let file =
+        fs::File::open(bundle_path).map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
     let decoder = XzDecoder::new(file);
     let mut tar = tar::Archive::new(decoder);
 
     let mut manifest_path: Option<PathBuf> = None;
     let mut manifest_json: Option<Vec<u8>> = None;
 
-    for entry in tar
-        .entries()
-        .map_err(|e| format!("read tar: {e}"))?
-    {
+    for entry in tar.entries().map_err(|e| format!("read tar: {e}"))? {
         let mut entry = entry.map_err(|e| format!("tar entry: {e}"))?;
         if !entry.header().entry_type().is_file() {
             continue;
@@ -1025,7 +1022,8 @@ mod tests {
                     header.set_entry_type(tar::EntryType::Regular);
                     header.set_size(e.data.len() as u64);
                     header.set_cksum();
-                    tar.append_data(&mut header, e.name, e.data.as_slice()).unwrap();
+                    tar.append_data(&mut header, e.name, e.data.as_slice())
+                        .unwrap();
                 }
                 TarEntryKind::Symlink { target } => {
                     header.set_entry_type(tar::EntryType::Symlink);
@@ -1085,9 +1083,12 @@ mod tests {
             tar_bytes.extend_from_slice(&tar_header(&name, data.len() as u64));
             tar_bytes.extend_from_slice(&data);
             let pad = (512 - (data.len() % 512)) % 512;
-            tar_bytes.extend(std::iter::repeat(0u8).take(pad));
+            if pad > 0 {
+                let old = tar_bytes.len();
+                tar_bytes.resize(old + pad, 0u8);
+            }
         }
-        tar_bytes.extend(std::iter::repeat(0u8).take(1024));
+        tar_bytes.resize(tar_bytes.len() + 1024, 0u8);
 
         let mut out = Vec::<u8>::new();
         let mut enc = XzEncoder::new(&mut out, 6);

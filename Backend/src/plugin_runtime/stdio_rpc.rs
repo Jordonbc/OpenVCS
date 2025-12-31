@@ -1,5 +1,5 @@
 use crate::plugin_bundles::ApprovalState;
-use crate::plugin_runtime::events::{register_plugin_io, PluginIoHandle};
+use crate::plugin_runtime::events::{register_plugin_io, PluginIoHandle, PluginStdin};
 use openvcs_core::models::VcsEvent;
 use openvcs_core::plugin_protocol::{PluginMessage, RpcRequest, RpcResponse};
 use serde_json::Value;
@@ -13,6 +13,8 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+type EventSink = Arc<Mutex<Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>>>>;
+
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 const STDERR_LOG_MAX_BYTES: u64 = 10 * 1024 * 1024;
 const STDERR_LOG_MAX_FILES: usize = 5;
@@ -25,7 +27,6 @@ pub struct SpawnConfig {
     pub component_label: String,
     pub exec_path: PathBuf,
     pub args: Vec<String>,
-    pub workdir: PathBuf,
     pub requested_capabilities: Vec<String>,
     pub approval: ApprovalState,
     pub allowed_workspace_root: Option<PathBuf>,
@@ -59,9 +60,9 @@ pub struct StdioRpcProcess {
     spawn: SpawnConfig,
     cfg: RpcConfig,
     child: Mutex<Option<ProcessHandle>>,
-    stdin: Arc<Mutex<Option<LineWriter<Box<dyn Write + Send>>>>>,
+    stdin: PluginStdin,
     pending: Arc<Mutex<PendingMap>>,
-    on_event: Arc<Mutex<Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>>>>,
+    on_event: EventSink,
     crash_count: Mutex<u32>,
     backoff_ms: Mutex<u64>,
     disabled: Mutex<bool>,
@@ -205,6 +206,7 @@ impl StdioRpcProcess {
         let Some(stdin) = lock.as_mut() else {
             return Err("plugin stdin not available".to_string());
         };
+        let stdin: &mut LineWriter<Box<dyn Write + Send>> = stdin;
         if let Err(e) = writeln!(stdin, "{line}") {
             drop(lock);
             self.record_crash();
@@ -265,18 +267,19 @@ impl StdioRpcProcess {
         let (approved_caps, allowed_workspace_root) = approved_caps_and_workspace(&self.spawn);
 
         let join = std::thread::spawn(move || {
-            if let Err(e) = run_wasi_module(
-                &wasm_path,
-                &plugin_id,
-                &args,
+            let cfg = RunWasiConfig {
+                wasm_path,
+                plugin_id,
+                args,
                 host_timeout,
-                &approved_caps,
-                allowed_workspace_root.as_deref(),
-                stdin_reader,
-                stdout_writer,
-                stderr_writer,
-            ) {
-                log::error!("wasi plugin {} crashed: {}", wasm_path.display(), e);
+                approved_caps,
+                allowed_workspace_root,
+                stdin: stdin_reader,
+                stdout: stdout_writer,
+                stderr: stderr_writer,
+            };
+            if let Err(e) = run_wasi_module(cfg) {
+                log::error!("wasi plugin crashed: {}", e);
             }
         });
 
@@ -342,8 +345,8 @@ fn read_stdout_loop(
     stdout: impl io::Read,
     spawn: SpawnConfig,
     pending: Arc<Mutex<PendingMap>>,
-    stdin_for_responses: Arc<Mutex<Option<LineWriter<Box<dyn Write + Send>>>>>,
-    on_event: Arc<Mutex<Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>>>>,
+    stdin_for_responses: PluginStdin,
+    on_event: EventSink,
     stdout_log_path: PathBuf,
 ) {
     let reader = BufReader::new(stdout);
@@ -380,6 +383,7 @@ fn read_stdout_loop(
                 let resp = handle_host_request(&spawn, req);
                 if let Ok(mut lock) = stdin_for_responses.lock() {
                     if let Some(stdin) = lock.as_mut() {
+                        let stdin: &mut LineWriter<Box<dyn Write + Send>> = stdin;
                         if let Ok(line) = serde_json::to_string(&PluginMessage::Response(resp)) {
                             let _ = writeln!(stdin, "{line}");
                             let _ = stdin.flush();
@@ -442,17 +446,31 @@ fn approved_caps_and_workspace(spawn: &SpawnConfig) -> (Vec<String>, Option<Path
     (approved_caps, spawn.allowed_workspace_root.clone())
 }
 
-fn run_wasi_module(
-    wasm_path: &Path,
-    plugin_id: &str,
-    args: &[String],
-    host_timeout: Duration,
-    approved_caps: &[String],
-    allowed_workspace_root: Option<&Path>,
-    stdin: os_pipe::PipeReader,
-    stdout: os_pipe::PipeWriter,
-    stderr: os_pipe::PipeWriter,
-) -> Result<(), String> {
+pub struct RunWasiConfig {
+    pub wasm_path: PathBuf,
+    pub plugin_id: String,
+    pub args: Vec<String>,
+    pub host_timeout: Duration,
+    pub approved_caps: Vec<String>,
+    pub allowed_workspace_root: Option<PathBuf>,
+    pub stdin: os_pipe::PipeReader,
+    pub stdout: os_pipe::PipeWriter,
+    pub stderr: os_pipe::PipeWriter,
+}
+
+fn run_wasi_module(cfg: RunWasiConfig) -> Result<(), String> {
+    let RunWasiConfig {
+        wasm_path,
+        plugin_id,
+        args,
+        host_timeout,
+        approved_caps,
+        allowed_workspace_root,
+        stdin,
+        stdout,
+        stderr,
+    } = cfg;
+    let allowed_workspace_root = allowed_workspace_root.as_deref();
     use wasmtime::{Engine, Module, Store};
     use wasmtime_wasi::pipe::AsyncReadStream;
     use wasmtime_wasi::{AsyncStdinStream, OutputFile, WasiCtxBuilder};
@@ -462,7 +480,7 @@ fn run_wasi_module(
     let stderr_file = unsafe { std::fs::File::from_raw_fd(stderr.into_raw_fd()) };
 
     let engine = Engine::default();
-    let module = Module::from_file(&engine, wasm_path).map_err(|e| format!("load module: {e}"))?;
+    let module = Module::from_file(&engine, &wasm_path).map_err(|e| format!("load module: {e}"))?;
 
     let mut linker = wasmtime::Linker::new(&engine);
     wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |cx| cx)
@@ -488,7 +506,7 @@ fn run_wasi_module(
     builder.stdin(stdin_stream);
     builder.stdout(stdout_stream);
     builder.stderr(stderr_stream);
-    builder.env("OPENVCS_PLUGIN_ID", plugin_id);
+    builder.env("OPENVCS_PLUGIN_ID", plugin_id.as_str());
     builder.env(
         "OPENVCS_PLUGIN_HOST_TIMEOUT_MS",
         host_timeout.as_millis().to_string(),
@@ -497,7 +515,7 @@ fn run_wasi_module(
 
     // Do not preopen the host filesystem into WASI. All file I/O must go through
     // host RPCs which are scoped to `allowed_workspace_root` and capability-gated.
-    let _ = (approved_caps, allowed_workspace_root);
+    let _ = (approved_caps.as_slice(), allowed_workspace_root);
 
     let mut store = Store::new(&engine, builder.build_p1());
 
@@ -799,88 +817,9 @@ fn write_file_under_root(root: &Path, rel: &str, bytes: &[u8]) -> Result<(), Str
     fs::write(&path, bytes).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn runs_minimal_wasm_module() {
-        // Minimal wasm module exporting an empty `_start`.
-        // (module (func (export "_start")))
-        let wasm: &[u8] = &[
-            0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, // header
-            0x01, 0x04, 0x01, 0x60, 0x00, 0x00, // type section
-            0x03, 0x02, 0x01, 0x00, // func section
-            0x07, 0x0b, 0x01, 0x06, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x00, 0x00, // export
-            0x0a, 0x04, 0x01, 0x02, 0x00, 0x0b, // code
-        ];
-
-        let dir = tempfile::tempdir().expect("tempdir");
-        let wasm_path = dir.path().join("plugin.wasm");
-        std::fs::write(&wasm_path, wasm).expect("write wasm");
-
-        let rpc = StdioRpcProcess::new(
-            SpawnConfig {
-                plugin_id: "test".into(),
-                component_label: "functions".into(),
-                exec_path: wasm_path,
-                args: Vec::new(),
-                workdir: dir.path().to_path_buf(),
-                requested_capabilities: Vec::new(),
-                approval: ApprovalState::Approved {
-                    capabilities: Vec::new(),
-                    approved_at_unix_ms: 0,
-                },
-                allowed_workspace_root: None,
-            },
-            RpcConfig::default(),
-        );
-
-        rpc.ensure_running().expect("ensure_running");
-    }
-
-    #[test]
-    fn resolve_under_root_allows_absolute_under_root() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let root = dir.path().join("root");
-        std::fs::create_dir_all(&root).expect("mkdir root");
-        let child = root.join("child");
-        std::fs::create_dir_all(&child).expect("mkdir child");
-
-        let resolved =
-            resolve_under_root(&root, child.to_string_lossy().as_ref()).expect("resolve");
-        assert!(resolved.starts_with(&root));
-    }
-
-    #[test]
-    fn write_file_under_root_rejects_parent_dir_escape() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let root = dir.path().join("root");
-        std::fs::create_dir_all(&root).expect("mkdir root");
-
-        let err = write_file_under_root(&root, "../escape.txt", b"nope").unwrap_err();
-        assert!(err.contains("relative") || err.contains("escape") || err.contains(".."));
-    }
-}
-
+// Move helper functions above the test module to avoid `items_after_test_module` warnings.
 fn read_file_under_root(root: &Path, rel: &str) -> Result<Vec<u8>, String> {
-    let rel = rel.replace('\\', "/");
-    let p = Path::new(&rel);
-    for c in p.components() {
-        if matches!(
-            c,
-            Component::ParentDir | Component::RootDir | Component::Prefix(_)
-        ) {
-            return Err("invalid path".to_string());
-        }
-    }
-    let joined = root.join(p);
-    let root_canon = fs::canonicalize(root).map_err(|e| format!("canonicalize root: {e}"))?;
-    let parent = joined.parent().ok_or_else(|| "invalid path".to_string())?;
-    let parent_canon = fs::canonicalize(parent).map_err(|e| format!("canonicalize parent: {e}"))?;
-    if !parent_canon.starts_with(&root_canon) {
-        return Err("path escapes workspace".to_string());
-    }
+    let joined = resolve_under_root(root, rel)?;
     fs::read(&joined).map_err(|e| format!("read {}: {e}", joined.display()))
 }
 
@@ -988,3 +927,68 @@ fn rotate_if_needed(path: &Path) -> io::Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runs_minimal_wasm_module() {
+        // Minimal wasm module exporting an empty `_start`.
+        // (module (func (export "_start")))
+        let wasm: &[u8] = &[
+            0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, // header
+            0x01, 0x04, 0x01, 0x60, 0x00, 0x00, // type section
+            0x03, 0x02, 0x01, 0x00, // func section
+            0x07, 0x0b, 0x01, 0x06, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x00, 0x00, // export
+            0x0a, 0x04, 0x01, 0x02, 0x00, 0x0b, // code
+        ];
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let wasm_path = dir.path().join("plugin.wasm");
+        std::fs::write(&wasm_path, wasm).expect("write wasm");
+
+        let rpc = StdioRpcProcess::new(
+            SpawnConfig {
+                plugin_id: "test".into(),
+                component_label: "functions".into(),
+                exec_path: wasm_path,
+                args: Vec::new(),
+                requested_capabilities: Vec::new(),
+                approval: ApprovalState::Approved {
+                    capabilities: Vec::new(),
+                    approved_at_unix_ms: 0,
+                },
+                allowed_workspace_root: None,
+            },
+            RpcConfig::default(),
+        );
+
+        rpc.ensure_running().expect("ensure_running");
+    }
+
+    #[test]
+    fn resolve_under_root_allows_absolute_under_root() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().join("root");
+        std::fs::create_dir_all(&root).expect("mkdir root");
+        let child = root.join("child");
+        std::fs::create_dir_all(&child).expect("mkdir child");
+
+        let resolved =
+            resolve_under_root(&root, child.to_string_lossy().as_ref()).expect("resolve");
+        assert!(resolved.starts_with(&root));
+    }
+
+    #[test]
+    fn write_file_under_root_rejects_parent_dir_escape() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().join("root");
+        std::fs::create_dir_all(&root).expect("mkdir root");
+
+        let err = write_file_under_root(&root, "../escape.txt", b"nope").unwrap_err();
+        assert!(err.contains("relative") || err.contains("escape") || err.contains(".."));
+    }
+}
+
+// Duplicate helper definitions removed (handled earlier in the file).

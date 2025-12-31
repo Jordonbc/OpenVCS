@@ -4,7 +4,6 @@ use crate::plugin_runtime::vcs_proxy::PluginVcsProxy;
 use crate::settings::AppConfig;
 use log::warn;
 use openvcs_core::{BackendId, Result as VcsResult, Vcs, VcsError};
-use serde_json;
 use std::{
     collections::BTreeMap,
     fs,

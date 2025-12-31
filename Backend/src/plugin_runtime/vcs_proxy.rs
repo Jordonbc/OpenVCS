@@ -31,7 +31,6 @@ impl PluginVcsProxy {
             component_label: format!("vcs-backend-{}", backend_id.as_ref()),
             exec_path,
             args: vec!["--backend".into(), backend_id.as_ref().to_string()],
-            workdir: workdir.clone(),
             requested_capabilities,
             approval,
             allowed_workspace_root: Some(workdir.clone()),

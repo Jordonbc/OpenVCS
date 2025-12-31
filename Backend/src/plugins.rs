@@ -262,7 +262,7 @@ fn encode_base64(data: &[u8]) -> String {
         return String::new();
     }
 
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     let mut i = 0usize;
     while i < data.len() {
         let b0 = data[i];
@@ -397,21 +397,18 @@ pub fn list_plugins() -> Vec<PluginSummary> {
                     if !path.is_dir() {
                         continue;
                     }
-                    match read_manifest_from_directory(&path) {
-                        Ok((resolved, manifest)) => {
-                            let norm = manifest.id.trim().to_ascii_lowercase();
-                            let is_built_in = built_in_ids.contains(&norm);
-                            if !seen.insert(norm) {
-                                continue;
-                            }
-                            let effective_origin = if is_built_in {
-                                PluginOrigin::BuiltIn
-                            } else {
-                                origin
-                            };
-                            out.push(manifest_to_summary(&resolved, manifest, effective_origin));
+                    if let Ok((resolved, manifest)) = read_manifest_from_directory(&path) {
+                        let norm = manifest.id.trim().to_ascii_lowercase();
+                        let is_built_in = built_in_ids.contains(&norm);
+                        if !seen.insert(norm) {
+                            continue;
                         }
-                        Err(_) => {}
+                        let effective_origin = if is_built_in {
+                            PluginOrigin::BuiltIn
+                        } else {
+                            origin
+                        };
+                        out.push(manifest_to_summary(&resolved, manifest, effective_origin));
                     }
                 }
             }
