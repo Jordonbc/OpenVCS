@@ -5,5 +5,5 @@ default:
 
 fix:
   cargo fmt --all
-  cargo clippy --all-targets -- -D warnings
+  cargo clippy --fix --allow-dirty --allow-staged
 
