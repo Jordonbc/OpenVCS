@@ -44,7 +44,7 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
         }
     }
 
-    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(BUILT_IN_PLUGINS_DIR_NAME));
+    
 
     // If the Tauri runtime resolved a resource directory at startup, include
     // its built-in-plugins subdirectory as a candidate. This is set by the
