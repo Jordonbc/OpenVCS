@@ -472,8 +472,8 @@ fn run_wasi_module(cfg: RunWasiConfig) -> Result<(), String> {
     } = cfg;
     let allowed_workspace_root = allowed_workspace_root.as_deref();
     use wasmtime::{Engine, Module, Store};
-    use wasmtime_wasi::pipe::AsyncReadStream;
-    use wasmtime_wasi::{AsyncStdinStream, OutputFile, WasiCtxBuilder};
+    use wasmtime_wasi::cli::{AsyncStdinStream, OutputFile};
+    use wasmtime_wasi::WasiCtxBuilder;
 
     let stdin_file = unsafe { std::fs::File::from_raw_fd(stdin.into_raw_fd()) };
     let stdout_file = unsafe { std::fs::File::from_raw_fd(stdout.into_raw_fd()) };
@@ -483,11 +483,10 @@ fn run_wasi_module(cfg: RunWasiConfig) -> Result<(), String> {
     let module = Module::from_file(&engine, &wasm_path).map_err(|e| format!("load module: {e}"))?;
 
     let mut linker = wasmtime::Linker::new(&engine);
-    wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |cx| cx)
-        .map_err(|e| format!("{e}"))?;
+    wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |cx| cx).map_err(|e| format!("{e}"))?;
 
     let stdin_tokio = tokio::fs::File::from_std(stdin_file);
-    let stdin_stream = AsyncStdinStream::new(AsyncReadStream::new(stdin_tokio));
+    let stdin_stream = AsyncStdinStream::new(stdin_tokio);
     let stdout_stream = OutputFile::new(stdout_file);
     let stderr_stream = OutputFile::new(stderr_file);
 
