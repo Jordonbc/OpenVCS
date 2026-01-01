@@ -1,6 +1,7 @@
 use log::warn;
 use openvcs_core::{backend_id, BackendId};
 use std::sync::Arc;
+use tauri::path::BaseDirectory;
 use tauri::WindowEvent;
 use tauri::{Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
@@ -100,6 +101,28 @@ pub fn run() {
             let store = crate::plugin_bundles::PluginBundleStore::new_default();
             if let Err(err) = store.sync_built_in_plugins() {
                 warn!("plugins: failed to sync built-in bundles: {}", err);
+            }
+            // If the application bundle includes a `built-in-plugins` resource
+            // directory, resolve its location via Tauri and register the
+            // containing resource directory so runtime discovery can include
+            // embedded built-in plugins.
+            if let Ok(resolved) = app
+                .path()
+                .resolve("built-in-plugins", BaseDirectory::Resource)
+            {
+                if let Some(parent) = resolved.parent() {
+                    crate::plugin_paths::set_resource_dir(parent.to_path_buf());
+                    log::info!(
+                        "plugins: resolved resource dir via Tauri: {}",
+                        parent.display()
+                    );
+                } else {
+                    crate::plugin_paths::set_resource_dir(resolved.clone());
+                    log::info!(
+                        "plugins: resolved resource dir via Tauri: {}",
+                        resolved.display()
+                    );
+                }
             }
             // On startup, optionally reopen the last repository if enabled in settings.
             try_reopen_last_repo(app.handle());
