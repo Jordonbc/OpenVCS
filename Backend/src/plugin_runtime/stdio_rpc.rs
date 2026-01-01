@@ -472,7 +472,6 @@ fn run_wasi_module(cfg: RunWasiConfig) -> Result<(), String> {
     } = cfg;
     let allowed_workspace_root = allowed_workspace_root.as_deref();
     use wasmtime::{Engine, Module, Store};
-    use wasmtime_wasi::p2::pipe::AsyncReadStream;
     use wasmtime_wasi::cli::{AsyncStdinStream, OutputFile};
     use wasmtime_wasi::WasiCtxBuilder;
 
@@ -488,7 +487,7 @@ fn run_wasi_module(cfg: RunWasiConfig) -> Result<(), String> {
         .map_err(|e| format!("{e}"))?;
 
     let stdin_tokio = tokio::fs::File::from_std(stdin_file);
-    let stdin_stream = AsyncStdinStream::new(AsyncReadStream::new(stdin_tokio));
+    let stdin_stream = AsyncStdinStream::new(stdin_tokio);
     let stdout_stream = OutputFile::new(stdout_file);
     let stderr_stream = OutputFile::new(stderr_file);
 
