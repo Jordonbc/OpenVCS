@@ -30,7 +30,8 @@
       "app",
       "deb",
       "nsis",
-      "appimage"
+      "appimage",
+      "zip"
     ],
     "icon": [
       "icons/32x32.png",

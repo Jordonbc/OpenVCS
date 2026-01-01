@@ -281,3 +281,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload openvcs-nightly OpenVCS.flatpak --clobber
+
+      - name: Upload ZIP to GitHub Release (Windows)
+        if: matrix.platform == 'windows-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          # Upload any produced ZIP bundle(s) to the nightly release. Non-fatal if none are present.
+          ls -la Backend/target/release/bundle/zip || true
+          gh release upload openvcs-nightly Backend/target/release/bundle/zip/*.zip --clobber || echo "No ZIP artifact found"
