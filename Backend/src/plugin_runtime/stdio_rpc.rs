@@ -483,8 +483,7 @@ fn run_wasi_module(cfg: RunWasiConfig) -> Result<(), String> {
     let module = Module::from_file(&engine, &wasm_path).map_err(|e| format!("load module: {e}"))?;
 
     let mut linker = wasmtime::Linker::new(&engine);
-    wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |cx| cx)
-        .map_err(|e| format!("{e}"))?;
+    wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |cx| cx).map_err(|e| format!("{e}"))?;
 
     let stdin_tokio = tokio::fs::File::from_std(stdin_file);
     let stdin_stream = AsyncStdinStream::new(stdin_tokio);
