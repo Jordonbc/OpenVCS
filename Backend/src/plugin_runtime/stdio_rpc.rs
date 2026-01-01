@@ -7,7 +7,10 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, BufRead, BufReader, LineWriter, Write};
+#[cfg(unix)]
 use std::os::fd::{FromRawFd, IntoRawFd};
+#[cfg(windows)]
+use std::os::windows::io::{FromRawHandle, IntoRawHandle};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -16,6 +19,31 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 type EventSink = Arc<Mutex<Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>>>>;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
+const BACKOFF_MS: u64 = 250;
+const MAX_BACKOFF_MS: u64 = 30_000;
+// Whitelisted environment variables that are forwarded to plugin processes.
+// Centralized here to make adding/removing entries easier.
+const SANITIZED_ENV_KEYS: &[&str] = &[
+    "HOME",
+    "USER",
+    "USERPROFILE",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "LANG",
+    "LC_ALL",
+    // SSH / Git authentication
+    "SSH_AUTH_SOCK",
+    "SSH_AGENT_PID",
+    "GIT_SSH_COMMAND",
+    "OPENVCS_SSH_MODE",
+    "OPENVCS_SSH",
+];
+
+#[cfg(unix)]
+const DEFAULT_PATH_UNIX: &str = "/usr/bin:/bin";
+#[cfg(windows)]
+const DEFAULT_PATH_WINDOWS_SUFFIX: &str = "\\System32";
 const STDERR_LOG_MAX_BYTES: u64 = 10 * 1024 * 1024;
 const STDERR_LOG_MAX_FILES: usize = 5;
 const MAX_PENDING: usize = 1024;
@@ -68,13 +96,11 @@ pub struct StdioRpcProcess {
     disabled: Mutex<bool>,
 }
 
-enum ProcessHandle {
-    Wasm {
-        #[allow(dead_code)]
-        join: std::thread::JoinHandle<()>,
-        #[allow(dead_code)]
-        stdin_writer: os_pipe::PipeWriter,
-    },
+struct ProcessHandle {
+    #[allow(dead_code)]
+    join: std::thread::JoinHandle<()>,
+    #[allow(dead_code)]
+    stdin_writer: os_pipe::PipeWriter,
 }
 
 impl StdioRpcProcess {
@@ -90,7 +116,7 @@ impl StdioRpcProcess {
             })),
             on_event: Arc::new(Mutex::new(None)),
             crash_count: Mutex::new(0),
-            backoff_ms: Mutex::new(250),
+            backoff_ms: Mutex::new(BACKOFF_MS),
             disabled: Mutex::new(false),
         }
     }
@@ -229,7 +255,7 @@ impl StdioRpcProcess {
             *self.disabled.lock().unwrap() = true;
         } else {
             let mut backoff = self.backoff_ms.lock().unwrap();
-            *backoff = (*backoff).saturating_mul(2).min(30_000);
+            *backoff = (*backoff).saturating_mul(2).min(MAX_BACKOFF_MS);
         }
     }
 
@@ -243,11 +269,25 @@ impl StdioRpcProcess {
         }
 
         let mut child_lock = self.child.lock().unwrap();
-        if let Some(child) = child_lock.take() {
-            match child {
-                ProcessHandle::Wasm { .. } => {
-                    // Best-effort: dropping stdin should cause EOF for the guest.
-                }
+        if let Some(ProcessHandle {
+            join,
+            mut stdin_writer,
+        }) = child_lock.take()
+        {
+            // Try to flush any buffered data (ignore errors) and drop the
+            // write end so the plugin's stdin reader sees EOF.
+            let _ = stdin_writer.flush();
+            drop(stdin_writer);
+
+            // If the thread has already finished, join synchronously (cheap).
+            // Otherwise detach a background joiner so shutdown remains
+            // non-blocking while ensuring the thread is eventually reaped.
+            if join.is_finished() {
+                let _ = join.join();
+            } else {
+                std::thread::spawn(move || {
+                    let _ = join.join();
+                });
             }
         }
     }
@@ -329,7 +369,7 @@ impl StdioRpcProcess {
             )
         });
 
-        *self.child.lock().unwrap() = Some(ProcessHandle::Wasm { join, stdin_writer });
+        *self.child.lock().unwrap() = Some(ProcessHandle { join, stdin_writer });
         Ok(())
     }
 }
@@ -475,9 +515,11 @@ fn run_wasi_module(cfg: RunWasiConfig) -> Result<(), String> {
     use wasmtime_wasi::cli::{AsyncStdinStream, OutputFile};
     use wasmtime_wasi::WasiCtxBuilder;
 
-    let stdin_file = unsafe { std::fs::File::from_raw_fd(stdin.into_raw_fd()) };
-    let stdout_file = unsafe { std::fs::File::from_raw_fd(stdout.into_raw_fd()) };
-    let stderr_file = unsafe { std::fs::File::from_raw_fd(stderr.into_raw_fd()) };
+    // Convert os_pipe readers/writers into std::fs::File using
+    // the platform-specific helpers defined below.
+    let stdin_file = into_file_from_reader(stdin);
+    let stdout_file = into_file_from_writer(stdout);
+    let stderr_file = into_file_from_writer(stderr);
 
     let engine = Engine::default();
     let module = Module::from_file(&engine, &wasm_path).map_err(|e| format!("load module: {e}"))?;
@@ -825,23 +867,7 @@ fn read_file_under_root(root: &Path, rel: &str) -> Result<Vec<u8>, String> {
 fn sanitized_env() -> Vec<(OsString, OsString)> {
     let mut out: Vec<(OsString, OsString)> = Vec::new();
 
-    for k in [
-        "HOME",
-        "USER",
-        "USERPROFILE",
-        "TMPDIR",
-        "TEMP",
-        "TMP",
-        "LANG",
-        "LC_ALL",
-        // SSH / Git authentication:
-        // allow the plugin process to talk to the user’s SSH agent and respect host config.
-        "SSH_AUTH_SOCK",
-        "SSH_AGENT_PID",
-        "GIT_SSH_COMMAND",
-        "OPENVCS_SSH_MODE",
-        "OPENVCS_SSH",
-    ] {
+    for &k in SANITIZED_ENV_KEYS {
         if let Ok(v) = std::env::var(k) {
             out.push((k.into(), v.into()));
         }
@@ -849,12 +875,15 @@ fn sanitized_env() -> Vec<(OsString, OsString)> {
 
     #[cfg(unix)]
     {
-        out.push(("PATH".into(), "/usr/bin:/bin".into()));
+        out.push(("PATH".into(), DEFAULT_PATH_UNIX.into()));
     }
     #[cfg(windows)]
     {
         if let Ok(sysroot) = std::env::var("SystemRoot") {
-            out.push(("PATH".into(), format!("{sysroot}\\System32").into()));
+            out.push((
+                "PATH".into(),
+                format!("{sysroot}{}", DEFAULT_PATH_WINDOWS_SUFFIX).into(),
+            ));
         }
     }
 
@@ -873,6 +902,37 @@ fn plugin_stdout_log_path(plugin_id: &str, component: &str) -> PathBuf {
         .plugin_root_dir(plugin_id)
         .join("logs")
         .join(format!("{component}.stdout.log"))
+}
+
+// Platform-specific conversions from os_pipe types into `std::fs::File`.
+// Implemented as separate functions per-platform to keep unsafe blocks small
+// and clearly documented.
+#[cfg(unix)]
+fn into_file_from_reader(r: os_pipe::PipeReader) -> std::fs::File {
+    // Safety: we consume the PipeReader and immediately create a File which
+    // becomes the sole owner of the underlying fd.
+    unsafe { std::fs::File::from_raw_fd(r.into_raw_fd()) }
+}
+
+#[cfg(unix)]
+fn into_file_from_writer(w: os_pipe::PipeWriter) -> std::fs::File {
+    // Safety: we consume the PipeWriter and immediately create a File which
+    // becomes the sole owner of the underlying fd.
+    unsafe { std::fs::File::from_raw_fd(w.into_raw_fd()) }
+}
+
+#[cfg(windows)]
+fn into_file_from_reader(r: os_pipe::PipeReader) -> std::fs::File {
+    // Safety: we consume the PipeReader and immediately create a File which
+    // becomes the sole owner of the underlying handle.
+    unsafe { std::fs::File::from_raw_handle(r.into_raw_handle()) }
+}
+
+#[cfg(windows)]
+fn into_file_from_writer(w: os_pipe::PipeWriter) -> std::fs::File {
+    // Safety: we consume the PipeWriter and immediately create a File which
+    // becomes the sole owner of the underlying handle.
+    unsafe { std::fs::File::from_raw_handle(w.into_raw_handle()) }
 }
 
 fn append_log_line(path: &Path, line: &str) -> io::Result<()> {
