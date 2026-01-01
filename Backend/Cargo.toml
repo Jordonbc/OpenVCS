@@ -51,6 +51,7 @@ hex = "0.4"
 os_pipe = "1.2"
 wasmtime = "40"
 wasmtime-wasi = "40"
+glib = "0.21"
 
 [dev-dependencies]
 tempfile = "3"
