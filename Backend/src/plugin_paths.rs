@@ -44,8 +44,6 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
         }
     }
 
-    
-
     // If the Tauri runtime resolved a resource directory at startup, include
     // its built-in-plugins subdirectory as a candidate. This is set by the
     // application during `tauri::Builder::setup` via `set_resource_dir`.
