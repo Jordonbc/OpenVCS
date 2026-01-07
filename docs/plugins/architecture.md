@@ -17,15 +17,14 @@ An `.ovcsp` is a tar.xz archive containing exactly one top-level plugin folder n
 <pluginId>/
   openvcs.plugin.json
   bin/
-    <entrypoint>           (Unix)
-    <entrypoint>.exe       (Windows)
+    <entrypoint>.wasm
   assets/...               (optional)
   themes/...               (optional; existing `theme.json` packs)
 ```
 
 Notes:
 
-- Bundles are currently **platform-specific** (a bundle contains binaries for one OS/arch).
+- Bundles are **WASM-only**; OpenVCS will reject native binaries.
 - Bundle entry paths must be relative and use `/` separators (the installer normalizes and validates).
 
 ## Manifest (`openvcs.plugin.json`)
@@ -64,7 +63,7 @@ Example:
   - module: `bin/<module.exec>` (must end in `.wasm`)
   - arguments: `--backend <backendId>` for each id in `module.vcs_backends`
   - protocol: stdio JSON-RPC using `openvcs_core::plugin_protocol` message types
-- **Function component** (`functions`): a process exposing callable functions/hooks/commands over the same stdio JSON-RPC transport.
+- **Function component** (`functions`): a WASI module exposing callable functions/hooks/commands over the same stdio JSON-RPC transport.
 
 ## Installation locations and layout
 
@@ -109,7 +108,7 @@ The installer enforces:
   - reject suspicious compression ratios (zip-bomb heuristics)
 - **Required file validation**
   - `openvcs.plugin.json` must exist at `<pluginId>/openvcs.plugin.json`
-  - declared component entrypoints must exist under `bin/` after extraction and be executable
+  - declared component entrypoints must exist under `bin/` after extraction and be valid `.wasm` modules
 - **Integrity**
   - compute and store SHA-256 of the `.ovcsp` bundle in `<pluginId>/index.json`
 

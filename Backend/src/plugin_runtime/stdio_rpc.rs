@@ -6,7 +6,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
-use std::io::{self, BufRead, BufReader, LineWriter, Write};
+use std::io::{self, BufRead, BufReader, LineWriter, Read, Write};
 #[cfg(unix)]
 use std::os::fd::{FromRawFd, IntoRawFd};
 #[cfg(windows)]
@@ -455,7 +455,18 @@ fn read_stderr_loop(stderr: impl io::Read, path: PathBuf, plugin_id: String, com
 }
 
 fn is_wasm_module(path: &Path) -> bool {
-    path.extension().and_then(|s| s.to_str()) == Some("wasm")
+    if path.extension().and_then(|s| s.to_str()) != Some("wasm") {
+        return false;
+    }
+    let mut f = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    let mut magic = [0u8; 4];
+    match f.read(&mut magic) {
+        Ok(n) if n == magic.len() && magic == [0x00, 0x61, 0x73, 0x6d] => true,
+        _ => false,
+    }
 }
 
 fn parse_plugin_stderr_level(line: &str) -> Option<(log::Level, &str)> {
