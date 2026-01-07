@@ -463,10 +463,10 @@ fn is_wasm_module(path: &Path) -> bool {
         Err(_) => return false,
     };
     let mut magic = [0u8; 4];
-    match f.read(&mut magic) {
-        Ok(n) if n == magic.len() && magic == [0x00, 0x61, 0x73, 0x6d] => true,
-        _ => false,
-    }
+    matches!(
+        f.read(&mut magic),
+        Ok(n) if n == magic.len() && magic == [0x00, 0x61, 0x73, 0x6d]
+    )
 }
 
 fn parse_plugin_stderr_level(line: &str) -> Option<(log::Level, &str)> {
