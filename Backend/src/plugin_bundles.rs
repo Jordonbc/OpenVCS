@@ -450,14 +450,8 @@ impl PluginBundleStore {
         }
 
         let (module_exec, functions_exec) = (
-            manifest
-                .module
-                .and_then(|m| m.exec)
-                .map(|s| s.trim().to_string()),
-            manifest
-                .functions
-                .and_then(|f| f.exec)
-                .map(|s| s.trim().to_string()),
+            normalize_exec(manifest.module.and_then(|m| m.exec)),
+            normalize_exec(manifest.functions.and_then(|f| f.exec)),
         );
 
         validate_entrypoint(&staging_version_dir, module_exec.as_deref(), "module")?;
@@ -949,6 +943,11 @@ fn normalize_capabilities(mut caps: Vec<String>) -> Vec<String> {
     caps.sort();
     caps.dedup();
     caps
+}
+
+fn normalize_exec(exec: Option<String>) -> Option<String> {
+    exec.map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }
 
 fn platform_exec_name(base: &str) -> String {
