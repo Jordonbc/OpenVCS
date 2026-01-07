@@ -946,8 +946,7 @@ fn normalize_capabilities(mut caps: Vec<String>) -> Vec<String> {
 }
 
 fn normalize_exec(exec: Option<String>) -> Option<String> {
-    exec.map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+    exec.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
 fn platform_exec_name(base: &str) -> String {
