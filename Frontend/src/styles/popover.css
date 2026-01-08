@@ -11,7 +11,9 @@
     z-index: 70;
     min-width: 280px;
     max-height: 60vh;
-    overflow: auto;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     background: var(--surface);
     color: var(--text);
     border: 1px solid var(--border);
@@ -40,6 +42,11 @@
 }
 
 /* List */
+.pop-list-scroll{
+    overflow: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+}
 .pop-list {
     list-style: none;
     margin: 0;
@@ -56,12 +63,12 @@
     border-radius: var(--r-sm);
     cursor: pointer;
 }
-.pop-list li:hover { background: rgba(255,255,255,.04); }
+.pop-list li:hover { background: color-mix(in oklab, var(--text) 6%, transparent); }
 .pop-list li[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
 .pop-list li[aria-disabled="true"]:hover { background: transparent; }
 .pop-list li[aria-selected="true"] {
-    background: rgba(53,132,228,.12);
-    outline: 1px solid rgba(53,132,228,.35);
+    background: color-mix(in oklab, var(--accent) 16%, transparent);
+    outline: 1px solid color-mix(in oklab, var(--accent) 42%, transparent);
 }
 .pop-list li.pop-divider {
     cursor: default;

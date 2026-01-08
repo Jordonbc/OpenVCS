@@ -4,15 +4,17 @@ mod commit;
 mod conflicts;
 mod general;
 mod lfs;
+mod output_log;
+mod plugins;
 mod remotes;
+mod repo_files;
 mod settings;
 mod shared;
+mod ssh;
 mod stash;
 mod status;
-mod ssh;
-mod output_log;
-mod updater;
 mod themes;
+mod updater;
 
 pub use backends::*;
 pub use branches::*;
@@ -20,14 +22,16 @@ pub use commit::*;
 pub use conflicts::*;
 pub use general::*;
 pub use lfs::*;
+pub use output_log::*;
+pub use plugins::*;
 pub use remotes::*;
+pub use repo_files::*;
 pub use settings::*;
+pub use ssh::*;
 pub use stash::*;
 pub use status::*;
-pub use ssh::*;
-pub use output_log::*;
-pub use updater::*;
 pub use themes::*;
+pub use updater::*;
 
 pub(crate) use shared::{
     current_repo_or_err, lfs_config, progress_bridge, run_repo_task, LfsEnvGuard, ProgressPayload,

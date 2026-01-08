@@ -40,7 +40,6 @@ Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 - 🗂 **Multi‑VCS architecture** - designed to support many backends beyond Git.
 - ⚡ **Lightweight & fast** - native shell via Tauri + Rust.
 - 🧰 **Developer‑first UX** - frictionless flows for common VCS tasks.
-- 🧱 **Local‑first** - avoids heavyweight runtimes and keeps resource use low.
 
 ## Platform Targets
 
@@ -48,16 +47,29 @@ Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 - 🪟 **Windows** builds supported
 - 🍏 **macOS** not currently planned (community interest welcome)
 
-## Features (Planned & In‑Progress)
+## Features (Current)
 
-- 🔗 **Git backend** (initial) with common operations (clone, add, commit, branch, push/pull, fetch, stash).
-- 🔌 **Backend abstraction** to enable additional VCS (Mercurial/SVN/Perforce/Fossil) in future releases.
-- 🎨 **Theming** (planned): custom themes and a potential **Theme Store**.
-- 🧩 **Plugins** (planned): plugin API with a potential **Plugin Store**.
-- 🖼 **Modern UI** focused on clarity and speed; keyboard‑first workflows.
-- 📁 **Multi‑repo** quality‑of‑life features (recents, quick switch, project workspaces).
+- 🔗 **Git support** with a selectable backend (**system Git** by default; **libgit2** optional).
+- 📁 **Repo workflows:** clone, open existing repos, recent repos list, optional reopen of last repo on launch.
+- ✅ **Status & diffs:** working tree status, per-file diff, commit diff, discard changes.
+- 🧩 **Staging & commits:** stage files, partial staging/commits via patch, commit from index.
+- 🌿 **Branches:** list local/remote, create, checkout, rename, delete, set upstream tracking.
+- 🔀 **Merge & conflicts:** merge branches, conflict details, checkout ours/theirs, save merged result, launch external merge tool, abort/continue merge.
+- 🧳 **Stash:** list, push, apply, pop, drop, show.
+- 🌐 **Sync & remotes:** set remote URL, fetch (single/all), pull (fast-forward only), push.
+- 🗃 **Git LFS helpers:** fetch/pull/prune, track/untrack, inspect tracked paths.
+- 🔐 **SSH helpers:** trust host keys, list/add SSH agent keys, key discovery.
+- 🎨 **Themes:** built-in light/dark themes, plus plugin-provided themes (standalone theme `.zip` packs are not supported).
+- 🧩 **Plugins (early):** local plugins with manifests, hooks/actions, and UI contributions (no store yet).
+- 🔄 **Updater & logs:** update check/install, VCS output log window, app log tail/clear.
 
-> This roadmap is exploratory; priorities may shift as we collect community feedback.
+## Planned / Exploratory
+
+- 🔌 **More VCS backends** via the existing backend abstraction.
+- 🧩 **Plugin & theme store** (distribution/discovery UX).
+- 🖼 **More UI workflows** and keyboard-first polish.
+
+> Priorities may shift as we iterate on feedback and stabilize the core Git workflows.
 
 ---
 
@@ -159,6 +171,18 @@ cargo build
 - **Crates:** All modular logic (e.g., Git backend, core abstractions) lives under `crates/`.
 - **Bridge:** Tauri `invoke` is used to call Rust from the UI; events are used for progress/streaming.
 
+---
+
+## Testing
+
+- Use `just test` to run the full project test/check flow (runs `cargo test --workspace`, then frontend typecheck and tests).
+- Use `just fix` to run formatting and quick fixes; it now also builds the frontend and typechecks (`npm run build` and `npm exec tsc -- -p tsconfig.json --noEmit`).
+- Frontend-only commands (from `Frontend/`):
+  - `npm exec tsc -- -p tsconfig.json --noEmit` — TypeScript typecheck for the frontend.
+  - `npm test` — run Vitest unit tests (added to the frontend devDependencies).
+
+Note: Some commands (installing Node deps, running Tauri dev/build) may require network access and native toolchain components.
+
 Design principles:
 
 1. **Separation of concerns** - UI logic stays in the frontend; VCS logic lives in backend crates.
@@ -176,12 +200,18 @@ OpenVCS is **open source** and community‑driven. Contributions of all kinds ar
 - Backend adapters for other VCS
 - Theme prototypes and early plugin experiments
 
+Formatting requirement (Rust):
+- Run `cargo fmt --all` before pushing.
+- CI enforces `cargo fmt --all -- --check` and will fail if formatting is off.
+- CI also runs `cargo clippy --all-targets -- -D warnings` and will fail on warnings.
+Convenience (if you have `just` installed): `just fix`
+
 > See `CONTRIBUTING.md` (coming soon). Until then, feel free to open an issue or a discussion to propose changes.
 
 ### Proposed Roadmap (High‑level)
 
 - **MVP:** Stable Git workflows; Linux and Windows builds; core UI.
-- **Theming:** Planned for later; will likely begin with simple theme packs (e.g. zip files in a directory) before exploring an initial gallery or store.
+- **Theming:** Planned for later; starting with plugin-provided theme packs before exploring a gallery or store.
 - **Plugins:** Planned for later; will likely begin as simple plugin bundles (e.g. zip files in a directory) before evolving toward a store with discovery UX.
 - **Multi‑VCS:** Add at least one non‑Git backend to validate the abstraction.
 

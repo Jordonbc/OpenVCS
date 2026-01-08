@@ -7,9 +7,10 @@ use tauri::{async_runtime, Emitter, Manager, Runtime, State, Window};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 
-use openvcs_core::backend_descriptor::get_backend;
-use openvcs_core::{backend_id, BackendId, Repo};
+use openvcs_core::BackendId;
 
+use crate::plugin_vcs_backends;
+use crate::repo::Repo;
 use crate::state::AppState;
 use crate::utilities::utilities;
 use crate::validate;
@@ -48,13 +49,26 @@ pub async fn browse_directory<R: Runtime>(
 }
 
 #[tauri::command]
+pub async fn browse_file<R: Runtime>(window: Window<R>, purpose: Option<String>) -> Option<String> {
+    let title = match purpose.as_deref() {
+        Some("install_plugin") => "Select an OpenVCS plugin bundle (.ovcsp)",
+        _ => "Select a file",
+    };
+    let exts = match purpose.as_deref() {
+        Some("install_plugin") => &["ovcsp"][..],
+        _ => &[][..],
+    };
+    utilities::browse_file_async(window.app_handle().clone(), title, exts).await
+}
+
+#[tauri::command]
 pub async fn add_repo<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
     path: String,
     backend_id: Option<BackendId>,
 ) -> Result<(), String> {
-    let be = backend_id.unwrap_or_else(|| backend_id!("git-system"));
+    let be = backend_id.unwrap_or_else(|| BackendId::from("git-system"));
     add_repo_internal(window, state, path, be).await
 }
 
@@ -75,20 +89,27 @@ pub async fn add_repo_internal<R: Runtime>(
         return Err(m);
     }
 
-    let desc = get_backend(&backend_id).ok_or_else(|| {
-        let m = format!("Backend not found: {backend_id}");
+    let open_path = path.clone();
+    let backend_label = backend_id.as_ref().to_string();
+    let prefer_plugin = plugin_vcs_backends::has_plugin_vcs_backend(&backend_id);
+    let backend_id_for_task = backend_id.clone();
+    let handle = async_runtime::spawn_blocking(move || {
+        if prefer_plugin {
+            plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
+                backend_id_for_task,
+                Path::new(&open_path),
+            )
+        } else {
+            Err(openvcs_core::VcsError::Unsupported(backend_id_for_task))
+        }
+    })
+    .await
+    .map_err(|e| format!("add_repo task failed: {e}"))?
+    .map_err(|e| {
+        let m = format!("Failed to open repo with backend `{backend_label}`: {e}");
         error!("{m}");
         m
     })?;
-    let open_path = path.clone();
-    let handle = async_runtime::spawn_blocking(move || (desc.open)(Path::new(&open_path)))
-        .await
-        .map_err(|e| format!("add_repo task failed: {e}"))?
-        .map_err(|e| {
-            let m = format!("Failed to open repo with backend `{backend_id}`: {e}");
-            error!("{m}");
-            m
-        })?;
 
     let repo = Arc::new(Repo::new(handle));
     state.set_current_repo(repo);
@@ -116,8 +137,8 @@ pub async fn clone_repo<R: Runtime>(
     dest: String,
     backend_id: Option<BackendId>,
 ) -> Result<(), String> {
-    let be = backend_id.unwrap_or_else(|| backend_id!("git-system"));
-    let desc = get_backend(&be).ok_or_else(|| format!("Backend not found: {be}"))?;
+    let be = backend_id.unwrap_or_else(|| BackendId::from("git-system"));
+    let _prefer_plugin = plugin_vcs_backends::has_plugin_vcs_backend(&be);
 
     let folder = infer_repo_dir_from_url(&url);
     if folder.is_empty() {
@@ -127,22 +148,27 @@ pub async fn clone_repo<R: Runtime>(
 
     fs::create_dir_all(&dest).map_err(|e| format!("Failed to create dest: {e}"))?;
 
-    let clone_url = url.clone();
+    let _clone_url = url.clone();
     let clone_target = target.clone();
     let be_label = be.as_ref().to_string();
     let app_handle = window.app_handle().clone();
-    async_runtime::spawn_blocking(move || {
+    let handle = async_runtime::spawn_blocking(move || {
         let on = Some(progress_bridge(app_handle));
         info!(
             "clone_repo: cloning via backend {} into {}",
             be_label,
             clone_target.display()
         );
-        (desc.clone_repo)(&clone_url, &clone_target, on)
-    })
-    .await
-    .map_err(|e| format!("clone_repo task failed: {e}"))?
-    .map_err(|e| format!("Clone failed: {e}"))?;
+        // Plugin backends currently do not support clone in the host.
+        let _ = on;
+        Err(openvcs_core::VcsError::Unsupported(
+            openvcs_core::BackendId::from(be_label.as_str()),
+        ))
+    });
+    handle
+        .await
+        .map_err(|e| format!("clone_repo task failed: {e}"))?
+        .map_err(|e| format!("Clone failed: {e}"))?;
 
     add_repo_internal(window, state, target.to_string_lossy().to_string(), be).await
 }
@@ -200,7 +226,7 @@ pub async fn open_repo<R: Runtime>(
     path: String,
     backend_id: Option<BackendId>,
 ) -> Result<(), String> {
-    let be = backend_id.unwrap_or_else(|| backend_id!("git-system"));
+    let be = backend_id.unwrap_or_else(|| BackendId::from("git-system"));
     add_repo_internal(window, state, path, be).await
 }
 
@@ -210,13 +236,16 @@ pub fn open_repo_dotfile<R: Runtime>(
     state: State<'_, AppState>,
     name: String,
 ) -> Result<(), String> {
-    let repo_state = state.current_repo().ok_or_else(|| "No repository selected".to_string())?;
+    let repo_state = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
     let mut path = repo_state.inner().workdir().to_path_buf();
     path.push(name);
 
     if !path.exists() {
         fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(&path)
             .map_err(|e| format!("Unable to create file: {e}"))?;

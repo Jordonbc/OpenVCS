@@ -1,6 +1,8 @@
 /* src/styles/index.css */
+@import "overlayscrollbars/styles/overlayscrollbars.css";
 @import "./tokens.css";
 @import "./base.css";
+@import "./overlayscrollbars.css";
 @import "./layout.css";
 @import "./components.css";
 @import "./popover.css";

@@ -9,6 +9,9 @@
     --bg:#242424; --surface:#2a2a2a; --surface-2:#313131;
     --text:#e6e6e6; --muted:#b7bcc5; --border:rgba(255,255,255,.08);
 
+    /* Global scaling (used via root font-size) */
+    --ui-scale:1;
+
     /* Brand / status */
     --accent:#3584e4; --accent-2:#4c94ea;
     --danger:#c01c28; --success:#26a269; --warning:#f59e0b;
@@ -30,7 +33,7 @@
 
     /* Global type defaults */
     font-family:var(--font);
-    font-size:15px;
+    font-size:calc(15px * var(--ui-scale, 1));
 }
 
 /* Dark theme (explicit) */
@@ -43,6 +46,13 @@
     color-scheme: light;
     --bg:#f6f6f7; --surface:#ffffff; --surface-2:#f0f0f2;
     --text:#1b1b1c; --muted:#666c76; --border:rgba(0,0,0,.12);
+
+    /* Form control tokens (used in overlays) */
+    --control-bg:#ffffff;
+    --control-bg-focus:#f4f6fb;
+    --control-border:rgba(0,0,0,.18);
+    --control-text:#1b1b1c;
+    --control-muted:#6b7280;
 }
 
 /* OS preference fallback when no data-theme is set */
@@ -51,5 +61,12 @@
         color-scheme: light;
         --bg:#f6f6f7; --surface:#ffffff; --surface-2:#f0f0f2;
         --text:#1b1b1c; --muted:#666c76; --border:rgba(0,0,0,.12);
+
+        /* Form control tokens (used in overlays) */
+        --control-bg:#ffffff;
+        --control-bg-focus:#f4f6fb;
+        --control-border:rgba(0,0,0,.18);
+        --control-text:#1b1b1c;
+        --control-muted:#6b7280;
     }
 }

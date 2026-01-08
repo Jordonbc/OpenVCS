@@ -13,6 +13,8 @@ import newBranchHtml from "@modals/new-branch.html?raw";
 import { wireNewBranch } from "../features/newBranch";
 import renameBranchHtml from "@modals/rename-branch.html?raw";
 import { wireRenameBranch } from "../features/renameBranch";
+import cherryPickHtml from "@modals/cherry-pick.html?raw";
+import { wireCherryPick } from "../features/cherryPick";
 import deleteBranchHtml from "@modals/delete-branch.html?raw";
 import { wireDeleteBranchConfirm } from "../features/deleteBranchConfirm";
 import setUpstreamHtml from "@modals/set-upstream.html?raw";
@@ -36,6 +38,7 @@ const FRAGMENTS: Record<string, string> = {
     "ssh-keys-modal": sshKeysHtml,
     "new-branch-modal": newBranchHtml,
     "rename-branch-modal": renameBranchHtml,
+    "cherry-pick-modal": cherryPickHtml,
     "delete-branch-modal": deleteBranchHtml,
     "set-upstream-modal": setUpstreamHtml,
     "update-modal": updateHtml,
@@ -84,6 +87,7 @@ export function hydrate(id: string): void {
     if (id === "ssh-keys-modal") wireSshKeys();
     if (id === "new-branch-modal") wireNewBranch();
     if (id === "rename-branch-modal") wireRenameBranch();
+    if (id === "cherry-pick-modal") wireCherryPick();
     if (id === "delete-branch-modal") wireDeleteBranchConfirm();
     if (id === "set-upstream-modal") wireSetUpstream();
     if (id === "update-modal") wireUpdate();

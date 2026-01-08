@@ -3,10 +3,29 @@ import { openModal, closeModal } from '../ui/modals';
 import { toKebab } from '../lib/dom';
 import { notify } from '../lib/notify';
 import { setTheme } from '../ui/layout';
-import { DEFAULT_THEME_ID, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
+import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
+import { reloadPlugins } from '../plugins';
+import type { PluginSummary } from '../plugins';
+import { applyPluginSettingsSections } from '../plugins';
 import type { GlobalSettings, ThemeSummary } from '../types';
 
-const THEME_PACK_HINT = 'Place theme ZIP files into the themes folder to enable them.';
+const THEME_PACK_HINT = 'Install a theme ZIP into the themes folder, or install a plugin that provides themes.';
+const SYSTEM_DARK_MQ = matchMedia('(prefers-color-scheme: dark)');
+
+function normalizeAppearance(value: unknown): 'light' | 'dark' | 'both' | null {
+    const raw = String(value ?? '').trim().toLowerCase();
+    if (raw === 'light' || raw === 'dark' || raw === 'both') return raw;
+    return null;
+}
+
+function modeForTheme(themeId: string): 'light' | 'dark' {
+    const desired = (themeId || DEFAULT_LIGHT_THEME_ID).trim().toLowerCase() || DEFAULT_LIGHT_THEME_ID;
+    const summary = getAvailableThemes().find((t) => (t.id || '').toLowerCase() === desired);
+    const appearance = normalizeAppearance(summary?.appearance);
+    if (appearance === 'light') return 'light';
+    if (appearance === 'dark') return 'dark';
+    return SYSTEM_DARK_MQ.matches ? 'dark' : 'light';
+}
 
 function themeOptionLabel(theme: ThemeSummary): string {
     const version = theme.version?.trim();
@@ -37,7 +56,7 @@ async function rebuildThemePackOptions(
     }
 
     const themes = getAvailableThemes();
-    const desired = (desiredId ?? selectEl.value ?? DEFAULT_THEME_ID).toLowerCase();
+    const desiredLower = String(desiredId ?? selectEl.value ?? DEFAULT_LIGHT_THEME_ID).trim().toLowerCase() || DEFAULT_LIGHT_THEME_ID;
 
     selectEl.innerHTML = '';
     for (const theme of themes) {
@@ -48,36 +67,74 @@ async function rebuildThemePackOptions(
         selectEl.appendChild(opt);
     }
 
-    const match = themes.find((t) => t.id.toLowerCase() === desired);
-    selectEl.value = match ? match.id : DEFAULT_THEME_ID;
-    selectEl.title = themeTooltip(selectEl.value || DEFAULT_THEME_ID);
+    const match = themes.find((t) => t.id.toLowerCase() === desiredLower);
+    selectEl.value = match ? match.id : DEFAULT_LIGHT_THEME_ID;
+    selectEl.title = themeTooltip(selectEl.value || DEFAULT_LIGHT_THEME_ID);
 }
 
 export function openSettings(section?: string){
     openModal('settings-modal');
     const modal = document.getElementById('settings-modal') as HTMLElement | null;
     if (!modal) return;
+    applyPluginSettingsSections(modal);
     if (section) activateSection(modal, section);
-    loadSettingsIntoForm(modal).catch(console.error);
+
+    // Prevent a "double-click to refresh" feel where the user opens the Theme dropdown
+    // before the async settings/theme list has finished loading.
+    if (TAURI.has) {
+        modal.setAttribute('aria-busy', 'true');
+        const setThemeAuto = modal.querySelector<HTMLInputElement>('#set-theme-auto');
+        const setThemeSel = modal.querySelector<HTMLSelectElement>('#set-theme');
+        if (setThemeAuto) setThemeAuto.disabled = true;
+        if (setThemeSel) {
+            setThemeSel.disabled = true;
+            setThemeSel.innerHTML = '';
+            const opt = document.createElement('option');
+            opt.value = DEFAULT_LIGHT_THEME_ID;
+            opt.textContent = 'Loading…';
+            setThemeSel.appendChild(opt);
+        }
+    }
+
+    loadSettingsIntoForm(modal)
+        .catch(console.error)
+        .finally(() => {
+            modal.removeAttribute('aria-busy');
+            const setThemeAuto = modal.querySelector<HTMLInputElement>('#set-theme-auto');
+            if (setThemeAuto) setThemeAuto.disabled = false;
+        });
 }
 
 function activateSection(modal: HTMLElement, section: string) {
     const nav = modal.querySelector('#settings-nav');
     const panels = modal.querySelector('#settings-panels');
     if (!nav || !panels) return;
-    const btn = nav.querySelector<HTMLElement>(`[data-section="${section}"]`);
+
+    const safeSection = (() => {
+        const requested = String(section || '').trim();
+        if (requested && nav.querySelector<HTMLElement>(`[data-section="${requested}"]`)) return requested;
+        return 'general';
+    })();
+
+    const btn = nav.querySelector<HTMLElement>(`[data-section="${safeSection}"]`);
     nav.querySelectorAll<HTMLElement>('.seg-btn').forEach(b => {
         b.classList.toggle('active', b === btn);
     });
     panels.querySelectorAll<HTMLElement>('.panel-form').forEach(p => {
-        p.classList.toggle('hidden', p.getAttribute('data-panel') !== section);
+        p.classList.toggle('hidden', p.getAttribute('data-panel') !== safeSection);
     });
+
+    // Plugins are applied immediately (no Save/Cancel).
+    const actions = modal.querySelector<HTMLElement>('.sheet-actions');
+    if (actions) actions.classList.toggle('hidden', safeSection === 'plugins');
 }
 
 export function wireSettings() {
     const modal = document.getElementById('settings-modal') as HTMLElement | null;
     if (!modal || (modal as any).__wired) return;
     (modal as any).__wired = true;
+
+    applyPluginSettingsSections(modal);
 
     // Close on backdrop / [data-close]
     modal.addEventListener('click', (e) => {
@@ -111,8 +168,6 @@ export function wireSettings() {
     updateLfsDependentState();
     lfsToggle?.addEventListener('change', updateLfsDependentState);
 
-    const setThemeSel = modal.querySelector('#set-theme') as HTMLSelectElement | null;
-    const setThemePackSel = modal.querySelector('#set-theme-pack') as HTMLSelectElement | null;
     const mergeModeSel = modal.querySelector('#set-merge-mode') as HTMLSelectElement | null;
     const mergeCustomGroups = Array.from(modal.querySelectorAll<HTMLElement>('[data-merge-custom]'));
 
@@ -140,42 +195,54 @@ export function wireSettings() {
     updateSshPathState();
     sshBinSel?.addEventListener('change', updateSshPathState);
 
-    const updateThemePackTitle = () => {
-        if (!setThemePackSel) return;
-        const val = setThemePackSel.value || DEFAULT_THEME_ID;
-        setThemePackSel.title = themeTooltip(val);
+    const setThemeAuto = modal.querySelector<HTMLInputElement>('#set-theme-auto');
+    const setThemeSel = modal.querySelector<HTMLSelectElement>('#set-theme');
+
+    const syncThemeTitle = () => {
+        if (!setThemeSel) return;
+        setThemeSel.title = themeTooltip(setThemeSel.value || DEFAULT_LIGHT_THEME_ID);
     };
 
-    let themePackRefreshInFlight = false;
-    setThemePackSel?.addEventListener('pointerdown', async () => {
-        if (!setThemePackSel || themePackRefreshInFlight) return;
-        themePackRefreshInFlight = true;
-        try {
-            await rebuildThemePackOptions(setThemePackSel, {
-                desiredId: setThemePackSel.value,
-                forceReload: true,
-            });
-        } finally {
-            themePackRefreshInFlight = false;
+    const applyThemeFromControls = async (opts: { silent?: boolean } = {}) => {
+        if (!setThemeSel) return;
+        const auto = !!setThemeAuto?.checked;
+        setThemeSel.disabled = auto;
+
+        const themeId = setThemeSel.value || DEFAULT_LIGHT_THEME_ID;
+        const mode: 'system' | 'light' | 'dark' = auto ? 'system' : modeForTheme(themeId);
+        setTheme(mode);
+        await selectThemePack(themeId, { silent: opts.silent, mode });
+        if (auto) {
+            setThemeSel.value = getActiveThemeId() || DEFAULT_LIGHT_THEME_ID;
         }
+        syncThemeTitle();
+    };
+
+    setThemeSel?.addEventListener('pointerdown', () => {
+        if (setThemeAuto?.checked) return;
+
+        // Keep the options list in sync with the already-cached theme list without
+        // kicking off an async refresh during the same user gesture (which makes the
+        // native picker look stale until it's opened again).
+        rebuildThemePackOptions(setThemeSel, {
+            desiredId: setThemeSel.value,
+            forceReload: false,
+        }).catch(() => {});
     });
 
     setThemeSel?.addEventListener('change', () => {
-        const v = (setThemeSel.value as ('system'|'dark'|'light')) || 'system';
-        setTheme(v);
+        applyThemeFromControls({ silent: true }).catch(() => {});
     });
 
-    setThemePackSel?.addEventListener('change', async () => {
-        if (!setThemePackSel) return;
-        const choice = setThemePackSel.value || DEFAULT_THEME_ID;
-        try {
-            await selectThemePack(choice);
-        } catch {
-            setThemePackSel.value = DEFAULT_THEME_ID;
-            try { await selectThemePack(DEFAULT_THEME_ID); } catch {}
-        } finally {
-            updateThemePackTitle();
-        }
+    setThemeAuto?.addEventListener('change', () => {
+        applyThemeFromControls({ silent: true }).catch(() => {});
+    });
+
+    window.addEventListener('openvcs:theme-pack-changed', () => {
+        if (!setThemeAuto?.checked || !setThemeSel) return;
+        setThemeSel.value = getActiveThemeId() || DEFAULT_LIGHT_THEME_ID;
+        setThemeSel.disabled = true;
+        syncThemeTitle();
     });
 
     const settingsSave  = modal.querySelector('#settings-save')  as HTMLButtonElement | null;
@@ -195,17 +262,17 @@ export function wireSettings() {
                 const newBackend: string = String(next?.git?.backend || 'system');
                 if (newBackend && newBackend !== prevBackend) {
                     const backend_id = (newBackend === 'libgit2') ? 'git-libgit2' : 'git-system';
-                    try { await TAURI.invoke('set_backend_cmd', { backend_id }); } catch {}
+                    try { await TAURI.invoke('set_vcs_backend_cmd', { backend_id }); } catch {}
                 }
             }
 
             modal.dataset.currentCfg = JSON.stringify(next);
 
             // Apply visual prefs immediately (no restart): theme, tab width, UI scale, mono font
-            const theme = next.general?.theme || 'system';
-            const pack = next.general?.theme_pack || DEFAULT_THEME_ID;
-            try { await selectThemePack(pack, { silent: true, mode: theme }); } catch {}
+            const theme = (next.general?.theme || 'system') as 'system' | 'light' | 'dark';
+            const pack = String(next.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
             setTheme(theme);
+            try { await selectThemePack(pack, { silent: true, mode: theme }); } catch {}
             try {
                 const root = document.documentElement;
                 const tabw = Number(next?.diff?.tab_width ?? 4);
@@ -227,23 +294,34 @@ export function wireSettings() {
             if (!TAURI.has) return;
             const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
 
-            cur.general = { theme: 'system', theme_pack: DEFAULT_THEME_ID, language: 'system', default_backend: 'git', update_channel: 'stable', reopen_last_repos: true, checks_on_launch: true, telemetry: false, crash_reports: false };
+            cur.general = {
+                theme: 'system',
+                theme_pack: DEFAULT_LIGHT_THEME_ID,
+                language: 'system',
+                default_backend: 'git',
+                update_channel: 'stable',
+                reopen_last_repos: true,
+                checks_on_launch: true,
+                telemetry: false,
+                crash_reports: false,
+            };
             cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, fetch_on_focus: true, allow_hooks: 'ask', respect_core_autocrlf: true, merge_commit_message_template: "Merged branch '{branch:source}' into '{branch:target}'" };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
             cur.performance = { progressive_render: true, gpu_accel: true };
             cur.ux = { ui_scale: 1.0, font_mono: 'monospace', vim_nav: false, color_blind_mode: 'none', recents_limit: 10 };
             cur.logging = { level: 'info', live_viewer: false, retain_archives: 10 };
+            cur.plugins = { disabled: [], enabled: [] };
 
             await TAURI.invoke('set_global_settings', { cfg: cur });
             await loadSettingsIntoForm(modal);
-            try { await selectThemePack(DEFAULT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
             setTheme('system');
+            try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
             notify('Defaults restored');
         } catch { notify('Failed to restore defaults'); }
     });
 
-    loadSettingsIntoForm(modal).catch(console.error);
+    // Settings are loaded by `openSettings()` on open.
 }
 
 function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
@@ -253,10 +331,14 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
 
     const o: GlobalSettings = { ...base };
 
+    const autoTheme = !!get<HTMLInputElement>('#set-theme-auto')?.checked;
+    const themePack = get<HTMLSelectElement>('#set-theme')?.value || DEFAULT_LIGHT_THEME_ID;
+    const theme = autoTheme ? 'system' : modeForTheme(themePack);
+
     o.general = {
         ...o.general,
-        theme: (get<HTMLSelectElement>('#set-theme')?.value) as any,
-        theme_pack: get<HTMLSelectElement>('#set-theme-pack')?.value || DEFAULT_THEME_ID,
+        theme,
+        theme_pack: themePack || DEFAULT_LIGHT_THEME_ID,
         language: get<HTMLSelectElement>('#set-language')?.value,
         default_backend: (get<HTMLSelectElement>('#set-default-backend')?.value || 'git') as any,
         update_channel: (() => { const v = get<HTMLSelectElement>('#set-update-channel')?.value; return v === 'beta' ? 'nightly' : v; })(),
@@ -264,17 +346,19 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         checks_on_launch: !!get<HTMLInputElement>('#set-checks-on-launch')?.checked,
     };
 
-    o.git = {
-        ...o.git,
-        backend: get<HTMLSelectElement>('#set-git-backend')?.value as any,
-        merge_commit_message_template: get<HTMLInputElement>('#set-merge-message-template')?.value ?? '',
-        ssh_binary: (get<HTMLSelectElement>('#set-git-ssh-binary')?.value || 'auto') as any,
-        ssh_path: (get<HTMLInputElement>('#set-git-ssh-path')?.value || '').trim(),
-        prune_on_fetch: !!get<HTMLInputElement>('#set-prune-on-fetch')?.checked,
-        fetch_on_focus: !!get<HTMLInputElement>('#set-fetch-on-focus')?.checked,
-        allow_hooks: get<HTMLSelectElement>('#set-hook-policy')?.value,
-        respect_core_autocrlf: !!get<HTMLInputElement>('#set-respect-autocrlf')?.checked,
-    };
+    if (get('#set-git-backend') || get('#set-merge-message-template') || get('#set-git-ssh-binary')) {
+        o.git = {
+            ...o.git,
+            backend: get<HTMLSelectElement>('#set-git-backend')?.value as any,
+            merge_commit_message_template: get<HTMLInputElement>('#set-merge-message-template')?.value ?? '',
+            ssh_binary: (get<HTMLSelectElement>('#set-git-ssh-binary')?.value || 'auto') as any,
+            ssh_path: (get<HTMLInputElement>('#set-git-ssh-path')?.value || '').trim(),
+            prune_on_fetch: !!get<HTMLInputElement>('#set-prune-on-fetch')?.checked,
+            fetch_on_focus: !!get<HTMLInputElement>('#set-fetch-on-focus')?.checked,
+            allow_hooks: get<HTMLSelectElement>('#set-hook-policy')?.value,
+            respect_core_autocrlf: !!get<HTMLInputElement>('#set-respect-autocrlf')?.checked,
+        };
+    }
 
     o.diff = {
         ...o.diff,
@@ -295,15 +379,17 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         })(),
     };
 
-    const rawConc = Number(get<HTMLInputElement>('#set-lfs-concurrency')?.value ?? 0);
-    const conc = rawConc && isFinite(rawConc) ? Math.max(1, Math.min(16, rawConc)) : 4;
-    o.lfs = {
-        ...o.lfs,
-        enabled: !!get<HTMLInputElement>('#set-lfs-enabled')?.checked,
-        concurrency: conc,
-        require_lock_before_edit: !!get<HTMLInputElement>('#set-lfs-require-lock')?.checked,
-        background_fetch_on_checkout: !!get<HTMLInputElement>('#set-lfs-bg-fetch')?.checked,
-    };
+    if (get('#set-lfs-enabled') || get('#set-lfs-concurrency') || get('#set-lfs-require-lock')) {
+        const rawConc = Number(get<HTMLInputElement>('#set-lfs-concurrency')?.value ?? 0);
+        const conc = rawConc && isFinite(rawConc) ? Math.max(1, Math.min(16, rawConc)) : 4;
+        o.lfs = {
+            ...o.lfs,
+            enabled: !!get<HTMLInputElement>('#set-lfs-enabled')?.checked,
+            concurrency: conc,
+            require_lock_before_edit: !!get<HTMLInputElement>('#set-lfs-require-lock')?.checked,
+            background_fetch_on_checkout: !!get<HTMLInputElement>('#set-lfs-bg-fetch')?.checked,
+        };
+    }
 
     o.performance = {
         ...o.performance,
@@ -331,6 +417,42 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         retain_archives: keep,
     };
 
+    const pluginsStateKey = '__pluginsPanelState';
+    const pluginsState = (root as any)[pluginsStateKey] as { disabled?: Set<string>; enabled?: Set<string>; list?: PluginSummary[] } | undefined;
+    if (pluginsState?.disabled instanceof Set && pluginsState?.enabled instanceof Set) {
+        const byLower = new Map<string, string>();
+        for (const plugin of Array.isArray(pluginsState.list) ? pluginsState.list : []) {
+            const id = String(plugin?.id || '').trim();
+            if (!id) continue;
+            byLower.set(id.toLowerCase(), id);
+        }
+
+        const disabled = Array.from(pluginsState.disabled.values())
+            .map((id) => String(id || '').trim().toLowerCase())
+            .filter(Boolean)
+            .map((id) => byLower.get(id) || id);
+
+        const enabled = Array.from(pluginsState.enabled.values())
+            .map((id) => String(id || '').trim().toLowerCase())
+            .filter(Boolean)
+            .map((id) => byLower.get(id) || id);
+
+        o.plugins = { ...(o.plugins || {}), disabled, enabled };
+    } else {
+        const pluginToggles = Array.from(root.querySelectorAll<HTMLInputElement>('[data-plugin-id]'));
+        if (pluginToggles.length) {
+            const disabled: string[] = [];
+            const enabled: string[] = [];
+            for (const toggle of pluginToggles) {
+                const id = String(toggle.dataset.pluginId || '').trim();
+                if (!id) continue;
+                if (toggle.checked) enabled.push(id);
+                else disabled.push(id);
+            }
+            o.plugins = { ...(o.plugins || {}), disabled, enabled };
+        }
+    }
+
     return o;
 }
 
@@ -343,16 +465,29 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
 
     m.dataset.currentCfg = JSON.stringify(cfg);
 
-    const themePackSel = get<HTMLSelectElement>('#set-theme-pack');
-    if (themePackSel) {
-        const desired = cfg.general?.theme_pack;
-        await rebuildThemePackOptions(themePackSel, {
-            desiredId: typeof desired === 'string' ? desired : undefined,
+    await loadPluginsIntoForm(m, cfg);
+
+    const themeSel = get<HTMLSelectElement>('#set-theme');
+    const elAuto = get<HTMLInputElement>('#set-theme-auto');
+    const themePref = (cfg.general?.theme || 'system') as 'system'|'light'|'dark';
+
+    if (elAuto) elAuto.checked = themePref === 'system';
+
+    if (themeSel) {
+        let desiredId = String(cfg.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
+        if (desiredId.trim().toLowerCase() === DEFAULT_THEME_ID) {
+            desiredId = themePref === 'dark' ? DEFAULT_DARK_THEME_ID : DEFAULT_LIGHT_THEME_ID;
+        }
+        await rebuildThemePackOptions(themeSel, {
+            desiredId,
             forceReload: true,
         });
+        themeSel.disabled = themePref === 'system';
+        if (themePref === 'system') {
+            themeSel.value = getActiveThemeId() || themeSel.value;
+        }
     }
 
-    const elTheme = get<HTMLSelectElement>('#set-theme'); if (elTheme) elTheme.value = toKebab(cfg.general?.theme);
     const elLang  = get<HTMLSelectElement>('#set-language'); if (elLang) elLang.value = toKebab(cfg.general?.language);
     const elDefBe = get<HTMLSelectElement>('#set-default-backend'); if (elDefBe) elDefBe.value = toKebab(cfg.general?.default_backend || 'git');
     const elChan  = get<HTMLSelectElement>('#set-update-channel'); if (elChan) {
@@ -363,12 +498,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elChk   = get<HTMLInputElement>('#set-checks-on-launch'); if (elChk) elChk.checked = !!cfg.general?.checks_on_launch;
     const elRl    = get<HTMLInputElement>('#set-recents-limit'); if (elRl) elRl.value = String(cfg.ux?.recents_limit ?? 10);
 
-    const backend = toKebab(cfg.git?.backend) || 'system';
-    const elGb = get<HTMLSelectElement>('#set-git-backend');
-    if (elGb) {
-        // Map to enum string values used by backend settings
-        elGb.value = backend === 'libgit2' ? 'libgit2' : 'system';
-    }
+    await refreshGitBackendOptions(m, cfg);
     const elMmt = get<HTMLInputElement>('#set-merge-message-template');
     if (elMmt) elMmt.value = cfg.git?.merge_commit_message_template ?? '';
     const elSshBin = get<HTMLSelectElement>('#set-git-ssh-binary');
@@ -420,4 +550,967 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     // Logging
     const elLvl = get<HTMLSelectElement>('#set-log-level'); if (elLvl) elLvl.value = toKebab(cfg.logging?.level || 'info');
     const elKeep= get<HTMLInputElement>('#set-log-keep'); if (elKeep) elKeep.value = String(cfg.logging?.retain_archives ?? 10);
+}
+
+async function refreshGitBackendOptions(modal: HTMLElement, cfg: GlobalSettings) {
+    const elGb = modal.querySelector<HTMLSelectElement>('#set-git-backend');
+    if (!elGb) return;
+
+    const backend = String(cfg.git?.backend || '').trim();
+
+    let available: Array<[string, string]> = [];
+    if (TAURI.has) {
+        try {
+            available = await TAURI.invoke<Array<[string, string]>>('list_vcs_backends_cmd');
+        } catch {}
+    }
+
+    const gitBackends = (Array.isArray(available) ? available : [])
+        .map(([id, name]) => [String(id || '').trim(), String(name || '').trim()] as const)
+        .filter(([id]) => id.startsWith('git-'));
+
+    const labelCounts = new Map<string, number>();
+    for (const [, name] of gitBackends) {
+        const label = name || '';
+        if (!label) continue;
+        labelCounts.set(label, (labelCounts.get(label) || 0) + 1);
+    }
+
+    elGb.innerHTML = '';
+    for (const [id, name] of gitBackends) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        const base = name || id;
+        opt.textContent = (name && (labelCounts.get(name) || 0) > 1) ? `${base} — ${id}` : base;
+        elGb.appendChild(opt);
+    }
+
+    elGb.disabled = gitBackends.length === 0;
+    if (backend && gitBackends.some(([id]) => id === backend)) {
+        elGb.value = backend;
+    } else if (gitBackends.length) {
+        elGb.value = gitBackends[0][0];
+    }
+}
+
+async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
+    const pane = modal.querySelector<HTMLElement>('#plugins-pane');
+    const listEl = modal.querySelector<HTMLElement>('#plugins-list');
+    const detailEl = modal.querySelector<HTMLElement>('#plugins-detail');
+    const groupLabelEl = modal.querySelector<HTMLElement>('#plugins-group-label');
+    const searchEl = modal.querySelector<HTMLInputElement>('#plugins-search');
+    const installBundleBtn = modal.querySelector<HTMLButtonElement>('#plugins-install-bundle');
+    const enableAllBtn = modal.querySelector<HTMLButtonElement>('#plugins-enable-all');
+    const disableAllBtn = modal.querySelector<HTMLButtonElement>('#plugins-disable-all');
+    const bundleListEl = modal.querySelector<HTMLElement>('#plugin-bundles-list');
+
+    if (!pane || !listEl || !detailEl || !groupLabelEl || !searchEl || !installBundleBtn || !enableAllBtn || !disableAllBtn || !bundleListEl) return;
+
+    const renderBundles = async () => {
+        bundleListEl.innerHTML = '';
+        if (!TAURI.has) {
+            bundleListEl.textContent = 'Bundles are only available in the desktop app.';
+            return;
+        }
+
+        let bundles: any[] = [];
+        try {
+            bundles = await TAURI.invoke<any[]>('list_installed_bundles');
+        } catch (err) {
+            bundleListEl.textContent = 'Failed to load installed bundles.';
+            return;
+        }
+
+        if (!Array.isArray(bundles) || bundles.length === 0) {
+            bundleListEl.textContent = 'No bundles installed.';
+            return;
+        }
+
+        const wrap = document.createElement('div');
+        wrap.style.display = 'grid';
+        wrap.style.gap = '.5rem';
+
+        for (const b of bundles) {
+            const pluginId = String(b?.plugin_id || '').trim();
+            const current = String(b?.current || '').trim();
+            const versions = b?.versions && typeof b.versions === 'object' ? b.versions : {};
+            const cur = current && versions[current] ? versions[current] : null;
+            const approval = cur?.approval?.Pending ? 'Pending' : (cur?.approval?.Denied ? 'Denied' : (cur?.approval?.Approved ? 'Approved' : 'Pending'));
+            const requestedCaps: string[] = Array.isArray(cur?.requested_capabilities) ? cur.requested_capabilities : [];
+
+            const row = document.createElement('div');
+            row.className = 'card';
+            (row.style as any).padding = '.6rem .7rem';
+            (row.style as any).display = 'flex';
+            (row.style as any).gap = '.75rem';
+            (row.style as any).alignItems = 'center';
+
+            const left = document.createElement('div');
+            left.style.flex = '1';
+            const title = document.createElement('div');
+            title.textContent = pluginId || '(unknown plugin)';
+            const sub = document.createElement('div');
+            sub.className = 'muted';
+            sub.style.fontSize = '.85rem';
+            sub.textContent = current ? `version ${current} • ${approval}` : `no current version • ${approval}`;
+            left.appendChild(title);
+            left.appendChild(sub);
+
+            const actions = document.createElement('div');
+            actions.style.display = 'flex';
+            actions.style.gap = '.4rem';
+
+            const approveBtn = document.createElement('button');
+            approveBtn.type = 'button';
+            approveBtn.className = 'tbtn';
+            approveBtn.textContent = 'Approve';
+            approveBtn.disabled = !pluginId || !current;
+            approveBtn.addEventListener('click', async () => {
+                try {
+                    await TAURI.invoke('approve_plugin_capabilities', {
+                        pluginId,
+                        version: current,
+                        approved: true,
+                    });
+                    notify('Capabilities approved');
+                    await renderBundles();
+                } catch (err) {
+                    const msg = String(err || '').trim();
+                    notify(msg ? `Approve failed: ${msg}` : 'Approve failed');
+                }
+            });
+
+            const denyBtn = document.createElement('button');
+            denyBtn.type = 'button';
+            denyBtn.className = 'tbtn';
+            denyBtn.textContent = 'Deny';
+            denyBtn.disabled = !pluginId || !current;
+            denyBtn.addEventListener('click', async () => {
+                try {
+                    await TAURI.invoke('approve_plugin_capabilities', {
+                        pluginId,
+                        version: current,
+                        approved: false,
+                    });
+                    notify('Capabilities denied');
+                    await renderBundles();
+                } catch (err) {
+                    const msg = String(err || '').trim();
+                    notify(msg ? `Deny failed: ${msg}` : 'Deny failed');
+                }
+            });
+
+            actions.appendChild(approveBtn);
+            actions.appendChild(denyBtn);
+
+            if (requestedCaps.length) {
+                const caps = document.createElement('div');
+                caps.className = 'muted';
+                caps.style.fontSize = '.8rem';
+                caps.style.marginTop = '.2rem';
+                caps.textContent = `requested: ${requestedCaps.join(', ')}`;
+                left.appendChild(caps);
+            }
+
+            row.appendChild(left);
+            row.appendChild(actions);
+            wrap.appendChild(row);
+        }
+
+        bundleListEl.appendChild(wrap);
+    };
+
+    await renderBundles();
+
+    // This settings pane can be initialized multiple times during navigation/rerender.
+    // Avoid stacking duplicate click handlers which would open many dialogs.
+    if (!(installBundleBtn as any).dataset?.bound) {
+        (installBundleBtn as any).dataset.bound = '1';
+        installBundleBtn.addEventListener('click', async () => {
+            if (!TAURI.has) return;
+            try {
+                const bundlePath = await TAURI.invoke<string | null>('browse_file', { purpose: 'install_plugin' });
+                if (!bundlePath) return;
+
+                const installed = await TAURI.invoke<any>('install_ovcsp', { bundlePath });
+                notify(`Installed ${installed?.plugin_id || 'plugin'} ${installed?.version || ''}`.trim());
+
+                const caps = Array.isArray(installed?.requested_capabilities) ? installed.requested_capabilities : [];
+                if (caps.length) {
+                    const ok = window.confirm(
+                        `Plugin requests capabilities:\n\n- ${caps.join('\n- ')}\n\nApprove and allow it to run?`
+                    );
+                    await TAURI.invoke('approve_plugin_capabilities', {
+                        pluginId: String(installed?.plugin_id || '').trim(),
+                        version: String(installed?.version || '').trim(),
+                        approved: ok,
+                    });
+                    notify(ok ? 'Capabilities approved' : 'Capabilities denied');
+                }
+
+                await renderBundles();
+                await reloadPluginSummaries();
+            } catch (err) {
+                const msg = String(err || '').trim();
+                notify(msg ? `Install failed: ${msg}` : 'Install failed');
+            }
+        });
+    }
+
+    type ParsedPluginQuery = {
+        terms: string[];
+        authors: string[];
+        tags: string[];
+    };
+
+    const tokenize = (value: string): string[] => String(value || '')
+        .toLowerCase()
+        .split(/[^a-z0-9._-]+/g)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+    const normalizeQueryToken = (value: string): string => String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/^[,.;:!?]+/g, '')
+        .replace(/[,.;:!?]+$/g, '');
+
+    const parsePluginQuery = (raw: string): ParsedPluginQuery => {
+        const parsed: ParsedPluginQuery = { terms: [], authors: [], tags: [] };
+        const input = String(raw || '').trim();
+        if (!input) return parsed;
+
+        const re = /"([^"]+)"|'([^']+)'|(\S+)/g;
+        for (const match of input.matchAll(re)) {
+            const token = normalizeQueryToken(match[1] ?? match[2] ?? match[3] ?? '');
+            if (!token) continue;
+            if (token.startsWith('@')) {
+                const author = normalizeQueryToken(token.slice(1));
+                if (author) parsed.authors.push(author);
+                continue;
+            }
+            if (token.startsWith('#')) {
+                const tag = normalizeQueryToken(token.slice(1));
+                if (tag) parsed.tags.push(tag);
+                continue;
+            }
+            parsed.terms.push(token);
+        }
+        return parsed;
+    };
+
+    const damerauLevenshtein = (aRaw: string, bRaw: string): number => {
+        const a = String(aRaw || '');
+        const b = String(bRaw || '');
+        if (a === b) return 0;
+        const aLen = a.length;
+        const bLen = b.length;
+        if (!aLen) return bLen;
+        if (!bLen) return aLen;
+
+        const da: Record<string, number> = {};
+        const maxDist = aLen + bLen;
+        const score: number[][] = Array.from({ length: aLen + 2 }, () => new Array(bLen + 2).fill(0));
+        score[0][0] = maxDist;
+        for (let i = 0; i <= aLen; i++) {
+            score[i + 1][0] = maxDist;
+            score[i + 1][1] = i;
+        }
+        for (let j = 0; j <= bLen; j++) {
+            score[0][j + 1] = maxDist;
+            score[1][j + 1] = j;
+        }
+
+        for (let i = 1; i <= aLen; i++) {
+            let db = 0;
+            for (let j = 1; j <= bLen; j++) {
+                const i1 = da[b[j - 1]] ?? 0;
+                const j1 = db;
+                let cost = 1;
+                if (a[i - 1] === b[j - 1]) {
+                    cost = 0;
+                    db = j;
+                }
+
+                score[i + 1][j + 1] = Math.min(
+                    score[i][j] + cost, // substitution
+                    score[i + 1][j] + 1, // insertion
+                    score[i][j + 1] + 1, // deletion
+                    score[i1][j1] + (i - i1 - 1) + 1 + (j - j1 - 1), // transposition
+                );
+            }
+            da[a[i - 1]] = i;
+        }
+        return score[aLen + 1][bLen + 1];
+    };
+
+    const maxDistanceFor = (len: number): number => {
+        if (len <= 3) return 0;
+        if (len <= 5) return 1;
+        if (len <= 9) return 2;
+        return 3;
+    };
+
+    const bestTokenScore = (needleRaw: string, hayTokens: string[]): number => {
+        const needle = normalizeQueryToken(needleRaw);
+        if (!needle) return 0;
+        if (!hayTokens.length) return 0;
+        if (needle.length <= 3) {
+            for (const tok of hayTokens) {
+                if (tok.includes(needle)) return 1;
+            }
+            return 0;
+        }
+
+        let best = 0;
+        for (const tok of hayTokens) {
+            if (!tok) continue;
+            if (tok.includes(needle)) return 1;
+            const maxLen = Math.max(needle.length, tok.length);
+            const maxDist = maxDistanceFor(Math.min(maxLen, 64));
+            if (maxDist <= 0) continue;
+            const dist = damerauLevenshtein(needle.slice(0, 64), tok.slice(0, 64));
+            if (dist > maxDist) continue;
+            const sim = 1 - dist / maxLen;
+            if (sim > best) best = sim;
+        }
+        return best;
+    };
+
+    const pluginSearchScore = (plugin: PluginSummary, parsed: ParsedPluginQuery): number | null => {
+        const id = String(plugin?.id || '').trim();
+        const name = String(plugin?.name || '').trim();
+        if (!id || !name) return null;
+
+        const author = String(plugin?.author || '').trim();
+        const category = String(plugin?.category || '').trim();
+        const description = String(plugin?.description || '').trim();
+        const tags = Array.isArray(plugin?.tags) ? plugin.tags.map((t) => String(t || '').trim()).filter(Boolean) : [];
+
+        const authorTokens = tokenize(author);
+        const tagTokens = tags.flatMap((t) => tokenize(t));
+        const fields: Array<{ weight: number; tokens: string[] }> = [
+            { weight: 3.6, tokens: tokenize(name) },
+            { weight: 3.0, tokens: tokenize(id) },
+            { weight: 2.2, tokens: authorTokens },
+            { weight: 2.0, tokens: tagTokens },
+            { weight: 1.6, tokens: tokenize(category) },
+            { weight: 1.0, tokens: tokenize(description) },
+        ];
+
+        let score = 0;
+
+        for (const qAuthor of parsed.authors) {
+            const s = bestTokenScore(qAuthor, authorTokens);
+            if (!s) return null;
+            score += s * 4.0;
+        }
+
+        for (const qTag of parsed.tags) {
+            const s = bestTokenScore(qTag, tagTokens);
+            if (!s) return null;
+            score += s * 3.0;
+        }
+
+        for (const term of parsed.terms) {
+            let best = 0;
+            for (const field of fields) {
+                const s = bestTokenScore(term, field.tokens);
+                if (!s) continue;
+                const weighted = s * field.weight;
+                if (weighted > best) best = weighted;
+            }
+            if (!best) return null;
+            score += best;
+        }
+
+        return score;
+    };
+
+    listEl.replaceChildren();
+    detailEl.replaceChildren();
+    detailEl.classList.add('empty');
+    detailEl.textContent = 'Select a plugin to view details.';
+
+    if (!TAURI.has) {
+        groupLabelEl.textContent = 'Installed (0 of 0 enabled)';
+        listEl.replaceChildren();
+        return;
+    }
+
+    let list: PluginSummary[] = [];
+    try {
+        list = await TAURI.invoke<PluginSummary[]>('list_plugins');
+    } catch {
+        groupLabelEl.textContent = 'Installed (0 of 0 enabled)';
+        listEl.replaceChildren();
+        detailEl.classList.add('empty');
+        detailEl.textContent = 'Failed to load plugins.';
+        return;
+    }
+
+    const disabled = new Set(
+        (Array.isArray(cfg.plugins?.disabled) ? cfg.plugins!.disabled! : [])
+            .map((s) => String(s || '').trim().toLowerCase())
+            .filter(Boolean),
+    );
+    const enabled = new Set(
+        (Array.isArray(cfg.plugins?.enabled) ? cfg.plugins!.enabled! : [])
+            .map((s) => String(s || '').trim().toLowerCase())
+            .filter(Boolean),
+    );
+
+    const stateKey = '__pluginsPanelState';
+    type PluginsPanelState = {
+        list: PluginSummary[];
+        disabled: Set<string>;
+        enabled: Set<string>;
+        query: string;
+        selectedId: string | null;
+    };
+    const state: PluginsPanelState = (modal as any)[stateKey] || {
+        list: [],
+        disabled: new Set<string>(),
+        enabled: new Set<string>(),
+        query: '',
+        selectedId: null,
+    };
+    state.list = Array.isArray(list) ? list : [];
+    state.disabled = disabled;
+    state.enabled = enabled;
+    state.query = String(searchEl.value || '').trim();
+
+    const pluginIsEnabled = (p: PluginSummary): boolean => {
+        const id = String(p?.id || '').trim().toLowerCase();
+        if (!id) return false;
+        if (state.disabled.has(id)) return false;
+        if (state.enabled.has(id)) return true;
+        return !!p.default_enabled;
+    };
+
+    const enabledCount = state.list.filter((p) => p?.id && pluginIsEnabled(p)).length;
+    groupLabelEl.textContent = `Installed (${enabledCount} of ${state.list.length} enabled)`;
+
+    const getFiltered = (): PluginSummary[] => {
+        const q = String(state.query || '').trim();
+        const base = state.list.filter((p) => p && p.id && p.name);
+        if (!q) return base;
+
+        const parsed = parsePluginQuery(q);
+        const hasParts = parsed.terms.length || parsed.authors.length || parsed.tags.length;
+        if (!hasParts) return base;
+
+        const scored: Array<{ plugin: PluginSummary; score: number }> = [];
+        for (const p of base) {
+            const s = pluginSearchScore(p, parsed);
+            if (typeof s === 'number' && s > 0) scored.push({ plugin: p, score: s });
+        }
+
+        scored.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return String(a.plugin.name || '').localeCompare(String(b.plugin.name || ''), undefined, { sensitivity: 'base' });
+        });
+        return scored.map((x) => x.plugin);
+    };
+
+    const ensureSelection = (filtered: PluginSummary[]) => {
+        const current = state.selectedId ? String(state.selectedId).trim() : '';
+        if (current && filtered.some((p) => String(p.id).trim() === current)) return;
+        state.selectedId = filtered.length ? String(filtered[0].id).trim() : null;
+    };
+
+    const renderDetails = (filtered: PluginSummary[]) => {
+        detailEl.replaceChildren();
+        const selectedId = state.selectedId ? String(state.selectedId).trim() : '';
+        const plugin = state.list.find((p) => String(p?.id || '').trim() === selectedId) || null;
+        if (!plugin) {
+            detailEl.classList.add('empty');
+            detailEl.textContent = filtered.length ? 'Select a plugin to view details.' : 'No plugins installed.';
+            return;
+        }
+        detailEl.classList.remove('empty');
+
+        const id = String(plugin.id).trim();
+        const isEnabledNow = pluginIsEnabled(plugin);
+        const version = String(plugin.version || '').trim();
+        const author = String(plugin.author || '').trim();
+        const category = String(plugin.category || '').trim();
+        const tags = Array.isArray(plugin.tags)
+            ? plugin.tags.map((t) => String(t || '').trim()).filter(Boolean)
+            : [];
+
+        const head = document.createElement('div');
+        head.className = 'plugin-detail-head';
+
+        const title = document.createElement('div');
+        title.className = 'plugin-detail-title';
+        const nameEl = document.createElement('div');
+        nameEl.className = 'name';
+        nameEl.textContent = String(plugin.name || '').trim() || 'Unnamed plugin';
+        const metaEl = document.createElement('div');
+        metaEl.className = 'meta';
+        metaEl.textContent = [
+            category || '',
+            version ? `v${version}` : '',
+            author || '',
+        ].filter(Boolean).join(' • ') || ' ';
+        title.appendChild(nameEl);
+        title.appendChild(metaEl);
+
+        const actions = document.createElement('div');
+        actions.className = 'plugin-detail-actions';
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'tbtn';
+        toggle.id = 'plugins-toggle-selected';
+        toggle.textContent = isEnabledNow ? 'Disable' : 'Enable';
+        toggle.dataset.pluginToggle = id;
+        actions.appendChild(toggle);
+
+        head.appendChild(title);
+        head.appendChild(actions);
+
+        const body = document.createElement('div');
+        body.className = 'plugin-detail-body';
+        const descText = String(plugin.description || '').trim();
+        if (descText) {
+            const desc = document.createElement('div');
+            desc.className = 'desc';
+            desc.textContent = descText;
+            body.appendChild(desc);
+        }
+
+        const kvRows: Array<[string, string]> = [];
+        if (category) kvRows.push(['Category', category]);
+        if (tags.length) kvRows.push(['Tags', tags.join(', ')]);
+        if (author) kvRows.push(['Author', author]);
+        if (version) kvRows.push(['Version', version]);
+        if (kvRows.length) {
+            const kv = document.createElement('div');
+            kv.className = 'plugin-detail-kv';
+            const row = (k: string, v: string) => {
+                const kEl = document.createElement('div');
+                kEl.className = 'k';
+                kEl.textContent = k;
+                const vEl = document.createElement('div');
+                vEl.className = 'v';
+                vEl.textContent = v;
+                kv.appendChild(kEl);
+                kv.appendChild(vEl);
+            };
+            for (const [k, v] of kvRows) row(k, v);
+            body.appendChild(kv);
+        }
+
+        detailEl.appendChild(head);
+        detailEl.appendChild(body);
+    };
+
+    const renderList = () => {
+        const filtered = getFiltered();
+        listEl.replaceChildren();
+        if (!state.list.length) {
+            const li = document.createElement('li');
+            li.className = 'plugin-row';
+            li.setAttribute('aria-selected', 'false');
+            li.textContent = 'No plugins installed.';
+            listEl.appendChild(li);
+            renderDetails(filtered);
+            return;
+        }
+
+        if (!filtered.length) {
+            const li = document.createElement('li');
+            li.className = 'plugin-row';
+            li.setAttribute('aria-selected', 'false');
+            li.textContent = 'No matching plugins.';
+            listEl.appendChild(li);
+            renderDetails(filtered);
+            return;
+        }
+
+        for (const plugin of filtered) {
+            const id = String(plugin.id).trim();
+            const isEnabledNow = pluginIsEnabled(plugin);
+
+            const li = document.createElement('li');
+            li.className = 'plugin-row';
+            li.dataset.plugin = id;
+            li.setAttribute('role', 'option');
+            li.setAttribute('aria-selected', state.selectedId === id ? 'true' : 'false');
+
+            const main = document.createElement('div');
+            main.className = 'plugin-row-main';
+
+            const icon = document.createElement('div');
+            icon.className = 'plugin-icon';
+            const initial = (String(plugin.name || '').trim() || 'Plugin').slice(0, 1).toUpperCase() || 'P';
+            icon.textContent = initial;
+            const iconUrl = String(plugin.icon_data_url || '').trim();
+            if (iconUrl) {
+                const img = document.createElement('img');
+                img.className = 'plugin-icon-img';
+                img.alt = `${String(plugin.name || '').trim() || 'Plugin'} icon`;
+                img.decoding = 'async';
+                img.loading = 'lazy';
+                img.src = iconUrl;
+                img.addEventListener('load', () => {
+                    icon.classList.add('has-img');
+                    icon.replaceChildren(img);
+                });
+                img.addEventListener('error', () => {
+                    img.remove();
+                    icon.classList.remove('has-img');
+                    if (!icon.textContent?.trim()) icon.textContent = initial;
+                });
+                icon.appendChild(img);
+            }
+
+            const text = document.createElement('div');
+            text.className = 'plugin-row-text';
+            const name = document.createElement('div');
+            name.className = 'name';
+            name.textContent = String(plugin.name || '').trim() || 'Unnamed plugin';
+            const meta = document.createElement('div');
+            meta.className = 'meta';
+            const version = String(plugin.version || '').trim();
+            const author = String(plugin.author || '').trim();
+            const category = String(plugin.category || '').trim();
+            meta.textContent = [category, author, version ? `v${version}` : ''].filter(Boolean).join(' • ') || ' ';
+            text.appendChild(name);
+            text.appendChild(meta);
+
+            main.appendChild(icon);
+            main.appendChild(text);
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = isEnabledNow;
+            checkbox.dataset.pluginId = id;
+            checkbox.setAttribute('aria-label', `Enable ${String(plugin.name || '').trim() || 'plugin'}`);
+
+            li.appendChild(main);
+            li.appendChild(checkbox);
+            listEl.appendChild(li);
+        }
+
+        renderDetails(filtered);
+    };
+
+    const updateCounts = () => {
+        const enabledNow = state.list.filter((p) => p?.id && pluginIsEnabled(p)).length;
+        groupLabelEl.textContent = `Installed (${enabledNow} of ${state.list.length} enabled)`;
+    };
+
+    async function reloadPluginSummaries(): Promise<void> {
+        if (!TAURI.has) return;
+        let list: PluginSummary[] = [];
+        try {
+            list = await TAURI.invoke<PluginSummary[]>('list_plugins');
+        } catch (err) {
+            console.warn('reload list_plugins failed', err);
+            return;
+        }
+
+        state.list = Array.isArray(list) ? list : [];
+        ensureSelection(getFiltered());
+        renderList();
+        updateCounts();
+    }
+
+    ensureSelection(getFiltered());
+    (modal as any)[stateKey] = state;
+    renderList();
+
+    const persistPluginsDisabled = async () => {
+        if (!TAURI.has) return;
+        try {
+            const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
+            let next: GlobalSettings = { ...(cur || {}) };
+            next.plugins = { ...(next.plugins || {}) };
+            next.plugins.disabled = Array.from(state.disabled.values());
+            next.plugins.enabled = Array.from(state.enabled.values());
+            await TAURI.invoke('set_global_settings', { cfg: next });
+            modal.dataset.currentCfg = JSON.stringify(next);
+            await reloadPlugins();
+            await refreshGitBackendOptions(modal, next);
+            try {
+                await refreshAvailableThemes();
+                const themeSel = modal.querySelector<HTMLSelectElement>('#set-theme');
+                const themeAuto = modal.querySelector<HTMLInputElement>('#set-theme-auto');
+                if (themeSel && document.activeElement !== themeSel) {
+                    const before = String(themeSel.value || DEFAULT_LIGHT_THEME_ID).trim() || DEFAULT_LIGHT_THEME_ID;
+                    await rebuildThemePackOptions(themeSel, { desiredId: before, forceReload: false });
+
+                    const after = String(themeSel.value || DEFAULT_LIGHT_THEME_ID).trim() || DEFAULT_LIGHT_THEME_ID;
+                    if (after.toLowerCase() !== before.toLowerCase()) {
+                        const auto = !!themeAuto?.checked;
+                        const mode: 'system' | 'light' | 'dark' = auto ? 'system' : modeForTheme(after);
+                        setTheme(mode);
+                        try { await selectThemePack(after, { silent: true, mode }); } catch {}
+
+                        next.general = { ...(next.general || {}) };
+                        next.general.theme = mode;
+                        next.general.theme_pack = after;
+                        try {
+                            await TAURI.invoke('set_global_settings', { cfg: next });
+                            modal.dataset.currentCfg = JSON.stringify(next);
+                        } catch {}
+                    }
+                }
+            } catch {}
+        } catch {
+            notify('Failed to update plugins');
+        }
+    };
+
+    if (!(pane as any).__wired) {
+        (pane as any).__wired = true;
+
+        const viewportPadding = 8;
+        const contextMenu = document.createElement('div');
+        contextMenu.className = 'plugins-context-menu';
+        contextMenu.setAttribute('role', 'menu');
+        contextMenu.tabIndex = -1;
+
+        const toggleAction = document.createElement('button');
+        toggleAction.type = 'button';
+        toggleAction.className = 'plugins-context-menu-item';
+        toggleAction.dataset.action = 'toggle';
+        toggleAction.textContent = 'Toggle plugin';
+
+        const removeAction = document.createElement('button');
+        removeAction.type = 'button';
+        removeAction.className = 'plugins-context-menu-item destructive';
+        removeAction.dataset.action = 'remove';
+        removeAction.textContent = 'Remove plugin';
+
+        contextMenu.appendChild(toggleAction);
+        contextMenu.appendChild(removeAction);
+        modal.appendChild(contextMenu);
+
+        let contextMenuPluginId: string | null = null;
+        let contextMenuVisible = false;
+
+        const hideContextMenu = () => {
+            if (!contextMenuVisible) return;
+            contextMenuVisible = false;
+            contextMenuPluginId = null;
+            contextMenu.classList.remove('visible');
+            contextMenu.style.visibility = 'visible';
+        };
+
+        const showContextMenu = (pluginId: string, plugin: PluginSummary | null, x: number, y: number) => {
+            hideContextMenu();
+            contextMenuPluginId = pluginId;
+            const enabled = plugin ? pluginIsEnabled(plugin) : false;
+            toggleAction.textContent = enabled ? 'Disable plugin' : 'Enable plugin';
+
+            const isBuiltIn = (plugin?.source || '') === 'built-in';
+            removeAction.disabled = isBuiltIn;
+            if (isBuiltIn) {
+                removeAction.title = 'Built-in plugins cannot be removed.';
+            } else {
+                removeAction.removeAttribute('title');
+            }
+
+            contextMenu.style.left = `${x}px`;
+            contextMenu.style.top = `${y}px`;
+            contextMenu.classList.add('visible');
+            contextMenu.style.visibility = 'hidden';
+            const rect = contextMenu.getBoundingClientRect();
+            let left = x;
+            let top = y;
+            if (rect.right > window.innerWidth - viewportPadding) {
+                left = Math.max(viewportPadding, window.innerWidth - rect.width - viewportPadding);
+            }
+            if (rect.bottom > window.innerHeight - viewportPadding) {
+                top = Math.max(viewportPadding, window.innerHeight - rect.height - viewportPadding);
+            }
+            contextMenu.style.left = `${left}px`;
+            contextMenu.style.top = `${top}px`;
+            contextMenu.style.visibility = 'visible';
+            contextMenuVisible = true;
+        };
+
+        toggleAction.addEventListener('click', () => {
+            const id = contextMenuPluginId;
+            hideContextMenu();
+            if (!id) return;
+            const checkbox = pane.querySelector<HTMLInputElement>(`input[type="checkbox"][data-plugin-id="${CSS.escape(id)}"]`);
+            if (!checkbox) return;
+            checkbox.checked = !checkbox.checked;
+            checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        removeAction.addEventListener('click', async () => {
+            if (removeAction.disabled) return;
+            const id = contextMenuPluginId;
+            hideContextMenu();
+            if (!id) return;
+            const plugin = state.list.find((p) => String(p?.id || '').trim() === id) || null;
+            if (!plugin) return;
+            const label = String(plugin.name || plugin.id || 'plugin');
+            if (!window.confirm(`Remove ${label}? This will delete the plugin bundle.`)) return;
+            if (!TAURI.has) {
+                notify('Plugin removal is only available in the desktop app.');
+                return;
+            }
+            try {
+                await TAURI.invoke('uninstall_plugin', { pluginId: id });
+                notify(`Removed ${label}`);
+                const normalized = String(id || '').trim();
+                const normalizedLower = normalized.toLowerCase();
+                state.disabled.delete(normalizedLower);
+                state.enabled.delete(normalizedLower);
+                await reloadPluginSummaries();
+                persistPluginsDisabled().catch(() => {});
+            } catch (err) {
+                const msg = String(err || '').trim();
+                notify(msg ? `Remove failed: ${msg}` : 'Failed to remove plugin');
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!contextMenuVisible) return;
+            if (!contextMenu.contains(e.target as Node)) {
+                hideContextMenu();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') hideContextMenu();
+        });
+
+        pane.addEventListener('contextmenu', (e) => {
+            const row = (e.target as HTMLElement).closest<HTMLElement>('.plugin-row[data-plugin]');
+            if (!row) {
+                hideContextMenu();
+                return;
+            }
+            const pluginId = String(row.dataset.plugin || '').trim();
+            if (!pluginId) {
+                hideContextMenu();
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            state.selectedId = pluginId;
+            renderList();
+            const plugin = state.list.find((p) => String(p?.id || '').trim() === pluginId) || null;
+            showContextMenu(pluginId, plugin, e.clientX, e.clientY);
+        });
+
+        pane.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement | null;
+            const toggleBtn = target?.closest<HTMLButtonElement>('[data-plugin-toggle]') || null;
+            if (toggleBtn) {
+                const id = String(toggleBtn.dataset.pluginToggle || '').trim();
+                const checkbox = pane.querySelector<HTMLInputElement>(`input[type="checkbox"][data-plugin-id="${CSS.escape(id)}"]`);
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                return;
+            }
+
+            const row = target?.closest<HTMLElement>('.plugin-row[data-plugin]') || null;
+            if (!row) return;
+            const id = String(row.dataset.plugin || '').trim();
+            if (!id) return;
+
+            const isCheckbox = !!target?.closest('input[type="checkbox"]');
+            if (!isCheckbox) {
+                const now = Date.now();
+                const idKey = id.toLowerCase();
+                const lastAt = Number((state as any).lastClickAt ?? 0) || 0;
+                const lastIdKey = String((state as any).lastClickIdKey ?? '');
+                if (lastIdKey === idKey && now - lastAt <= 450) {
+                    const checkbox =
+                        row.querySelector<HTMLInputElement>('input[type="checkbox"][data-plugin-id]') ||
+                        pane.querySelector<HTMLInputElement>(`input[type="checkbox"][data-plugin-id="${CSS.escape(id)}"]`);
+                    if (checkbox) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        checkbox.checked = !checkbox.checked;
+                        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    (state as any).lastClickAt = 0;
+                    (state as any).lastClickIdKey = '';
+                    return;
+                }
+                (state as any).lastClickAt = now;
+                (state as any).lastClickIdKey = idKey;
+            }
+
+            state.selectedId = id;
+            renderList();
+        });
+
+        pane.addEventListener('change', (e) => {
+            const el = e.target as HTMLInputElement | null;
+            if (!el || el.type !== 'checkbox' || !el.dataset.pluginId) return;
+            const id = String(el.dataset.pluginId).trim().toLowerCase();
+            if (!id) return;
+            if (el.checked) {
+                state.disabled.delete(id);
+                state.enabled.add(id);
+            } else {
+                state.enabled.delete(id);
+                state.disabled.add(id);
+            }
+            updateCounts();
+            renderDetails(getFiltered());
+            persistPluginsDisabled().catch(() => {});
+        });
+
+        searchEl.addEventListener('input', () => {
+            state.query = String(searchEl.value || '').trim();
+            ensureSelection(getFiltered());
+            renderList();
+        });
+
+        searchEl.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            e.stopPropagation();
+        });
+
+        if (!(enableAllBtn as any).dataset?.bound) {
+            (enableAllBtn as any).dataset.bound = '1';
+            enableAllBtn.addEventListener('click', () => {
+            for (const p of state.list) {
+                const id = String(p?.id || '').trim().toLowerCase();
+                if (!id) continue;
+                state.disabled.delete(id);
+                state.enabled.add(id);
+            }
+            searchEl.dispatchEvent(new Event('input'));
+            updateCounts();
+            persistPluginsDisabled().catch(() => {});
+            });
+        }
+
+        if (!(disableAllBtn as any).dataset?.bound) {
+            (disableAllBtn as any).dataset.bound = '1';
+            disableAllBtn.addEventListener('click', () => {
+            for (const p of state.list) {
+                const id = String(p?.id || '').trim().toLowerCase();
+                if (!id) continue;
+                state.enabled.delete(id);
+                state.disabled.add(id);
+            }
+            searchEl.dispatchEvent(new Event('input'));
+            updateCounts();
+            persistPluginsDisabled().catch(() => {});
+            });
+        }
+
+        pane.addEventListener('keydown', (e: KeyboardEvent) => {
+            if (e.key === '/' && document.activeElement !== searchEl) {
+                e.preventDefault();
+                searchEl.focus();
+            }
+        });
+    }
 }

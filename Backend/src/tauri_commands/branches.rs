@@ -16,15 +16,18 @@ fn repo_username_from_origin(url: &str) -> Option<String> {
     }
 
     // https://host/owner/repo(.git)
-    if let Some(rest) = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")) {
-        let path = rest.splitn(2, '/').nth(1).unwrap_or("");
+    if let Some(rest) = u
+        .strip_prefix("https://")
+        .or_else(|| u.strip_prefix("http://"))
+    {
+        let path = rest.split_once('/').map(|x| x.1).unwrap_or("");
         let mut seg = path.split('/').filter(|s| !s.is_empty());
         let owner = seg.next()?;
         return Some(owner.to_string());
     }
 
     // git@host:owner/repo(.git)
-    if let Some(rest) = u.splitn(2, ':').nth(1) {
+    if let Some(rest) = u.split_once(':').map(|x| x.1) {
         let mut seg = rest.split('/').filter(|s| !s.is_empty());
         let owner = seg.next()?;
         return Some(owner.to_string());
@@ -40,15 +43,18 @@ fn repo_name_from_origin(url: &str) -> Option<String> {
     }
 
     // https://host/owner/repo(.git)
-    if let Some(rest) = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")) {
-        let path = rest.splitn(2, '/').nth(1).unwrap_or("");
-        let last = path.split('/').filter(|s| !s.is_empty()).last()?;
+    if let Some(rest) = u
+        .strip_prefix("https://")
+        .or_else(|| u.strip_prefix("http://"))
+    {
+        let path = rest.split_once('/').map(|x| x.1).unwrap_or("");
+        let last = path.split('/').rfind(|s| !s.is_empty())?;
         return Some(last.strip_suffix(".git").unwrap_or(last).to_string());
     }
 
     // git@host:owner/repo(.git)
-    if let Some(rest) = u.splitn(2, ':').nth(1) {
-        let last = rest.split('/').filter(|s| !s.is_empty()).last()?;
+    if let Some(rest) = u.split_once(':').map(|x| x.1) {
+        let last = rest.split('/').rfind(|s| !s.is_empty())?;
         return Some(last.strip_suffix(".git").unwrap_or(last).to_string());
     }
 
@@ -184,7 +190,7 @@ pub async fn git_head_status(state: State<'_, AppState>) -> Result<HeadStatus, S
             ..Default::default()
         };
         let head = repo.inner().log_commits(&q).map_err(|e| e.to_string())?;
-        let commit = head.get(0).map(|c| c.id.clone());
+        let commit = head.first().map(|c| c.id.clone());
 
         Ok(HeadStatus {
             detached: branch.is_none(),
@@ -330,10 +336,7 @@ pub struct MergeContext {
 pub async fn git_merge_context(state: State<'_, AppState>) -> Result<MergeContext, String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_merge_context", repo, move |repo| {
-        let in_progress = repo
-            .inner()
-            .merge_in_progress()
-            .unwrap_or(false);
+        let in_progress = repo.inner().merge_in_progress().unwrap_or(false);
         Ok(MergeContext { in_progress })
     })
     .await

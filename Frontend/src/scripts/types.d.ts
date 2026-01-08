@@ -63,7 +63,7 @@ export interface GlobalSettings {
         crash_reports?: boolean;
     };
     git?: {
-        backend?: 'system'|'libgit2'|string;
+        backend?: string;
         default_branch?: string;
         ssh_binary?: 'auto'|'host'|'bundled'|'custom'|string;
         ssh_path?: string;
@@ -105,6 +105,10 @@ export interface GlobalSettings {
         live_viewer?: boolean;
         retain_archives?: number;
     };
+    plugins?: {
+        disabled?: string[];
+        enabled?: string[];
+    };
 }
 
 export interface ThemeSummary {
@@ -113,7 +117,10 @@ export interface ThemeSummary {
     description?: string;
     version?: string;
     author?: string;
+    appearance?: 'light' | 'dark' | 'both' | string;
+    paired_with?: string;
     source?: 'built-in' | 'user' | string;
+    plugin_id?: string;
 }
 
 export interface ThemePayload {

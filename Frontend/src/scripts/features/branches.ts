@@ -12,6 +12,7 @@ import { renderList, hydrateCommits, hydrateStatus } from './repo';
 import { setTab } from '../ui/layout';
 import type { ConflictDetails, FileStatus } from '../types';
 import { openConflictsSummary } from './conflicts';
+import { getPluginContextMenuItems, runHook, runPluginAction } from '../plugins';
 
 type Branch = { name: string; full_ref?: string; current?: boolean; kind?: { type?: string; remote?: string } };
 
@@ -134,6 +135,26 @@ function setBranchUIEnabled(on: boolean) {
 /* ---------------- public bind ---------------- */
 
 export function bindBranchUI() {
+    async function checkoutBranch(name: string, options: { closePopover?: boolean } = {}) {
+        const hookData = { from: state.branch, to: name };
+        const pre = await runHook('preSwitchBranch', hookData);
+        if (pre.cancelled) {
+            notify(pre.reason || 'Checkout cancelled');
+            return;
+        }
+        try {
+            if (TAURI.has) await TAURI.invoke('git_checkout_branch', { name });
+            await runHook('onSwitchBranch', hookData);
+            await loadBranches(); // resync from backend instead of manual toggles
+            if (options.closePopover) closeBranchPopover();
+            notify(`Switched to ${name}`);
+            await renderList();         // higher-level refresh
+            await runHook('postSwitchBranch', hookData);
+        } catch {
+            notify('Checkout failed');
+        }
+    }
+
     branchBtn?.addEventListener('click', (e) => {
         if (branchPop?.hidden) void openBranchPopover(); else closeBranchPopover();
         e.stopPropagation();
@@ -155,8 +176,7 @@ export function bindBranchUI() {
         const wantForce = Boolean(e.shiftKey);
         const items: CtxItem[] = [];
         items.push({ label: 'Checkout', action: async () => {
-            try { if (TAURI.has) await TAURI.invoke('git_checkout_branch', { name }); await loadBranches(); notify(`Switched to ${name}`); renderList(); }
-            catch { notify('Checkout failed'); }
+            await checkoutBranch(name);
         }});
         items.push({ label: 'Merge into current…', action: async () => {
             if (name === cur) { notify('Cannot merge a branch into itself'); return; }
@@ -206,9 +226,17 @@ export function bindBranchUI() {
                 const ok = await confirmDeleteBranch({ name, force: wantForce });
                 if (!ok) { notify('Delete cancelled'); return; }
                 try {
+                    const hookData = { name, force: wantForce, branch: state.branch };
+                    const pre = await runHook('preBranchDelete', hookData);
+                    if (pre.cancelled) {
+                        notify(pre.reason || 'Delete cancelled');
+                        return;
+                    }
                     if (TAURI.has) await TAURI.invoke('git_delete_branch', { name, force: wantForce });
+                    await runHook('onBranchDelete', hookData);
                     notify(`${wantForce ? 'Force-deleted' : 'Deleted'} '${name}'`);
                     await loadBranches();
+                    await runHook('postBranchDelete', hookData);
                 } catch (e) {
                     const msg = String(e || '');
                     if (wantForce) { notify(`Force delete failed${msg ? `: ${msg}` : ''}`); return; }
@@ -221,12 +249,33 @@ export function bindBranchUI() {
                     });
                     if (!ok2) { notify('Delete cancelled'); return; }
                     try {
+                        const hookData = { name, force: true, branch: state.branch };
+                        const pre = await runHook('preBranchDelete', hookData);
+                        if (pre.cancelled) {
+                            notify(pre.reason || 'Delete cancelled');
+                            return;
+                        }
                         if (TAURI.has) await TAURI.invoke('git_delete_branch', { name, force: true });
+                        await runHook('onBranchDelete', hookData);
                         notify(`Force-deleted '${name}'`);
                         await loadBranches();
+                        await runHook('postBranchDelete', hookData);
                     } catch { notify('Force delete failed'); }
                 }
             }});
+        }
+
+        const pluginItems = getPluginContextMenuItems('branches');
+        if (pluginItems.length > 0) {
+            items.push({ label: '---' });
+            for (const it of pluginItems) {
+                items.push({
+                    label: it.label,
+                    action: async () => {
+                        await runPluginAction(it.action, { branch: b || { name, kind }, current: cur });
+                    },
+                });
+            }
         }
         buildCtxMenu(items, x, y);
     });
@@ -244,15 +293,7 @@ export function bindBranchUI() {
         const li = (e.target as HTMLElement).closest('li[data-branch]') as HTMLElement | null;
         if (!li) return;
         const name = li.dataset.branch!;
-        try {
-            if (TAURI.has) await TAURI.invoke('git_checkout_branch', { name });
-            await loadBranches(); // resync from backend instead of manual toggles
-            closeBranchPopover();
-            notify(`Switched to ${name}`);
-            renderList();         // higher-level refresh
-        } catch {
-            notify('Checkout failed');
-        }
+        await checkoutBranch(name, { closePopover: true });
     });
 
     // Create branch (open modal)

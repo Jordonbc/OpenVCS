@@ -1,8 +1,8 @@
 use log::warn;
-use tauri::State;
 use std::collections::{HashMap, HashSet};
+use tauri::State;
 
-use crate::repo_settings::{RepoConfig, RemoteConfig};
+use crate::repo_settings::{RemoteConfig, RepoConfig};
 use crate::settings::AppConfig;
 use crate::state::AppState;
 
@@ -99,18 +99,24 @@ pub async fn set_repo_settings(state: State<'_, AppState>, cfg: RepoConfig) -> R
                 let desired_names: HashSet<&str> = desired.keys().copied().collect();
 
                 for (name, url) in desired {
-                    repo.inner().ensure_remote(name, url).map_err(|e| e.to_string())?;
+                    repo.inner()
+                        .ensure_remote(name, url)
+                        .map_err(|e| e.to_string())?;
                 }
 
                 for (name, _url) in existing {
                     if !desired_names.contains(name.as_str()) {
-                        repo.inner().remove_remote(&name).map_err(|e| e.to_string())?;
+                        repo.inner()
+                            .remove_remote(&name)
+                            .map_err(|e| e.to_string())?;
                     }
                 }
             } else if let Some(url) = cfg_clone.origin_url.as_deref() {
                 let url = url.trim();
                 if !url.is_empty() {
-                    repo.inner().ensure_remote("origin", url).map_err(|e| e.to_string())?;
+                    repo.inner()
+                        .ensure_remote("origin", url)
+                        .map_err(|e| e.to_string())?;
                 }
             }
             Ok(())

@@ -9,39 +9,36 @@
 
         <section class="sheet-body">
             <!-- Sidebar -->
-            <nav aria-label="Settings sections">
+            <nav class="list-scroll" aria-label="Settings sections">
                 <ul id="settings-nav" class="list">
                     <li><button class="seg-btn active" data-section="general">General</button></li>
-                    <li><button class="seg-btn" data-section="git">Git</button></li>
                     <li><button class="seg-btn" data-section="diff">Diff &amp; Merge</button></li>
-                    <li><button class="seg-btn" data-section="lfs">LFS</button></li>
                     <li><button class="seg-btn" data-section="performance">Performance</button></li>
                     <li><button class="seg-btn" data-section="ux">UX</button></li>
                     <li><button class="seg-btn" data-section="logging">Logging</button></li>
+                    <li><button class="seg-btn" data-section="plugins">Plugins</button></li>
                     <!-- You can add: integrations, advanced, experimental, logging, network later -->
                 </ul>
             </nav>
 
             <!-- Panels -->
             <div id="settings-panels">
+                <div id="settings-panels-scroll" class="list-scroll">
                 <!-- General -->
                 <form class="panel-form" data-panel="general">
                     <div class="group">
-                        <label for="set-theme">Theme
-                            <span class="help-tip" title="Choose app appearance: System follows OS theme.">?</span>
+                        <label class="checkbox">
+                            <input type="checkbox" id="set-theme-auto" />
+                            Sync to system
+                            <span class="help-tip" title="When enabled, OpenVCS follows your OS light/dark preference.">?</span>
                         </label>
-                        <select id="set-theme">
-                            <option value="system">System</option>
-                            <option value="light">Light</option>
-                            <option value="dark">Dark</option>
-                        </select>
                     </div>
 
                     <div class="group">
-                        <label for="set-theme-pack">Theme pack
-                            <span class="help-tip" title="Drop theme ZIP files into the themes folder to make them available.">?</span>
+                        <label for="set-theme">Theme
+                            <span class="help-tip" title="Select a light/dark theme. When Sync to system is enabled, the dropdown follows the OS and is locked.">?</span>
                         </label>
-                        <select id="set-theme-pack">
+                        <select id="set-theme">
                             <option value="default">Default</option>
                         </select>
                     </div>
@@ -91,80 +88,6 @@
                         </label>
                     </div>
 
-                </form>
-
-                <!-- Git -->
-                <form class="panel-form hidden" data-panel="git">
-                    <div class="group">
-                        <label for="set-git-backend">Git Backend
-                            <span class="help-tip" title="Choose Git implementation. System uses your installed git; Libgit2 uses embedded library.">?</span>
-                        </label>
-                        <select id="set-git-backend">
-                            <option value="system">System</option>
-                            <option value="libgit2">Libgit2</option>
-                        </select>
-                    </div>
-
-                    <div class="group">
-                        <label for="set-merge-message-template">Merge commit message template
-                            <span class="help-tip" title="Leave blank to use Git's default merge message. Placeholders: {branch:source}, {branch:target}, {repo:name}, {repo:username}.">?</span>
-                        </label>
-                        <input id="set-merge-message-template" type="text" placeholder="Merged branch '{branch:source}' into '{branch:target}'" />
-                    </div>
-
-                    <div class="group">
-                        <label for="set-git-ssh-binary">SSH binary (System backend)
-                            <span class="help-tip" title="Controls which ssh executable Git uses for SSH remotes. Auto prefers the host OpenSSH on Linux (helps AppImage + crypto-policies).">?</span>
-                        </label>
-                        <select id="set-git-ssh-binary">
-                            <option value="auto">Auto</option>
-                            <option value="host">Host</option>
-                            <option value="bundled">Bundled/In-PATH</option>
-                            <option value="custom">Custom path</option>
-                        </select>
-                    </div>
-
-                    <div class="group">
-                        <label for="set-git-ssh-path">Custom SSH path
-                            <span class="help-tip" title="Used only when SSH binary is set to Custom path (e.g. /usr/bin/ssh).">?</span>
-                        </label>
-                        <input id="set-git-ssh-path" type="text" placeholder="/usr/bin/ssh" />
-                    </div>
-
-                    
-
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-prune-on-fetch" /> Prune on fetch
-                            <span class="help-tip" title="Remove remote-tracking branches that no longer exist on the server.">?</span>
-                        </label>
-                    </div>
-
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-fetch-on-focus" /> Fetch on app focus
-                            <span class="help-tip" title="Automatically runs git fetch when the app regains focus.">?</span>
-                        </label>
-                    </div>
-
-                    
-
-                    
-
-                    <div class="group">
-                        <label for="set-hook-policy">Hooks
-                            <span class="help-tip" title="Control whether project Git hooks are allowed to run.">?</span>
-                        </label>
-                        <select id="set-hook-policy" disabled>
-                            <option value="deny">Deny</option>
-                            <option value="ask">Ask</option>
-                            <option value="allow">Allow</option>
-                        </select>
-                    </div>
-
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-respect-autocrlf" disabled /> Respect core.autocrlf
-                            <span class="help-tip" title="Honor the repository's line-ending settings when reading/writing files.">?</span>
-                        </label>
-                    </div>
                 </form>
 
                 <!-- Diff -->
@@ -228,34 +151,6 @@
                             <span class="help-tip" title="Use placeholders like {mine}, {theirs}, and {merged}.">?</span>
                         </label>
                         <input id="set-merge-args" type="text" placeholder="--arg {mine} {theirs} {merged}" />
-                    </div>
-                </form>
-
-                <!-- LFS -->
-                <form class="panel-form hidden" data-panel="lfs">
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-lfs-enabled" /> Enable LFS integration
-                            <span class="help-tip" title="Support Git LFS for large files (download pointers as real files).">?</span>
-                        </label>
-                    </div>
-                    <div class="group">
-                        <label for="set-lfs-concurrency">Concurrent transfers
-                            <span class="help-tip" title="Number of parallel LFS uploads/downloads.">?</span>
-                        </label>
-                        <input id="set-lfs-concurrency" type="number" min="1" max="16" />
-                    </div>
-                    <div class="group">
-                        
-                    </div>
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-lfs-require-lock" /> Require lock before edit
-                            <span class="help-tip" title="Prevent conflicting edits by requiring an LFS lock.">?</span>
-                        </label>
-                    </div>
-                    <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-lfs-bg-fetch" /> Background fetch on checkout
-                            <span class="help-tip" title="Fetch LFS objects automatically after switching branches.">?</span>
-                        </label>
                     </div>
                 </form>
 
@@ -335,7 +230,44 @@
                     </div>
                 </form>
 
+                <!-- Plugins -->
+                <form class="panel-form hidden" data-panel="plugins">
+                    <div class="group">
+                        <h4 class="settings-section-title">Installed Plugins</h4>
+                        <div class="muted" style="font-size:.9rem">
+                            Plugins can add themes, UI actions, and hooks. Disabling a plugin prevents its code from running and hides any themes it provides.
+                        </div>
+                    </div>
+                    <div class="group">
+                        <h4 class="settings-section-title">Installed Bundles (.ovcsp)</h4>
+                        <div id="plugin-bundles-pane" class="muted" style="font-size:.9rem">
+                            <div id="plugin-bundles-list"></div>
+                        </div>
+                    </div>
+                    <div class="group">
+                        <div class="plugins-pane" id="plugins-pane">
+                            <div class="plugins-left" aria-label="Installed plugins list">
+                                <div class="plugins-toolbar">
+                                    <input id="plugins-search" type="search" placeholder="Search plugins… (use @author and #tag)" aria-label="Search installed plugins" />
+                                    <button class="tbtn" id="plugins-install-bundle" type="button">Install .ovcsp…</button>
+                                    <button class="tbtn" id="plugins-enable-all" type="button">Enable all</button>
+                                    <button class="tbtn" id="plugins-disable-all" type="button">Disable all</button>
+                                </div>
+                                <div class="plugins-group-label" id="plugins-group-label"></div>
+                                <div class="plugins-list-scroll" role="region" aria-label="Plugins">
+                                    <ul id="plugins-list" class="plugins-list" role="listbox" aria-label="Installed plugins"></ul>
+                                </div>
+                            </div>
+                            <div class="plugins-right" aria-label="Plugin details">
+                                <div id="plugins-detail" class="plugins-detail"></div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+
                 <!-- Footer actions -->
+                </div>
+
                 <div class="sheet-actions">
                     <button class="tbtn" id="settings-reset" type="button">Restore defaults</button>
                     <div style="flex:1"></div>

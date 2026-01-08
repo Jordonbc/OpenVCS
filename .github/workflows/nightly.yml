@@ -20,6 +20,8 @@ permissions:
 env:
   # Scheduled runs should always build from Dev. Manual runs should build from the selected branch.
   TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'Dev' }}
+  # Flatpak is currently disabled in CI; set to '1' to re-enable.
+  OPENVCS_ENABLE_FLATPAK: '0'
 
 jobs:
   check-changes:
@@ -169,6 +171,8 @@ jobs:
       # ---------- Rust & platform deps ----------
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
+        with:
+          components: rustfmt, clippy
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
@@ -183,7 +187,7 @@ jobs:
 
       # ---------- Flatpak (Linux only; artifact) ----------
       - name: Install Flatpak tooling
-        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         run: |
           set -euxo pipefail
           sudo apt-get update
@@ -197,22 +201,22 @@ jobs:
             || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable
 
       - name: Verify Flatpak manifest exists
-        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         run: |
           set -euxo pipefail
           ls -la packaging/flatpak
           test -f packaging/flatpak/io.github.jordonbc.OpenVCS.yml
 
       - name: Build Flatpak bundle
-        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         run: |
           set -euxo pipefail
           flatpak-builder --user --force-clean --repo=repo build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml
           flatpak build-bundle repo OpenVCS.flatpak io.github.jordonbc.OpenVCS
 
       - name: Upload Flatpak bundle (artifact)
-        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
-        uses: actions/upload-artifact@v4
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        uses: actions/upload-artifact@v6
         with:
           name: OpenVCS-flatpak-nightly
           path: OpenVCS.flatpak
@@ -220,6 +224,12 @@ jobs:
       # ---------- Cache ----------
       - name: Rust cache
         uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+
+      - name: Cargo fmt (check)
+        run: cargo fmt --all -- --check
+
+      - name: Cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
 
       # ---------- Reset rolling tag (optional but keeps things tidy) ----------
       - name: Remove existing 'openvcs-nightly' release & tag (if any)
@@ -240,7 +250,7 @@ jobs:
 
       # ---------- Build & publish ----------
       - name: Build and publish Nightly prerelease
-        uses: tauri-apps/tauri-action@19b93bb55601e3e373a93cfb6eb4242e45f5af20 # action-v0.6.0
+        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # action-v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FRONTEND_SKIP_BUILD: '1'
@@ -267,7 +277,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Upload Flatpak bundle to GitHub Release
-        if: matrix.platform == 'ubuntu-24.04' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload openvcs-nightly OpenVCS.flatpak --clobber

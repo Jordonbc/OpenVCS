@@ -118,8 +118,8 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .filter .select-all span{ font-size:.85rem; color:var(--muted); }
 .filter .select-all input{ appearance:none; -webkit-appearance:none; width:16px; height:16px; border:1px solid var(--border); border-radius:4px; background:transparent; display:inline-block; }
 .filter .select-all input:hover{ border-color:var(--accent); }
-.filter .select-all input:checked{ background:rgba(38,162,105,1); border-color:rgba(38,162,105,1); box-shadow:0 0 0 2px rgba(38,162,105,.18); }
-.filter .select-all input:indeterminate{ background:rgba(38,162,105,1); opacity:.7; }
+.filter .select-all input:checked{ background:var(--success); border-color:var(--success); box-shadow:0 0 0 2px color-mix(in oklab, var(--success) 18%, transparent); }
+.filter .select-all input:indeterminate{ background:var(--success); opacity:.7; }
 .filter input{
     flex:1; min-width:0; border:none; outline:none;
     background:transparent; color:var(--text);
@@ -127,10 +127,10 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .filter-icon{ opacity:.85; }
 
 /* List items */
+.list-scroll{ flex:1 1 auto; min-height:0; overflow:auto; }
 .list{
     list-style:none; margin:0; padding:.25rem;
     display:flex; flex-direction:column; gap:.25rem;
-    flex:1 1 auto; min-height:0; overflow:auto;
 }
 .left-foot{
     flex:0 0 auto;
@@ -151,8 +151,8 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     border:1px solid transparent; cursor:pointer;
     position:relative; /* allow active marker */
 }
-.row:hover{ background:rgba(255,255,255,.04); }
-.row.active{ background:rgba(53,132,228,.12); border-color:rgba(53,132,228,.35); }
+.row:hover{ background:color-mix(in oklab, var(--text) 6%, transparent); }
+.row.active{ background:color-mix(in oklab, var(--accent) 16%, transparent); border-color:color-mix(in oklab, var(--accent) 42%, transparent); }
 /* Add a thin accent marker for the active (viewed) row so it stays visible even when picked */
 .row.active::before{
     content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
@@ -170,11 +170,11 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     border-color:color-mix(in oklab, var(--warning) 54%, transparent);
 }
 /* Picked (included in next commit) uses a success tint so it differs from active */
-.row.picked{ background:rgba(38,162,105,.10); border-color:rgba(38,162,105,.35); }
+.row.picked{ background:color-mix(in oklab, var(--success) 12%, transparent); border-color:color-mix(in oklab, var(--success) 42%, transparent); }
 /* When a row is both picked and active, keep the picked (green) background and show active marker */
-.row.active.picked{ background:rgba(38,162,105,.10); border-color:rgba(38,162,105,.35); }
+.row.active.picked{ background:color-mix(in oklab, var(--success) 12%, transparent); border-color:color-mix(in oklab, var(--success) 42%, transparent); }
 /* Diff-selected (included in viewer) uses a subtle accent tint distinct from picked */
-.row.diffsel{ background:rgba(53,132,228,.08); border-color:rgba(53,132,228,.28); }
+.row.diffsel{ background:color-mix(in oklab, var(--accent) 10%, transparent); border-color:color-mix(in oklab, var(--accent) 32%, transparent); }
 .row.active.diffsel::before{ background:var(--accent); }
 .file{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .status.add, .status-dot.add{ color:var(--success); }
@@ -195,13 +195,17 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 }
 /* Small status tag used in history list (outgoing marker) */
 .tag{ font-size:.72rem; color:var(--muted); border:1px solid var(--border); padding:.05rem .4rem; border-radius:999px; }
-.tag.up{ color:var(--success); border-color: rgba(38,162,105,.55); }
-.tag.down{ color:var(--accent); border-color:rgba(53,132,228,.55); border-color: color-mix(in oklab, var(--accent) 55%, transparent); }
+.tag.up{ color:var(--success); border-color: color-mix(in oklab, var(--success) 55%, transparent); }
+.tag.down{ color:var(--accent); border-color: color-mix(in oklab, var(--accent) 55%, transparent); }
 
 /* ========== Right pane (header | scroll | commit) ========== */
 .right{
     display:grid; grid-template-rows:auto 1fr auto; min-height:0;
 }
+
+/* Reserve scrollbar space for the right column header so the header width
+   doesn't change when the diff area shows or hides a vertical scrollbar. */
+.right { box-sizing: border-box; padding-right: var(--os-scrollbar-gutter); }
 
 /* Diff header (fixed) */
 .diff-head{
@@ -219,40 +223,83 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 }
 .path{ font-weight:600; }
 .diff-head .meta{ flex-shrink:0; white-space:nowrap; }
-.meta{ color:var(--muted); font-size:.85rem; display:flex; gap:.6rem; }
+.meta{ color:var(--muted); font-size:.85rem; display:flex; gap:.6rem; align-items:center; }
+.diff-head .meta #history-actions-btn{
+    padding:.08rem .35rem;
+    height:1.35rem;
+    min-height:unset;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    line-height:1;
+    font-size:1.05em;
+}
 
 /* Diff body (scrolls) */
 .diff{
-    min-height:0; overflow:auto;
+    min-height:0;
+    height: 100%;
+    /* Keep the vertical scrollbar present even when content doesn't overflow
+       so switching between binary (short) and text (long) diffs doesn't
+       cause a scrollbar to appear/disappear and nudge layout. */
+    overflow-y: scroll;
     font-family:var(--mono); font-size:13px;
+    overflow-anchor:none;
+    /* Reserve space for the scrollbar to avoid layout shifts when content grows */
+    scrollbar-gutter: stable both-edges;
+    /* Also reserve horizontal space via padding as a fallback for browsers
+       that don't fully honor scrollbar-gutter or when custom overlay
+       scrollbars are used. */
+    box-sizing: border-box;
+    padding-right: var(--os-scrollbar-gutter);
+}
+:root{ --os-scrollbar-gutter: 12px; }
+
+.diff-content{ min-width:0; }
+/* Ensure diff content won't collapse when toggling or loading hunks and keep
+   a consistent layout when scrollbar appears. This avoids subtle vertical
+   shifts when diff height changes. */
+.diff-content{
+    min-height: 0;
+    box-sizing: border-box;
+}
+
+/* Reserve space for the vertical scrollbar inside the diff so showing or
+   hiding the scrollbar doesn't nudge surrounding layout. The actual value
+   is computed at runtime and written to `--os-scrollbar-gutter`. */
+.diff .diff-content {
+    /* keep a small inner padding but avoid double-reserving space; the main
+       right-column padding handles layout stability for the header */
+    padding-right: calc(var(--os-scrollbar-gutter) / 2);
 }
 .hunk{ padding:.25rem 0; }
 /* Picked hunk (included in commit) — success tint */
-.hunk.picked{ background:rgba(38,162,105,.08); border-left:3px solid rgba(38,162,105,.55); }
+.hunk.picked{ background:color-mix(in oklab, var(--success) 10%, transparent); border-left:3px solid color-mix(in oklab, var(--success) 65%, transparent); }
 .hline{
     display:grid; grid-template-columns:56px 1fr; gap:.6rem;
     padding:.15rem .8rem;
 }
 .gutter{ color:var(--muted); text-align:right; user-select:none; }
 .code{ white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; min-width:0; }
-.hline.add{ background:rgba(38,162,105,.12); }
-.hline.del{ background:rgba(192,28,40,.12); }
+.hline.add{ background:color-mix(in oklab, var(--success) 12%, transparent); }
+.hline.del{ background:color-mix(in oklab, var(--danger) 12%, transparent); }
+.binary-placeholder{ color:var(--muted); font-style:italic; }
 
 /* Compact selection toggles */
 .row input.pick, .pick-hunk{ appearance:none; -webkit-appearance:none; width:14px; height:14px;
     border:1px solid var(--border); border-radius:3px; background:transparent; display:inline-block; }
 /* Use accent for focus/hover, success for checked to reinforce inclusion meaning */
-.row input.pick:checked, .pick-hunk:checked{ background:rgba(38,162,105,1); border-color:rgba(38,162,105,1); box-shadow:0 0 0 2px rgba(38,162,105,.18); }
-.row input.pick:indeterminate{ background:linear-gradient(0deg, rgba(38,162,105,1), rgba(38,162,105,1)); opacity:.7; }
+.row input.pick:checked, .pick-hunk:checked{ background:var(--success); border-color:var(--success); box-shadow:0 0 0 2px color-mix(in oklab, var(--success) 18%, transparent); }
+.row input.pick:indeterminate{ background:linear-gradient(0deg, var(--success), var(--success)); opacity:.7; }
 /* Show partial selection state for hunk checkbox */
-.pick-hunk:indeterminate{ background:linear-gradient(0deg, rgba(38,162,105,1), rgba(38,162,105,1)); opacity:.7; }
+.pick-hunk:indeterminate{ background:linear-gradient(0deg, var(--success), var(--success)); opacity:.7; }
 
 /* Line selection checkboxes (in gutter) */
 .pick-line{
     appearance:none; -webkit-appearance:none; width:12px; height:12px;
     border:1px solid var(--border); border-radius:2px; background:transparent; display:inline-block;
 }
-.pick-line:checked{ background:rgba(38,162,105,1); border-color:rgba(38,162,105,1); box-shadow:0 0 0 2px rgba(38,162,105,.18); }
+.pick-line:checked{ background:var(--success); border-color:var(--success); box-shadow:0 0 0 2px color-mix(in oklab, var(--success) 18%, transparent); }
 .pick-line:hover{ border-color:var(--accent); }
 .pick-toggle{ display:inline-flex; align-items:center; justify-content:center; gap:.25rem; }
 .row input.pick:hover, .pick-hunk:hover{ border-color:var(--accent); }
@@ -263,7 +310,7 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .ctxmenu{ position:fixed; z-index:9999; min-width:180px; background:var(--surface);
     border:1px solid var(--border); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.25); overflow:hidden; }
 .ctxmenu .item{ padding:.45rem .7rem; cursor:pointer; font-size:.95rem; }
-.ctxmenu .item:hover{ background:rgba(255,255,255,.06); }
+.ctxmenu .item:hover{ background:color-mix(in oklab, var(--text) 8%, transparent); }
 .ctxmenu .sep{ height:1px; background:var(--border); margin:.25rem 0; }
 
 /* Prevent text selection during drag-select */
@@ -278,7 +325,7 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 
 /* Check mark indicator at end of row when picked */
 .row-marks{ margin-left:auto; display:flex; align-items:center; gap:.55rem; }
-.stage-mark{ color:rgba(38,162,105,1); opacity:0; transition:opacity .15s; font-weight:600; }
+.stage-mark{ color:var(--success); opacity:0; transition:opacity .15s; font-weight:600; }
 .row.resolved .stage-mark{ opacity:1; }
 .conflict-mark{ color:var(--danger); opacity:0; transition:opacity .15s; font-weight:700; }
 .row.conflicted .conflict-mark{ opacity:1; }
@@ -320,7 +367,7 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .branch-switch .chev{ opacity:.8; }
 .branch-dot{
     width:8px; height:8px; border-radius:999px; background:var(--accent);
-    box-shadow:0 0 0 2px rgba(53,132,228,.18);
+    box-shadow:0 0 0 2px color-mix(in oklab, var(--accent) 18%, transparent);
 }
 
 /* ========== Conflict view ========== */

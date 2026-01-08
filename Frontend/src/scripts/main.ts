@@ -1,6 +1,7 @@
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
+import { observeOverlayScrollbars, destroyOverlayScrollbarsFor } from './lib/scrollbars';
 import { prefs, state, hasRepo } from './state/state';
 import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
@@ -18,7 +19,8 @@ import { openRepoSettings } from './features/repoSettings';
 import { initSshHostkeyPrompt } from './features/sshHostkey';
 import { initSshAuthPrompt } from './features/sshAuth';
 import { initOutputLogViewIfRequested } from './features/outputLog';
-import { DEFAULT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
+import { DEFAULT_LIGHT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
+import { initPlugins, runHook, runPluginAction } from './plugins';
 
 const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
 
@@ -34,8 +36,35 @@ const commitBtn = qs<HTMLButtonElement>('#commit-btn');
 const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
 
 async function boot() {
+    // Measure native scrollbar width and set a CSS variable so we can reserve
+    // the same horizontal space in the diff content. This prevents layout
+    // shifts when the vertical scrollbar appears or disappears.
+    function computeAndSetScrollbarGutter() {
+        try {
+            const el = document.createElement('div');
+            el.style.width = '100px';
+            el.style.height = '100px';
+            el.style.overflow = 'scroll';
+            el.style.position = 'absolute';
+            el.style.top = '-9999px';
+            document.body.appendChild(el);
+            const gutter = Math.max(0, el.offsetWidth - el.clientWidth) || 0;
+            document.documentElement.style.setProperty('--os-scrollbar-gutter', `${gutter}px`);
+            document.body.removeChild(el);
+        } catch (e) {
+            /* best-effort: ignore failures */
+        }
+    }
+
+    // Compute once and update on resize so changes in zoom/OS settings are handled.
+    computeAndSetScrollbarGutter();
+    window.addEventListener('resize', computeAndSetScrollbarGutter);
     // If launched as the Output Log window, render that view and skip the main app UI.
     if (await initOutputLogViewIfRequested()) return;
+    observeOverlayScrollbars();
+    // Ensure the diff scroll area uses the native scrollbar (not OverlayScrollbars).
+    try { destroyOverlayScrollbarsFor('.diff-scroll'); } catch {}
+    await initPlugins();
     // theme & basic layout
     // Prefer native settings for theme; fall back to current in-memory default
     if (TAURI.has) {
@@ -44,12 +73,12 @@ async function boot() {
                 const cfg = await TAURI.invoke<any>('get_global_settings');
                 const themeMode = cfg?.general?.theme as ('dark'|'light'|'system'|undefined);
                 const modeForPack = themeMode ?? 'system';
-                const themePack = String(cfg?.general?.theme_pack || DEFAULT_THEME_ID);
+                const themePack = String(cfg?.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
                 try { await refreshAvailableThemes(); } catch { /* best effort */ }
                 try {
                     await selectThemePack(themePack, { silent: true, mode: modeForPack });
                 } catch {
-                    await selectThemePack(DEFAULT_THEME_ID, { silent: true, mode: modeForPack });
+                    await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: modeForPack });
                 }
                 setTheme(themeMode || prefs.theme);
                 try {
@@ -62,7 +91,7 @@ async function boot() {
                     if (mono) root.style.setProperty('--mono', mono);
                 } catch { /* best-effort */ }
             } catch {
-                try { await selectThemePack(DEFAULT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
+                try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
                 setTheme(prefs.theme);
             }
         })();
@@ -231,9 +260,9 @@ async function boot() {
         if (!anchor) return;
         updateFetchUI();
         const r = anchor.getBoundingClientRect();
+        fetchPop.hidden = false;
         fetchPop.style.left = `${r.left}px`;
         fetchPop.style.top  = `${r.bottom + 6}px`;
-        fetchPop.hidden = false;
         fetchCaret.setAttribute('aria-expanded', 'true');
 
         const firstEnabled = fetchList?.querySelector<HTMLElement>('li[role="menuitem"][aria-disabled="false"]');
@@ -253,9 +282,17 @@ async function boot() {
         };
         const clearBusy = () => { if (statusEl) statusEl.classList.remove('busy'); };
         try {
+            const hookData = { branch: state.branch };
+            const pre = await runHook('prePush', hookData);
+            if (pre.cancelled) {
+                notify(pre.reason || 'Push cancelled');
+                return;
+            }
             if (TAURI.has) { setBusy('Pushing…'); await TAURI.invoke('git_push', {}); }
+            await runHook('onPush', hookData);
             notify('Pushed');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+            await runHook('postPush', hookData);
         } catch { notify('Push failed'); } finally { clearBusy(); }
     }
 
@@ -321,7 +358,11 @@ async function boot() {
                 } catch { notify('Update check failed'); }
                 break;
             case 'exit': if (TAURI.has) { TAURI.invoke('exit_app', {}).catch(() => {}); } break;
-            default: break;
+            default: {
+                if (!id) break;
+                const handled = await runPluginAction(id);
+                if (!handled) break;
+            }
         }
     }
 
@@ -335,6 +376,12 @@ async function boot() {
     pushBtn?.addEventListener('click', pushChanges);
     cloneBtn?.addEventListener('click', () => openSheet('clone'));
     repoSwitch?.addEventListener('click', () => openSheet('switch'));
+    document.getElementById('plugin-title-actions')?.addEventListener('click', (e) => {
+        const target = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-action]') || null;
+        const action = target?.dataset.action || '';
+        if (!action) return;
+        runMenuAction(action).catch(() => {});
+    });
 
     // No dynamic undo insertion; the inline button lives in the commit panel
 

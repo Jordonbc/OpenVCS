@@ -1,22 +1,35 @@
-use std::{fs, io};
-use std::path::PathBuf;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+use std::{fs, io};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub schema_version: u32,
-    #[serde(default)] pub general: General,
-    #[serde(default)] pub git: Git,
-    #[serde(default)] pub credentials: Credentials,
-    #[serde(default)] pub diff: Diff,
-    #[serde(default)] pub lfs: Lfs,
-    #[serde(default)] pub performance: Performance,
-    #[serde(default)] pub integrations: Integrations,
-    #[serde(default)] pub ux: Ux,
-    #[serde(default)] pub advanced: Advanced,
-    #[serde(default)] pub experimental: Experimental,
-    #[serde(default)] pub logging: Logging,
+    #[serde(default)]
+    pub general: General,
+    #[serde(default)]
+    pub git: Git,
+    #[serde(default)]
+    pub credentials: Credentials,
+    #[serde(default)]
+    pub diff: Diff,
+    #[serde(default)]
+    pub lfs: Lfs,
+    #[serde(default)]
+    pub performance: Performance,
+    #[serde(default)]
+    pub integrations: Integrations,
+    #[serde(default)]
+    pub plugins: Plugins,
+    #[serde(default)]
+    pub ux: Ux,
+    #[serde(default)]
+    pub advanced: Advanced,
+    #[serde(default)]
+    pub experimental: Experimental,
+    #[serde(default)]
+    pub logging: Logging,
 }
 
 impl Default for AppConfig {
@@ -30,6 +43,7 @@ impl Default for AppConfig {
             lfs: Default::default(),
             performance: Default::default(),
             integrations: Default::default(),
+            plugins: Default::default(),
             ux: Default::default(),
             advanced: Default::default(),
             experimental: Default::default(),
@@ -40,15 +54,24 @@ impl Default for AppConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct General {
-    #[serde(default)] pub theme: Theme,
-    #[serde(default = "default_theme_pack")] pub theme_pack: String,
-    #[serde(default)] pub language: Language,
-    #[serde(default)] pub default_backend: DefaultBackend,
-    #[serde(default)] pub update_channel: UpdateChannel,
-    #[serde(default)] pub reopen_last_repos: bool,
-    #[serde(default)] pub checks_on_launch: bool,
-    #[serde(default)] pub telemetry: bool,
-    #[serde(default)] pub crash_reports: bool,
+    #[serde(default)]
+    pub theme: Theme,
+    #[serde(default = "default_theme_pack")]
+    pub theme_pack: String,
+    #[serde(default)]
+    pub language: Language,
+    #[serde(default)]
+    pub default_backend: DefaultBackend,
+    #[serde(default)]
+    pub update_channel: UpdateChannel,
+    #[serde(default)]
+    pub reopen_last_repos: bool,
+    #[serde(default)]
+    pub checks_on_launch: bool,
+    #[serde(default)]
+    pub telemetry: bool,
+    #[serde(default)]
+    pub crash_reports: bool,
 }
 impl Default for General {
     fn default() -> Self {
@@ -62,38 +85,49 @@ impl Default for General {
             checks_on_launch: true,
             telemetry: false,
             crash_reports: false,
-            }
+        }
     }
 }
 
-fn default_theme_pack() -> String { "default".to_string() }
+fn default_theme_pack() -> String {
+    "default".to_string()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Git {
-    #[serde(default)] pub backend: GitBackend,
+    #[serde(default)]
+    pub backend: String,
     /// Default branch name used when creating new repos or inferring defaults
-    #[serde(default)] pub default_branch: String,
+    #[serde(default)]
+    pub default_branch: String,
     /// Which SSH binary to use for the system-git backend.
     ///
     /// On Linux AppImage, the bundled `ssh` can be older than the host and may fail to parse
     /// distro crypto-policy configuration. `Auto` prefers the host OpenSSH if present.
-    #[serde(default)] pub ssh_binary: GitSshBinary,
+    #[serde(default)]
+    pub ssh_binary: GitSshBinary,
     /// Used when `ssh_binary = "custom"`.
-    #[serde(default)] pub ssh_path: String,
-    #[serde(default)] pub prune_on_fetch: bool,
-    #[serde(default)] pub fetch_on_focus: bool,
-    #[serde(default)] pub allow_hooks: HookPolicy,
-    #[serde(default)] pub respect_core_autocrlf: bool,
+    #[serde(default)]
+    pub ssh_path: String,
+    #[serde(default)]
+    pub prune_on_fetch: bool,
+    #[serde(default)]
+    pub fetch_on_focus: bool,
+    #[serde(default)]
+    pub allow_hooks: HookPolicy,
+    #[serde(default)]
+    pub respect_core_autocrlf: bool,
     /// Commit message template used for automatic merge commits.
     ///
     /// If empty, Git's default merge message is used.
     /// Supported placeholders: {branch:source}, {branch:target}, {repo:name}, {repo:username}
-    #[serde(default)] pub merge_commit_message_template: String,
+    #[serde(default)]
+    pub merge_commit_message_template: String,
 }
 impl Default for Git {
     fn default() -> Self {
         Self {
-            backend: GitBackend::System,
+            backend: String::new(),
             default_branch: "main".into(),
             ssh_binary: GitSshBinary::Auto,
             ssh_path: String::new(),
@@ -101,20 +135,27 @@ impl Default for Git {
             fetch_on_focus: true,
             allow_hooks: HookPolicy::Ask,
             respect_core_autocrlf: true,
-            merge_commit_message_template: "Merged branch '{branch:source}' into '{branch:target}'".into(),
+            merge_commit_message_template: "Merged branch '{branch:source}' into '{branch:target}'"
+                .into(),
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credentials {
-    #[serde(default)] pub helper: CredentialHelper,
-    #[serde(default)] pub ssh_agent: SshAgent,
+    #[serde(default)]
+    pub helper: CredentialHelper,
+    #[serde(default)]
+    pub ssh_agent: SshAgent,
     /// Preferred keys to try; tilde expansion is handled at runtime.
-    #[serde(default)] pub ssh_key_paths: Vec<String>,
-    #[serde(default)] pub gpg_program: String,
-    #[serde(default)] pub sign_commits: bool,
-    #[serde(default)] pub signing_key: String,
+    #[serde(default)]
+    pub ssh_key_paths: Vec<String>,
+    #[serde(default)]
+    pub gpg_program: String,
+    #[serde(default)]
+    pub sign_commits: bool,
+    #[serde(default)]
+    pub signing_key: String,
 }
 impl Default for Credentials {
     fn default() -> Self {
@@ -131,15 +172,23 @@ impl Default for Credentials {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Diff {
-    #[serde(default)] pub tab_width: u8,
-    #[serde(default)] pub ignore_whitespace: WhitespaceMode,
-    #[serde(default)] pub max_file_size_mb: u32,
-    #[serde(default)] pub intraline: bool,
-    #[serde(default)] pub show_binary_placeholders: bool,
-    #[serde(default)] pub external_diff: ExternalTool,
-    #[serde(default)] pub external_merge: ExternalTool,
+    #[serde(default)]
+    pub tab_width: u8,
+    #[serde(default)]
+    pub ignore_whitespace: WhitespaceMode,
+    #[serde(default)]
+    pub max_file_size_mb: u32,
+    #[serde(default)]
+    pub intraline: bool,
+    #[serde(default)]
+    pub show_binary_placeholders: bool,
+    #[serde(default)]
+    pub external_diff: ExternalTool,
+    #[serde(default)]
+    pub external_merge: ExternalTool,
     /// Extensions (without dot) treated as binary if not in .gitattributes
-    #[serde(default)] pub binary_exts: Vec<String>,
+    #[serde(default)]
+    pub binary_exts: Vec<String>,
 }
 impl Default for Diff {
     fn default() -> Self {
@@ -158,10 +207,14 @@ impl Default for Diff {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lfs {
-    #[serde(default)] pub enabled: bool,
-    #[serde(default)] pub concurrency: u8,
-    #[serde(default)] pub require_lock_before_edit: bool,
-    #[serde(default)] pub background_fetch_on_checkout: bool,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub concurrency: u8,
+    #[serde(default)]
+    pub require_lock_before_edit: bool,
+    #[serde(default)]
+    pub background_fetch_on_checkout: bool,
 }
 impl Default for Lfs {
     fn default() -> Self {
@@ -176,26 +229,29 @@ impl Default for Lfs {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Performance {
-    #[serde(default)] pub progressive_render: bool,
-    #[serde(default)] pub gpu_accel: bool,
-    
+    #[serde(default)]
+    pub progressive_render: bool,
+    #[serde(default)]
+    pub gpu_accel: bool,
 }
 impl Default for Performance {
     fn default() -> Self {
         Self {
             progressive_render: true,
             gpu_accel: true,
-            
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Integrations {
-    #[serde(default)] pub default_editor: EditorChoice,
-    #[serde(default)] pub issue_provider: IssueProvider,
+    #[serde(default)]
+    pub default_editor: EditorChoice,
+    #[serde(default)]
+    pub issue_provider: IssueProvider,
     /// “Remote host → provider” mapping; e.g. "gitlab.myco.com" = "gitlab"
-    #[serde(default)] pub host_overrides: std::collections::BTreeMap<String, IssueProvider>,
+    #[serde(default)]
+    pub host_overrides: std::collections::BTreeMap<String, IssueProvider>,
 }
 impl Default for Integrations {
     fn default() -> Self {
@@ -207,14 +263,33 @@ impl Default for Integrations {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Plugins {
+    /// Plugin ids that are installed but disabled.
+    ///
+    /// IDs are matched case-insensitively.
+    #[serde(default)]
+    pub disabled: Vec<String>,
+    /// Plugin ids that are installed and explicitly enabled.
+    ///
+    /// IDs are matched case-insensitively.
+    #[serde(default)]
+    pub enabled: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ux {
-    #[serde(default)] pub ui_scale: f32,
-    #[serde(default)] pub font_mono: String,
-    #[serde(default)] pub vim_nav: bool,
-    #[serde(default)] pub color_blind_mode: ColorBlindMode,
+    #[serde(default)]
+    pub ui_scale: f32,
+    #[serde(default)]
+    pub font_mono: String,
+    #[serde(default)]
+    pub vim_nav: bool,
+    #[serde(default)]
+    pub color_blind_mode: ColorBlindMode,
     /// Max number of recent repositories to keep in MRU list
-    #[serde(default)] pub recents_limit: u32,
+    #[serde(default)]
+    pub recents_limit: u32,
 }
 impl Default for Ux {
     fn default() -> Self {
@@ -230,9 +305,12 @@ impl Default for Ux {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Advanced {
-    #[serde(default)] pub confirm_force_push: ForcePushPolicy,
-    #[serde(default)] pub ssl_verify: bool,
-    #[serde(default)] pub proxy: Proxy,
+    #[serde(default)]
+    pub confirm_force_push: ForcePushPolicy,
+    #[serde(default)]
+    pub ssl_verify: bool,
+    #[serde(default)]
+    pub proxy: Proxy,
 }
 impl Default for Advanced {
     fn default() -> Self {
@@ -244,30 +322,27 @@ impl Default for Advanced {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Experimental {
-    #[serde(default)] pub parallel_history_scan: bool,
-    #[serde(default)] pub background_blame_index: bool,
-    #[serde(default)] pub sparse_checkout_ui: bool,
-}
-impl Default for Experimental {
-    fn default() -> Self {
-        Self {
-            parallel_history_scan: false,
-            background_blame_index: false,
-            sparse_checkout_ui: false,
-        }
-    }
+    #[serde(default)]
+    pub parallel_history_scan: bool,
+    #[serde(default)]
+    pub background_blame_index: bool,
+    #[serde(default)]
+    pub sparse_checkout_ui: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Logging {
-    #[serde(default)] pub level: LogLevel,
+    #[serde(default)]
+    pub level: LogLevel,
     /// When true, show a live diagnostics pane in-app.
-    #[serde(default)] pub live_viewer: bool,
+    #[serde(default)]
+    pub live_viewer: bool,
     /// How many archived logs to keep after rotation.
     /// Use a serde default of 10 when the field is omitted in existing configs.
-    #[serde(default = "default_retain_archives")] pub retain_archives: u32,
+    #[serde(default = "default_retain_archives")]
+    pub retain_archives: u32,
 }
 impl Default for Logging {
     fn default() -> Self {
@@ -279,108 +354,209 @@ impl Default for Logging {
     }
 }
 
-fn default_retain_archives() -> u32 { 10 }
+fn default_retain_archives() -> u32 {
+    10
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum Theme { Light, Dark, System }
-impl Default for Theme { fn default() -> Self { Theme::System } }
+#[derive(Default)]
+pub enum Theme {
+    Light,
+    Dark,
+    #[default]
+    System,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum Language { System, EN }
-impl Default for Language { fn default() -> Self { Language::System } }
+#[derive(Default)]
+pub enum Language {
+    #[default]
+    System,
+    EN,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum UpdateChannel { Stable, Beta, Nightly }
-impl Default for UpdateChannel { fn default() -> Self { UpdateChannel::Stable } }
+#[derive(Default)]
+pub enum UpdateChannel {
+    #[default]
+    Stable,
+    Beta,
+    Nightly,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum GitBackend { System, Libgit2 }
-impl Default for GitBackend { fn default() -> Self { GitBackend::System } }
+#[derive(Default)]
+pub enum GitSshBinary {
+    #[default]
+    Auto,
+    Host,
+    Bundled,
+    Custom,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum GitSshBinary { Auto, Host, Bundled, Custom }
-impl Default for GitSshBinary { fn default() -> Self { GitSshBinary::Auto } }
+#[derive(Default)]
+pub enum DefaultBackend {
+    #[default]
+    Git,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum DefaultBackend { Git }
-impl Default for DefaultBackend { fn default() -> Self { DefaultBackend::Git } }
+#[derive(Default)]
+pub enum HookPolicy {
+    Deny,
+    #[default]
+    Ask,
+    Allow,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum HookPolicy { Deny, Ask, Allow }
-impl Default for HookPolicy { fn default() -> Self { HookPolicy::Ask } }
+#[derive(Default)]
+pub enum CredentialHelper {
+    #[default]
+    OsKeychain,
+    None,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum CredentialHelper { OsKeychain, None }
-impl Default for CredentialHelper { fn default() -> Self { CredentialHelper::OsKeychain } }
+#[derive(Default)]
+pub enum SshAgent {
+    #[default]
+    Env,
+    OnePassword,
+    Pageant,
+    None,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum SshAgent { Env, OnePassword, Pageant, None }
-impl Default for SshAgent { fn default() -> Self { SshAgent::Env } }
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum WhitespaceMode { None, Eol, All }
-impl Default for WhitespaceMode { fn default() -> Self { WhitespaceMode::None } }
+#[derive(Default)]
+pub enum WhitespaceMode {
+    #[default]
+    None,
+    Eol,
+    All,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalTool {
-    #[serde(default)] pub enabled: bool,
-    #[serde(default)] pub path: String,
-    #[serde(default)] pub args: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub path: String,
+    #[serde(default)]
+    pub args: String,
 }
 impl ExternalTool {
-    pub fn disabled() -> Self { Self { enabled: false, path: String::new(), args: String::new() } }
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            path: String::new(),
+            args: String::new(),
+        }
+    }
 }
-impl Default for ExternalTool { fn default() -> Self { Self::disabled() } }
+impl Default for ExternalTool {
+    fn default() -> Self {
+        Self::disabled()
+    }
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum EditorChoice { System, Code, Clion, Rider, Neovim, Custom }
-impl Default for EditorChoice { fn default() -> Self { EditorChoice::System } }
+#[derive(Default)]
+pub enum EditorChoice {
+    #[default]
+    System,
+    Code,
+    Clion,
+    Rider,
+    Neovim,
+    Custom,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum IssueProvider { Auto, Github, Gitlab, Forgejo }
-impl Default for IssueProvider { fn default() -> Self { IssueProvider::Auto } }
+#[derive(Default)]
+pub enum IssueProvider {
+    #[default]
+    Auto,
+    Github,
+    Gitlab,
+    Forgejo,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum ColorBlindMode { None, Protanopia, Deuteranopia, Tritanopia }
-impl Default for ColorBlindMode { fn default() -> Self { ColorBlindMode::None } }
+#[derive(Default)]
+pub enum ColorBlindMode {
+    #[default]
+    None,
+    Protanopia,
+    Deuteranopia,
+    Tritanopia,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum ForcePushPolicy { Always, TrackedRemotes, Never }
-impl Default for ForcePushPolicy { fn default() -> Self { ForcePushPolicy::Always } }
+#[derive(Default)]
+pub enum ForcePushPolicy {
+    #[default]
+    Always,
+    TrackedRemotes,
+    Never,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Proxy {
-    #[serde(default)] pub mode: ProxyMode,
-    #[serde(default)] pub url: String,
+    #[serde(default)]
+    pub mode: ProxyMode,
+    #[serde(default)]
+    pub url: String,
 }
 impl Proxy {
-    pub fn system() -> Self { Self { mode: ProxyMode::System, url: String::new() } }
+    pub fn system() -> Self {
+        Self {
+            mode: ProxyMode::System,
+            url: String::new(),
+        }
+    }
 }
-impl Default for Proxy { fn default() -> Self { Proxy::system() } }
+impl Default for Proxy {
+    fn default() -> Self {
+        Proxy::system()
+    }
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum ProxyMode { System, Manual, Off }
-impl Default for ProxyMode { fn default() -> Self { ProxyMode::System } }
+#[derive(Default)]
+pub enum ProxyMode {
+    #[default]
+    System,
+    Manual,
+    Off,
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum LogLevel { Trace, Debug, Info, Warn, Error }
-impl Default for LogLevel { fn default() -> Self { LogLevel::Info } }
+#[derive(Default)]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    #[default]
+    Info,
+    Warn,
+    Error,
+}
 
 //
 impl AppConfig {
@@ -435,6 +611,7 @@ impl AppConfig {
         }
 
         // Git
+        self.git.backend = self.git.backend.trim().to_string();
         if self.git.default_branch.trim().is_empty() {
             self.git.default_branch = "main".into();
         }
@@ -451,11 +628,45 @@ impl AppConfig {
 
         // Performance
 
+        // Plugins
+        {
+            let mut seen = std::collections::HashSet::new();
+            self.plugins.disabled = self
+                .plugins
+                .disabled
+                .iter()
+                .map(|s| s.trim().to_ascii_lowercase())
+                .filter(|s| !s.is_empty())
+                .filter(|s| seen.insert(s.clone()))
+                .collect();
+        }
+        {
+            let mut seen = std::collections::HashSet::new();
+            self.plugins.enabled = self
+                .plugins
+                .enabled
+                .iter()
+                .map(|s| s.trim().to_ascii_lowercase())
+                .filter(|s| !s.is_empty())
+                .filter(|s| seen.insert(s.clone()))
+                .collect();
+        }
+        // If a plugin is in both lists, treat it as disabled.
+        if !self.plugins.disabled.is_empty() && !self.plugins.enabled.is_empty() {
+            let disabled: std::collections::HashSet<&str> =
+                self.plugins.disabled.iter().map(|s| s.as_str()).collect();
+            self.plugins
+                .enabled
+                .retain(|id| !disabled.contains(id.as_str()));
+        }
+
         // UX
         self.ux.recents_limit = self.ux.recents_limit.clamp(1, 100);
 
         // Logging
-        if self.logging.retain_archives == 0 { self.logging.retain_archives = 1; }
+        if self.logging.retain_archives == 0 {
+            self.logging.retain_archives = 1;
+        }
         self.logging.retain_archives = self.logging.retain_archives.clamp(1, 100);
     }
 }

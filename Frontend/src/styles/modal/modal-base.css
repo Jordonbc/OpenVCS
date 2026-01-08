@@ -33,6 +33,36 @@
     display:flex; align-items:center; justify-content:space-between; gap:.5rem;
     padding:.6rem; border-bottom:1px solid var(--border); background:var(--surface-2);
 }
+
+/* Close button used by sheet-style modals (✕) */
+.modal button.icon.close{
+    appearance:none; -webkit-appearance:none;
+    display:inline-flex; align-items:center; justify-content:center;
+    width:32px; height:32px;
+    padding:0;
+    border:1px solid var(--border);
+    border-radius:999px;
+    background:transparent;
+    color:var(--muted);
+    cursor:pointer;
+    font:inherit;
+    line-height:1;
+    transition:border-color .15s, background-color .15s, color .15s, transform .06s;
+    will-change:transform;
+}
+.modal button.icon.close:hover{
+    border-color:var(--accent);
+    color:var(--text);
+    background:color-mix(in oklab, var(--accent) 10%, transparent);
+}
+.modal button.icon.close:active{ transform:translateY(1px); }
+.modal button.icon.close:focus-visible{
+    outline:none;
+    box-shadow:0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent);
+}
+.modal button.icon.close:disabled{
+    opacity:.55; cursor:not-allowed; pointer-events:none; transform:none!important;
+}
 .sheet-body{ padding:1rem; display:grid; gap:1rem; }
 .sheet-actions{
     display:flex; align-items:center; justify-content:flex-end; gap:.5rem;
@@ -78,6 +108,9 @@
 /* Dark-styled form controls only inside overlays (Settings, Command Sheet, popovers) */
 :root[data-theme="dark"] .modal,
 :root[data-theme="dark"] .popover{ color-scheme: dark; }
+
+:root[data-theme="light"] .modal,
+:root[data-theme="light"] .popover{ color-scheme: light; }
 
 .modal :is(
   select,

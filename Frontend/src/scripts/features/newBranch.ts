@@ -3,6 +3,7 @@ import { TAURI } from "../lib/tauri";
 import { notify } from "../lib/notify";
 import { state } from "../state/state";
 import { closeModal } from "../ui/modals";
+import { runHook } from "../plugins";
 
 function fixBranchName(raw: string): string {
     // Keep the user's input intact; only normalize for creation.
@@ -112,11 +113,32 @@ export function wireNewBranch() {
         const err = validateBranchName(name);
         if (err) { validate(); return; }
         try {
+            const hookData = { name, from, checkout, branch: state.branch };
+            const preCreate = await runHook('preBranchCreate', hookData);
+            if (preCreate.cancelled) {
+                notify(preCreate.reason || 'Create branch cancelled');
+                return;
+            }
+            if (checkout) {
+                const preSwitch = await runHook('preSwitchBranch', { from: state.branch, to: name });
+                if (preSwitch.cancelled) {
+                    notify(preSwitch.reason || 'Create branch cancelled');
+                    return;
+                }
+            }
             if (TAURI.has) await TAURI.invoke('git_create_branch', { name, from, checkout });
+            await runHook('onBranchCreate', hookData);
+            if (checkout) {
+                await runHook('onSwitchBranch', { from: state.branch, to: name });
+            }
             notify(`Created branch ${name}`);
             // Ask the rest of the app to refresh branch UI
             window.dispatchEvent(new CustomEvent('app:repo-selected'));
             closeModal('new-branch-modal');
+            await runHook('postBranchCreate', hookData);
+            if (checkout) {
+                await runHook('postSwitchBranch', { from: state.branch, to: name });
+            }
         } catch {
             notify('Create branch failed');
         }
