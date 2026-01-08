@@ -19,7 +19,8 @@ const THEME_SCRIPT_NODES: HTMLScriptElement[] = [];
 let availableThemes: ThemeSummary[] = [defaultLightSummary(), defaultDarkSummary()];
 let fetchedThemes = false;
 let activeThemeId = defaultThemeIdForMode('system');
-let activeStyles: ThemePayload['styles'] | null = null;
+let activeThemePackId = defaultThemeIdForMode('system');
+let activeStyles: string | null = null;
 let activeMarkup: ThemePayload['markup'] | null = null;
 let activeScripts: string[] = [];
 let currentMode: 'system' | 'light' | 'dark' = 'system';
@@ -172,8 +173,12 @@ function setStyleContent(id: string, css: string | null | undefined) {
 function syncThemePackAttr() {
     const root = document.documentElement;
     if (!root) return;
-    const current = (activeThemeId || DEFAULT_THEME_ID).trim().toLowerCase();
-    if (!current || isBuiltInDefaultThemeId(current)) {
+    if (isBuiltInDefaultThemeId(activeThemeId)) {
+        root.removeAttribute(THEME_PACK_ATTR);
+        return;
+    }
+    const current = (activeThemePackId || DEFAULT_THEME_ID).trim().toLowerCase();
+    if (!current) {
         root.removeAttribute(THEME_PACK_ATTR);
         return;
     }
@@ -237,33 +242,23 @@ function applyModeStyles(mode: 'system' | 'light' | 'dark') {
     currentMode = mode;
     ensureSystemListener();
     syncThemePackAttr();
-    const styles = activeStyles;
-    const globalCss = styles?.global ?? null;
-    setStyleContent(GLOBAL_STYLE_ID, globalCss);
-
-    const selected = (() => {
-        if (mode !== 'system') return selectModeCss(styles, mode);
-        const systemCss = typeof styles?.system === 'string' ? styles.system.trim() : '';
-        if (systemCss) return systemCss;
-        return selectModeCss(styles, effectiveSystemMode());
-    })();
-    setStyleContent(MODE_STYLE_ID, selected);
+    const css = typeof activeStyles === 'string' ? activeStyles : '';
+    setStyleContent(GLOBAL_STYLE_ID, css);
+    setStyleContent(MODE_STYLE_ID, null);
     applyMarkupNodes();
     applyScriptNodes();
     dispatchThemeChanged();
 }
 
-function selectModeCss(styles: ThemePayload['styles'] | null, mode: 'system' | 'light' | 'dark'): string {
-    if (!styles) return '';
-    const { system, light, dark } = styles;
-    const pick =
-        mode === 'system'
-            ? system ?? light ?? dark
-            : mode === 'light'
-                ? light ?? system ?? dark
-                : dark ?? system ?? light;
-    const text = typeof pick === 'string' ? pick : '';
-    return text.trim() ? text : '';
+function resolveThemePackAttrId(summary: ThemeSummary | null | undefined, themeId: string): string {
+    const rawId = String(summary?.id ?? themeId ?? DEFAULT_THEME_ID).trim() || DEFAULT_THEME_ID;
+    const pluginId = String(summary?.plugin_id ?? '').trim();
+    if (!pluginId) return rawId;
+    const prefix = `${pluginId}.`;
+    if (rawId.toLowerCase().startsWith(prefix.toLowerCase())) {
+        return rawId.slice(prefix.length);
+    }
+    return rawId;
 }
 
 export function getAvailableThemes(): ThemeSummary[] {
@@ -367,6 +362,7 @@ export async function selectThemePack(
 
     if (!TAURI.has || isBuiltInDefaultThemeId(target)) {
         activeThemeId = isBuiltInDefaultThemeId(target) ? target : defaultThemeIdForMode(desiredMode);
+        activeThemePackId = activeThemeId;
         activeStyles = null;
         activeMarkup = null;
         activeScripts = [];
@@ -377,7 +373,8 @@ export async function selectThemePack(
     const registered = getRegisteredThemePayload(target);
     if (registered) {
         activeThemeId = String(registered.summary?.id || target);
-        activeStyles = registered.styles ?? null;
+        activeThemePackId = resolveThemePackAttrId(registered.summary, activeThemeId);
+        activeStyles = typeof registered.styles === 'string' ? registered.styles : null;
         activeMarkup = registered.markup ?? null;
         activeScripts = Array.isArray(registered.scripts) ? registered.scripts : [];
         applyModeStyles(desiredMode);
@@ -390,13 +387,15 @@ export async function selectThemePack(
             throw new Error('Invalid theme payload');
         }
         activeThemeId = String(payload.summary?.id || target);
-        activeStyles = payload.styles ?? null;
+        activeThemePackId = resolveThemePackAttrId(payload.summary, activeThemeId);
+        activeStyles = typeof payload.styles === 'string' ? payload.styles : null;
         activeMarkup = payload.markup ?? null;
         activeScripts = Array.isArray(payload.scripts) ? payload.scripts : [];
         applyModeStyles(desiredMode);
     } catch (error) {
         console.warn('load_theme failed', error);
         activeThemeId = defaultThemeIdForMode(desiredMode);
+        activeThemePackId = activeThemeId;
         activeStyles = null;
         activeMarkup = null;
         activeScripts = [];

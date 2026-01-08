@@ -37,18 +37,6 @@ pub struct ThemeSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
-pub struct ThemeStyles {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub global: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub system: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub light: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dark: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Default)]
 pub struct ThemeMarkup {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub head: Option<String>,
@@ -63,7 +51,8 @@ fn markup_is_empty(markup: &ThemeMarkup) -> bool {
 #[derive(Debug, Clone, Serialize)]
 pub struct ThemePayload {
     pub summary: ThemeSummary,
-    pub styles: ThemeStyles,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub styles: Option<String>,
     #[serde(skip_serializing_if = "markup_is_empty")]
     pub markup: ThemeMarkup,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -84,24 +73,12 @@ struct RawThemeManifest {
     appearance: Option<String>,
     #[serde(default)]
     paired_with: Option<String>,
-    #[serde(default)]
-    styles: RawThemeStyles,
+    #[serde(default, deserialize_with = "string_or_vec")]
+    styles: Vec<String>,
     #[serde(default)]
     markup: RawThemeMarkup,
     #[serde(default)]
     scripts: Vec<String>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct RawThemeStyles {
-    #[serde(default, deserialize_with = "string_or_vec")]
-    global: Vec<String>,
-    #[serde(default, deserialize_with = "string_or_vec")]
-    system: Vec<String>,
-    #[serde(default, deserialize_with = "string_or_vec")]
-    light: Vec<String>,
-    #[serde(default, deserialize_with = "string_or_vec")]
-    dark: Vec<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -174,17 +151,6 @@ fn clean_mode(value: Option<String>) -> Option<String> {
     }
 }
 
-fn infer_mode_from_manifest(manifest: &RawThemeManifest) -> Option<String> {
-    let has_light = !manifest.styles.light.is_empty();
-    let has_dark = !manifest.styles.dark.is_empty();
-    let has_system = !manifest.styles.system.is_empty();
-    match (has_light, has_dark, has_system) {
-        (true, false, false) => Some("light".to_string()),
-        (false, true, false) => Some("dark".to_string()),
-        _ => Some("both".to_string()),
-    }
-}
-
 fn namespaced_plugin_theme_id(plugin_id: &str, theme_id: &str) -> String {
     format!("{}.{}", plugin_id.trim(), theme_id.trim())
 }
@@ -220,7 +186,7 @@ pub fn default_theme_summary() -> ThemeSummary {
 pub fn default_theme_payload() -> ThemePayload {
     ThemePayload {
         summary: default_theme_summary(),
-        styles: ThemeStyles::default(),
+        styles: None,
         markup: ThemeMarkup::default(),
         scripts: Vec::new(),
     }
@@ -250,8 +216,7 @@ pub fn list_themes() -> Vec<ThemeSummary> {
                 }
                 seen.insert(norm);
 
-                let appearance = clean_mode(manifest.appearance.clone())
-                    .or_else(|| infer_mode_from_manifest(&manifest));
+                let appearance = clean_mode(manifest.appearance.clone());
                 let paired_with = clean_opt(manifest.paired_with.clone())
                     .filter(|p| !p.eq_ignore_ascii_case(theme_id))
                     .map(|p| namespaced_plugin_paired_with(&theme_dir.plugin_id, &p))
@@ -384,8 +349,7 @@ fn build_theme_payload_from_directory(
     plugin_id: Option<String>,
 ) -> Result<ThemePayload, String> {
     let (styles, markup, scripts) = read_assets_from_directory(path, &manifest)?;
-    let appearance =
-        clean_mode(manifest.appearance.clone()).or_else(|| infer_mode_from_manifest(&manifest));
+    let appearance = clean_mode(manifest.appearance.clone());
     let paired_with = clean_opt(manifest.paired_with.clone())
         .filter(|p| !p.eq_ignore_ascii_case(manifest.id.trim()))
         .map(|p| match source {
@@ -426,24 +390,12 @@ fn build_theme_payload_from_directory(
 fn read_assets_from_directory(
     base: &Path,
     manifest: &RawThemeManifest,
-) -> Result<(ThemeStyles, ThemeMarkup, Vec<String>), String> {
-    let global = read_css_set_from_directory(base, &manifest.styles.global)?;
-    let system = read_css_set_from_directory(base, &manifest.styles.system)?;
-    let light = read_css_set_from_directory(base, &manifest.styles.light)?;
-    let dark = read_css_set_from_directory(base, &manifest.styles.dark)?;
+) -> Result<(Option<String>, ThemeMarkup, Vec<String>), String> {
+    let styles = read_css_set_from_directory(base, &manifest.styles)?;
     let markup = read_markup_from_directory(base, &manifest.markup)?;
     let scripts = read_scripts_from_directory(base, &manifest.scripts)?;
 
-    Ok((
-        ThemeStyles {
-            global,
-            system,
-            light,
-            dark,
-        },
-        markup,
-        scripts,
-    ))
+    Ok((styles, markup, scripts))
 }
 
 fn read_css_set_from_directory(base: &Path, files: &[String]) -> Result<Option<String>, String> {

@@ -125,12 +125,7 @@ export interface ThemeSummary {
 
 export interface ThemePayload {
     summary: ThemeSummary;
-    styles: {
-        global?: string | null;
-        system?: string | null;
-        light?: string | null;
-        dark?: string | null;
-    };
+    styles?: string | null;
     markup?: {
         head?: string | null;
         body?: string | null;
