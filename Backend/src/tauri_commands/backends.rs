@@ -127,7 +127,7 @@ pub async fn reopen_current_repo_cmd(state: State<'_, AppState>) -> Result<(), S
 /// This is intentionally backend-agnostic so plugin UI can access backend-specific helpers
 /// (e.g. Git LFS) without hardcoding them into the host's generic VCS trait.
 #[tauri::command]
-pub fn call_vcs_backend_method(
+pub async fn call_vcs_backend_method(
     backend_id: BackendId,
     method: String,
     params: Value,
@@ -152,19 +152,33 @@ pub fn call_vcs_backend_method(
         .filter(|s| !s.is_empty())
         .map(std::path::PathBuf::from);
 
-    let rpc = StdioRpcProcess::new(
-        SpawnConfig {
-            plugin_id: desc.plugin_id,
-            component_label: format!("vcs-backend-{}", backend_id_str),
-            exec_path: desc.exec_path,
-            args: vec!["--backend".into(), backend_id_str.clone()],
-            requested_capabilities: desc.requested_capabilities,
-            approval: desc.approval,
-            allowed_workspace_root,
-        },
-        RpcConfig::default(),
-    );
+    // Run the backend RPC on a blocking thread so the Tauri main thread and
+    // webview are not blocked by long-running operations (e.g. LFS transfers).
+    let backend_id_clone = backend_id_str.clone();
+    let method_clone = method.clone();
+    let params_clone = params.clone();
+    let desc_clone = desc.clone();
 
-    rpc.call(&method, params)
-        .map_err(|e| format!("{}: {}", e.code, e.message))
+    let call_task = async_runtime::spawn_blocking(move || {
+        let rpc = StdioRpcProcess::new(
+            SpawnConfig {
+                plugin_id: desc_clone.plugin_id,
+                component_label: format!("vcs-backend-{}", backend_id_clone),
+                exec_path: desc_clone.exec_path,
+                args: vec!["--backend".into(), backend_id_clone.clone()],
+                requested_capabilities: desc_clone.requested_capabilities,
+                approval: desc_clone.approval,
+                allowed_workspace_root,
+            },
+            RpcConfig::default(),
+        );
+
+        rpc.call(&method_clone, params_clone)
+    });
+
+    let call_res = call_task
+        .await
+        .map_err(|e| format!("call_vcs_backend_method task failed: {e}"))?;
+
+    call_res.map_err(|e| format!("{}: {}", e.code, e.message))
 }
