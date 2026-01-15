@@ -258,11 +258,10 @@ export function wireSettings() {
             if (TAURI.has) {
                 await TAURI.invoke('set_global_settings', { cfg: next });
 
-                // If backend changed, request a backend swap (reopens repo if open)
+                // If Git engine changed, reopen the current repo so the plugin can reconfigure.
                 const newBackend: string = String(next?.git?.backend || 'system');
                 if (newBackend && newBackend !== prevBackend) {
-                    const backend_id = (newBackend === 'libgit2') ? 'git-libgit2' : 'git-system';
-                    try { await TAURI.invoke('set_vcs_backend_cmd', { backend_id }); } catch {}
+                    try { await TAURI.invoke('reopen_current_repo_cmd'); } catch {}
                 }
             }
 
@@ -489,7 +488,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     }
 
     const elLang  = get<HTMLSelectElement>('#set-language'); if (elLang) elLang.value = toKebab(cfg.general?.language);
-    const elDefBe = get<HTMLSelectElement>('#set-default-backend'); if (elDefBe) elDefBe.value = toKebab(cfg.general?.default_backend || 'git');
+    await refreshDefaultBackendOptions(m, cfg);
     const elChan  = get<HTMLSelectElement>('#set-update-channel'); if (elChan) {
         const v = toKebab(cfg.general?.update_channel);
         elChan.value = (v === 'beta') ? 'nightly' : v;
@@ -557,6 +556,28 @@ async function refreshGitBackendOptions(modal: HTMLElement, cfg: GlobalSettings)
     if (!elGb) return;
 
     const backend = String(cfg.git?.backend || '').trim();
+    const options: Array<[string, string]> = [
+        ['system', 'System'],
+        ['libgit2', 'Libgit2'],
+    ];
+
+    elGb.innerHTML = '';
+    for (const [id, label] of options) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = label;
+        elGb.appendChild(opt);
+    }
+
+    elGb.disabled = false;
+    elGb.value = (backend === 'libgit2') ? 'libgit2' : 'system';
+}
+
+async function refreshDefaultBackendOptions(modal: HTMLElement, cfg: GlobalSettings) {
+    const el = modal.querySelector<HTMLSelectElement>('#set-default-backend');
+    if (!el) return;
+
+    const desired = String(cfg.general?.default_backend || '').trim();
 
     let available: Array<[string, string]> = [];
     if (TAURI.has) {
@@ -565,31 +586,24 @@ async function refreshGitBackendOptions(modal: HTMLElement, cfg: GlobalSettings)
         } catch {}
     }
 
-    const gitBackends = (Array.isArray(available) ? available : [])
+    const backends = (Array.isArray(available) ? available : [])
         .map(([id, name]) => [String(id || '').trim(), String(name || '').trim()] as const)
-        .filter(([id]) => id.startsWith('git-'));
+        .filter(([id]) => id.length > 0);
 
-    const labelCounts = new Map<string, number>();
-    for (const [, name] of gitBackends) {
-        const label = name || '';
-        if (!label) continue;
-        labelCounts.set(label, (labelCounts.get(label) || 0) + 1);
-    }
-
-    elGb.innerHTML = '';
-    for (const [id, name] of gitBackends) {
+    el.innerHTML = '';
+    for (const [id, name] of backends) {
         const opt = document.createElement('option');
         opt.value = id;
-        const base = name || id;
-        opt.textContent = (name && (labelCounts.get(name) || 0) > 1) ? `${base} — ${id}` : base;
-        elGb.appendChild(opt);
+        opt.textContent = name || id;
+        el.appendChild(opt);
     }
 
-    elGb.disabled = gitBackends.length === 0;
-    if (backend && gitBackends.some(([id]) => id === backend)) {
-        elGb.value = backend;
-    } else if (gitBackends.length) {
-        elGb.value = gitBackends[0][0];
+    el.disabled = backends.length === 0;
+    if (!backends.length) return;
+    if (desired && backends.some(([id]) => id === desired)) {
+        el.value = desired;
+    } else {
+        el.value = backends[0][0];
     }
 }
 

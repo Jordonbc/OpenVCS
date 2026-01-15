@@ -41,14 +41,13 @@ Example:
 ```json
 {
   "id": "openvcs.git",
-  "name": "Git Backends",
+  "name": "Git",
   "version": "0.1.0",
   "capabilities": ["workspace.read", "vcs.read", "vcs.write"],
   "module": {
     "exec": "openvcs-git-plugin.wasm",
     "vcs_backends": [
-      { "id": "git-system", "name": "System" },
-      { "id": "git-libgit2", "name": "Libgit2" }
+      { "id": "git", "name": "Git" }
     ]
   },
   "functions": {

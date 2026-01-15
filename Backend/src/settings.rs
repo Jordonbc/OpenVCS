@@ -61,7 +61,7 @@ pub struct General {
     #[serde(default)]
     pub language: Language,
     #[serde(default)]
-    pub default_backend: DefaultBackend,
+    pub default_backend: String,
     #[serde(default)]
     pub update_channel: UpdateChannel,
     #[serde(default)]
@@ -79,7 +79,7 @@ impl Default for General {
             theme: Theme::System,
             theme_pack: default_theme_pack(),
             language: Language::System,
-            default_backend: DefaultBackend::Git,
+            default_backend: "git".into(),
             update_channel: UpdateChannel::Stable,
             reopen_last_repos: true,
             checks_on_launch: true,
@@ -401,14 +401,6 @@ pub enum GitSshBinary {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
-pub enum DefaultBackend {
-    #[default]
-    Git,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-#[derive(Default)]
 pub enum HookPolicy {
     Deny,
     #[default]
@@ -608,6 +600,10 @@ impl AppConfig {
         // General: nothing to clamp right now.
         if self.general.theme_pack.trim().is_empty() {
             self.general.theme_pack = default_theme_pack();
+        }
+        self.general.default_backend = self.general.default_backend.trim().to_string();
+        if self.general.default_backend.is_empty() {
+            self.general.default_backend = "git".into();
         }
 
         // Git

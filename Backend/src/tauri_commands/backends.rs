@@ -96,3 +96,26 @@ pub async fn set_vcs_backend_cmd(
 
     Ok(())
 }
+
+#[tauri::command]
+pub async fn reopen_current_repo_cmd(state: State<'_, AppState>) -> Result<(), String> {
+    let Some(repo) = state.current_repo() else {
+        return Ok(());
+    };
+
+    let backend_id = repo.id();
+    let path = repo.inner().workdir().to_path_buf();
+
+    let backend_label = backend_id.as_ref().to_string();
+    let open_path = path.clone();
+    let handle = async_runtime::spawn_blocking(move || {
+        plugin_vcs_backends::open_repo_via_plugin_vcs_backend(backend_id, Path::new(&open_path))
+    })
+    .await
+    .map_err(|e| format!("reopen_current_repo_cmd task failed: {e}"))?
+    .map_err(|e| format!("Failed to reopen repo with `{backend_label}`: {e}"))?;
+
+    let new_repo = Arc::new(Repo::new(handle));
+    state.set_current_repo(new_repo);
+    Ok(())
+}

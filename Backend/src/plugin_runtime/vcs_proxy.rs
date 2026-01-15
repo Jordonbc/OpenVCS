@@ -1,5 +1,6 @@
 use crate::plugin_bundles::ApprovalState;
 use crate::plugin_runtime::stdio_rpc::{RpcConfig, RpcError, SpawnConfig, StdioRpcProcess};
+use crate::settings::AppConfig;
 use openvcs_core::models::{
     Capabilities, ConflictDetails, ConflictSide, FetchOptions, LogQuery, StashItem, StatusPayload,
     StatusSummary, VcsEvent,
@@ -26,6 +27,11 @@ impl PluginVcsProxy {
         repo_path: &Path,
     ) -> Result<Arc<dyn Vcs>, VcsError> {
         let workdir = repo_path.to_path_buf();
+        let cfg = AppConfig::load_or_default();
+        let cfg = serde_json::to_value(cfg).map_err(|e| VcsError::Backend {
+            backend: backend_id.clone(),
+            msg: format!("serialize config: {e}"),
+        })?;
         let spawn = SpawnConfig {
             plugin_id,
             component_label: format!("vcs-backend-{}", backend_id.as_ref()),
@@ -42,7 +48,10 @@ impl PluginVcsProxy {
             rpc,
         };
         p.rpc
-            .call("open", json!({ "path": path_to_utf8(repo_path)? }))
+            .call(
+                "open",
+                json!({ "path": path_to_utf8(repo_path)?, "config": cfg }),
+            )
             .map_err(map_rpc_err)?;
         Ok(Arc::new(p))
     }
@@ -348,6 +357,38 @@ impl Vcs for PluginVcsProxy {
 
     fn stash_show(&self, selector: &str) -> VcsResult<Vec<String>> {
         self.call_json("stash_show", json!({ "selector": selector }))
+    }
+
+    fn lfs_fetch(&self) -> VcsResult<()> {
+        self.call_unit("lfs_fetch", Value::Null)
+    }
+
+    fn lfs_pull(&self) -> VcsResult<()> {
+        self.call_unit("lfs_pull", Value::Null)
+    }
+
+    fn lfs_prune(&self) -> VcsResult<()> {
+        self.call_unit("lfs_prune", Value::Null)
+    }
+
+    fn lfs_track(&self, paths: &[PathBuf]) -> VcsResult<()> {
+        let paths: Vec<String> = paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        self.call_unit("lfs_track", json!({ "paths": paths }))
+    }
+
+    fn lfs_untrack(&self, paths: &[PathBuf]) -> VcsResult<()> {
+        let paths: Vec<String> = paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        self.call_unit("lfs_untrack", json!({ "paths": paths }))
+    }
+
+    fn lfs_is_tracked(&self, path: &Path) -> VcsResult<bool> {
+        self.call_json("lfs_is_tracked", json!({ "path": path_to_utf8(path)? }))
     }
 }
 

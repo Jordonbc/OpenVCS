@@ -1,5 +1,5 @@
 use log::warn;
-use openvcs_core::{backend_id, BackendId};
+use openvcs_core::BackendId;
 use std::sync::Arc;
 use tauri::path::BaseDirectory;
 use tauri::WindowEvent;
@@ -23,27 +23,19 @@ mod utilities;
 mod validate;
 mod workarounds;
 
-pub const GIT_SYSTEM_ID: BackendId = backend_id!("git-system");
-
-fn preferred_git_backend_id(cfg: &settings::AppConfig) -> Option<BackendId> {
-    let configured = cfg.git.backend.trim();
-    if !configured.is_empty() {
-        return Some(BackendId::from(configured.to_string()));
-    }
-
-    // No configured backend: pick a git backend from enabled plugins (if any exist).
-    let mut git_ids: Vec<String> = Vec::new();
-    if let Ok(plugin_bes) = crate::plugin_vcs_backends::list_plugin_vcs_backends() {
-        for p in plugin_bes {
-            let id = p.backend_id.as_ref();
-            if id.starts_with("git-") {
-                git_ids.push(id.to_string());
-            }
+fn preferred_vcs_backend_id(_cfg: &settings::AppConfig) -> Option<BackendId> {
+    let desired = _cfg.general.default_backend.trim().to_string();
+    if !desired.is_empty() {
+        let desired = BackendId::from(desired);
+        if crate::plugin_vcs_backends::has_plugin_vcs_backend(&desired) {
+            return Some(desired);
         }
     }
-    git_ids.sort();
-    git_ids.dedup();
-    git_ids.into_iter().next().map(BackendId::from)
+
+    crate::plugin_vcs_backends::list_plugin_vcs_backends().ok().and_then(|mut backends| {
+        backends.sort_by(|a, b| a.backend_id.as_ref().cmp(b.backend_id.as_ref()));
+        backends.into_iter().next().map(|b| b.backend_id)
+    })
 }
 
 /// Attempt to reopen the most recent repository at startup if the
@@ -60,8 +52,8 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
 
     let recents = state.recents();
     if let Some(path) = recents.into_iter().find(|p| p.exists()) {
-        let Some(backend) = preferred_git_backend_id(&app_config) else {
-            log::warn!("startup reopen: no git backend available");
+        let Some(backend) = preferred_vcs_backend_id(&app_config) else {
+            log::warn!("startup reopen: no VCS backend available");
             return;
         };
 
@@ -175,6 +167,7 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::add_repo,
         tauri_commands::list_vcs_backends_cmd,
         tauri_commands::set_vcs_backend_cmd,
+        tauri_commands::reopen_current_repo_cmd,
         tauri_commands::validate_git_url,
         tauri_commands::validate_add_path,
         tauri_commands::validate_clone_input,
