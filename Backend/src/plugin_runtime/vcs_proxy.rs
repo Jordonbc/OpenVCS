@@ -358,38 +358,6 @@ impl Vcs for PluginVcsProxy {
     fn stash_show(&self, selector: &str) -> VcsResult<Vec<String>> {
         self.call_json("stash_show", json!({ "selector": selector }))
     }
-
-    fn lfs_fetch(&self) -> VcsResult<()> {
-        self.call_unit("lfs_fetch", Value::Null)
-    }
-
-    fn lfs_pull(&self) -> VcsResult<()> {
-        self.call_unit("lfs_pull", Value::Null)
-    }
-
-    fn lfs_prune(&self) -> VcsResult<()> {
-        self.call_unit("lfs_prune", Value::Null)
-    }
-
-    fn lfs_track(&self, paths: &[PathBuf]) -> VcsResult<()> {
-        let paths: Vec<String> = paths
-            .iter()
-            .map(|p| p.to_string_lossy().to_string())
-            .collect();
-        self.call_unit("lfs_track", json!({ "paths": paths }))
-    }
-
-    fn lfs_untrack(&self, paths: &[PathBuf]) -> VcsResult<()> {
-        let paths: Vec<String> = paths
-            .iter()
-            .map(|p| p.to_string_lossy().to_string())
-            .collect();
-        self.call_unit("lfs_untrack", json!({ "paths": paths }))
-    }
-
-    fn lfs_is_tracked(&self, path: &Path) -> VcsResult<bool> {
-        self.call_json("lfs_is_tracked", json!({ "path": path_to_utf8(path)? }))
-    }
 }
 
 fn map_rpc_err(err: RpcError) -> VcsError {

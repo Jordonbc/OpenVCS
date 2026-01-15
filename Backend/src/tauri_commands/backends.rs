@@ -2,12 +2,14 @@ use std::path::Path;
 use std::sync::Arc;
 
 use log::{error, info, warn};
+use serde_json::Value;
 use tauri::{async_runtime, State};
 
 use openvcs_core::BackendId;
 use std::collections::BTreeMap;
 
 use crate::plugin_vcs_backends;
+use crate::plugin_runtime::stdio_rpc::{RpcConfig, SpawnConfig, StdioRpcProcess};
 use crate::repo::Repo;
 use crate::state::AppState;
 
@@ -118,4 +120,51 @@ pub async fn reopen_current_repo_cmd(state: State<'_, AppState>) -> Result<(), S
     let new_repo = Arc::new(Repo::new(handle));
     state.set_current_repo(new_repo);
     Ok(())
+}
+
+/// Call an arbitrary RPC method on a VCS backend module.
+///
+/// This is intentionally backend-agnostic so plugin UI can access backend-specific helpers
+/// (e.g. Git LFS) without hardcoding them into the host's generic VCS trait.
+#[tauri::command]
+pub fn call_vcs_backend_method(
+    backend_id: BackendId,
+    method: String,
+    params: Value,
+) -> Result<Value, String> {
+    let backend_id_str = backend_id.as_ref().to_string();
+    let method = method.trim().to_string();
+    if method.is_empty() {
+        return Err("method is empty".to_string());
+    }
+
+    let list = plugin_vcs_backends::list_plugin_vcs_backends()?;
+    let desc = list
+        .into_iter()
+        .find(|d| d.backend_id.as_ref() == backend_id.as_ref())
+        .ok_or_else(|| format!("Unknown VCS backend: {backend_id_str}"))?;
+
+    // If params contain a `path`, use it as the workspace root for capability checks.
+    let allowed_workspace_root = params
+        .get("path")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from);
+
+    let rpc = StdioRpcProcess::new(
+        SpawnConfig {
+            plugin_id: desc.plugin_id,
+            component_label: format!("vcs-backend-{}", backend_id_str),
+            exec_path: desc.exec_path,
+            args: vec!["--backend".into(), backend_id_str.clone()],
+            requested_capabilities: desc.requested_capabilities,
+            approval: desc.approval,
+            allowed_workspace_root,
+        },
+        RpcConfig::default(),
+    );
+
+    rpc.call(&method, params)
+        .map_err(|e| format!("{}: {}", e.code, e.message))
 }

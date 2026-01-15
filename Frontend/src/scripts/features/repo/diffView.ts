@@ -5,16 +5,11 @@ import { notify } from '../../lib/notify';
 import { state, prefs, disableDefaultSelectAll } from '../../state/state';
 import type { FileStatus, ConflictDetails } from '../../types';
 import { buildPatchForSelectedHunks } from '../diff';
-import { diffEl, diffHeadPath, diffMetaLfs, listEl } from './context';
+import { diffEl, diffHeadPath, listEl } from './context';
 import { updateCommitButton } from './commit';
 import { hydrateStatus } from './hydrate';
 import { getVisibleFiles, updateSelectAllState } from './selectionState';
 import { openMergeModal, hasExternalMergeTool, launchExternalMergeTool } from '../conflicts';
-
-function setLfsBadge(isLfs: boolean) {
-    if (!diffMetaLfs) return;
-    diffMetaLfs.hidden = !isLfs;
-}
 
 function scrollDiffToTop() {
     if (!diffEl) return;
@@ -58,7 +53,6 @@ export function highlightRow(index: number) {
 export async function selectFile(file: FileStatus, index: number) {
     if (!diffHeadPath || !diffEl) return;
     highlightRow(index);
-    setLfsBadge(false);
     const status = String(file.status || '').toUpperCase();
     if (status === 'U') {
         diffHeadPath.textContent = `${file.path || '(unknown file)'} (conflicted)`;
@@ -72,11 +66,6 @@ export async function selectFile(file: FileStatus, index: number) {
     
 
     try {
-        if (TAURI.has && file.path) {
-            TAURI.invoke<boolean>('git_lfs_is_tracked', { path: file.path })
-                .then((isLfs) => setLfsBadge(!!isLfs))
-                .catch(() => setLfsBadge(false));
-        }
         let lines: string[] = [];
         if (TAURI.has && file.path) {
             lines = await TAURI.invoke<string[]>('git_diff_file', { path: file.path });
@@ -277,7 +266,6 @@ async function renderConflictView(file: FileStatus) {
     }
     try {
         const details = await TAURI.invoke<ConflictDetails>('git_conflict_details', { path: file.path });
-        setLfsBadge(!!details?.lfs_pointer);
         diffEl.innerHTML = renderConflictMarkup(details);
         bindConflictActions(diffEl, file, details);
         scrollDiffToTop();
@@ -289,7 +277,7 @@ async function renderConflictView(file: FileStatus) {
 }
 
 function renderConflictMarkup(details: ConflictDetails) {
-    const binary = !!details.binary || !!details.lfs_pointer;
+    const binary = !!details.binary;
     const header = `<div class="conflict-header"><div class="conflict-title">Merge conflict</div>${renderConflictActions(binary)}</div>`;
     const body = binary ? renderBinaryConflictBody(details) : renderTextConflictBody(details);
     const pathAttr = escapeHtml(details.path || '');
@@ -306,9 +294,7 @@ function renderConflictActions(binary: boolean) {
 }
 
 function renderBinaryConflictBody(details: ConflictDetails) {
-    const note = details.lfs_pointer
-        ? 'This file is managed by Git LFS. Choose which version to keep.'
-        : 'This file is binary. Choose which version to keep.';
+    const note = 'This file is binary. Choose which version to keep.';
     return `<div class="conflict-body"><div class="conflict-note">${escapeHtml(note)}</div></div>`;
 }
 

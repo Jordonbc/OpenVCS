@@ -264,59 +264,6 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         }
     }});
     items.push({ label: '---' });
-    const lfsTargets = (explicitMultiSelection ? selectedPaths.slice() : [f.path]).filter(Boolean);
-    let lfsTracked: string[] = [];
-    if (TAURI.has && lfsTargets.length > 0) {
-        try {
-            lfsTracked = await TAURI.invoke<string[]>('git_lfs_tracked_paths', { paths: lfsTargets });
-        } catch {
-            lfsTracked = [];
-        }
-    }
-    const trackedSet = new Set(lfsTracked);
-    const lfsToAdd = lfsTargets.filter((p) => !trackedSet.has(p));
-    const lfsToRemove = lfsTargets.filter((p) => trackedSet.has(p));
-
-    if (lfsToAdd.length > 0) {
-        items.push({ label: 'Add to Git LFS', action: () => {
-            if (!TAURI.has) {
-                notify('Git LFS is available in the desktop app');
-                return;
-            }
-            const targets = lfsToAdd.slice();
-            if (!targets.length) return;
-            (async () => {
-                try {
-                    await TAURI.invoke('git_lfs_track_paths', { paths: targets });
-                    notify(targets.length > 1 ? 'Tracked files with Git LFS' : 'Tracked file with Git LFS');
-                    await Promise.allSettled([hydrateStatus()]);
-                } catch {
-                    notify('Git LFS track failed');
-                }
-            })();
-        }});
-    }
-
-    if (lfsToRemove.length > 0) {
-        items.push({ label: 'Remove from Git LFS', action: () => {
-            if (!TAURI.has) {
-                notify('Git LFS is available in the desktop app');
-                return;
-            }
-            const targets = lfsToRemove.slice();
-            if (!targets.length) return;
-            (async () => {
-                try {
-                    await TAURI.invoke('git_lfs_untrack_paths', { paths: targets });
-                    notify(targets.length > 1 ? 'Removed from Git LFS' : 'Removed from Git LFS');
-                    await Promise.allSettled([hydrateStatus()]);
-                } catch {
-                    notify('Git LFS untrack failed');
-                }
-            })();
-        }});
-    }
-
     items.push({ label: '---' });
     if (explicitMultiSelection) {
         items.push({ label: 'Discard all selected', action: async () => {

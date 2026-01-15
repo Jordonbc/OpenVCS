@@ -17,21 +17,31 @@ pub const MAX_RECENTS: usize = 10;
 fn apply_git_ssh_env(cfg: &AppConfig) {
     // Prefer config-driven runtime env so the VCS backend (in another crate) can read it.
     // Keep env var names stable for packaging and troubleshooting.
-    std::env::set_var(
-        "OPENVCS_SSH_MODE",
-        match cfg.git.ssh_binary {
-            crate::settings::GitSshBinary::Auto => "auto",
-            crate::settings::GitSshBinary::Host => "host",
-            crate::settings::GitSshBinary::Bundled => "bundled",
-            crate::settings::GitSshBinary::Custom => "custom",
-        },
-    );
+    unsafe {
+        // Safety: OpenVCS sets these env vars during startup/config updates and treats them as
+        // process-wide configuration for child processes (e.g. `git`).
+        std::env::set_var(
+            "OPENVCS_SSH_MODE",
+            match cfg.git.ssh_binary {
+                crate::settings::GitSshBinary::Auto => "auto",
+                crate::settings::GitSshBinary::Host => "host",
+                crate::settings::GitSshBinary::Bundled => "bundled",
+                crate::settings::GitSshBinary::Custom => "custom",
+            },
+        );
+    }
     if cfg.git.ssh_binary == crate::settings::GitSshBinary::Custom
         && !cfg.git.ssh_path.trim().is_empty()
     {
-        std::env::set_var("OPENVCS_SSH", cfg.git.ssh_path.trim());
+        unsafe {
+            // Safety: see comment above.
+            std::env::set_var("OPENVCS_SSH", cfg.git.ssh_path.trim());
+        }
     } else {
-        std::env::remove_var("OPENVCS_SSH");
+        unsafe {
+            // Safety: see comment above.
+            std::env::remove_var("OPENVCS_SSH");
+        }
     }
 }
 

@@ -23,7 +23,10 @@ pub fn apply_linux_nvidia_workaround() {
         const KEY: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
         if std::env::var_os(KEY).is_none() {
             eprintln!("Applying NVIDIA Wayland workaround: {KEY}=1");
-            std::env::set_var(KEY, "1");
+            unsafe {
+                // Safety: set once at process startup to work around driver issues.
+                std::env::set_var(KEY, "1");
+            }
         }
     }
 }

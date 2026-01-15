@@ -303,24 +303,6 @@ async function boot() {
         try { window.open(WIKI_URL, '_blank', 'noopener'); } catch { notify('Unable to open docs'); }
     }
 
-    async function runLfsCommand(cmd: string, okMsg: string, errMsg: string) {
-        if (!TAURI.has) {
-            notify('Git LFS actions require the desktop app');
-            return;
-        }
-        try {
-            await TAURI.invoke(cmd);
-            notify(okMsg);
-            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
-        } catch (err) {
-            const msg = String(err || '').trim();
-            const friendly = msg.includes('unsupported backend')
-                ? 'The current backend does not support Git LFS'
-                : (msg || errMsg);
-            notify(friendly);
-        }
-    }
-
     async function runMenuAction(id?: string | null) {
         switch (id) {
             case 'clone_repo': openSheet('clone'); break;
@@ -347,9 +329,6 @@ async function boot() {
                 break;
             }
             case 'lfs-settings': openSettings('lfs'); break;
-            case 'lfs-fetch-all': await runLfsCommand('git_lfs_fetch_all', 'Fetched Git LFS objects', 'Git LFS fetch failed'); break;
-            case 'lfs-pull-all': await runLfsCommand('git_lfs_pull', 'Pulled Git LFS objects', 'Git LFS pull failed'); break;
-            case 'lfs-prune': await runLfsCommand('git_lfs_prune', 'Pruned Git LFS cache', 'Git LFS prune failed'); break;
             case 'check_updates':
                 if (!TAURI.has) { notify('Update checks are available in the desktop app'); break; }
                 try {

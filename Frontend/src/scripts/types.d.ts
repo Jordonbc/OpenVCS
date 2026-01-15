@@ -26,7 +26,6 @@ export interface ConflictDetails {
     theirs?: string | null;
     base?: string | null;
     binary?: boolean;
-    lfs_pointer?: boolean;
 }
 
 export interface CommitItem {

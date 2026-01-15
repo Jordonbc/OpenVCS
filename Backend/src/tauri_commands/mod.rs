@@ -3,7 +3,6 @@ mod branches;
 mod commit;
 mod conflicts;
 mod general;
-mod lfs;
 mod output_log;
 mod plugins;
 mod remotes;
@@ -21,7 +20,6 @@ pub use branches::*;
 pub use commit::*;
 pub use conflicts::*;
 pub use general::*;
-pub use lfs::*;
 pub use output_log::*;
 pub use plugins::*;
 pub use remotes::*;
@@ -34,5 +32,5 @@ pub use themes::*;
 pub use updater::*;
 
 pub(crate) use shared::{
-    current_repo_or_err, lfs_config, progress_bridge, run_repo_task, LfsEnvGuard, ProgressPayload,
+    current_repo_or_err, progress_bridge, run_repo_task, ProgressPayload,
 };
