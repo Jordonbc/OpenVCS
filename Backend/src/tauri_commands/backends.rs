@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use log::{error, info, warn};
 use serde_json::Value;
-use tauri::{async_runtime, State};
+use tauri::{async_runtime, Manager, Runtime, State, Window};
 
 use openvcs_core::BackendId;
 use std::collections::BTreeMap;
@@ -12,6 +12,7 @@ use crate::plugin_vcs_backends;
 use crate::plugin_runtime::stdio_rpc::{RpcConfig, SpawnConfig, StdioRpcProcess};
 use crate::repo::Repo;
 use crate::state::AppState;
+use crate::tauri_commands::shared::progress_bridge;
 
 #[tauri::command]
 pub fn list_vcs_backends_cmd() -> Vec<(String, String)> {
@@ -127,7 +128,8 @@ pub async fn reopen_current_repo_cmd(state: State<'_, AppState>) -> Result<(), S
 /// This is intentionally backend-agnostic so plugin UI can access backend-specific helpers
 /// (e.g. Git LFS) without hardcoding them into the host's generic VCS trait.
 #[tauri::command]
-pub async fn call_vcs_backend_method(
+pub async fn call_vcs_backend_method<R: Runtime>(
+    window: Window<R>,
     backend_id: BackendId,
     method: String,
     params: Value,
@@ -158,6 +160,7 @@ pub async fn call_vcs_backend_method(
     let method_clone = method.clone();
     let params_clone = params.clone();
     let desc_clone = desc.clone();
+    let on_event = progress_bridge(window.app_handle().clone());
 
     let call_task = async_runtime::spawn_blocking(move || {
         let rpc = StdioRpcProcess::new(
@@ -172,6 +175,7 @@ pub async fn call_vcs_backend_method(
             },
             RpcConfig::default(),
         );
+        rpc.set_event_sink(Some(on_event));
 
         rpc.call(&method_clone, params_clone)
     });
