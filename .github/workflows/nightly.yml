@@ -35,7 +35,7 @@ jobs:
       ahead_count: ${{ steps.diff.outputs.ahead_count }}
     steps:
       - name: Checkout target ref
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.TARGET_REF }}
           fetch-depth: 0   # we need history and tags
@@ -95,7 +95,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout target ref
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.TARGET_REF }}
           fetch-depth: 0
