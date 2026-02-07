@@ -14,7 +14,6 @@ const SCROLLABLE_SELECTOR = [
   '#ssh-keys-modal .ssh-box',
   '.merge-readonly',
   '.conflict-code',
-  '#output-log-view .outlog-list',
 ].join(', ');
 
 const OVERLAY_OPTIONS = {
