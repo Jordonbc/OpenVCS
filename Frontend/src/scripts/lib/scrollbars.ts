@@ -3,7 +3,6 @@ import { OverlayScrollbars } from 'overlayscrollbars';
 // Use the official attribute name so OverlayScrollbars can hide native scrollbars
 // during initialization to reduce flicker.
 const OS_ATTR = 'data-overlayscrollbars-initialize';
-const SCROLL_TARGETS = '.list-scroll, .pop-list-scroll';
 
 function initOne(el: HTMLElement) {
   if (el.hasAttribute(OS_ATTR)) return;
@@ -29,7 +28,14 @@ function initOne(el: HTMLElement) {
 
 function queryScrollableElements(root: ParentNode): HTMLElement[] {
   return Array.from(
-    root.querySelectorAll<HTMLElement>(SCROLL_TARGETS),
+    root.querySelectorAll<HTMLElement>(
+      [
+        // Main panes (use wrappers so re-rendering content doesn't destroy OS structure)
+        '.list-scroll',
+        // Popovers/menus that scroll (use wrappers)
+        '.pop-list-scroll',
+      ].join(','),
+    ),
   );
 }
 
@@ -60,31 +66,11 @@ export function destroyOverlayScrollbarsFor(selector: string) {
 
 export function observeOverlayScrollbars() {
   initOverlayScrollbars();
-  let flushQueued = false;
-  const pending = new Set<HTMLElement>();
-
-  const queueInit = (el: HTMLElement) => {
-    pending.add(el);
-    if (flushQueued) return;
-    flushQueued = true;
-    queueMicrotask(() => {
-      flushQueued = false;
-      pending.forEach((node) => initOne(node));
-      pending.clear();
-    });
-  };
-
-  const collect = (node: HTMLElement) => {
-    if (node.matches(SCROLL_TARGETS)) queueInit(node);
-    const matches = node.querySelectorAll<HTMLElement>(SCROLL_TARGETS);
-    matches.forEach((el) => queueInit(el));
-  };
-
   const obs = new MutationObserver((records) => {
     for (const r of records) {
       r.addedNodes.forEach((n) => {
         if (!(n instanceof HTMLElement)) return;
-        collect(n);
+        if (n.matches?.('[class], [id]')) initOverlayScrollbars(n);
       });
     }
   });

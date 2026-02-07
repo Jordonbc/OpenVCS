@@ -155,7 +155,7 @@ export function buildPatchForSelectedHunks(path: string, lines: string[], hunkIn
 }
 
 // Build a patch combining whole selected hunks and per-line selections (unidiff-zero mini-hunks).
-export function buildPatchForSelected(path: string, lines: string[], hunkIndices: number[] = [], selLines: Record<number, number[]> = {}): string {
+function buildPatchForSelected(path: string, lines: string[], hunkIndices: number[] = [], selLines: Record<number, number[]> = {}): string {
     const normPath = String(path).replace(/\\/g, '/');
     const firstHunk = lines.findIndex(l => (l || '').startsWith('@@'));
     const prelude = firstHunk >= 0 ? lines.slice(0, firstHunk) : [];
