@@ -184,6 +184,7 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .status.ren, .status-dot.ren{ color:var(--accent); }
 .status.cpy, .status-dot.cpy{ color:color-mix(in oklab, var(--accent) 65%, var(--success)); }
 .status.type, .status-dot.type{ color:color-mix(in oklab, #8b5cf6 70%, var(--warning)); }
+.status.submodule, .status-dot.submodule{ color:color-mix(in oklab, #22d3ee 72%, var(--accent)); }
 .status.conflict, .status-dot.conflict{ color:#8b5cf6; }
 
 .status-dot{
