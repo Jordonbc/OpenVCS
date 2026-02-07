@@ -8,7 +8,11 @@
 
 </div>
 
-**The open‑source, fully customisable VCS client.**
+<div align="center">
+
+**The open‑source, fully customisable VCS client.** 
+
+</div>
 
 OpenVCS is a new and upcoming cross‑platform version control client built with [Tauri](https://tauri.app/), [Rust](https://www.rust-lang.org/), and a modern [TypeScript](https://www.typescriptlang.org/) + [Vite](https://vitejs.dev/) frontend. It aims to be the **all‑in‑one solution** for version control: clean, fast, and extensible. Features are actively being explored and are **not yet finalised**.
 
