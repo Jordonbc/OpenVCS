@@ -32,10 +32,12 @@ fn preferred_vcs_backend_id(_cfg: &settings::AppConfig) -> Option<BackendId> {
         }
     }
 
-    crate::plugin_vcs_backends::list_plugin_vcs_backends().ok().and_then(|mut backends| {
-        backends.sort_by(|a, b| a.backend_id.as_ref().cmp(b.backend_id.as_ref()));
-        backends.into_iter().next().map(|b| b.backend_id)
-    })
+    crate::plugin_vcs_backends::list_plugin_vcs_backends()
+        .ok()
+        .and_then(|mut backends| {
+            backends.sort_by(|a, b| a.backend_id.as_ref().cmp(b.backend_id.as_ref()));
+            backends.into_iter().next().map(|b| b.backend_id)
+        })
 }
 
 /// Attempt to reopen the most recent repository at startup if the

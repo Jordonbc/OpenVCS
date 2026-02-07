@@ -8,8 +8,8 @@ use tauri::{async_runtime, Manager, Runtime, State, Window};
 use openvcs_core::BackendId;
 use std::collections::BTreeMap;
 
-use crate::plugin_vcs_backends;
 use crate::plugin_runtime::stdio_rpc::{RpcConfig, SpawnConfig, StdioRpcProcess};
+use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::state::AppState;
 use crate::tauri_commands::shared::progress_bridge;

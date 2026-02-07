@@ -71,8 +71,8 @@ pub async fn add_repo<R: Runtime>(
     let be = backend_id
         .or_else(|| default_backend_id(&state))
         .ok_or_else(|| {
-        "No VCS backend is available (install/enable a backend plugin)".to_string()
-    })?;
+            "No VCS backend is available (install/enable a backend plugin)".to_string()
+        })?;
     add_repo_internal(window, state, path, be).await
 }
 
@@ -85,10 +85,12 @@ fn default_backend_id(state: &AppState) -> Option<BackendId> {
         }
     }
 
-    crate::plugin_vcs_backends::list_plugin_vcs_backends().ok().and_then(|mut backends| {
-        backends.sort_by(|a, b| a.backend_id.as_ref().cmp(b.backend_id.as_ref()));
-        backends.into_iter().next().map(|b| b.backend_id)
-    })
+    crate::plugin_vcs_backends::list_plugin_vcs_backends()
+        .ok()
+        .and_then(|mut backends| {
+            backends.sort_by(|a, b| a.backend_id.as_ref().cmp(b.backend_id.as_ref()));
+            backends.into_iter().next().map(|b| b.backend_id)
+        })
 }
 
 pub async fn add_repo_internal<R: Runtime>(
@@ -159,8 +161,8 @@ pub async fn clone_repo<R: Runtime>(
     let be = backend_id
         .or_else(|| default_backend_id(&state))
         .ok_or_else(|| {
-        "No VCS backend is available (install/enable a backend plugin)".to_string()
-    })?;
+            "No VCS backend is available (install/enable a backend plugin)".to_string()
+        })?;
     let _prefer_plugin = plugin_vcs_backends::has_plugin_vcs_backend(&be);
 
     let folder = infer_repo_dir_from_url(&url);
@@ -252,8 +254,8 @@ pub async fn open_repo<R: Runtime>(
     let be = backend_id
         .or_else(|| default_backend_id(&state))
         .ok_or_else(|| {
-        "No VCS backend is available (install/enable a backend plugin)".to_string()
-    })?;
+            "No VCS backend is available (install/enable a backend plugin)".to_string()
+        })?;
     add_repo_internal(window, state, path, be).await
 }
 

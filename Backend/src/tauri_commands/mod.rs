@@ -31,6 +31,4 @@ pub use status::*;
 pub use themes::*;
 pub use updater::*;
 
-pub(crate) use shared::{
-    current_repo_or_err, progress_bridge, run_repo_task, ProgressPayload,
-};
+pub(crate) use shared::{current_repo_or_err, progress_bridge, run_repo_task, ProgressPayload};
