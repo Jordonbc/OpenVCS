@@ -3,7 +3,7 @@
   "productName": "OpenVCS",
   "identifier": "dev.jordon.openvcs",
   "build": {
-    "beforeDevCommand": "rm -rf ../Backend/built-in-plugins/Git/target && ln -s ../../../target ../Backend/built-in-plugins/Git/target && cargo openvcs dist --all --plugin-dir ../Backend/built-in-plugins --out ../target/openvcs/built-in-plugins && npm run dev --prefix ../Frontend",
+    "beforeDevCommand": "cargo openvcs dist --all --plugin-dir ../Backend/built-in-plugins --out ../target/openvcs/built-in-plugins && npm run dev --prefix ../Frontend",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../Frontend/dist"
   },
