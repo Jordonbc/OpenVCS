@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use log::{error, info, warn};
@@ -130,6 +130,7 @@ pub async fn reopen_current_repo_cmd(state: State<'_, AppState>) -> Result<(), S
 #[tauri::command]
 pub async fn call_vcs_backend_method<R: Runtime>(
     window: Window<R>,
+    state: State<'_, AppState>,
     backend_id: BackendId,
     method: String,
     params: Value,
@@ -146,13 +147,11 @@ pub async fn call_vcs_backend_method<R: Runtime>(
         .find(|d| d.backend_id.as_ref() == backend_id.as_ref())
         .ok_or_else(|| format!("Unknown VCS backend: {backend_id_str}"))?;
 
-    // If params contain a `path`, use it as the workspace root for capability checks.
-    let allowed_workspace_root = params
-        .get("path")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(std::path::PathBuf::from);
+    let repo_root = state
+        .current_repo()
+        .map(|repo| repo.inner().workdir().to_path_buf())
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let allowed_workspace_root = resolve_allowed_workspace_root(&repo_root, &params)?;
 
     // Run the backend RPC on a blocking thread so the Tauri main thread and
     // webview are not blocked by long-running operations (e.g. LFS transfers).
@@ -185,4 +184,40 @@ pub async fn call_vcs_backend_method<R: Runtime>(
         .map_err(|e| format!("call_vcs_backend_method task failed: {e}"))?;
 
     call_res.map_err(|e| format!("{}: {}", e.code, e.message))
+}
+
+fn resolve_allowed_workspace_root(
+    repo_root: &Path,
+    params: &Value,
+) -> Result<Option<PathBuf>, String> {
+    let repo_root = std::fs::canonicalize(repo_root)
+        .map_err(|e| format!("Failed to resolve repository root: {e}"))?;
+
+    let requested = params
+        .get("path")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
+
+    let Some(requested) = requested else {
+        return Ok(Some(repo_root));
+    };
+
+    let requested_abs = if requested.is_absolute() {
+        requested
+    } else {
+        repo_root.join(requested)
+    };
+    let requested_abs = std::fs::canonicalize(&requested_abs)
+        .map_err(|e| format!("Invalid backend workspace path: {e}"))?;
+
+    if requested_abs == repo_root || requested_abs.starts_with(&repo_root) {
+        Ok(Some(requested_abs))
+    } else {
+        Err(format!(
+            "Backend workspace path escapes repository root: {}",
+            requested_abs.display()
+        ))
+    }
 }
