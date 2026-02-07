@@ -50,7 +50,7 @@ sha2 = "0.10"
 hex = "0.4"
 os_pipe = "1.2"
 wasmtime = "41"
-wasmtime-wasi = "40"
+wasmtime-wasi = "41"
 
 [dev-dependencies]
 tempfile = "3"
