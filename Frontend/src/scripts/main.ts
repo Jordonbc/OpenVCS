@@ -13,7 +13,7 @@ import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydra
 import { bindBranchUI } from './features/branches';
 import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
-import { openSettings } from './features/settings';
+import { applyAnimationPreference, openSettings } from './features/settings';
 import { showUpdateDialog } from './features/update';
 import { openRepoSettings } from './features/repoSettings';
 import { initSshHostkeyPrompt } from './features/sshHostkey';
@@ -68,14 +68,17 @@ async function boot() {
                     if (uiScale && isFinite(uiScale)) root.style.setProperty('--ui-scale', String(uiScale));
                     const mono = String(cfg?.ux?.font_mono || '').trim();
                     if (mono) root.style.setProperty('--mono', mono);
+                    applyAnimationPreference(cfg?.performance?.animations);
                 } catch { /* best-effort */ }
             } catch {
                 try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
                 setTheme(prefs.theme);
+                applyAnimationPreference(true);
             }
         })();
     } else {
         setTheme(prefs.theme);
+        applyAnimationPreference(true);
     }
     wireRenderListCallbacks();
     bindTabs((t) => { setTab(t); renderList(); });

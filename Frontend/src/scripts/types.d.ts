@@ -91,6 +91,7 @@ export interface GlobalSettings {
     performance?: {
         progressive_render?: boolean;
         gpu_accel?: boolean;
+        animations?: boolean;
     };
     ux?: {
         ui_scale?: number;

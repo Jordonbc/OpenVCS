@@ -3,6 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{fs, io};
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub schema_version: u32,
@@ -233,12 +237,15 @@ pub struct Performance {
     pub progressive_render: bool,
     #[serde(default)]
     pub gpu_accel: bool,
+    #[serde(default = "default_true")]
+    pub animations: bool,
 }
 impl Default for Performance {
     fn default() -> Self {
         Self {
             progressive_render: true,
             gpu_accel: true,
+            animations: true,
         }
     }
 }

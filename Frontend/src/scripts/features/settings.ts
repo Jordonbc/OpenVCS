@@ -12,6 +12,10 @@ import type { GlobalSettings, ThemeSummary } from '../types';
 const THEME_PACK_HINT = 'Install a theme ZIP into the themes folder, or install a plugin that provides themes.';
 const SYSTEM_DARK_MQ = matchMedia('(prefers-color-scheme: dark)');
 
+export function applyAnimationPreference(enabled: boolean | undefined | null) {
+    document.documentElement.dataset.animations = enabled === false ? 'off' : 'on';
+}
+
 function normalizeAppearance(value: unknown): 'light' | 'dark' | 'both' | null {
     const raw = String(value ?? '').trim().toLowerCase();
     if (raw === 'light' || raw === 'dark' || raw === 'both') return raw;
@@ -281,6 +285,7 @@ export function wireSettings() {
                 const mono = String(next?.ux?.font_mono || '').trim();
                 if (mono) root.style.setProperty('--mono', mono);
                 else root.style.removeProperty('--mono');
+                applyAnimationPreference(next?.performance?.animations);
             } catch {}
 
             notify('Settings saved');
@@ -307,12 +312,13 @@ export function wireSettings() {
             cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, fetch_on_focus: true, allow_hooks: 'ask', respect_core_autocrlf: true, merge_commit_message_template: "Merged branch '{branch:source}' into '{branch:target}'" };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
-            cur.performance = { progressive_render: true, gpu_accel: true };
+            cur.performance = { progressive_render: true, gpu_accel: true, animations: true };
             cur.ux = { ui_scale: 1.0, font_mono: 'monospace', vim_nav: false, color_blind_mode: 'none', recents_limit: 10 };
             cur.logging = { level: 'info', live_viewer: false, retain_archives: 10 };
             cur.plugins = { disabled: [], enabled: [] };
 
             await TAURI.invoke('set_global_settings', { cfg: cur });
+            applyAnimationPreference(cur.performance?.animations);
             await loadSettingsIntoForm(modal);
             setTheme('system');
             try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
@@ -392,6 +398,7 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
 
     o.performance = {
         ...o.performance,
+        animations: !!get<HTMLInputElement>('#set-animations')?.checked,
         progressive_render: !!get<HTMLInputElement>('#set-progressive-render')?.checked,
         gpu_accel: !!get<HTMLInputElement>('#set-gpu-accel')?.checked,
     };
@@ -538,6 +545,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elBg = get<HTMLInputElement>('#set-lfs-bg-fetch'); if (elBg) elBg.checked = !!cfg.lfs?.background_fetch_on_checkout;
     elLe?.dispatchEvent(new Event('change'));
 
+    const elAni= get<HTMLInputElement>('#set-animations'); if (elAni) elAni.checked = cfg.performance?.animations !== false;
     const elPrg= get<HTMLInputElement>('#set-progressive-render'); if (elPrg) elPrg.checked = !!cfg.performance?.progressive_render;
     const elGpu= get<HTMLInputElement>('#set-gpu-accel'); if (elGpu) elGpu.checked = !!cfg.performance?.gpu_accel;
 
