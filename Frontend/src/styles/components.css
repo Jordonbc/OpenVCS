@@ -205,7 +205,7 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 
 /* Reserve scrollbar space for the right column header so the header width
    doesn't change when the diff area shows or hides a vertical scrollbar. */
-.right { box-sizing: border-box; padding-right: var(--os-scrollbar-gutter); }
+.right { box-sizing: border-box; padding-right: 0; }
 
 /* Diff header (fixed) */
 .diff-head{
@@ -239,21 +239,14 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
 .diff{
     min-height:0;
     height: 100%;
-    /* Keep the vertical scrollbar present even when content doesn't overflow
-       so switching between binary (short) and text (long) diffs doesn't
-       cause a scrollbar to appear/disappear and nudge layout. */
     overflow-y: scroll;
     font-family:var(--mono); font-size:13px;
     overflow-anchor:none;
-    /* Reserve space for the scrollbar to avoid layout shifts when content grows */
     scrollbar-gutter: stable both-edges;
-    /* Also reserve horizontal space via padding as a fallback for browsers
-       that don't fully honor scrollbar-gutter or when custom overlay
-       scrollbars are used. */
     box-sizing: border-box;
-    padding-right: var(--os-scrollbar-gutter);
+    padding-right: 0;
 }
-:root{ --os-scrollbar-gutter: 12px; }
+:root{ --os-scrollbar-gutter: 0; }
 
 .diff-content{ min-width:0; }
 /* Ensure diff content won't collapse when toggling or loading hunks and keep
@@ -268,9 +261,7 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
    hiding the scrollbar doesn't nudge surrounding layout. The actual value
    is computed at runtime and written to `--os-scrollbar-gutter`. */
 .diff .diff-content {
-    /* keep a small inner padding but avoid double-reserving space; the main
-       right-column padding handles layout stability for the header */
-    padding-right: calc(var(--os-scrollbar-gutter) / 2);
+    padding-right: 0;
 }
 .hunk{ padding:.25rem 0; }
 /* Picked hunk (included in commit) — success tint */
