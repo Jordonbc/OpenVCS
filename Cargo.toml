@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "Backend",
+  "Backend/built-in-plugins/Git",
 ]
 resolver = "2"
 
