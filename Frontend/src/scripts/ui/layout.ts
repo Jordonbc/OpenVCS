@@ -107,23 +107,29 @@ export function initResizer() {
 
     let dragging = false, x0 = 0, left0 = 0;
 
-    resizer.addEventListener('mousedown', (e) => {
-        dragging = true; x0 = (e as MouseEvent).clientX; left0 = leftPx;
-        document.body.style.cursor = 'col-resize';
-    });
-
-    window.addEventListener('mousemove', (e) => {
+    const onMove = (e: MouseEvent) => {
         if (!dragging) return;
         const cw = containerW();
         leftPx = clampLeft(left0 + ((e as MouseEvent).clientX - x0), cw);
         applyCols(leftPx);
-    });
+    };
 
-    window.addEventListener('mouseup', () => {
+    const onUp = () => {
         if (!dragging) return;
         dragging = false;
         document.body.style.cursor = '';
         prefs.leftW = leftPx; savePrefs();
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        window.removeEventListener('blur', onUp);
+    };
+
+    resizer.addEventListener('mousedown', (e) => {
+        dragging = true; x0 = (e as MouseEvent).clientX; left0 = leftPx;
+        document.body.style.cursor = 'col-resize';
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        window.addEventListener('blur', onUp);
     });
 
     window.addEventListener('resize', () => {

@@ -5,7 +5,6 @@ import { OverlayScrollbars } from 'overlayscrollbars';
 const OS_ATTR = 'data-overlayscrollbars-initialize';
 const SCROLLABLE_SELECTOR = [
   '.list-scroll',
-  '.diff-scroll',
   '.pop-list-scroll',
   '.plugins-list-scroll',
   '#command-modal .recent',
@@ -24,11 +23,19 @@ const OVERLAY_OPTIONS = {
     x: 'hidden' as const,
     y: 'scroll' as const,
   },
+  update: {
+    // Rely on explicit refresh calls after major DOM changes and keep
+    // observer-driven updates less aggressive.
+    debounce: [80, 160] as [number, number],
+    elementEvents: [] as Array<[string, string]>,
+  },
   scrollbars: {
     theme: 'os-theme-openvcs',
     autoHide: 'never' as const,
   },
 };
+const REFRESH_MIN_INTERVAL_MS = 180;
+const lastRefreshAt = new WeakMap<HTMLElement, number>();
 
 function getInstance(el: HTMLElement): any | null {
   try {
@@ -55,6 +62,11 @@ function initOne(el: HTMLElement) {
 }
 
 function refreshOne(el: HTMLElement) {
+  const now = Date.now();
+  const last = lastRefreshAt.get(el) || 0;
+  if (now - last < REFRESH_MIN_INTERVAL_MS) return;
+  lastRefreshAt.set(el, now);
+
   const instance = getInstance(el);
   if (instance && typeof instance.update === 'function') {
     try {
@@ -79,7 +91,14 @@ function destroyOne(el: HTMLElement) {
   if (el.hasAttribute(OS_ATTR)) el.removeAttribute(OS_ATTR);
 }
 
-function queryScrollableElements(root: ParentNode): HTMLElement[] {
+function isVisibleForInit(el: HTMLElement): boolean {
+  if (!el.isConnected) return false;
+  if (el.closest('.modal[aria-hidden="true"]')) return false;
+  if (el.closest('.popover[hidden]')) return false;
+  return true;
+}
+
+function queryScrollableElements(root: ParentNode, includeHidden = false): HTMLElement[] {
   const out = new Set<HTMLElement>();
   if (root instanceof HTMLElement && root.matches(SCROLLABLE_SELECTOR)) {
     out.add(root);
@@ -89,7 +108,8 @@ function queryScrollableElements(root: ParentNode): HTMLElement[] {
   } catch {
     // ignore
   }
-  return Array.from(out);
+  const all = Array.from(out);
+  return includeHidden ? all : all.filter(isVisibleForInit);
 }
 
 export function initOverlayScrollbarsFor(root: ParentNode = document) {
@@ -111,7 +131,7 @@ export function destroyOverlayScrollbarsFor(target: string | ParentNode = docume
     els.forEach(destroyOne);
     return;
   }
-  queryScrollableElements(target).forEach(destroyOne);
+  queryScrollableElements(target, true).forEach(destroyOne);
 }
 
 // Backward-compatible alias.

@@ -1,7 +1,7 @@
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
-import { initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from './lib/scrollbars';
+import { destroyOverlayScrollbarsFor, initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from './lib/scrollbars';
 import { prefs, state, hasRepo } from './state/state';
 import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
@@ -39,6 +39,7 @@ async function boot() {
     // If launched as the Output Log window, render that view and skip the main app UI.
     if (await initOutputLogViewIfRequested()) return;
     initOverlayScrollbarsFor(document);
+    destroyOverlayScrollbarsFor('.diff-scroll');
     await initPlugins();
     // theme & basic layout
     // Prefer native settings for theme; fall back to current in-memory default
@@ -379,11 +380,12 @@ async function boot() {
     // Global busy indicator for any Git activity
     (function(){
         let busyTimer: any = null;
-        const setBusy = (msg: string) => {
+        const setBusy = (msg: string, showSpinner = true) => {
             const s = document.getElementById('status');
             if (!s) return;
             s.textContent = msg || 'Working…';
-            s.classList.add('busy');
+            if (showSpinner) s.classList.add('busy');
+            else s.classList.remove('busy');
             if (busyTimer) clearTimeout(busyTimer);
             // Clear after a short quiet period
             busyTimer = setTimeout(() => {
@@ -394,7 +396,10 @@ async function boot() {
         TAURI.listen?.('git-progress', ({ payload }) => {
             // Don't spam the footer with raw git output; keep it generic.
             void payload;
-            setBusy('Working…');
+            // Avoid spinner-driven repaint churn for passive/background progress.
+            // Explicit user actions already set busy state via their own controllers.
+            const focused = document.visibilityState === 'visible' && document.hasFocus();
+            setBusy('Working…', focused);
         });
     })();
 
@@ -483,6 +488,7 @@ async function boot() {
         if (!TAURI.has) return;
         if (!state.hasRepo) return;
         if (document.visibilityState !== 'visible') return;
+        if (!document.hasFocus()) return;
         if (headPollInFlight) return;
         headPollInFlight = (async () => {
             try {
