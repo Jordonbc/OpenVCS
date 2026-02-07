@@ -65,7 +65,7 @@ function unlockScroll() {
 }
 
 function closeWithAnimation(id: string, el: HTMLElement) {
-    if (id !== "repo-switch-drawer") {
+    if (id !== "repo-switch-drawer" && id !== "command-modal") {
         closeModal(id);
         return;
     }
@@ -74,14 +74,15 @@ function closeWithAnimation(id: string, el: HTMLElement) {
         closeModal(id);
         return;
     }
-    const existing = (el as any).__drawerCloseTimer as number | undefined;
+    const existing = (el as any).__animatedCloseTimer as number | undefined;
     if (existing) window.clearTimeout(existing);
     el.classList.add("is-closing");
-    (el as any).__drawerCloseTimer = window.setTimeout(() => {
+    const delay = id === "command-modal" ? 140 : 130;
+    (el as any).__animatedCloseTimer = window.setTimeout(() => {
         el.classList.remove("is-closing");
         closeModal(id);
-        (el as any).__drawerCloseTimer = undefined;
-    }, 130);
+        (el as any).__animatedCloseTimer = undefined;
+    }, delay);
 }
 
 export function hydrate(id: string): void {

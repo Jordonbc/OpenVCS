@@ -11,15 +11,12 @@ let drawerDialog: HTMLDivElement | null = null;
 let recentList: HTMLElement | null = null;
 let filterInput: HTMLInputElement | null = null;
 let addTrigger: HTMLButtonElement | null = null;
-let addMenu: HTMLElement | null = null;
-let docClickWired = false;
 let allRecents: Recent[] = [];
 let closeTimer: number | null = null;
 
 const resizeHandler = () => positionDrawer();
 
 let openCloneSheet = () => {};
-let openAddSheet = () => {};
 
 function ensureDrawer() {
     if (drawerRoot) return;
@@ -31,48 +28,12 @@ function ensureDrawer() {
     recentList = drawerRoot.querySelector<HTMLElement>('#drawer-recent-list');
     filterInput = drawerRoot.querySelector<HTMLInputElement>('#drawer-filter');
     addTrigger = drawerRoot.querySelector<HTMLButtonElement>('#drawer-add-trigger');
-    addMenu = drawerRoot.querySelector<HTMLElement>('.drawer-add-menu');
-
-    addTrigger?.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const expanded = addTrigger?.getAttribute('aria-expanded') === 'true';
-        if (expanded) hideAddMenu();
-        else showAddMenu();
-    });
-
-    addMenu?.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const target = (event.target as HTMLElement)?.closest<HTMLButtonElement>('[data-add-action]');
-        const action = target?.dataset.addAction;
-        if (action === 'clone_repo') {
-            hideAddMenu();
-            closeSwitchDrawer();
-            openCloneSheet();
-        } else if (action === 'add_repo') {
-            hideAddMenu();
-            closeSwitchDrawer();
-            openAddSheet();
-        }
+    addTrigger?.addEventListener('click', () => {
+        closeSwitchDrawer();
+        openCloneSheet();
     });
 
     filterInput?.addEventListener('input', () => renderRecents());
-
-    if (!docClickWired) {
-        document.addEventListener('click', () => hideAddMenu());
-        docClickWired = true;
-    }
-}
-
-function showAddMenu() {
-    if (!addMenu || !addTrigger) return;
-    addMenu.removeAttribute('hidden');
-    addTrigger.setAttribute('aria-expanded', 'true');
-}
-
-function hideAddMenu() {
-    if (!addMenu || !addTrigger) return;
-    addMenu.setAttribute('hidden', 'true');
-    addTrigger.setAttribute('aria-expanded', 'false');
 }
 
 function positionDrawer() {
@@ -195,7 +156,7 @@ async function loadRecents() {
 
 export function registerDrawerActions(actions: { openClone: () => void; openAdd: () => void }) {
     openCloneSheet = actions.openClone;
-    openAddSheet = actions.openAdd;
+    void actions.openAdd;
 }
 
 export function openSwitchDrawer() {
@@ -207,7 +168,6 @@ export function openSwitchDrawer() {
     }
     drawerRoot.classList.remove('is-closing');
     openModal('repo-switch-drawer');
-    hideAddMenu();
     if (filterInput) filterInput.value = '';
     loadRecents();
     positionDrawer();
@@ -221,7 +181,6 @@ export function closeSwitchDrawer() {
     if (!shouldAnimate) {
         closeModal('repo-switch-drawer');
         window.removeEventListener('resize', resizeHandler);
-        hideAddMenu();
         return;
     }
     if (closeTimer !== null) window.clearTimeout(closeTimer);
@@ -230,7 +189,6 @@ export function closeSwitchDrawer() {
         drawerRoot?.classList.remove('is-closing');
         closeModal('repo-switch-drawer');
         window.removeEventListener('resize', resizeHandler);
-        hideAddMenu();
         closeTimer = null;
     }, 130);
 }
