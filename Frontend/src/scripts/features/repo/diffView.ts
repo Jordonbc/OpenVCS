@@ -2,7 +2,7 @@ import { qsa, escapeHtml } from '../../lib/dom';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
 import { notify } from '../../lib/notify';
-import { state, prefs, disableDefaultSelectAll } from '../../state/state';
+import { state, prefs, disableDefaultSelectAll, DiffMeta, HunkNodeRefs } from '../../state/state';
 import type { FileStatus, ConflictDetails } from '../../types';
 import { buildPatchForSelectedHunks } from '../diff';
 import { diffEl, diffHeadPath, listEl } from './context';
@@ -108,14 +108,17 @@ export async function selectFile(file: FileStatus, index: number) {
         state.currentDiff = lines || [];
         const isBinary = detectBinaryDiff(state.currentDiff);
         state.currentDiffBinary = isBinary;
-        diffEl.innerHTML = isBinary
-            ? renderBinaryDiffPlaceholder(file.path)
-            : renderHunksWithSelection(state.currentDiff);
-        scrollDiffToTop();
-        
-        if (!isBinary) {
+        if (isBinary) {
+            state.currentDiffMeta = null;
+            state.currentDiffHunkNodes = new Map();
+            diffEl.innerHTML = renderBinaryDiffPlaceholder(file.path);
+        } else {
+            const fragment = buildDiffFragment(state.currentDiff);
+            diffEl.innerHTML = '';
+            diffEl.appendChild(fragment);
             bindHunkToggles(diffEl);
         }
+        scrollDiffToTop();
 
         const onCtx = (ev: Event) => {
             const mev = ev as MouseEvent;
@@ -183,6 +186,7 @@ export async function selectFile(file: FileStatus, index: number) {
 
         if (!state.currentDiffBinary) {
             const cached = (state as any).selectedHunksByFile?.[file.path] as number[] | undefined;
+            const hunkNodes = state.currentDiffHunkNodes;
             if (Array.isArray(cached)) {
                 state.selectedHunks = cached.slice();
                 updateHunkCheckboxes();
@@ -190,15 +194,18 @@ export async function selectFile(file: FileStatus, index: number) {
                 state.selectedHunks = allHunkIndices(state.currentDiff);
                 updateHunkCheckboxes();
                 const recExisting: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
-                const root = diffEl as HTMLElement;
                 const rec: Record<number, number[]> = { ...recExisting };
                 state.selectedHunks.forEach((h) => {
                     if (rec[h] && rec[h].length > 0) return;
-                    const boxes = root.querySelectorAll<HTMLInputElement>(`input.pick-line[data-hunk="${h}"]`);
                     const picked: number[] = [];
-                    boxes.forEach((b) => {
-                        b.checked = true;
-                        picked.push(Number(b.dataset.line || -1));
+                    const refs = hunkNodes.get(h);
+                    Object.keys(refs?.lineCheckboxes || {}).forEach((ln) => {
+                        const idx = Number(ln);
+                        if (idx < 0) return;
+                        const box = refs?.lineCheckboxes[idx];
+                        if (!box) return;
+                        box.checked = true;
+                        picked.push(idx);
                     });
                     if (picked.length > 0) rec[h] = Array.from(new Set(picked)).sort((a, b) => a - b);
                 });
@@ -219,6 +226,8 @@ export async function selectFile(file: FileStatus, index: number) {
         state.diffDirty = false;
     } catch (e) {
         console.error(e);
+        state.currentDiffMeta = null;
+        state.currentDiffHunkNodes = new Map();
         diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load diff</div></div></div>';
         scrollDiffToTop();
     }
@@ -408,31 +417,38 @@ export function toggleFilePick(path: string, on: boolean) {
     disableDefaultSelectAll();
     if (on) state.selectedFiles.add(path);
     else state.selectedFiles.delete(path);
-    if (state.currentFile && state.currentFile === path) {
+    if (state.currentFile && state.currentFile === path && !state.currentDiffBinary) {
+        const hunkNodes = state.currentDiffHunkNodes;
         if (on) {
             state.selectedHunks = allHunkIndices(state.currentDiff);
             (state as any).selectedHunksByFile[state.currentFile] = state.selectedHunks.slice();
-            const root = diffEl as HTMLElement;
             const rec: Record<number, number[]> = {};
-            const lineBoxes = root.querySelectorAll<HTMLInputElement>('input.pick-line');
-            lineBoxes.forEach((b) => {
-                const h = Number(b.dataset.hunk || -1);
-                const l = Number(b.dataset.line || -1);
-                if (h < 0 || l < 0) return;
-                (rec[h] ||= []).push(l);
-                b.checked = true;
-            });
-            Object.keys(rec).forEach((k) => {
-                rec[Number(k)] = Array.from(new Set(rec[Number(k)])).sort((a, b) => a - b);
+            hunkNodes.forEach((refs, idx) => {
+                if (refs.hunkCheckbox) {
+                    refs.hunkCheckbox.checked = true;
+                    refs.hunkCheckbox.indeterminate = false;
+                }
+                const picked: number[] = [];
+                Object.entries(refs.lineCheckboxes).forEach(([key, box]) => {
+                    const lineIdx = Number(key);
+                    if (lineIdx < 0) return;
+                    picked.push(lineIdx);
+                    box.checked = true;
+                });
+                if (picked.length > 0) rec[idx] = Array.from(new Set(picked)).sort((a, b) => a - b);
             });
             (state as any).selectedLinesByFile[state.currentFile] = rec;
         } else {
             state.selectedHunks = [];
             delete (state as any).selectedHunksByFile[state.currentFile];
-            const root = diffEl as HTMLElement;
-            const lineBoxes = root.querySelectorAll<HTMLInputElement>('input.pick-line');
-            lineBoxes.forEach((b) => { b.checked = false; });
             delete (state as any).selectedLinesByFile[state.currentFile];
+            hunkNodes.forEach((refs) => {
+                if (refs.hunkCheckbox) {
+                    refs.hunkCheckbox.checked = false;
+                    refs.hunkCheckbox.indeterminate = false;
+                }
+                Object.values(refs.lineCheckboxes).forEach((box) => { box.checked = false; });
+            });
         }
         updateHunkCheckboxes();
     }
@@ -440,99 +456,133 @@ export function toggleFilePick(path: string, on: boolean) {
 }
 
 export function updateHunkCheckboxes() {
-    const root = diffEl as HTMLElement;
-    if (!root) return;
-    const boxes = root.querySelectorAll<HTMLInputElement>('input.pick-hunk');
-    boxes.forEach((b) => {
-        const idx = Number(b.dataset.hunk || -1);
-        const on = state.selectedHunks.includes(idx);
-        b.checked = on;
-        const hk = b.closest('.hunk') as HTMLElement | null;
-        if (hk) hk.classList.toggle('picked', on);
+    const nodes = state.currentDiffHunkNodes;
+    if (!nodes || nodes.size === 0) return;
+    const rec: Record<number, number[]> = state.currentFile
+        ? (state as any).selectedLinesByFile[state.currentFile] || {}
+        : {};
+    nodes.forEach((refs, idx) => {
+        const isSelected = state.selectedHunks.includes(idx);
+        if (refs.hunkCheckbox) {
+            refs.hunkCheckbox.checked = isSelected;
+            refs.hunkCheckbox.indeterminate = false;
+        }
+        refs.hunkEl.classList.toggle('picked', isSelected);
+        if (state.currentFile) {
+            const lines = rec[idx] || [];
+            Object.entries(refs.lineCheckboxes).forEach(([key, box]) => {
+                const lineIdx = Number(key);
+                const checked = Array.isArray(lines) && lines.includes(lineIdx);
+                box.checked = checked;
+            });
+            if (refs.hunkCheckbox) {
+                const total = state.currentDiffMeta?.changeCounts[idx] ?? Object.keys(refs.lineCheckboxes).length;
+                const chosen = lines.length;
+                refs.hunkCheckbox.checked = total > 0 && chosen === total;
+                refs.hunkCheckbox.indeterminate = chosen > 0 && chosen < total;
+            }
+        } else {
+            Object.values(refs.lineCheckboxes).forEach((box) => { box.checked = false; });
+            if (refs.hunkCheckbox) refs.hunkCheckbox.indeterminate = false;
+        }
     });
-    if (state.currentFile) {
-        const rec: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
-        const lboxes = root.querySelectorAll<HTMLInputElement>('input.pick-line');
-        lboxes.forEach((b) => {
-            const h = Number(b.dataset.hunk || -1);
-            const l = Number(b.dataset.line || -1);
-            const on = Array.isArray(rec[h]) && rec[h].includes(l);
-            b.checked = on;
-        });
+}
+
+let diffToggleHandlerBound = false;
+
+function bindHunkToggles(root: HTMLElement) {
+    if (!root || diffToggleHandlerBound) return;
+    root.addEventListener('change', handleDiffInputChange);
+    diffToggleHandlerBound = true;
+}
+
+function handleDiffInputChange(ev: Event) {
+    const target = ev.target as HTMLInputElement | null;
+    if (!target || !(target instanceof HTMLInputElement)) return;
+    if (target.classList.contains('pick-hunk')) {
+        handleHunkToggle(target);
+    } else if (target.classList.contains('pick-line')) {
+        handleLineToggle(target);
     }
 }
 
-function bindHunkToggles(root: HTMLElement) {
-    const boxes = root.querySelectorAll<HTMLInputElement>('input.pick-hunk');
-    boxes.forEach((b) => {
-        b.addEventListener('change', () => {
-            const clearedImplicit = disableDefaultSelectAll(true);
-            if (clearedImplicit) clearAllFileSelections();
-            const idx = Number(b.dataset.hunk || -1);
-            if (b.checked) {
-                if (!state.selectedHunks.includes(idx)) state.selectedHunks.push(idx);
-            } else {
-                state.selectedHunks = state.selectedHunks.filter((i) => i !== idx);
-            }
-            if (state.currentFile) {
-                (state as any).selectedHunksByFile[state.currentFile] = state.selectedHunks.slice();
-                const linesInHunk = Array.from(root.querySelectorAll<HTMLInputElement>(`input.pick-line[data-hunk="${idx}"]`));
-                const rec: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
-                if (b.checked) {
-                    const picked: number[] = [];
-                    linesInHunk.forEach((el) => { el.checked = true; picked.push(Number(el.dataset.line || -1)); });
-                    rec[idx] = Array.from(new Set([...(rec[idx] || []), ...picked])).sort((a, b) => a - b);
-                } else {
-                    linesInHunk.forEach((el) => { el.checked = false; });
-                    delete rec[idx];
-                }
-                (state as any).selectedLinesByFile[state.currentFile] = rec;
-            }
-            syncFileCheckboxWithHunks();
-            updateSelectAllState(getVisibleFiles());
-            updateCommitButton();
-            const hk = b.closest('.hunk') as HTMLElement | null;
-            if (hk) hk.classList.toggle('picked', b.checked);
+function handleHunkToggle(input: HTMLInputElement) {
+    const idx = Number(input.dataset.hunk || -1);
+    if (!state.currentFile || idx < 0) return;
+    const clearedImplicit = disableDefaultSelectAll(true);
+    if (clearedImplicit) clearAllFileSelections();
+    const rec: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
+    if (input.checked) {
+        if (!state.selectedHunks.includes(idx)) state.selectedHunks.push(idx);
+        const refs = state.currentDiffHunkNodes.get(idx);
+        const picked: number[] = [];
+        Object.entries(refs?.lineCheckboxes || {}).forEach(([k, box]) => {
+            const lineIdx = Number(k);
+            if (lineIdx < 0) return;
+            picked.push(lineIdx);
+            box.checked = true;
         });
-    });
+        if (picked.length > 0) rec[idx] = Array.from(new Set(picked)).sort((a, b) => a - b);
+    } else {
+        state.selectedHunks = state.selectedHunks.filter((i) => i !== idx);
+        const refs = state.currentDiffHunkNodes.get(idx);
+        Object.values(refs?.lineCheckboxes || {}).forEach((box) => { box.checked = false; });
+        delete rec[idx];
+    }
+    (state as any).selectedLinesByFile[state.currentFile] = rec;
+    const refs = state.currentDiffHunkNodes.get(idx);
+    refs?.hunkEl?.classList.toggle('picked', input.checked);
+    if (refs?.hunkCheckbox) {
+        refs.hunkCheckbox.indeterminate = false;
+        refs.hunkCheckbox.checked = input.checked;
+    }
+    if (state.currentFile) {
+        (state as any).selectedHunksByFile[state.currentFile] = state.selectedHunks.slice();
+    }
+    syncFileCheckboxWithHunks();
+    updateSelectAllState(getVisibleFiles());
+    updateCommitButton();
+}
 
-    const lineBoxes = root.querySelectorAll<HTMLInputElement>('input.pick-line');
-    lineBoxes.forEach((b) => {
-        b.addEventListener('change', () => {
-            const clearedImplicit = disableDefaultSelectAll(true);
-            if (clearedImplicit) clearAllFileSelections();
-            const hunk = Number(b.dataset.hunk || -1);
-            const line = Number(b.dataset.line || -1);
-            if (!state.currentFile || hunk < 0 || line < 0) return;
-            const rec: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
-            const cur = new Set<number>(rec[hunk] || []);
-            if (b.checked) cur.add(line);
-            else cur.delete(line);
-            rec[hunk] = Array.from(cur).sort((a, b) => a - b);
-            if (rec[hunk].length === 0) delete rec[hunk];
-            (state as any).selectedLinesByFile[state.currentFile] = rec;
-
-            const hunkBox = root.querySelector<HTMLInputElement>(`input.pick-hunk[data-hunk="${hunk}"]`);
-            if (hunkBox) {
-                const total = root.querySelectorAll<HTMLInputElement>(`input.pick-line[data-hunk="${hunk}"]`).length;
-                const sel = rec[hunk]?.length || 0;
-                (hunkBox as any).indeterminate = sel > 0 && sel < total;
-                hunkBox.checked = sel === total && total > 0;
-                const idx = Number(hunkBox.dataset.hunk || -1);
-                if (sel === total && total > 0) {
-                    if (!state.selectedHunks.includes(idx)) state.selectedHunks.push(idx);
-                } else {
-                    state.selectedHunks = state.selectedHunks.filter((i) => i !== idx);
-                }
-                if (state.currentFile) {
-                    (state as any).selectedHunksByFile[state.currentFile] = state.selectedHunks.slice();
-                }
-            }
-            syncFileCheckboxWithHunks();
-            updateSelectAllState(getVisibleFiles());
-            updateCommitButton();
-        });
-    });
+function handleLineToggle(input: HTMLInputElement) {
+    const hunk = Number(input.dataset.hunk || -1);
+    const line = Number(input.dataset.line || -1);
+    if (!state.currentFile || hunk < 0 || line < 0) return;
+    const clearedImplicit = disableDefaultSelectAll(true);
+    if (clearedImplicit) clearAllFileSelections();
+    const rec: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
+    const old = new Set<number>(rec[hunk] || []);
+    if (input.checked) {
+        old.add(line);
+    } else {
+        old.delete(line);
+    }
+    const next = Array.from(old).sort((a, b) => a - b);
+    if (next.length > 0) {
+        rec[hunk] = next;
+    } else {
+        delete rec[hunk];
+    }
+    (state as any).selectedLinesByFile[state.currentFile] = rec;
+    const refs = state.currentDiffHunkNodes.get(hunk);
+    const total = state.currentDiffMeta?.changeCounts[hunk] ?? Object.keys(refs?.lineCheckboxes || {}).length;
+    const hunkBox = refs?.hunkCheckbox;
+    if (hunkBox) {
+        hunkBox.checked = total > 0 && next.length === total;
+        hunkBox.indeterminate = next.length > 0 && next.length < total;
+        if (hunkBox.checked) {
+            if (!state.selectedHunks.includes(hunk)) state.selectedHunks.push(hunk);
+        } else {
+            state.selectedHunks = state.selectedHunks.filter((i) => i !== hunk);
+        }
+        refs?.hunkEl?.classList.toggle('picked', hunkBox.checked);
+    }
+    if (state.currentFile) {
+        (state as any).selectedHunksByFile[state.currentFile] = state.selectedHunks.slice();
+    }
+    syncFileCheckboxWithHunks();
+    updateSelectAllState(getVisibleFiles());
+    updateCommitButton();
 }
 
 function syncFileCheckboxWithHunks() {
@@ -542,7 +592,8 @@ function syncFileCheckboxWithHunks() {
         updateListCheckboxForPath(state.currentFile, on, false);
         return;
     }
-    const totalHunks = allHunkIndices(state.currentDiff).length;
+    const meta = state.currentDiffMeta;
+    const totalHunks = meta?.totalHunks ?? allHunkIndices(state.currentDiff).length;
     const selHunks = (state.selectedHunks || []).length;
     if (totalHunks === 0) {
         updateListCheckboxForPath(state.currentFile, false, false);
@@ -550,29 +601,12 @@ function syncFileCheckboxWithHunks() {
         return;
     }
     const rec: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
-    const lines = state.currentDiff || [];
-    const first = lines.findIndex((l) => (l || '').startsWith('@@'));
-    const rest = first >= 0 ? lines.slice(first) : [];
-    const starts: number[] = [];
-    for (let i = 0; i < rest.length; i++) { if ((rest[i] || '').startsWith('@@')) starts.push(i); }
-    starts.push(rest.length);
-    const changeCounts: number[] = [];
-    for (let h = 0; h < Math.max(0, starts.length - 1); h++) {
-        const s = starts[h];
-        const e = starts[h + 1];
-        const block = rest.slice(s + 1, e);
-        const cnt = block.reduce((acc, ln) => {
-            const ch = (ln || '')[0] || ' ';
-            return acc + ((ch === '+' || ch === '-') ? 1 : 0);
-        }, 0);
-        changeCounts[h] = cnt;
-    }
     const hasAnyLineSel = Object.keys(rec).length > 0;
-    const hasPartialLineSel = Object.keys(rec).some((k) => {
-        const h = Number(k);
-        const chosen = Array.isArray(rec[h]) ? rec[h].length : 0;
-        const total = changeCounts[h] || 0;
-        return chosen > 0 && chosen < total;
+    const hasPartialLineSel = Object.keys(rec).some((key) => {
+        const idx = Number(key);
+        const chosen = Array.isArray(rec[idx]) ? rec[idx].length : 0;
+        const total = meta?.changeCounts[idx] ?? 0;
+        return total > 0 && chosen > 0 && chosen < total;
     });
     if (selHunks === totalHunks && !hasPartialLineSel) {
         updateListCheckboxForPath(state.currentFile, true, false);
@@ -587,12 +621,140 @@ function syncFileCheckboxWithHunks() {
 }
 
 export function allHunkIndices(lines: string[]) {
+    const meta = state.currentDiffMeta;
+    if (meta && meta.totalHunks > 0) {
+        return Array.from({ length: meta.totalHunks }, (_, i) => i);
+    }
     if (!Array.isArray(lines) || !lines.length) return [] as number[];
     const idx = lines.findIndex((l) => l.startsWith('@@'));
     const rest = idx >= 0 ? lines.slice(idx) : [];
     const starts: number[] = [];
     rest.forEach((l, i) => { if (l.startsWith('@@')) starts.push(i); });
     return starts.map((_, i) => i);
+}
+
+function buildDiffMeta(lines: string[]): DiffMeta {
+    const idx = lines.findIndex((l) => (l || '').startsWith('@@'));
+    const rest = idx >= 0 ? lines.slice(idx) : [];
+    const starts: number[] = [];
+    rest.forEach((l, i) => { if ((l || '').startsWith('@@')) starts.push(i); });
+    if (starts.length === 0) return {
+        offset: Math.max(0, idx),
+        rest,
+        starts,
+        changeCounts: [],
+        totalHunks: 0,
+    };
+    starts.push(rest.length);
+    const changeCounts: number[] = [];
+    for (let h = 0; h < starts.length - 1; h++) {
+        const s = starts[h];
+        const e = starts[h + 1];
+        const block = rest.slice(s + 1, e);
+        const cnt = block.reduce((acc, ln) => {
+            const first = (ln || '')[0] || ' ';
+            return acc + ((first === '+' || first === '-') ? 1 : 0);
+        }, 0);
+        changeCounts[h] = cnt;
+    }
+    return {
+        offset: Math.max(0, idx),
+        rest,
+        starts,
+        changeCounts,
+        totalHunks: Math.max(0, starts.length - 1),
+    };
+}
+
+function buildDiffFragment(lines: string[]): DocumentFragment {
+    const meta = buildDiffMeta(lines);
+    state.currentDiffMeta = meta;
+    const fragment = document.createDocumentFragment();
+    const nodes = new Map<number, HunkNodeRefs>();
+    if (meta.totalHunks <= 0) {
+        const empty = document.createElement('div');
+        empty.className = 'hunk';
+        const hline = document.createElement('div');
+        hline.className = 'hline';
+        const gutter = document.createElement('div');
+        gutter.className = 'gutter';
+        const code = document.createElement('div');
+        code.className = 'code';
+        code.textContent = 'No textual hunks to display';
+        hline.appendChild(gutter);
+        hline.appendChild(code);
+        empty.appendChild(hline);
+        fragment.appendChild(empty);
+        state.currentDiffHunkNodes = nodes;
+        return fragment;
+    }
+    for (let h = 0; h < meta.totalHunks; h++) {
+        const s = meta.starts[h];
+        const e = meta.starts[h + 1];
+        const hunkLines = meta.rest.slice(s, e);
+        const offset = meta.offset + s;
+        const hunkEl = document.createElement('div');
+        hunkEl.className = 'hunk';
+        hunkEl.dataset.hunkIndex = String(h);
+
+        const header = document.createElement('div');
+        header.className = 'hline';
+        const gutter = document.createElement('div');
+        gutter.className = 'gutter';
+        const label = document.createElement('label');
+        label.className = 'pick-toggle';
+        const hunkCheckbox = document.createElement('input');
+        hunkCheckbox.type = 'checkbox';
+        hunkCheckbox.className = 'pick-hunk';
+        hunkCheckbox.dataset.hunk = String(h);
+        label.appendChild(hunkCheckbox);
+        const srHunk = document.createElement('span');
+        srHunk.className = 'sr-only';
+        srHunk.textContent = 'Include hunk';
+        label.appendChild(srHunk);
+        gutter.appendChild(label);
+        header.appendChild(gutter);
+        const codeHeader = document.createElement('div');
+        codeHeader.className = 'code';
+        header.appendChild(codeHeader);
+        hunkEl.appendChild(header);
+
+        const lineCheckboxes: Record<number, HTMLInputElement> = {};
+        hunkLines.forEach((ln, i) => {
+            const first = (typeof ln === 'string' ? ln[0] : ' ') || ' ';
+            const lineRow = document.createElement('div');
+            lineRow.className = `hline${first === '+' ? ' add' : first === '-' ? ' del' : ''}`;
+            const lineGutter = document.createElement('div');
+            lineGutter.className = 'gutter';
+            if (first === '+' || first === '-') {
+                const lineLabel = document.createElement('label');
+                lineLabel.className = 'pick-toggle';
+                const lineCheckbox = document.createElement('input');
+                lineCheckbox.type = 'checkbox';
+                lineCheckbox.className = 'pick-line';
+                lineCheckbox.dataset.hunk = String(h);
+                lineCheckbox.dataset.line = String(i);
+                lineLabel.appendChild(lineCheckbox);
+                const srLine = document.createElement('span');
+                srLine.className = 'sr-only';
+                srLine.textContent = 'Include line';
+                lineLabel.appendChild(srLine);
+                lineGutter.appendChild(lineLabel);
+                lineCheckboxes[i] = lineCheckbox;
+            }
+            lineGutter.appendChild(document.createTextNode(String(offset + i + 1)));
+            const code = document.createElement('div');
+            code.className = 'code';
+            code.innerHTML = escapeHtml(String(ln || ''));
+            lineRow.appendChild(lineGutter);
+            lineRow.appendChild(code);
+            hunkEl.appendChild(lineRow);
+        });
+        nodes.set(h, { hunkEl, hunkCheckbox, lineCheckboxes });
+        fragment.appendChild(hunkEl);
+    }
+    state.currentDiffHunkNodes = nodes;
+    return fragment;
 }
 
 export function renderHunksWithSelection(lines: string[]) {
