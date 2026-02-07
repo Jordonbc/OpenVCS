@@ -8,6 +8,7 @@ import {
     bindLayoutActionState
 } from './ui/layout';
 import { initMenubar } from './ui/menubar';
+import { closeAllModals } from './ui/modals';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
 import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash } from './features/repo';
 import { bindBranchUI } from './features/branches';
@@ -37,6 +38,24 @@ const commitBtn = qs<HTMLButtonElement>('#commit-btn');
 const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
 let fetchCloseTimer: number | null = null;
 const FETCH_CLOSE_MS = 130;
+
+function forceCloseTransientUi() {
+    closeAllModals();
+    closeSheet();
+    closeSwitchDrawer();
+    closeFetchPopover();
+
+    const branchPop = document.getElementById('branch-pop') as HTMLElement | null;
+    if (branchPop && !branchPop.hidden) {
+        branchPop.classList.remove('is-closing');
+        branchPop.hidden = true;
+    }
+    const branchBtn = document.getElementById('branch-switch') as HTMLButtonElement | null;
+    branchBtn?.setAttribute('aria-expanded', 'false');
+
+    // Plugin-contributed modal UIs (e.g. LFS Locks, Submodules) can close themselves.
+    window.dispatchEvent(new CustomEvent('app:repo-will-switch'));
+}
 
 async function boot() {
     // If launched as the Output Log window, render that view and skip the main app UI.
@@ -436,8 +455,7 @@ async function boot() {
             : (payload?.path ?? payload?.repoPath ?? payload?.repo ?? payload?.dir ?? '');
         if (path) notify(`Opened ${path}`);
         setRepoHeader(path);
-        closeSheet();
-        closeSwitchDrawer();
+        forceCloseTransientUi();
 
         await hydrateBranches();
         setRepoHeader(path);
@@ -456,6 +474,7 @@ async function boot() {
         const path = (p || '').trim();
         if (!path) return;
         setRepoHeader(path);
+        forceCloseTransientUi();
         await hydrateBranches();
         setRepoHeader(path);
         await Promise.allSettled([hydrateStatus(), hydrateCommits()]);

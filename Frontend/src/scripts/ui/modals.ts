@@ -156,6 +156,23 @@ export function closeModal(id: string): void {
     }
 }
 
+export function closeAllModals(): void {
+    const openModals = Array.from(
+        document.querySelectorAll<HTMLElement>(".modal[aria-hidden='false']")
+    );
+    for (const el of openModals) {
+        const existing = (el as any).__animatedCloseTimer as number | undefined;
+        if (existing) {
+            window.clearTimeout(existing);
+            (el as any).__animatedCloseTimer = undefined;
+        }
+        el.classList.remove("is-closing");
+        el.setAttribute("aria-hidden", "true");
+    }
+    openCount = 0;
+    document.body.style.overflow = "";
+}
+
 // Declarative opener: <button data-modal-open="#about-modal">
 document.addEventListener("click", (e) => {
     const target = (e.target as HTMLElement)?.closest(
