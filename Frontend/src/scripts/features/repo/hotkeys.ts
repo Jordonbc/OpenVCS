@@ -6,7 +6,7 @@ import { renderList } from './list';
 
 export function bindRepoHotkeys(
     commitBtn: HTMLButtonElement | null,
-    openSheet: (w: 'clone' | 'add' | 'switch') => void,
+    openSwitchDrawer: () => void,
     fetchAction?: () => void | Promise<void>
 ) {
     window.addEventListener('keydown', (e) => {
@@ -26,7 +26,7 @@ export function bindRepoHotkeys(
             return;
         }
         if (chord && key === 'f') { e.preventDefault(); filterInput?.focus(); }
-        if (chord && key === 'r') { e.preventDefault(); openSheet('switch'); }
+        if (chord && key === 'r') { e.preventDefault(); openSwitchDrawer(); }
         if (chord && e.key === 'Enter') { e.preventDefault(); commitBtn?.click(); }
 
         if (chord && key === 'a' && !e.shiftKey && !e.altKey && !inEditable) {

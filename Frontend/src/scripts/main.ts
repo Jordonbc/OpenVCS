@@ -21,6 +21,7 @@ import { initSshAuthPrompt } from './features/sshAuth';
 import { initOutputLogViewIfRequested } from './features/outputLog';
 import { DEFAULT_LIGHT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
 import { initPlugins, runHook, runPluginAction } from './plugins';
+import { openSwitchDrawer, closeSwitchDrawer, registerDrawerActions } from './features/repoSwitchDrawer';
 
 const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
 
@@ -82,9 +83,13 @@ async function boot() {
     bindFilter();
     bindCommit();
     bindCommandSheet();
+    registerDrawerActions({
+        openClone: () => openSheet('clone'),
+        openAdd: () => openSheet('add'),
+    });
     bindBranchUI();
     bindLayoutActionState();
-    bindRepoHotkeys(commitBtn || null, openSheet, defaultFetchAction);
+    bindRepoHotkeys(commitBtn || null, openSwitchDrawer, defaultFetchAction);
     initSshHostkeyPrompt();
     initSshAuthPrompt();
 
@@ -284,7 +289,7 @@ async function boot() {
         switch (id) {
             case 'clone_repo': openSheet('clone'); break;
             case 'add_repo':   openSheet('add');   break;
-            case 'open_repo':  openSheet('switch');break;
+            case 'open_repo':  openSwitchDrawer(); break;
             case 'fetch': await defaultFetchAction(); break;
             case 'push':  await pushChanges();  break;
             case 'commit': commitBtn?.click(); break;
@@ -331,7 +336,7 @@ async function boot() {
     });
     pushBtn?.addEventListener('click', pushChanges);
     cloneBtn?.addEventListener('click', () => openSheet('clone'));
-    repoSwitch?.addEventListener('click', () => openSheet('switch'));
+    repoSwitch?.addEventListener('click', () => openSwitchDrawer());
     document.getElementById('plugin-title-actions')?.addEventListener('click', (e) => {
         const target = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-action]') || null;
         const action = target?.dataset.action || '';
@@ -411,6 +416,7 @@ async function boot() {
         if (path) notify(`Opened ${path}`);
         setRepoHeader(path);
         closeSheet();
+        closeSwitchDrawer();
 
         await hydrateBranches();
         setRepoHeader(path);

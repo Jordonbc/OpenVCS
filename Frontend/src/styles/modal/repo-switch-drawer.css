@@ -1,0 +1,211 @@
+#repo-switch-drawer.modal{
+    justify-content:flex-start;
+    align-items:flex-start;
+    padding:0;
+}
+
+#repo-switch-drawer .backdrop{
+    background:transparent;
+}
+
+#repo-switch-drawer .dialog.drawer{
+    position:absolute;
+    width:min(360px, 85vw);
+    border-radius:0 0 var(--r-lg) var(--r-lg);
+    display:flex;
+    flex-direction:column;
+    background:var(--surface);
+    border:1px solid var(--border);
+    box-shadow:0 15px 40px rgba(0,0,0,0.4);
+    overflow:hidden;
+    max-height:calc(100vh - 80px);
+}
+
+@media (prefers-reduced-motion: no-preference){
+    #repo-switch-drawer[aria-hidden="false"] .dialog.drawer{
+        animation: repoSwitchDrawerDrop 160ms cubic-bezier(.2,.8,.2,1);
+    }
+    #repo-switch-drawer.is-closing .dialog.drawer{
+        animation: repoSwitchDrawerClose 130ms cubic-bezier(.4,0,1,1);
+    }
+}
+
+@keyframes repoSwitchDrawerDrop{
+    from{
+        opacity:0;
+        transform:translateY(-8px);
+    }
+    to{
+        opacity:1;
+        transform:translateY(0);
+    }
+}
+
+@keyframes repoSwitchDrawerClose{
+    from{
+        opacity:1;
+        transform:translateY(0);
+    }
+    to{
+        opacity:0;
+        transform:translateY(-6px);
+    }
+}
+
+#repo-switch-drawer .drawer-head{
+    padding:0.7rem 0.85rem 0.55rem;
+    display:flex;
+    flex-direction:column;
+    gap:0.5rem;
+    background:var(--surface-2);
+    border-bottom:1px solid var(--border);
+}
+
+#repo-switch-drawer .drawer-controls{
+    display:flex;
+    align-items:center;
+    gap:0.5rem;
+}
+
+#repo-switch-drawer .drawer-actions{
+    display:flex;
+    position:relative;
+    flex:0 0 auto;
+}
+
+#repo-switch-drawer .drawer-filter{
+    display:flex;
+    align-items:center;
+    gap:0.5rem;
+    border:1px solid var(--border);
+    border-radius:999px;
+    padding:0 0.75rem;
+    background:var(--surface);
+    flex:1 1 auto;
+}
+
+#repo-switch-drawer .drawer-filter input{
+    flex:1;
+    border:none;
+    background:transparent;
+    color:var(--text);
+    min-height:32px;
+}
+
+#repo-switch-drawer .drawer-filter input:focus{
+    outline:none;
+}
+
+#repo-switch-drawer .drawer-add-menu{
+    position:absolute;
+    top:100%;
+    left:0;
+    margin-top:0.25rem;
+    display:flex;
+    flex-direction:column;
+    gap:0.25rem;
+    padding:0.5rem;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:0.5rem;
+    box-shadow:var(--shadow-1);
+    z-index:5;
+}
+
+#repo-switch-drawer .drawer-add-menu[hidden]{
+    display:none;
+}
+
+#repo-switch-drawer .drawer-add-menu button{
+    text-align:left;
+    width:100%;
+}
+
+#repo-switch-drawer .drawer-body{
+    padding:0.45rem 0.65rem 0.85rem;
+    display:flex;
+    flex-direction:column;
+    gap:0.55rem;
+    min-height:180px;
+    max-height:calc(100vh - 150px);
+}
+
+#repo-switch-drawer .drawer-title{
+    font-size:0.85rem;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--muted);
+}
+
+#repo-switch-drawer .recent{
+    display:flex !important;
+    flex-direction:column !important;
+    gap:0.25rem !important;
+    margin:0 !important;
+    padding:0 0.1rem 0 0 !important;
+    list-style:none !important;
+    min-height:0;
+    overflow-y:auto !important;
+}
+
+#repo-switch-drawer .recent li{
+    display:grid !important;
+    grid-template-columns:1rem minmax(0, 1fr) !important;
+    align-items:start !important;
+    gap:0.6rem !important;
+    width:100%;
+    padding:0.42rem 0.5rem !important;
+    border-radius:var(--r-sm);
+    border:1px solid transparent;
+    background:transparent;
+    min-height:3rem !important;
+    cursor:pointer;
+}
+
+#repo-switch-drawer .recent li:hover,
+#repo-switch-drawer .recent li:focus-visible{
+    background:color-mix(in oklab, var(--text) 8%, transparent);
+    border-color:var(--border);
+    outline:none;
+}
+
+#repo-switch-drawer .recent li .repo-icon{
+    width:1.1rem;
+    text-align:center;
+    opacity:0.9;
+    color:var(--muted);
+    padding-top:0.1rem;
+    flex:0 0 auto;
+}
+
+#repo-switch-drawer .recent li .repo-main{
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    gap:0.08rem;
+}
+
+#repo-switch-drawer .recent li strong{
+    font-size:1rem;
+    line-height:1.2;
+    font-weight:600;
+}
+
+#repo-switch-drawer .recent li .path{
+    opacity:0.7;
+    font-size:0.84rem;
+    line-height:1.15;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+#repo-switch-drawer .recent li.empty{
+    border:1px dashed var(--border);
+    border-radius:var(--r-sm);
+    padding:0.6rem;
+    justify-content:center !important;
+    color:var(--muted);
+    cursor:default;
+}

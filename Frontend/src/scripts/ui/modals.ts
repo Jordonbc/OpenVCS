@@ -27,12 +27,14 @@ import { wireStashConfirm } from "../features/stashConfirm";
 import mergeHtml from "@modals/merge.html?raw";
 import conflictsSummaryHtml from "@modals/conflicts-summary.html?raw";
 import { wireSshKeys } from "../features/sshKeys";
+import repoSwitchDrawerHtml from "@modals/repoSwitchDrawer.html?raw";
 
 // Lazy fragments (only those NOT present at load)
 const FRAGMENTS: Record<string, string> = {
     "settings-modal": settingsHtml,
     "about-modal": aboutHtml,
     "command-modal": cmdHtml,
+    "repo-switch-drawer": repoSwitchDrawerHtml,
     "repo-settings-modal": repoSettingsHtml,
     "ssh-hostkey-modal": sshHostkeyHtml,
     "ssh-auth-modal": sshAuthHtml,
@@ -60,6 +62,26 @@ function lockScroll() {
 function unlockScroll() {
     openCount = Math.max(0, openCount - 1);
     if (openCount === 0) document.body.style.overflow = "";
+}
+
+function closeWithAnimation(id: string, el: HTMLElement) {
+    if (id !== "repo-switch-drawer") {
+        closeModal(id);
+        return;
+    }
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+        closeModal(id);
+        return;
+    }
+    const existing = (el as any).__drawerCloseTimer as number | undefined;
+    if (existing) window.clearTimeout(existing);
+    el.classList.add("is-closing");
+    (el as any).__drawerCloseTimer = window.setTimeout(() => {
+        el.classList.remove("is-closing");
+        closeModal(id);
+        (el as any).__drawerCloseTimer = undefined;
+    }, 130);
 }
 
 export function hydrate(id: string): void {
@@ -116,7 +138,7 @@ export function openModal(id: string): void {
             const t = evt.target as HTMLElement;
             const isBackdrop = t.classList?.contains("backdrop");
             const wantsClose = isBackdrop || !!t.closest("[data-close]");
-            if (wantsClose) closeModal(id);
+            if (wantsClose) closeWithAnimation(id, el);
         });
         (el as any).__closeWired = true;
     }
@@ -148,5 +170,5 @@ document.addEventListener("keydown", (e) => {
         document.querySelectorAll<HTMLElement>(".modal[aria-hidden='false']")
     );
     const top = openModals.at(-1);
-    if (top?.id) closeModal(top.id);
+    if (top?.id) closeWithAnimation(top.id, top);
 });

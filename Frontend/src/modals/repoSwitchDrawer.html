@@ -1,0 +1,28 @@
+<div class="modal drawer" id="repo-switch-drawer" aria-hidden="true">
+    <div class="backdrop" data-close></div>
+
+    <div class="dialog drawer" role="dialog" aria-modal="true" aria-label="Switch repository">
+        <div class="drawer-head">
+            <div class="drawer-controls">
+                <div class="drawer-filter">
+                    <span class="icon" aria-hidden="true">🔍</span>
+                    <input id="drawer-filter" type="search" placeholder="Filter" aria-label="Filter repositories" />
+                </div>
+                <div class="drawer-actions">
+                    <button id="drawer-add-trigger" class="tbtn secondary" type="button" aria-haspopup="menu" aria-expanded="false">
+                        Add ▾
+                    </button>
+                    <div class="drawer-add-menu" role="menu" aria-label="Add repository options" hidden>
+                        <button class="tbtn" type="button" data-add-action="clone_repo">Clone…</button>
+                        <button class="tbtn" type="button" data-add-action="add_repo">Add Existing…</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="drawer-body">
+            <div class="drawer-title">Recent</div>
+            <ul class="recent" id="drawer-recent-list"></ul>
+        </div>
+    </div>
+</div>

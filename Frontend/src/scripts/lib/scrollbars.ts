@@ -7,6 +7,7 @@ const SCROLLABLE_SELECTOR = [
   '.pop-list-scroll',
   '.plugins-list-scroll',
   '#command-modal .recent',
+  '#repo-switch-drawer .recent',
   '#repo-settings-modal .sheet-body',
   '#new-branch-modal .sheet-body',
   '#stash-confirm-modal .sheet-body',
