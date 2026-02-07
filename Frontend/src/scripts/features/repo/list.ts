@@ -1,5 +1,4 @@
 import { escapeHtml } from '../../lib/dom';
-import { refreshOverlayScrollbarsFor } from '../../lib/scrollbars';
 import { state, prefs, statusClass, statusLabel } from '../../state/state';
 import { refreshRepoActions } from '../../ui/layout';
 import { filterInput, listEl, countEl, diffHeadPath, diffEl } from './context';
@@ -38,23 +37,14 @@ export function renderList() {
 
     if (isHistory) {
         renderHistoryList(q);
-        refreshListScrollContainer(list);
         return;
     }
     if (isStash) {
         renderStashList(q);
-        refreshListScrollContainer(list);
         return;
     }
 
     renderChangesList(q);
-    refreshListScrollContainer(list);
-}
-
-function refreshListScrollContainer(list: HTMLElement) {
-    const host = list.closest('.list-scroll') as HTMLElement | null;
-    if (!host) return;
-    try { refreshOverlayScrollbarsFor(host); } catch {}
 }
 
 function renderChangesList(query: string) {

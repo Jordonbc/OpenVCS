@@ -4,7 +4,6 @@ import { OverlayScrollbars } from 'overlayscrollbars';
 // during initialization to reduce flicker.
 const OS_ATTR = 'data-overlayscrollbars-initialize';
 const SCROLLABLE_SELECTOR = [
-  '.list-scroll',
   '.pop-list-scroll',
   '.plugins-list-scroll',
   '#command-modal .recent',

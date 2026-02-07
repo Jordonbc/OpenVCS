@@ -483,30 +483,37 @@ async function boot() {
     // This is intentionally lightweight: only re-hydrate when HEAD changes.
     let headPollInFlight: Promise<void> | null = null;
     let lastHeadKey = '';
-    const headPollMs = 2000;
-    setInterval(() => {
-        if (!TAURI.has) return;
-        if (!state.hasRepo) return;
-        if (document.visibilityState !== 'visible') return;
-        if (!document.hasFocus()) return;
-        if (headPollInFlight) return;
-        headPollInFlight = (async () => {
-            try {
-                const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status');
-                const key = `${head?.detached ? 1 : 0}:${String(head?.branch || '')}:${String(head?.commit || '')}`;
-                if (key === lastHeadKey) return;
-
-                const ok = await hydrateBranches();
-                if (!ok) return;
-                setRepoHeader();
-                await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
-                updateFetchUI();
-                lastHeadKey = key;
-            } catch {
-                // ignore transient failures (e.g. repo switching / git busy)
+    const headPollMs = 15000;
+    const scheduleHeadPoll = () => {
+        window.setTimeout(async () => {
+            if (!TAURI.has || !state.hasRepo || document.visibilityState !== 'visible' || !document.hasFocus()) {
+                return scheduleHeadPoll();
             }
-        })().finally(() => { headPollInFlight = null; });
-    }, headPollMs);
+            if (headPollInFlight) {
+                return scheduleHeadPoll();
+            }
+            headPollInFlight = (async () => {
+                try {
+                    const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status');
+                    const key = `${head?.detached ? 1 : 0}:${String(head?.branch || '')}:${String(head?.commit || '')}`;
+                    if (key === lastHeadKey) return;
+
+                    const ok = await hydrateBranches();
+                    if (!ok) return;
+                    setRepoHeader();
+                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                    updateFetchUI();
+                    lastHeadKey = key;
+                } catch {
+                    // ignore transient failures (e.g. repo switching / git busy)
+                }
+            })().finally(() => {
+                headPollInFlight = null;
+                scheduleHeadPoll();
+            });
+        }, headPollMs);
+    };
+    scheduleHeadPoll();
 
     // open settings via event
       TAURI.listen?.('ui:open-settings', ({ payload }) => {
