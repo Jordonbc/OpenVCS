@@ -45,6 +45,21 @@ function renderBinaryDiffPlaceholder(path?: string) {
     return `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code binary-placeholder">Diff not supported on this file type${label}.</div></div></div>`;
 }
 
+function buildUntrackedTextPatch(path: string, text: string): string[] {
+    const normalized = String(text || '').replace(/\r\n/g, '\n');
+    const body = normalized.length ? normalized.split('\n') : [];
+    if (body.length > 0 && body[body.length - 1] === '') body.pop();
+    const out = [
+        `diff --git a/${path} b/${path}`,
+        'new file mode 100644',
+        '--- /dev/null',
+        `+++ b/${path}`,
+        `@@ -0,0 +1,${body.length} @@`,
+    ];
+    for (const line of body) out.push(`+${line}`);
+    return out;
+}
+
 export function highlightRow(index: number) {
     const rows = qsa<HTMLElement>((prefs.tab === 'history' ? '.row.commit' : '.row'), listEl || (undefined as any));
     rows.forEach((el, i) => el.classList.toggle('active', i === index));
@@ -69,6 +84,20 @@ export async function selectFile(file: FileStatus, index: number) {
         let lines: string[] = [];
         if (TAURI.has && file.path) {
             lines = await TAURI.invoke<string[]>('git_diff_file', { path: file.path });
+        }
+        if (status === '?' && file.path && (!Array.isArray(lines) || lines.length === 0)) {
+            try {
+                const text = TAURI.has ? await TAURI.invoke<string>('read_repo_file_text', { path: file.path }) : '';
+                lines = buildUntrackedTextPatch(file.path, text || '');
+            } catch {
+                lines = [
+                    `diff --git a/${file.path} b/${file.path}`,
+                    'new file mode 100644',
+                    '--- /dev/null',
+                    `+++ b/${file.path}`,
+                    '@@ -0,0 +1,0 @@',
+                ];
+            }
         }
         state.currentFile = file.path;
         state.currentDiff = lines || [];
