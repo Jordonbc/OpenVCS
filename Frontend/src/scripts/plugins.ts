@@ -1,6 +1,6 @@
 import { TAURI } from './lib/tauri';
 import { notify } from './lib/notify';
-import { destroyOverlayScrollbarsFor, initOverlayScrollbars } from './lib/scrollbars';
+import { initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from './lib/scrollbars';
 import type { GlobalSettings, Json, ThemePayload, ThemeSummary } from './types';
 
 export interface PluginSummary {
@@ -556,8 +556,8 @@ export function applyPluginSettingsSections(modal?: HTMLElement | null): void {
     }
 
     if (insertedAny) {
-        destroyOverlayScrollbarsFor('#settings-panels-scroll');
-        initOverlayScrollbars();
+        initOverlayScrollbarsFor(m);
+        refreshOverlayScrollbarsFor(m);
     }
 }
 

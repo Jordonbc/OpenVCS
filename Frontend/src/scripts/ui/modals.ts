@@ -1,5 +1,6 @@
 // src/scripts/ui/modals.ts
 import { qs } from "@scripts/lib/dom";
+import { initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from "../lib/scrollbars";
 import settingsHtml from "@modals/settings.html?raw";
 import cmdHtml from "@modals/commandSheet.html?raw";
 import aboutHtml from "@modals/about.html?raw";
@@ -92,6 +93,9 @@ export function hydrate(id: string): void {
     if (id === "set-upstream-modal") wireSetUpstream();
     if (id === "update-modal") wireUpdate();
     if (id === "stash-confirm-modal") wireStashConfirm();
+
+    const inserted = document.getElementById(id);
+    if (inserted) initOverlayScrollbarsFor(inserted);
 }
 
 export function openModal(id: string): void {
@@ -104,6 +108,7 @@ export function openModal(id: string): void {
     if (!el.hasAttribute("aria-hidden")) el.setAttribute("aria-hidden", "true");
     el.setAttribute("aria-hidden", "false");
     lockScroll();
+    refreshOverlayScrollbarsFor(el);
 
     // Click-to-close once
     if (!(el as any).__closeWired) {

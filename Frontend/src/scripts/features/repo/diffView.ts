@@ -2,6 +2,7 @@ import { qsa, escapeHtml } from '../../lib/dom';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
 import { notify } from '../../lib/notify';
+import { refreshOverlayScrollbarsFor } from '../../lib/scrollbars';
 import { state, prefs, disableDefaultSelectAll } from '../../state/state';
 import type { FileStatus, ConflictDetails } from '../../types';
 import { buildPatchForSelectedHunks } from '../diff';
@@ -14,7 +15,10 @@ import { openMergeModal, hasExternalMergeTool, launchExternalMergeTool } from '.
 function scrollDiffToTop() {
     if (!diffEl) return;
     const host = diffEl.closest('.diff-scroll') as HTMLElement | null;
-    const viewport = host?.querySelector<HTMLElement>('[data-overlayscrollbars-viewport]') || host || diffEl.parentElement || diffEl;
+    if (host) {
+        try { refreshOverlayScrollbarsFor(host); } catch {}
+    }
+    const viewport = host?.querySelector<HTMLElement>('.os-viewport, [data-overlayscrollbars-viewport]') || host || diffEl.parentElement || diffEl;
     if (viewport) {
         viewport.scrollTop = 0;
         viewport.scrollLeft = 0;

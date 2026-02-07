@@ -2,6 +2,7 @@
 import { qs } from '../lib/dom';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
+import { refreshOverlayScrollbarsFor } from '../lib/scrollbars';
 import { state } from '../state/state';
 import { openModal } from '../ui/modals';
 import { openRenameBranch } from './renameBranch';
@@ -114,6 +115,7 @@ async function openBranchPopover() {
     branchPop.style.top  = `${r.bottom + 6}px`;
     branchPop.hidden = false;
     branchBtn.setAttribute('aria-expanded', 'true');
+    try { refreshOverlayScrollbarsFor(branchPop); } catch {}
     setTimeout(() => branchFilter?.focus(), 0);
 }
 
