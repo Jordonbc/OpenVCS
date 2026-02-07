@@ -24,10 +24,14 @@ const OVERLAY_OPTIONS = {
     y: 'scroll' as const,
   },
   update: {
-    // Rely on explicit refresh calls after major DOM changes and keep
-    // observer-driven updates less aggressive.
-    debounce: [80, 160] as [number, number],
-    elementEvents: [] as Array<[string, string]>,
+    // Disable the built-in observers so only our explicit refresh logic runs.
+    debounce: {
+      mutation: null,
+      resize: null,
+      event: null,
+      env: null,
+    },
+    elementEvents: null,
   },
   scrollbars: {
     theme: 'os-theme-openvcs',
