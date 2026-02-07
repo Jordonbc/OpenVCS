@@ -7,6 +7,8 @@ build target="all":
 _build_all: _build_client
 
 _build_plugins:
+  rm -rf Backend/built-in-plugins/Git/target
+  ln -s ../../../target Backend/built-in-plugins/Git/target
   cargo openvcs dist --all --plugin-dir Backend/built-in-plugins --out target/openvcs/built-in-plugins
 
 _build_client: _build_plugins
