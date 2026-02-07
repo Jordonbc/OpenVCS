@@ -14,6 +14,15 @@
     width: min(680px, 95vw);
 }
 
+@media (prefers-reduced-motion: no-preference) {
+    #command-modal[aria-hidden="false"] .dialog.sheet {
+        animation: commandModalOpen .18s cubic-bezier(.2,.8,.2,1);
+    }
+    #command-modal.is-closing .dialog.sheet {
+        animation: commandModalClose .14s cubic-bezier(.4,0,1,1);
+    }
+}
+
 /* Hide inactive panels completely */
 #command-modal .sheet-body.hidden {
     display: none !important;
@@ -149,6 +158,16 @@
 @keyframes commandSheetIn {
     from { opacity: 0; transform: translateY(-6px); }
     to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes commandModalOpen {
+    from { opacity: 0; transform: translateY(-8px) scale(.985); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes commandModalClose {
+    from { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 0; transform: translateY(-6px) scale(.99); }
 }
 
 /* --------------------------------------------------------------------------

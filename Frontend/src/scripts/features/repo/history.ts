@@ -4,7 +4,7 @@ import { TAURI } from '../../lib/tauri';
 import { notify } from '../../lib/notify';
 import { getPluginContextMenuItems, runPluginAction } from '../../plugins';
 import { prefs, state, statusClass, statusLabel } from '../../state/state';
-import { diffEl, diffHeadPath, diffMetaLfs, listEl, countEl } from './context';
+import { diffEl, diffHeadPath, listEl, countEl } from './context';
 import { renderHunksReadonly, highlightRow } from './diffView';
 import { hydrateStatus, hydrateCommits } from './hydrate';
 import { updateCommitButton } from './commit';
@@ -104,21 +104,6 @@ if (historyActionsBtn && !(historyActionsBtn as any).__wired) {
     window.addEventListener('app:tab-changed', () => updateHistoryActionsVisibility());
 }
 
-function setLfsBadge(isLfs: boolean) {
-    if (!diffMetaLfs) return;
-    diffMetaLfs.hidden = !isLfs;
-}
-
-function hydrateLfsBadgeForPath(path: string) {
-    if (!TAURI.has || !path) {
-        setLfsBadge(false);
-        return;
-    }
-    TAURI.invoke<boolean>('git_lfs_is_tracked', { path })
-        .then((isLfs) => setLfsBadge(!!isLfs))
-        .catch(() => setLfsBadge(false));
-}
-
 export function renderHistoryList(query: string): boolean {
     const list = listEl;
     const count = countEl;
@@ -199,7 +184,6 @@ export async function selectHistory(commit: any, index: number) {
     (state as any).selectedCommit = commit || null;
     updateHistoryActionsVisibility();
     highlightRow(index);
-    setLfsBadge(false);
     const id = (commit.id || '').slice(0, 7);
     diffHeadPath.textContent = `Commit ${id || '(unknown)'}`;
     diffEl.innerHTML = `
@@ -247,8 +231,6 @@ export async function selectHistory(commit: any, index: number) {
     <div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${files.length} file${files.length === 1 ? '' : 's'} changed</div></div></div>
     <div class="commit-diff" style="display:flex; min-height: 240px; gap: 8px;">${sidebar}${right}</div>`;
 
-        hydrateLfsBadgeForPath(files[0]?.path || '');
-
         const sideEl = diffEl.querySelector('.commit-files');
         const contentEl = diffEl.querySelector('.commit-content');
         if (sideEl && contentEl) {
@@ -257,7 +239,6 @@ export async function selectHistory(commit: any, index: number) {
                 sideEl.querySelectorAll('.row').forEach((r) => r.classList.remove('active'));
                 const row = sideEl.querySelector<HTMLElement>(`.row[data-idx="${idx}"]`);
                 row?.classList.add('active');
-                hydrateLfsBadgeForPath(files[idx]?.path || '');
                 (contentEl as HTMLElement).innerHTML = renderHunksReadonly(files[idx].lines);
             };
 

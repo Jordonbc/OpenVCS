@@ -57,7 +57,7 @@
                         <label for="set-default-backend">Default Backend
                             <span class="help-tip" title="Default VCS used for new repositories. Future-proof for multiple VCS.">?</span>
                         </label>
-                        <select id="set-default-backend" disabled>
+                        <select id="set-default-backend">
                             <option value="git">Git</option>
                         </select>
                     </div>
@@ -156,7 +156,11 @@
 
                 <!-- Performance -->
                 <form class="panel-form hidden" data-panel="performance">
-                    
+                    <div class="group">
+                        <label class="checkbox"><input type="checkbox" id="set-animations" /> Animations
+                            <span class="help-tip" title="Enable UI open/close transitions and motion effects.">?</span>
+                        </label>
+                    </div>
                     <div class="group">
                         <label class="checkbox"><input type="checkbox" id="set-progressive-render" disabled /> Progressive render
                             <span class="help-tip" title="Render large views in chunks to keep the UI responsive.">?</span>

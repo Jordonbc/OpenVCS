@@ -1,9 +1,9 @@
 /* Custom OverlayScrollbars theme for OpenVCS */
 
 .os-theme-openvcs.os-scrollbar {
-  --os-size: 8px;
-  --os-padding-perpendicular: 2px;
-  --os-padding-axis: 2px;
+  --os-size: 10px;
+  --os-padding-perpendicular: 1px;
+  --os-padding-axis: 1px;
 }
 
 .os-theme-openvcs.os-scrollbar .os-scrollbar-track {

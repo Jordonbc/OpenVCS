@@ -86,6 +86,19 @@ fn sanitize_semver_ident(s: &str) -> String {
     }
 }
 
+fn ensure_generated_builtins_resource_dir(manifest_dir: &std::path::Path) {
+    // Keep `bundle.resources` valid for plain `cargo build` runs even before
+    // plugin bundles are generated.
+    let generated = manifest_dir.join("../target/openvcs/built-in-plugins");
+    if let Err(err) = fs::create_dir_all(&generated) {
+        panic!(
+            "failed to create generated built-in plugins resource dir {}: {}",
+            generated.display(),
+            err
+        );
+    }
+}
+
 fn main() {
     // Base config path (in the Backend crate)
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
@@ -228,6 +241,8 @@ fn main() {
 
     println!("cargo:rustc-env=OPENVCS_VERSION={}", version);
     println!("cargo:rustc-env=OPENVCS_BUILD={}", build_id);
+
+    ensure_generated_builtins_resource_dir(&manifest_dir);
 
     // Proceed with tauri build steps
     tauri_build::build();

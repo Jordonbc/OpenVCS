@@ -13,6 +13,20 @@ export function savePrefs() {
     // no-op: web prefs are not persisted; native settings handle persistence
 }
 
+export type DiffMeta = {
+    offset: number;
+    rest: string[];
+    starts: number[];
+    changeCounts: number[];
+    totalHunks: number;
+};
+
+export type HunkNodeRefs = {
+    hunkEl: HTMLElement;
+    hunkCheckbox: HTMLInputElement | null;
+    lineCheckboxes: Record<number, HTMLInputElement>;
+};
+
 export const state = {
     hasRepo: false,                 // backend truth (set after open/clone/add)
     branch: '' as string,           // current branch name
@@ -29,6 +43,7 @@ export const state = {
     seenConflicts: new Set<string>() as Set<string>,
     defaultSelectAll: true as boolean, // by default select all files/hunks until user toggles
     selectionImplicitAll: true as boolean, // true when select-all was auto-applied (no manual picks yet)
+    diffDirty: true as boolean,
     // Selection state
     selectedFiles: new Set<string>(),
     currentFile: '' as string,
@@ -39,6 +54,8 @@ export const state = {
     selectedHunksByFile: {} as Record<string, number[]>,
     selectedLinesByFile: {} as Record<string, Record<number, number[]>>, // file -> hunkIdx -> line indices
     diffSelectedFiles: new Set<string>(), // files included in multi-file diff viewer
+    currentDiffMeta: null as DiffMeta | null,
+    currentDiffHunkNodes: new Map<number, HunkNodeRefs>(),
     // Optional: track the current repo path if you want to show it anywhere
     // repoPath: '' as string,
 };
@@ -56,6 +73,7 @@ export const statusLabel = (s: string) =>
             s === 'R' ? 'Renamed' :
                 s === 'C' ? 'Copied' :
                     s === 'T' ? 'Type change' :
+                        s === 'S' ? 'Submodule' :
                         s === 'U' ? 'Conflicted' :
         s === 'M' ? 'Modified' :
             s === 'D' ? 'Deleted' : 'Changed';
@@ -66,6 +84,7 @@ export const statusClass = (s: string) =>
             s === 'R' ? 'ren' :
                 s === 'C' ? 'cpy' :
                     s === 'T' ? 'type' :
+                        s === 'S' ? 'submodule' :
                         s === 'U' ? 'conflict' :
                             s === 'M' ? 'mod' :
                                 s === 'D' ? 'del' : 'mod';

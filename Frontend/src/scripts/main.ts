@@ -1,19 +1,20 @@
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
-import { observeOverlayScrollbars, destroyOverlayScrollbarsFor } from './lib/scrollbars';
+import { destroyOverlayScrollbarsFor, initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from './lib/scrollbars';
 import { prefs, state, hasRepo } from './state/state';
 import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
     bindLayoutActionState
 } from './ui/layout';
 import { initMenubar } from './ui/menubar';
+import { closeAllModals } from './ui/modals';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
 import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash } from './features/repo';
 import { bindBranchUI } from './features/branches';
 import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
-import { openSettings } from './features/settings';
+import { applyAnimationPreference, openSettings } from './features/settings';
 import { showUpdateDialog } from './features/update';
 import { openRepoSettings } from './features/repoSettings';
 import { initSshHostkeyPrompt } from './features/sshHostkey';
@@ -21,6 +22,7 @@ import { initSshAuthPrompt } from './features/sshAuth';
 import { initOutputLogViewIfRequested } from './features/outputLog';
 import { DEFAULT_LIGHT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
 import { initPlugins, runHook, runPluginAction } from './plugins';
+import { openSwitchDrawer, closeSwitchDrawer, registerDrawerActions } from './features/repoSwitchDrawer';
 
 const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
 
@@ -34,36 +36,49 @@ const cloneBtn = qs<HTMLButtonElement>('#clone-btn');
 const repoSwitch = qs<HTMLButtonElement>('#repo-switch');
 const commitBtn = qs<HTMLButtonElement>('#commit-btn');
 const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
+let fetchCloseTimer: number | null = null;
+const FETCH_CLOSE_MS = 130;
+
+function closeFetchPopover() {
+    if (!fetchPop || !fetchCaret) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    fetchCaret.setAttribute('aria-expanded', 'false');
+    if (reduceMotion) {
+        fetchPop.hidden = true;
+        return;
+    }
+    if (fetchCloseTimer !== null) window.clearTimeout(fetchCloseTimer);
+    fetchPop.classList.add('is-closing');
+    fetchCloseTimer = window.setTimeout(() => {
+        fetchPop.classList.remove('is-closing');
+        fetchPop.hidden = true;
+        fetchCloseTimer = null;
+    }, FETCH_CLOSE_MS);
+}
+
+function forceCloseTransientUi() {
+    closeAllModals();
+    closeSheet();
+    closeSwitchDrawer();
+    closeFetchPopover();
+
+    const branchPop = document.getElementById('branch-pop') as HTMLElement | null;
+    if (branchPop && !branchPop.hidden) {
+        branchPop.classList.remove('is-closing');
+        branchPop.hidden = true;
+    }
+    const branchBtn = document.getElementById('branch-switch') as HTMLButtonElement | null;
+    branchBtn?.setAttribute('aria-expanded', 'false');
+
+    // Plugin-contributed modal UIs (e.g. LFS Locks, Submodules) can close themselves.
+    window.dispatchEvent(new CustomEvent('app:repo-will-switch'));
+}
 
 async function boot() {
-    // Measure native scrollbar width and set a CSS variable so we can reserve
-    // the same horizontal space in the diff content. This prevents layout
-    // shifts when the vertical scrollbar appears or disappears.
-    function computeAndSetScrollbarGutter() {
-        try {
-            const el = document.createElement('div');
-            el.style.width = '100px';
-            el.style.height = '100px';
-            el.style.overflow = 'scroll';
-            el.style.position = 'absolute';
-            el.style.top = '-9999px';
-            document.body.appendChild(el);
-            const gutter = Math.max(0, el.offsetWidth - el.clientWidth) || 0;
-            document.documentElement.style.setProperty('--os-scrollbar-gutter', `${gutter}px`);
-            document.body.removeChild(el);
-        } catch (e) {
-            /* best-effort: ignore failures */
-        }
-    }
-
-    // Compute once and update on resize so changes in zoom/OS settings are handled.
-    computeAndSetScrollbarGutter();
-    window.addEventListener('resize', computeAndSetScrollbarGutter);
     // If launched as the Output Log window, render that view and skip the main app UI.
     if (await initOutputLogViewIfRequested()) return;
-    observeOverlayScrollbars();
-    // Ensure the diff scroll area uses the native scrollbar (not OverlayScrollbars).
-    try { destroyOverlayScrollbarsFor('.diff-scroll'); } catch {}
+    initOverlayScrollbarsFor(document);
+    destroyOverlayScrollbarsFor('.diff-scroll');
     await initPlugins();
     // theme & basic layout
     // Prefer native settings for theme; fall back to current in-memory default
@@ -89,14 +104,17 @@ async function boot() {
                     if (uiScale && isFinite(uiScale)) root.style.setProperty('--ui-scale', String(uiScale));
                     const mono = String(cfg?.ux?.font_mono || '').trim();
                     if (mono) root.style.setProperty('--mono', mono);
+                    applyAnimationPreference(cfg?.performance?.animations);
                 } catch { /* best-effort */ }
             } catch {
                 try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
                 setTheme(prefs.theme);
+                applyAnimationPreference(true);
             }
         })();
     } else {
         setTheme(prefs.theme);
+        applyAnimationPreference(true);
     }
     wireRenderListCallbacks();
     bindTabs((t) => { setTab(t); renderList(); });
@@ -106,9 +124,13 @@ async function boot() {
     bindFilter();
     bindCommit();
     bindCommandSheet();
+    registerDrawerActions({
+        openClone: () => openSheet('clone'),
+        openAdd: () => openSheet('add'),
+    });
     bindBranchUI();
     bindLayoutActionState();
-    bindRepoHotkeys(commitBtn || null, openSheet, defaultFetchAction);
+    bindRepoHotkeys(commitBtn || null, openSwitchDrawer, defaultFetchAction);
     initSshHostkeyPrompt();
     initSshAuthPrompt();
 
@@ -256,23 +278,23 @@ async function boot() {
 
     function openFetchPopover() {
         if (!fetchPop || !fetchCaret) return;
+        if (fetchCloseTimer !== null) {
+            window.clearTimeout(fetchCloseTimer);
+            fetchCloseTimer = null;
+        }
         const anchor = (document.getElementById('fetch-split') || fetchBtn || fetchCaret) as HTMLElement | null;
         if (!anchor) return;
         updateFetchUI();
         const r = anchor.getBoundingClientRect();
+        fetchPop.classList.remove('is-closing');
         fetchPop.hidden = false;
         fetchPop.style.left = `${r.left}px`;
         fetchPop.style.top  = `${r.bottom + 6}px`;
         fetchCaret.setAttribute('aria-expanded', 'true');
+        try { refreshOverlayScrollbarsFor(fetchPop); } catch {}
 
         const firstEnabled = fetchList?.querySelector<HTMLElement>('li[role="menuitem"][aria-disabled="false"]');
         setTimeout(() => firstEnabled?.focus(), 0);
-    }
-
-    function closeFetchPopover() {
-        if (!fetchPop || !fetchCaret) return;
-        fetchPop.hidden = true;
-        fetchCaret.setAttribute('aria-expanded', 'false');
     }
 
     async function pushChanges() {
@@ -303,29 +325,11 @@ async function boot() {
         try { window.open(WIKI_URL, '_blank', 'noopener'); } catch { notify('Unable to open docs'); }
     }
 
-    async function runLfsCommand(cmd: string, okMsg: string, errMsg: string) {
-        if (!TAURI.has) {
-            notify('Git LFS actions require the desktop app');
-            return;
-        }
-        try {
-            await TAURI.invoke(cmd);
-            notify(okMsg);
-            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
-        } catch (err) {
-            const msg = String(err || '').trim();
-            const friendly = msg.includes('unsupported backend')
-                ? 'The current backend does not support Git LFS'
-                : (msg || errMsg);
-            notify(friendly);
-        }
-    }
-
     async function runMenuAction(id?: string | null) {
         switch (id) {
             case 'clone_repo': openSheet('clone'); break;
             case 'add_repo':   openSheet('add');   break;
-            case 'open_repo':  openSheet('switch');break;
+            case 'open_repo':  openSwitchDrawer(); break;
             case 'fetch': await defaultFetchAction(); break;
             case 'push':  await pushChanges();  break;
             case 'commit': commitBtn?.click(); break;
@@ -347,9 +351,6 @@ async function boot() {
                 break;
             }
             case 'lfs-settings': openSettings('lfs'); break;
-            case 'lfs-fetch-all': await runLfsCommand('git_lfs_fetch_all', 'Fetched Git LFS objects', 'Git LFS fetch failed'); break;
-            case 'lfs-pull-all': await runLfsCommand('git_lfs_pull', 'Pulled Git LFS objects', 'Git LFS pull failed'); break;
-            case 'lfs-prune': await runLfsCommand('git_lfs_prune', 'Pruned Git LFS cache', 'Git LFS prune failed'); break;
             case 'check_updates':
                 if (!TAURI.has) { notify('Update checks are available in the desktop app'); break; }
                 try {
@@ -375,7 +376,7 @@ async function boot() {
     });
     pushBtn?.addEventListener('click', pushChanges);
     cloneBtn?.addEventListener('click', () => openSheet('clone'));
-    repoSwitch?.addEventListener('click', () => openSheet('switch'));
+    repoSwitch?.addEventListener('click', () => openSwitchDrawer());
     document.getElementById('plugin-title-actions')?.addEventListener('click', (e) => {
         const target = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-action]') || null;
         const action = target?.dataset.action || '';
@@ -424,11 +425,12 @@ async function boot() {
     // Global busy indicator for any Git activity
     (function(){
         let busyTimer: any = null;
-        const setBusy = (msg: string) => {
+        const setBusy = (msg: string, showSpinner = true) => {
             const s = document.getElementById('status');
             if (!s) return;
             s.textContent = msg || 'Working…';
-            s.classList.add('busy');
+            if (showSpinner) s.classList.add('busy');
+            else s.classList.remove('busy');
             if (busyTimer) clearTimeout(busyTimer);
             // Clear after a short quiet period
             busyTimer = setTimeout(() => {
@@ -439,7 +441,10 @@ async function boot() {
         TAURI.listen?.('git-progress', ({ payload }) => {
             // Don't spam the footer with raw git output; keep it generic.
             void payload;
-            setBusy('Working…');
+            // Avoid spinner-driven repaint churn for passive/background progress.
+            // Explicit user actions already set busy state via their own controllers.
+            const focused = document.visibilityState === 'visible' && document.hasFocus();
+            setBusy('Working…', focused);
         });
     })();
 
@@ -450,7 +455,7 @@ async function boot() {
             : (payload?.path ?? payload?.repoPath ?? payload?.repo ?? payload?.dir ?? '');
         if (path) notify(`Opened ${path}`);
         setRepoHeader(path);
-        closeSheet();
+        forceCloseTransientUi();
 
         await hydrateBranches();
         setRepoHeader(path);
@@ -469,6 +474,7 @@ async function boot() {
         const path = (p || '').trim();
         if (!path) return;
         setRepoHeader(path);
+        forceCloseTransientUi();
         await hydrateBranches();
         setRepoHeader(path);
         await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
@@ -523,29 +529,37 @@ async function boot() {
     // This is intentionally lightweight: only re-hydrate when HEAD changes.
     let headPollInFlight: Promise<void> | null = null;
     let lastHeadKey = '';
-    const headPollMs = 2000;
-    setInterval(() => {
-        if (!TAURI.has) return;
-        if (!state.hasRepo) return;
-        if (document.visibilityState !== 'visible') return;
-        if (headPollInFlight) return;
-        headPollInFlight = (async () => {
-            try {
-                const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status');
-                const key = `${head?.detached ? 1 : 0}:${String(head?.branch || '')}:${String(head?.commit || '')}`;
-                if (key === lastHeadKey) return;
-
-                const ok = await hydrateBranches();
-                if (!ok) return;
-                setRepoHeader();
-                await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
-                updateFetchUI();
-                lastHeadKey = key;
-            } catch {
-                // ignore transient failures (e.g. repo switching / git busy)
+    const headPollMs = 15000;
+    const scheduleHeadPoll = () => {
+        window.setTimeout(async () => {
+            if (!TAURI.has || !state.hasRepo || document.visibilityState !== 'visible' || !document.hasFocus()) {
+                return scheduleHeadPoll();
             }
-        })().finally(() => { headPollInFlight = null; });
-    }, headPollMs);
+            if (headPollInFlight) {
+                return scheduleHeadPoll();
+            }
+            headPollInFlight = (async () => {
+                try {
+                    const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status');
+                    const key = `${head?.detached ? 1 : 0}:${String(head?.branch || '')}:${String(head?.commit || '')}`;
+                    if (key === lastHeadKey) return;
+
+                    const ok = await hydrateBranches();
+                    if (!ok) return;
+                    setRepoHeader();
+                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                    updateFetchUI();
+                    lastHeadKey = key;
+                } catch {
+                    // ignore transient failures (e.g. repo switching / git busy)
+                }
+            })().finally(() => {
+                headPollInFlight = null;
+                scheduleHeadPoll();
+            });
+        }, headPollMs);
+    };
+    scheduleHeadPoll();
 
     // open settings via event
       TAURI.listen?.('ui:open-settings', ({ payload }) => {

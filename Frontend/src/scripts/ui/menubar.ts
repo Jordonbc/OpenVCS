@@ -1,19 +1,58 @@
 type MenuAction = (id: string) => void | Promise<void>;
+const MENU_CLOSE_MS = 130;
 
 export function initMenubar(onAction: MenuAction) {
     const root = document.querySelector<HTMLElement>('.menubar');
     if (!root) return;
 
     let openMenu: HTMLElement | null = null;
+    let closeTimer: number | null = null;
+
+    const isReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const finalizeClose = (menu: HTMLElement) => {
+        const trigger = menu.querySelector<HTMLElement>('.menu-trigger');
+        const list = menu.querySelector<HTMLElement>('.menu-list');
+        trigger?.setAttribute('aria-expanded', 'false');
+        if (list) {
+            list.classList.remove('is-closing');
+            list.setAttribute('hidden', '');
+        }
+        if (openMenu === menu) openMenu = null;
+    };
+
+    const closeMenu = (menu: HTMLElement | null, immediate = false) => {
+        if (!menu) return;
+        if (closeTimer !== null) {
+            window.clearTimeout(closeTimer);
+            closeTimer = null;
+        }
+        const list = menu.querySelector<HTMLElement>('.menu-list');
+        if (!list || list.hasAttribute('hidden')) {
+            finalizeClose(menu);
+            return;
+        }
+        if (immediate || isReducedMotion()) {
+            finalizeClose(menu);
+            return;
+        }
+        list.classList.add('is-closing');
+        closeTimer = window.setTimeout(() => {
+            finalizeClose(menu);
+            closeTimer = null;
+        }, MENU_CLOSE_MS);
+    };
 
     const closeMenus = () => {
-        openMenu?.querySelector<HTMLElement>('.menu-trigger')?.setAttribute('aria-expanded', 'false');
-        openMenu?.querySelector<HTMLElement>('.menu-list')?.setAttribute('hidden', '');
-        openMenu = null;
+        closeMenu(openMenu);
     };
 
     const open = (menu: HTMLElement) => {
-        if (openMenu && openMenu !== menu) closeMenus();
+        if (closeTimer !== null) {
+            window.clearTimeout(closeTimer);
+            closeTimer = null;
+        }
+        if (openMenu && openMenu !== menu) closeMenu(openMenu, true);
         const list = menu.querySelector<HTMLElement>('.menu-list');
         const trigger = menu.querySelector<HTMLElement>('.menu-trigger');
         if (!list || !trigger) return;
@@ -22,6 +61,7 @@ export function initMenubar(onAction: MenuAction) {
             closeMenus();
             return;
         }
+        list.classList.remove('is-closing');
         list.removeAttribute('hidden');
         trigger.setAttribute('aria-expanded', 'true');
         openMenu = menu;

@@ -1,15 +1,18 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use log::{error, info, warn};
-use tauri::{async_runtime, State};
+use serde_json::Value;
+use tauri::{async_runtime, Manager, Runtime, State, Window};
 
 use openvcs_core::BackendId;
 use std::collections::BTreeMap;
 
+use crate::plugin_runtime::stdio_rpc::{RpcConfig, SpawnConfig, StdioRpcProcess};
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::state::AppState;
+use crate::tauri_commands::shared::progress_bridge;
 
 #[tauri::command]
 pub fn list_vcs_backends_cmd() -> Vec<(String, String)> {
@@ -95,4 +98,126 @@ pub async fn set_vcs_backend_cmd(
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn reopen_current_repo_cmd(state: State<'_, AppState>) -> Result<(), String> {
+    let Some(repo) = state.current_repo() else {
+        return Ok(());
+    };
+
+    let backend_id = repo.id();
+    let path = repo.inner().workdir().to_path_buf();
+
+    let backend_label = backend_id.as_ref().to_string();
+    let open_path = path.clone();
+    let handle = async_runtime::spawn_blocking(move || {
+        plugin_vcs_backends::open_repo_via_plugin_vcs_backend(backend_id, Path::new(&open_path))
+    })
+    .await
+    .map_err(|e| format!("reopen_current_repo_cmd task failed: {e}"))?
+    .map_err(|e| format!("Failed to reopen repo with `{backend_label}`: {e}"))?;
+
+    let new_repo = Arc::new(Repo::new(handle));
+    state.set_current_repo(new_repo);
+    Ok(())
+}
+
+/// Call an arbitrary RPC method on a VCS backend module.
+///
+/// This is intentionally backend-agnostic so plugin UI can access backend-specific helpers
+/// (e.g. Git LFS) without hardcoding them into the host's generic VCS trait.
+#[tauri::command]
+pub async fn call_vcs_backend_method<R: Runtime>(
+    window: Window<R>,
+    state: State<'_, AppState>,
+    backend_id: BackendId,
+    method: String,
+    params: Value,
+) -> Result<Value, String> {
+    let backend_id_str = backend_id.as_ref().to_string();
+    let method = method.trim().to_string();
+    if method.is_empty() {
+        return Err("method is empty".to_string());
+    }
+
+    let list = plugin_vcs_backends::list_plugin_vcs_backends()?;
+    let desc = list
+        .into_iter()
+        .find(|d| d.backend_id.as_ref() == backend_id.as_ref())
+        .ok_or_else(|| format!("Unknown VCS backend: {backend_id_str}"))?;
+
+    let repo_root = state
+        .current_repo()
+        .map(|repo| repo.inner().workdir().to_path_buf())
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let allowed_workspace_root = resolve_allowed_workspace_root(&repo_root, &params)?;
+
+    // Run the backend RPC on a blocking thread so the Tauri main thread and
+    // webview are not blocked by long-running operations (e.g. LFS transfers).
+    let backend_id_clone = backend_id_str.clone();
+    let method_clone = method.clone();
+    let params_clone = params.clone();
+    let desc_clone = desc.clone();
+    let on_event = progress_bridge(window.app_handle().clone());
+
+    let call_task = async_runtime::spawn_blocking(move || {
+        let rpc = StdioRpcProcess::new(
+            SpawnConfig {
+                plugin_id: desc_clone.plugin_id,
+                component_label: format!("vcs-backend-{}", backend_id_clone),
+                exec_path: desc_clone.exec_path,
+                args: vec!["--backend".into(), backend_id_clone.clone()],
+                requested_capabilities: desc_clone.requested_capabilities,
+                approval: desc_clone.approval,
+                allowed_workspace_root,
+            },
+            RpcConfig::default(),
+        );
+        rpc.set_event_sink(Some(on_event));
+
+        rpc.call(&method_clone, params_clone)
+    });
+
+    let call_res = call_task
+        .await
+        .map_err(|e| format!("call_vcs_backend_method task failed: {e}"))?;
+
+    call_res.map_err(|e| format!("{}: {}", e.code, e.message))
+}
+
+fn resolve_allowed_workspace_root(
+    repo_root: &Path,
+    params: &Value,
+) -> Result<Option<PathBuf>, String> {
+    let repo_root = std::fs::canonicalize(repo_root)
+        .map_err(|e| format!("Failed to resolve repository root: {e}"))?;
+
+    let requested = params
+        .get("path")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
+
+    let Some(requested) = requested else {
+        return Ok(Some(repo_root));
+    };
+
+    let requested_abs = if requested.is_absolute() {
+        requested
+    } else {
+        repo_root.join(requested)
+    };
+    let requested_abs = std::fs::canonicalize(&requested_abs)
+        .map_err(|e| format!("Invalid backend workspace path: {e}"))?;
+
+    if requested_abs == repo_root || requested_abs.starts_with(&repo_root) {
+        Ok(Some(requested_abs))
+    } else {
+        Err(format!(
+            "Backend workspace path escapes repository root: {}",
+            requested_abs.display()
+        ))
+    }
 }

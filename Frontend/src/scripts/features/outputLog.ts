@@ -1,6 +1,6 @@
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
-import { initOverlayScrollbars } from '../lib/scrollbars';
+import { initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from '../lib/scrollbars';
 
 type OutputLevel = 'info' | 'warn' | 'error';
 type OutputLogEntry = { ts_ms: number; level: OutputLevel; source: string; message: string };
@@ -78,7 +78,8 @@ export async function initOutputLogViewIfRequested(): Promise<boolean> {
     </div>
   `;
   document.body.appendChild(root);
-  initOverlayScrollbars(root);
+  initOverlayScrollbarsFor(root);
+  refreshOverlayScrollbarsFor(root);
 
   root.dataset.activeTab = 'vcs';
 
@@ -110,6 +111,7 @@ export async function initOutputLogViewIfRequested(): Promise<boolean> {
     listApp?.classList.toggle('outlog-hidden', tab !== 'app');
     const list = listFor(tab);
     if (auto?.checked) list && (list.scrollTop = list.scrollHeight);
+    refreshOverlayScrollbarsFor(root);
   };
 
   let appPollTimer: number | undefined;

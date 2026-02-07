@@ -37,6 +37,10 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
             // in a `resources` subdirectory or directly alongside the exe.
             candidates.push(dir.join("resources").join(BUILT_IN_PLUGINS_DIR_NAME));
             candidates.push(dir.join(BUILT_IN_PLUGINS_DIR_NAME));
+            // Dev builds can generate built-in bundles under `target/openvcs/`.
+            if let Some(target_dir) = dir.parent() {
+                candidates.push(target_dir.join("openvcs").join(BUILT_IN_PLUGINS_DIR_NAME));
+            }
             #[cfg(target_os = "macos")]
             if let Some(parent) = dir.parent() {
                 candidates.push(parent.join("Resources").join(BUILT_IN_PLUGINS_DIR_NAME));

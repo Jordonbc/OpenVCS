@@ -12,6 +12,10 @@ import type { GlobalSettings, ThemeSummary } from '../types';
 const THEME_PACK_HINT = 'Install a theme ZIP into the themes folder, or install a plugin that provides themes.';
 const SYSTEM_DARK_MQ = matchMedia('(prefers-color-scheme: dark)');
 
+export function applyAnimationPreference(enabled: boolean | undefined | null) {
+    document.documentElement.dataset.animations = enabled === false ? 'off' : 'on';
+}
+
 function normalizeAppearance(value: unknown): 'light' | 'dark' | 'both' | null {
     const raw = String(value ?? '').trim().toLowerCase();
     if (raw === 'light' || raw === 'dark' || raw === 'both') return raw;
@@ -258,11 +262,10 @@ export function wireSettings() {
             if (TAURI.has) {
                 await TAURI.invoke('set_global_settings', { cfg: next });
 
-                // If backend changed, request a backend swap (reopens repo if open)
+                // If Git engine changed, reopen the current repo so the plugin can reconfigure.
                 const newBackend: string = String(next?.git?.backend || 'system');
                 if (newBackend && newBackend !== prevBackend) {
-                    const backend_id = (newBackend === 'libgit2') ? 'git-libgit2' : 'git-system';
-                    try { await TAURI.invoke('set_vcs_backend_cmd', { backend_id }); } catch {}
+                    try { await TAURI.invoke('reopen_current_repo_cmd'); } catch {}
                 }
             }
 
@@ -282,6 +285,7 @@ export function wireSettings() {
                 const mono = String(next?.ux?.font_mono || '').trim();
                 if (mono) root.style.setProperty('--mono', mono);
                 else root.style.removeProperty('--mono');
+                applyAnimationPreference(next?.performance?.animations);
             } catch {}
 
             notify('Settings saved');
@@ -308,12 +312,13 @@ export function wireSettings() {
             cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, fetch_on_focus: true, allow_hooks: 'ask', respect_core_autocrlf: true, merge_commit_message_template: "Merged branch '{branch:source}' into '{branch:target}'" };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
-            cur.performance = { progressive_render: true, gpu_accel: true };
+            cur.performance = { progressive_render: true, gpu_accel: true, animations: true };
             cur.ux = { ui_scale: 1.0, font_mono: 'monospace', vim_nav: false, color_blind_mode: 'none', recents_limit: 10 };
             cur.logging = { level: 'info', live_viewer: false, retain_archives: 10 };
             cur.plugins = { disabled: [], enabled: [] };
 
             await TAURI.invoke('set_global_settings', { cfg: cur });
+            applyAnimationPreference(cur.performance?.animations);
             await loadSettingsIntoForm(modal);
             setTheme('system');
             try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
@@ -393,6 +398,7 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
 
     o.performance = {
         ...o.performance,
+        animations: !!get<HTMLInputElement>('#set-animations')?.checked,
         progressive_render: !!get<HTMLInputElement>('#set-progressive-render')?.checked,
         gpu_accel: !!get<HTMLInputElement>('#set-gpu-accel')?.checked,
     };
@@ -489,7 +495,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     }
 
     const elLang  = get<HTMLSelectElement>('#set-language'); if (elLang) elLang.value = toKebab(cfg.general?.language);
-    const elDefBe = get<HTMLSelectElement>('#set-default-backend'); if (elDefBe) elDefBe.value = toKebab(cfg.general?.default_backend || 'git');
+    await refreshDefaultBackendOptions(m, cfg);
     const elChan  = get<HTMLSelectElement>('#set-update-channel'); if (elChan) {
         const v = toKebab(cfg.general?.update_channel);
         elChan.value = (v === 'beta') ? 'nightly' : v;
@@ -539,6 +545,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elBg = get<HTMLInputElement>('#set-lfs-bg-fetch'); if (elBg) elBg.checked = !!cfg.lfs?.background_fetch_on_checkout;
     elLe?.dispatchEvent(new Event('change'));
 
+    const elAni= get<HTMLInputElement>('#set-animations'); if (elAni) elAni.checked = cfg.performance?.animations !== false;
     const elPrg= get<HTMLInputElement>('#set-progressive-render'); if (elPrg) elPrg.checked = !!cfg.performance?.progressive_render;
     const elGpu= get<HTMLInputElement>('#set-gpu-accel'); if (elGpu) elGpu.checked = !!cfg.performance?.gpu_accel;
 
@@ -557,6 +564,28 @@ async function refreshGitBackendOptions(modal: HTMLElement, cfg: GlobalSettings)
     if (!elGb) return;
 
     const backend = String(cfg.git?.backend || '').trim();
+    const options: Array<[string, string]> = [
+        ['system', 'System'],
+        ['libgit2', 'Libgit2'],
+    ];
+
+    elGb.innerHTML = '';
+    for (const [id, label] of options) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = label;
+        elGb.appendChild(opt);
+    }
+
+    elGb.disabled = false;
+    elGb.value = (backend === 'libgit2') ? 'libgit2' : 'system';
+}
+
+async function refreshDefaultBackendOptions(modal: HTMLElement, cfg: GlobalSettings) {
+    const el = modal.querySelector<HTMLSelectElement>('#set-default-backend');
+    if (!el) return;
+
+    const desired = String(cfg.general?.default_backend || '').trim();
 
     let available: Array<[string, string]> = [];
     if (TAURI.has) {
@@ -565,31 +594,24 @@ async function refreshGitBackendOptions(modal: HTMLElement, cfg: GlobalSettings)
         } catch {}
     }
 
-    const gitBackends = (Array.isArray(available) ? available : [])
+    const backends = (Array.isArray(available) ? available : [])
         .map(([id, name]) => [String(id || '').trim(), String(name || '').trim()] as const)
-        .filter(([id]) => id.startsWith('git-'));
+        .filter(([id]) => id.length > 0);
 
-    const labelCounts = new Map<string, number>();
-    for (const [, name] of gitBackends) {
-        const label = name || '';
-        if (!label) continue;
-        labelCounts.set(label, (labelCounts.get(label) || 0) + 1);
-    }
-
-    elGb.innerHTML = '';
-    for (const [id, name] of gitBackends) {
+    el.innerHTML = '';
+    for (const [id, name] of backends) {
         const opt = document.createElement('option');
         opt.value = id;
-        const base = name || id;
-        opt.textContent = (name && (labelCounts.get(name) || 0) > 1) ? `${base} — ${id}` : base;
-        elGb.appendChild(opt);
+        opt.textContent = name || id;
+        el.appendChild(opt);
     }
 
-    elGb.disabled = gitBackends.length === 0;
-    if (backend && gitBackends.some(([id]) => id === backend)) {
-        elGb.value = backend;
-    } else if (gitBackends.length) {
-        elGb.value = gitBackends[0][0];
+    el.disabled = backends.length === 0;
+    if (!backends.length) return;
+    if (desired && backends.some(([id]) => id === desired)) {
+        el.value = desired;
+    } else {
+        el.value = backends[0][0];
     }
 }
 

@@ -2,12 +2,9 @@
 import { TAURI } from "../lib/tauri";
 import { notify } from "../lib/notify";
 import { openModal, closeModal, hydrate } from "../ui/modals";
-import { state } from "../state/state";
+import { refreshRepoSummary } from "./repoSelection";
 
-type Which = "clone" | "add" | "switch";
-
-type Branch = { name: string; current?: boolean; kind?: { type?: string; remote?: string } };
-type RepoSummary = { path: string; current_branch: string; branches: Branch[] };
+type Which = "clone" | "add";
 
 // Elements inside the modal
 let root: HTMLElement | null = null;
@@ -20,8 +17,6 @@ let doCloneBtn: HTMLButtonElement | null = null;
 
 let addPath: HTMLInputElement | null = null;
 let doAddBtn: HTMLButtonElement | null = null;
-
-let recentList: HTMLElement | null = null;
 
 // Slider indicator bits
 let seg: HTMLElement | null = null;
@@ -59,21 +54,6 @@ async function validateAdd() {
     } catch {
         setDisabled("do-add", true);
     }
-}
-
-/* ---------------- repo summary + broadcast ---------------- */
-
-async function refreshRepoSummary() {
-    if (!TAURI.has) return;
-    const info = await TAURI.invoke<RepoSummary>("get_repo_summary");
-    // Note: backend uses snake_case field names
-    // @ts-ignore
-    state.branch = (info as any).current_branch || "";
-    state.branches = Array.isArray((info as any).branches) ? (info as any).branches : [];
-    const repoBranch = document.querySelector<HTMLElement>("#repo-branch");
-    if (repoBranch) repoBranch.textContent = state.branch || "—";
-    // Broadcast for any listeners (branches UI, status bar, etc.)
-    window.dispatchEvent(new CustomEvent("app:repo-selected", { detail: { path: (info as any).path } }));
 }
 
 /* ---------------- slider indicator helpers ---------------- */
@@ -117,7 +97,7 @@ function setSheet(which: Which) {
     });
 
     // Panels
-    (["clone", "add", "switch"] as Which[]).forEach((k) => {
+    (["clone", "add"] as Which[]).forEach((k) => {
         panels[k].classList.toggle("hidden", k !== which);
     });
 
@@ -156,7 +136,6 @@ export function bindCommandSheet() {
     panels = {
         clone: root.querySelector("#sheet-clone") as HTMLElement,
         add: root.querySelector("#sheet-add") as HTMLElement,
-        switch: root.querySelector("#sheet-switch") as HTMLElement,
     };
 
     segIndicator = ensureIndicator();
@@ -167,8 +146,6 @@ export function bindCommandSheet() {
 
     addPath = el<HTMLInputElement>("#add-path", root);
     doAddBtn = el<HTMLButtonElement>("#do-add", root);
-
-    recentList = el<HTMLElement>("#recent-list", root);
 
     // Tab switching (click)
     tabs.forEach((btn) =>
@@ -251,65 +228,6 @@ export function bindCommandSheet() {
             notify("Add failed");
         }
     });
-
-    // Recents (Open inline) — hardened mapping + empty state
-    (async function loadRecents() {
-        try {
-            let raw: unknown = [];
-            if (TAURI.has) {
-                raw = await TAURI.invoke<any[]>("list_recent_repos").catch(() => []);
-            }
-
-            type Recent = { path: string; name?: string };
-
-            const items: Recent[] = Array.isArray(raw)
-                ? raw
-                    .filter((r: any): r is Recent => !!r && typeof r === "object" && typeof r.path === "string" && r.path.trim() !== "")
-                    .map((r: any) => ({
-                        path: r.path.trim(),
-                        name: typeof r.name === "string" ? r.name.trim() : undefined
-                    }))
-                : [];
-
-            if (recentList) {
-                if (items.length === 0) {
-                    recentList.innerHTML = `<li class="empty" aria-disabled="true">No recent repositories</li>`;
-                } else {
-                    recentList.innerHTML = items.map(r => {
-                        const base = r.name || r.path.split(/[\\/]/).pop() || r.path;
-                        return `
-              <li data-path="${r.path}">
-                <div>
-                  <strong>${base}</strong>
-                  <div class="path" title="${r.path}">${r.path}</div>
-                </div>
-                <button class="tbtn" type="button" data-open>Open</button>
-              </li>`;
-                    }).join("");
-                }
-
-                recentList.onclick = async (e) => {
-                    const openBtn = (e.target as HTMLElement).closest("[data-open]") as HTMLElement | null;
-                    if (!openBtn) return;
-                    const li = (e.target as HTMLElement).closest("li[data-path]") as HTMLElement | null;
-                    const path = li?.dataset.path?.trim();
-                    if (!path) return; // ignore bogus entries
-                    try {
-                        if (TAURI.has) await TAURI.invoke("open_repo", { path });
-                        await refreshRepoSummary();         // ensure state + event
-                        notify(`Opened ${path}`);
-                        closeSheet();
-                    } catch {
-                        notify("Open failed");
-                    }
-                };
-            }
-        } catch {
-            if (recentList) {
-                recentList.innerHTML = `<li class="empty" aria-disabled="true">No recent repositories</li>`;
-            }
-        }
-    })();
 
     // Keep the slider aligned on layout changes to the header
     if (seg) {

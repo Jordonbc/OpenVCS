@@ -14,7 +14,7 @@ export interface Branch {
 export interface FileStatus {
     path: string;
     old_path?: string;
-    status: 'A'|'M'|'D'|string;
+    status: 'A'|'M'|'D'|'S'|string;
     staged?: boolean;
     resolved_conflict?: boolean;
     hunks?: string[];
@@ -26,7 +26,6 @@ export interface ConflictDetails {
     theirs?: string | null;
     base?: string | null;
     binary?: boolean;
-    lfs_pointer?: boolean;
 }
 
 export interface CommitItem {
@@ -92,6 +91,7 @@ export interface GlobalSettings {
     performance?: {
         progressive_render?: boolean;
         gpu_accel?: boolean;
+        animations?: boolean;
     };
     ux?: {
         ui_scale?: number;

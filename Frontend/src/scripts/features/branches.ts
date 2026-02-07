@@ -2,6 +2,7 @@
 import { qs } from '../lib/dom';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
+import { refreshOverlayScrollbarsFor } from '../lib/scrollbars';
 import { state } from '../state/state';
 import { openModal } from '../ui/modals';
 import { openRenameBranch } from './renameBranch';
@@ -22,6 +23,8 @@ const branchPop    = qs<HTMLElement>('#branch-pop');
 const branchFilter = qs<HTMLInputElement>('#branch-filter');
 const branchList   = qs<HTMLElement>('#branch-list');
 const repoBranchEl = qs<HTMLElement>('#repo-branch');
+let branchCloseTimer: number | null = null;
+const BRANCH_CLOSE_MS = 130;
 
 function syncBranchLabelsFromState() {
     const label = state.branchLabel || state.branch || '—';
@@ -107,21 +110,40 @@ function renderBranches() {
 
 async function openBranchPopover() {
     if (!branchBtn || !branchPop) return;
+    if (branchCloseTimer !== null) {
+        window.clearTimeout(branchCloseTimer);
+        branchCloseTimer = null;
+    }
 
     await loadBranches();
     const r = branchBtn.getBoundingClientRect();
+    branchPop.classList.remove('is-closing');
     branchPop.style.left = `${r.left}px`;
     branchPop.style.top  = `${r.bottom + 6}px`;
     branchPop.hidden = false;
     branchBtn.setAttribute('aria-expanded', 'true');
+    try { refreshOverlayScrollbarsFor(branchPop); } catch {}
     setTimeout(() => branchFilter?.focus(), 0);
 }
 
 function closeBranchPopover() {
     if (!branchPop || !branchBtn || !branchFilter) return;
-    branchPop.hidden = true;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion) {
+        branchPop.hidden = true;
+        branchBtn.setAttribute('aria-expanded', 'false');
+        branchFilter.value = '';
+        return;
+    }
+    if (branchCloseTimer !== null) window.clearTimeout(branchCloseTimer);
+    branchPop.classList.add('is-closing');
     branchBtn.setAttribute('aria-expanded', 'false');
-    branchFilter.value = '';
+    branchCloseTimer = window.setTimeout(() => {
+        branchPop.classList.remove('is-closing');
+        branchPop.hidden = true;
+        branchFilter.value = '';
+        branchCloseTimer = null;
+    }, BRANCH_CLOSE_MS);
 }
 
 /* ---------------- enable/disable ---------------- */

@@ -3,6 +3,36 @@ import { state, prefs } from '../../state/state';
 import { renderList } from './list';
 import { autoOpenFirstConflict } from '../conflicts';
 
+function normalizeFiles(files: any[]): any[] {
+    return [...files].sort((a, b) => String(a?.path || '').localeCompare(String(b?.path || '')));
+}
+
+function buildStatusSignature(input: {
+    files: any[];
+    ahead: number;
+    behind: number;
+    mergeInProgress: boolean;
+    seenConflicts: Set<string>;
+}): string {
+    const files = normalizeFiles(input.files).map((f) => ({
+        path: String(f?.path || ''),
+        oldPath: String((f as any)?.old_path || ''),
+        status: String((f as any)?.status || '').toUpperCase(),
+        staged: !!(f as any)?.staged,
+        resolvedConflict: !!(f as any)?.resolved_conflict,
+    }));
+    const conflicts = Array.from(input.seenConflicts).sort();
+    return JSON.stringify({
+        files,
+        ahead: Number(input.ahead || 0),
+        behind: Number(input.behind || 0),
+        mergeInProgress: !!input.mergeInProgress,
+        conflicts,
+    });
+}
+
+let lastStatusSignature = '';
+
 export async function hydrateBranches(): Promise<boolean> {
     if (!TAURI.has) return false;
     try {
@@ -32,39 +62,53 @@ export async function hydrateStatus() {
     if (!TAURI.has) return;
     try {
         const result = await TAURI.invoke<{ files: any[]; ahead?: number; behind?: number }>('git_status');
-        state.hasRepo = true;
-        state.files = Array.isArray(result?.files) ? (result.files as any) : [];
+        const nextFiles = Array.isArray(result?.files) ? (result.files as any) : [];
+        let nextMergeInProgress = false;
+        let nextSeenConflicts = new Set<string>();
         // Track merge context for UI hints (e.g., resolved-conflict checkmarks)
         try {
             const ctx = await TAURI.invoke<{ in_progress: boolean }>('git_merge_context');
-            const inMerge = !!ctx?.in_progress;
-            if (state.mergeInProgress !== inMerge) {
-                state.seenConflicts = new Set<string>();
-            }
-            state.mergeInProgress = inMerge;
-            if (inMerge) {
-                (state.files || []).forEach((f: any) => {
+            nextMergeInProgress = !!ctx?.in_progress;
+            if (nextMergeInProgress) {
+                nextSeenConflicts = new Set<string>();
+                nextFiles.forEach((f: any) => {
                     if (String(f?.status || '').toUpperCase() === 'U' && f?.path) {
-                        state.seenConflicts.add(String(f.path));
+                        nextSeenConflicts.add(String(f.path));
                     }
                 });
-            } else {
-                state.seenConflicts = new Set<string>();
             }
         } catch {
-            state.mergeInProgress = false;
-            state.seenConflicts = new Set<string>();
+            nextMergeInProgress = false;
+            nextSeenConflicts = new Set<string>();
         }
-        const currentPaths = new Set((state.files || []).map((f) => f.path));
+        const nextAhead = Number((result as any)?.ahead || 0);
+        const nextBehind = Number((result as any)?.behind || 0);
+        const nextSignature = buildStatusSignature({
+            files: nextFiles,
+            ahead: nextAhead,
+            behind: nextBehind,
+            mergeInProgress: nextMergeInProgress,
+            seenConflicts: nextSeenConflicts,
+        });
+        if (nextSignature === lastStatusSignature) return;
+        lastStatusSignature = nextSignature;
+        state.diffDirty = true;
+
+        state.hasRepo = true;
+        state.files = nextFiles;
+        state.mergeInProgress = nextMergeInProgress;
+        state.seenConflicts = nextSeenConflicts;
+
+        const currentPaths = new Set<string>(nextFiles.map((f: any) => String(f?.path || '')));
         if (state.defaultSelectAll) {
             state.selectionImplicitAll = true;
-            state.selectedFiles = new Set(Array.from(currentPaths));
+            state.selectedFiles = new Set<string>(Array.from(currentPaths));
         } else {
             state.selectionImplicitAll = false;
             state.selectedFiles.forEach((p) => { if (!currentPaths.has(p)) state.selectedFiles.delete(p); });
         }
-        (state as any).ahead = Number((result as any)?.ahead || 0);
-        (state as any).behind = Number((result as any)?.behind || 0);
+        (state as any).ahead = nextAhead;
+        (state as any).behind = nextBehind;
         renderList();
         void autoOpenFirstConflict(state.files as any);
         window.dispatchEvent(new CustomEvent('app:status-updated'));
@@ -75,6 +119,7 @@ export async function hydrateStatus() {
         state.seenConflicts = new Set<string>();
         state.selectedFiles.clear();
         state.selectionImplicitAll = false;
+        lastStatusSignature = '';
         renderList();
         window.dispatchEvent(new CustomEvent('app:status-updated'));
     }

@@ -120,3 +120,60 @@ pub fn open_repo_file<R: Runtime>(
         .open_path(abs.to_string_lossy().to_string(), None::<&str>)
         .map_err(|e| format!("Failed to open file: {e}"))
 }
+
+fn decode_repo_text(bytes: &[u8]) -> String {
+    if bytes.len() >= 2 && bytes.len().is_multiple_of(2) && bytes.contains(&0) {
+        let (endianness, start) = if bytes.starts_with(&[0xFF, 0xFE]) {
+            ("le", 2usize)
+        } else if bytes.starts_with(&[0xFE, 0xFF]) {
+            ("be", 2usize)
+        } else {
+            let even_zeros = bytes.iter().step_by(2).filter(|b| **b == 0).count();
+            let odd_zeros = bytes.iter().skip(1).step_by(2).filter(|b| **b == 0).count();
+            if odd_zeros > even_zeros {
+                ("le", 0usize)
+            } else if even_zeros > odd_zeros {
+                ("be", 0usize)
+            } else {
+                return String::from_utf8_lossy(bytes).to_string();
+            }
+        };
+
+        let mut u16s = Vec::with_capacity((bytes.len() - start) / 2);
+        let mut i = start;
+        while i + 1 < bytes.len() {
+            let a = bytes[i];
+            let b = bytes[i + 1];
+            let u = if endianness == "le" {
+                u16::from_le_bytes([a, b])
+            } else {
+                u16::from_be_bytes([a, b])
+            };
+            u16s.push(u);
+            i += 2;
+        }
+        let mut out = String::new();
+        for ch in std::char::decode_utf16(u16s.into_iter()) {
+            match ch {
+                Ok(c) => out.push(c),
+                Err(_) => return String::from_utf8_lossy(bytes).to_string(),
+            }
+        }
+        return out;
+    }
+    String::from_utf8_lossy(bytes).to_string()
+}
+
+#[tauri::command]
+pub fn read_repo_file_text(state: State<'_, AppState>, path: String) -> Result<String, String> {
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let rel = safe_relative_path(&path)?;
+    let abs = repo.inner().workdir().join(rel);
+    if !abs.exists() {
+        return Err(format!("Path does not exist: {}", abs.display()));
+    }
+    let bytes = std::fs::read(&abs).map_err(|e| format!("Failed to read file: {e}"))?;
+    Ok(decode_repo_text(&bytes))
+}

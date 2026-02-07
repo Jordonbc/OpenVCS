@@ -1,0 +1,6 @@
+[submodule "Backend/built-in-plugins/Git"]
+	path = Backend/built-in-plugins/Git
+	url = git@github.com:Open-VCS/OpenVCS-Plugin-Git.git
+[submodule "Backend/built-in-plugins/OfficialThemes"]
+	path = Backend/built-in-plugins/OfficialThemes
+	url = git@github.com:Open-VCS/OpenVCS-Plugin-Themes.git

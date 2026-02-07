@@ -3,7 +3,7 @@
   "productName": "OpenVCS",
   "identifier": "dev.jordon.openvcs",
   "build": {
-    "beforeDevCommand": "npm run dev --prefix ../Frontend",
+    "beforeDevCommand": "node ../scripts/ensure-built-in-plugins.js && npm run dev --prefix ../Frontend",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../Frontend/dist"
   },
@@ -40,7 +40,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "built-in-plugins"
+      "../target/openvcs/built-in-plugins"
     ],
     "licenseFile": "../LICENSE",
     "publisher": "Jordon Brooks",

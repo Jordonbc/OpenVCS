@@ -3,6 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{fs, io};
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub schema_version: u32,
@@ -61,7 +65,7 @@ pub struct General {
     #[serde(default)]
     pub language: Language,
     #[serde(default)]
-    pub default_backend: DefaultBackend,
+    pub default_backend: String,
     #[serde(default)]
     pub update_channel: UpdateChannel,
     #[serde(default)]
@@ -79,7 +83,7 @@ impl Default for General {
             theme: Theme::System,
             theme_pack: default_theme_pack(),
             language: Language::System,
-            default_backend: DefaultBackend::Git,
+            default_backend: "git".into(),
             update_channel: UpdateChannel::Stable,
             reopen_last_repos: true,
             checks_on_launch: true,
@@ -233,12 +237,15 @@ pub struct Performance {
     pub progressive_render: bool,
     #[serde(default)]
     pub gpu_accel: bool,
+    #[serde(default = "default_true")]
+    pub animations: bool,
 }
 impl Default for Performance {
     fn default() -> Self {
         Self {
             progressive_render: true,
             gpu_accel: true,
+            animations: true,
         }
     }
 }
@@ -396,14 +403,6 @@ pub enum GitSshBinary {
     Host,
     Bundled,
     Custom,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-#[derive(Default)]
-pub enum DefaultBackend {
-    #[default]
-    Git,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -608,6 +607,10 @@ impl AppConfig {
         // General: nothing to clamp right now.
         if self.general.theme_pack.trim().is_empty() {
             self.general.theme_pack = default_theme_pack();
+        }
+        self.general.default_backend = self.general.default_backend.trim().to_string();
+        if self.general.default_backend.is_empty() {
+            self.general.default_backend = "git".into();
         }
 
         // Git
