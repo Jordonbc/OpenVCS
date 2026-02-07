@@ -92,6 +92,7 @@ export async function hydrateStatus() {
         });
         if (nextSignature === lastStatusSignature) return;
         lastStatusSignature = nextSignature;
+        state.diffDirty = true;
 
         state.hasRepo = true;
         state.files = nextFiles;

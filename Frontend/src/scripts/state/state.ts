@@ -29,6 +29,7 @@ export const state = {
     seenConflicts: new Set<string>() as Set<string>,
     defaultSelectAll: true as boolean, // by default select all files/hunks until user toggles
     selectionImplicitAll: true as boolean, // true when select-all was auto-applied (no manual picks yet)
+    diffDirty: true as boolean,
     // Selection state
     selectedFiles: new Set<string>(),
     currentFile: '' as string,

@@ -67,11 +67,16 @@ export function highlightRow(index: number) {
 
 export async function selectFile(file: FileStatus, index: number) {
     if (!diffHeadPath || !diffEl) return;
+    if (!state.diffDirty && state.currentFile === file.path) {
+        highlightRow(index);
+        return;
+    }
     highlightRow(index);
     const status = String(file.status || '').toUpperCase();
     if (status === 'U') {
         diffHeadPath.textContent = `${file.path || '(unknown file)'} (conflicted)`;
         await renderConflictView(file);
+        state.diffDirty = false;
         return;
     }
     diffHeadPath.textContent = file.path || '(unknown file)';
@@ -211,6 +216,7 @@ export async function selectFile(file: FileStatus, index: number) {
         }
         syncFileCheckboxWithHunks();
         updateCommitButton();
+        state.diffDirty = false;
     } catch (e) {
         console.error(e);
         diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load diff</div></div></div>';
