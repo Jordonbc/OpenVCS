@@ -65,10 +65,6 @@ function unlockScroll() {
 }
 
 function closeWithAnimation(id: string, el: HTMLElement) {
-    if (id !== "repo-switch-drawer" && id !== "command-modal") {
-        closeModal(id);
-        return;
-    }
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduceMotion) {
         closeModal(id);
@@ -77,7 +73,7 @@ function closeWithAnimation(id: string, el: HTMLElement) {
     const existing = (el as any).__animatedCloseTimer as number | undefined;
     if (existing) window.clearTimeout(existing);
     el.classList.add("is-closing");
-    const delay = id === "command-modal" ? 140 : 130;
+    const delay = id === "repo-switch-drawer" ? 130 : 140;
     (el as any).__animatedCloseTimer = window.setTimeout(() => {
         el.classList.remove("is-closing");
         closeModal(id);
@@ -129,6 +125,12 @@ export function openModal(id: string): void {
     if (!el) return;
 
     if (!el.hasAttribute("aria-hidden")) el.setAttribute("aria-hidden", "true");
+    el.classList.remove("is-closing");
+    const existing = (el as any).__animatedCloseTimer as number | undefined;
+    if (existing) {
+        window.clearTimeout(existing);
+        (el as any).__animatedCloseTimer = undefined;
+    }
     el.setAttribute("aria-hidden", "false");
     lockScroll();
     refreshOverlayScrollbarsFor(el);

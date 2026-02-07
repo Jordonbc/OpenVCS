@@ -35,6 +35,8 @@ const cloneBtn = qs<HTMLButtonElement>('#clone-btn');
 const repoSwitch = qs<HTMLButtonElement>('#repo-switch');
 const commitBtn = qs<HTMLButtonElement>('#commit-btn');
 const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
+let fetchCloseTimer: number | null = null;
+const FETCH_CLOSE_MS = 130;
 
 async function boot() {
     // If launched as the Output Log window, render that view and skip the main app UI.
@@ -237,10 +239,15 @@ async function boot() {
 
     function openFetchPopover() {
         if (!fetchPop || !fetchCaret) return;
+        if (fetchCloseTimer !== null) {
+            window.clearTimeout(fetchCloseTimer);
+            fetchCloseTimer = null;
+        }
         const anchor = (document.getElementById('fetch-split') || fetchBtn || fetchCaret) as HTMLElement | null;
         if (!anchor) return;
         updateFetchUI();
         const r = anchor.getBoundingClientRect();
+        fetchPop.classList.remove('is-closing');
         fetchPop.hidden = false;
         fetchPop.style.left = `${r.left}px`;
         fetchPop.style.top  = `${r.bottom + 6}px`;
@@ -253,8 +260,19 @@ async function boot() {
 
     function closeFetchPopover() {
         if (!fetchPop || !fetchCaret) return;
-        fetchPop.hidden = true;
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         fetchCaret.setAttribute('aria-expanded', 'false');
+        if (reduceMotion) {
+            fetchPop.hidden = true;
+            return;
+        }
+        if (fetchCloseTimer !== null) window.clearTimeout(fetchCloseTimer);
+        fetchPop.classList.add('is-closing');
+        fetchCloseTimer = window.setTimeout(() => {
+            fetchPop.classList.remove('is-closing');
+            fetchPop.hidden = true;
+            fetchCloseTimer = null;
+        }, FETCH_CLOSE_MS);
     }
 
     async function pushChanges() {

@@ -20,6 +20,25 @@
 }
 .modal[aria-hidden="true"]{ display:none; }
 
+@media (prefers-reduced-motion: no-preference){
+    .modal[aria-hidden="false"]:not(#repo-switch-drawer) .dialog{
+        animation: modalOpenIn .18s cubic-bezier(.2,.8,.2,1);
+    }
+    .modal.is-closing:not(#repo-switch-drawer) .dialog{
+        animation: modalCloseOut .14s cubic-bezier(.4,0,1,1);
+    }
+}
+
+@keyframes modalOpenIn{
+    from{ opacity:0; transform:translateY(-8px) scale(.985); }
+    to{ opacity:1; transform:translateY(0) scale(1); }
+}
+
+@keyframes modalCloseOut{
+    from{ opacity:1; transform:translateY(0) scale(1); }
+    to{ opacity:0; transform:translateY(-6px) scale(.99); }
+}
+
 .backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.55); z-index:0; }
 
 .dialog.sheet{

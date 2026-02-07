@@ -26,6 +26,7 @@ function ensureSystemSyncListener() {
 const tabs      = qsa<HTMLButtonElement>('.tab');
 const commitBox = qs<HTMLElement>('#commit');
 const diffHeadPath = qs<HTMLElement>('#diff-path');
+let tabSwitchAnimTimer: number | null = null;
 
 const repoTitleEl  = qs<HTMLElement>('#repo-title');
 const repoBranchEl = qs<HTMLElement>('#repo-branch');
@@ -69,8 +70,13 @@ export function toggleTheme() {
 }
 
 export function setTab(tab: 'changes'|'history'|'stash') {
+    const prevTab = prefs.tab;
     prefs.tab = tab; savePrefs();
-    tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    tabs.forEach((b) => {
+        const active = b.dataset.tab === tab;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
     const hideCommit = (tab === 'history' || tab === 'stash');
     if (commitBox) commitBox.style.display = hideCommit ? 'none' : 'grid';
     if (diffHeadPath) setText(diffHeadPath,
@@ -79,6 +85,28 @@ export function setTab(tab: 'changes'|'history'|'stash') {
                           : 'Select a file to view changes');
     const historyActionsBtn = qs<HTMLButtonElement>('#history-actions-btn');
     if (historyActionsBtn && tab !== 'history') historyActionsBtn.hidden = true;
+    if (prevTab === 'history' && tab !== 'history') {
+        (state as any).selectedCommit = null;
+    }
+    if (tab === 'changes' && prevTab !== 'changes') {
+        // Force file diff repaint when leaving history/stash so commit details
+        // can't remain in the right pane.
+        state.diffDirty = true;
+    }
+    if (workGrid) {
+        if (tabSwitchAnimTimer !== null) {
+            window.clearTimeout(tabSwitchAnimTimer);
+            tabSwitchAnimTimer = null;
+        }
+        workGrid.classList.remove('is-tab-switching');
+        // Force reflow so repeated switches replay the animation.
+        void workGrid.offsetWidth;
+        workGrid.classList.add('is-tab-switching');
+        tabSwitchAnimTimer = window.setTimeout(() => {
+            workGrid?.classList.remove('is-tab-switching');
+            tabSwitchAnimTimer = null;
+        }, 200);
+    }
     window.dispatchEvent(new CustomEvent('app:tab-changed', { detail: tab }));
 }
 
