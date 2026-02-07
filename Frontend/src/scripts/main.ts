@@ -39,6 +39,23 @@ const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
 let fetchCloseTimer: number | null = null;
 const FETCH_CLOSE_MS = 130;
 
+function closeFetchPopover() {
+    if (!fetchPop || !fetchCaret) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    fetchCaret.setAttribute('aria-expanded', 'false');
+    if (reduceMotion) {
+        fetchPop.hidden = true;
+        return;
+    }
+    if (fetchCloseTimer !== null) window.clearTimeout(fetchCloseTimer);
+    fetchPop.classList.add('is-closing');
+    fetchCloseTimer = window.setTimeout(() => {
+        fetchPop.classList.remove('is-closing');
+        fetchPop.hidden = true;
+        fetchCloseTimer = null;
+    }, FETCH_CLOSE_MS);
+}
+
 function forceCloseTransientUi() {
     closeAllModals();
     closeSheet();
@@ -278,23 +295,6 @@ async function boot() {
 
         const firstEnabled = fetchList?.querySelector<HTMLElement>('li[role="menuitem"][aria-disabled="false"]');
         setTimeout(() => firstEnabled?.focus(), 0);
-    }
-
-    function closeFetchPopover() {
-        if (!fetchPop || !fetchCaret) return;
-        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        fetchCaret.setAttribute('aria-expanded', 'false');
-        if (reduceMotion) {
-            fetchPop.hidden = true;
-            return;
-        }
-        if (fetchCloseTimer !== null) window.clearTimeout(fetchCloseTimer);
-        fetchPop.classList.add('is-closing');
-        fetchCloseTimer = window.setTimeout(() => {
-            fetchPop.classList.remove('is-closing');
-            fetchPop.hidden = true;
-            fetchCloseTimer = null;
-        }, FETCH_CLOSE_MS);
     }
 
     async function pushChanges() {
