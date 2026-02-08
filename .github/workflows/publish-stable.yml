@@ -15,7 +15,7 @@ jobs:
       SCCACHE_GHA_ENABLED: 'true'
       SCCACHE_CACHE_SIZE: '2G'
       # Flatpak is enabled in CI.
-      OPENVCS_ENABLE_FLATPAK: '1'
+      OPENVCS_ENABLE_FLATPAK: '0'
     strategy:
       fail-fast: false
       matrix:
