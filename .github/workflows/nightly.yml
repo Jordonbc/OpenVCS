@@ -176,6 +176,9 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Add WASI target
+        run: rustup target add wasm32-wasip1
+
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
 
