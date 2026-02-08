@@ -3,8 +3,8 @@
   "productName": "OpenVCS",
   "identifier": "dev.jordon.openvcs",
   "build": {
-    "beforeDevCommand": "node ../Backend/scripts/ensure-built-in-plugins.js && npm run dev --prefix ../Frontend",
-    "beforeBuildCommand": "node ../Backend/scripts/ensure-built-in-plugins.js && npm run build --prefix ../Frontend",
+    "beforeDevCommand": "node -e \"const fs=require('fs'),path=require('path'),cp=require('child_process');const roots=['.','..'];const pick=(rel)=>roots.map((r)=>path.resolve(process.cwd(),r,rel)).find((p)=>fs.existsSync(p));const ensure=pick('Backend/scripts/ensure-built-in-plugins.js')||pick('scripts/ensure-built-in-plugins.js');const frontendPkg=pick('Frontend/package.json');if(!ensure||!frontendPkg){console.error('Could not resolve Backend/Frontend paths from',process.cwd());process.exit(1);}const npmBin=process.platform==='win32'?'npm.cmd':'npm';const npmScript=process.argv[1]||'build';let r=cp.spawnSync(process.execPath,[ensure],{stdio:'inherit'});if((r.status??1)!==0)process.exit(r.status??1);r=cp.spawnSync(npmBin,['run',npmScript,'--prefix',path.dirname(frontendPkg)],{stdio:'inherit'});process.exit(r.status??(r.error?1:0));\" dev",
+    "beforeBuildCommand": "node -e \"const fs=require('fs'),path=require('path'),cp=require('child_process');const roots=['.','..'];const pick=(rel)=>roots.map((r)=>path.resolve(process.cwd(),r,rel)).find((p)=>fs.existsSync(p));const ensure=pick('Backend/scripts/ensure-built-in-plugins.js')||pick('scripts/ensure-built-in-plugins.js');const frontendPkg=pick('Frontend/package.json');if(!ensure||!frontendPkg){console.error('Could not resolve Backend/Frontend paths from',process.cwd());process.exit(1);}const npmBin=process.platform==='win32'?'npm.cmd':'npm';const npmScript=process.argv[1]||'build';let r=cp.spawnSync(process.execPath,[ensure],{stdio:'inherit'});if((r.status??1)!==0)process.exit(r.status??1);r=cp.spawnSync(npmBin,['run',npmScript,'--prefix',path.dirname(frontendPkg)],{stdio:'inherit'});process.exit(r.status??(r.error?1:0));\" build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../Frontend/dist"
   },
