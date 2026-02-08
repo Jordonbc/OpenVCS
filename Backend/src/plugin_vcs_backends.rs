@@ -37,11 +37,9 @@ fn is_plugin_enabled_in_settings(plugin_id: &str, default_enabled: bool) -> bool
         .filter(|s| !s.is_empty())
         .collect();
 
-    if !enabled.is_empty() {
-        enabled.iter().any(|id| id == &plugin_id)
-    } else {
-        default_enabled
-    }
+    // `enabled` is additive (explicit opt-in), not an allowlist.
+    // Plugins remain active by their manifest default unless explicitly disabled.
+    default_enabled || enabled.iter().any(|id| id == &plugin_id)
 }
 
 #[derive(Debug, Clone)]
