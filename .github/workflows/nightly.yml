@@ -236,9 +236,6 @@ jobs:
       - name: Cargo clippy
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: Install cargo-openvcs
-        run: cargo install --locked cargo-openvcs
-
       # ---------- Reset rolling tag (optional but keeps things tidy) ----------
       - name: Remove existing 'openvcs-nightly' release & tag (if any)
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
