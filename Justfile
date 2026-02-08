@@ -23,7 +23,7 @@ test:
   cd Frontend && npx vitest run || true
 
 tauri-build:
-  env NO_STRIP=true cargo tauri build
+  node scripts/tauri-build.js
 
 fix:
   cargo fmt --all

@@ -26,3 +26,4 @@ dist-ssr
 /Backend/icons/android
 /Backend/icons/ios
 /Core
+.env.tauri.local
