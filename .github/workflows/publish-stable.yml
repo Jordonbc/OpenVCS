@@ -89,11 +89,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y flathub org.gnome.Platform//48 org.gnome.Sdk//48
+          flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49
           # Cargo/rustc must come from the Flatpak SDK environment (not the host toolchain).
           # Try common branches to avoid coupling this workflow to the host runner image.
-          flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//24.08 \
-            || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//25.08 \
+          flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//25.08 \
+            || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//24.08 \
             || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable
 
       - name: Verify Flatpak manifest exists
