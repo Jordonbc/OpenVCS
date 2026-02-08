@@ -22,6 +22,9 @@ test:
   cd Frontend && npm exec tsc -- -p tsconfig.json --noEmit || true
   cd Frontend && npx vitest run || true
 
+tauri-build:
+  env NO_STRIP=true cargo tauri build
+
 fix:
   cargo fmt --all
   cargo clippy --fix --all-targets --all-features --allow-dirty --allow-staged

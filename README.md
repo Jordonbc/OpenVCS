@@ -161,8 +161,11 @@ cargo tauri dev
 **Build a release bundle (production):**
 
 ```bash
-cargo tauri build
+just tauri-build
 ```
+
+This wraps `cargo tauri build` with `NO_STRIP=true` to avoid AppImage
+linuxdeploy strip failures on newer Linux toolchains.
 
 ### Optional: Rust‑only build
 
