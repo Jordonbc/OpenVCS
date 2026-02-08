@@ -4,8 +4,11 @@
 import { defineConfig } from "vite";
 import { fileURLToPath, URL } from "node:url";
 
+const host = process.env.TAURI_DEV_HOST;
+
 export default defineConfig({
     base: "./", // critical for packaged Tauri paths
+    clearScreen: false, // prevent Vite from obscuring Rust errors in dev
     resolve: {
         alias: {
             "@": fileURLToPath(new URL("./src", import.meta.url)),
@@ -17,9 +20,17 @@ export default defineConfig({
         port: 1420,
         strictPort: true,
         open: false,
-        hmr: { host: "localhost" },
-        // Optional: quiet the red HMR overlay if you prefer console-only
-        // hmr: { host: "localhost", overlay: false },
+        host: host || false,
+        hmr: host
+            ? {
+                  protocol: "ws",
+                  host,
+                  port: 1421,
+              }
+            : undefined,
+        watch: {
+            ignored: ["**/src-tauri/**"],
+        },
     },
     build: {
         target: "es2022",
