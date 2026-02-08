@@ -1,14 +1,17 @@
 use crate::plugin_bundles::{ApprovalState, PluginBundleStore, PluginManifest, VcsBackendProvide};
 use crate::plugin_paths::{built_in_plugin_dirs, PLUGIN_MANIFEST_NAME};
+use crate::plugin_runtime::stdio_rpc::{RpcConfig, SpawnConfig, StdioRpcProcess};
 use crate::plugin_runtime::vcs_proxy::PluginVcsProxy;
 use crate::settings::AppConfig;
 use log::warn;
 use openvcs_core::{BackendId, Result as VcsResult, Vcs, VcsError};
+use serde_json::Value;
 use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 
 fn is_plugin_enabled_in_settings(plugin_id: &str, default_enabled: bool) -> bool {
@@ -69,6 +72,37 @@ fn load_manifest_from_dir(plugin_dir: &Path) -> Option<PluginManifest> {
     serde_json::from_str(&text).ok()
 }
 
+fn backend_is_available(desc: &PluginBackendDescriptor) -> bool {
+    let rpc = StdioRpcProcess::new(
+        SpawnConfig {
+            plugin_id: desc.plugin_id.clone(),
+            component_label: format!("vcs-probe-{}", desc.backend_id.as_ref()),
+            exec_path: desc.exec_path.clone(),
+            args: vec!["--backend".into(), desc.backend_id.as_ref().to_string()],
+            requested_capabilities: desc.requested_capabilities.clone(),
+            approval: desc.approval.clone(),
+            allowed_workspace_root: None,
+        },
+        RpcConfig {
+            timeout: Duration::from_secs(5),
+        },
+    );
+
+    match rpc.call("caps", Value::Null) {
+        Ok(_) => true,
+        Err(err) => {
+            warn!(
+                "plugin_vcs_backends: backend {} from plugin {} unavailable: {}: {}",
+                desc.backend_id,
+                desc.plugin_id,
+                err.code,
+                err.message
+            );
+            false
+        }
+    }
+}
+
 fn builtin_plugin_manifests() -> Vec<(PathBuf, PluginManifest)> {
     let mut out = Vec::new();
     for root in built_in_plugin_dirs() {
@@ -116,19 +150,20 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
 
         for (id, name) in module.vcs_backends {
             let backend_id = BackendId::from(id.as_str());
+            let candidate = PluginBackendDescriptor {
+                backend_id: backend_id.clone(),
+                backend_name: name,
+                plugin_id: p.plugin_id.clone(),
+                plugin_name: p.name.clone(),
+                exec_path: module.exec_path.clone(),
+                requested_capabilities: installed.requested_capabilities.clone(),
+                approval: installed.approval.clone(),
+            };
+            if !backend_is_available(&candidate) {
+                continue;
+            }
             let key = backend_id.as_ref().to_string();
-            map.insert(
-                key,
-                PluginBackendDescriptor {
-                    backend_id,
-                    backend_name: name,
-                    plugin_id: p.plugin_id.clone(),
-                    plugin_name: p.name.clone(),
-                    exec_path: module.exec_path.clone(),
-                    requested_capabilities: installed.requested_capabilities.clone(),
-                    approval: installed.approval.clone(),
-                },
-            );
+            map.insert(key, candidate);
         }
     }
 
@@ -173,21 +208,22 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
             if map.contains_key(&key) {
                 continue;
             }
-            map.insert(
-                key,
-                PluginBackendDescriptor {
-                    backend_id,
-                    backend_name: label,
-                    plugin_id: plugin_id.to_string(),
-                    plugin_name: plugin_name.clone(),
-                    exec_path: exec_path.clone(),
-                    requested_capabilities: requested_capabilities.clone(),
-                    approval: ApprovalState::Approved {
-                        capabilities: approval_caps.clone(),
-                        approved_at_unix_ms: 0,
-                    },
+            let candidate = PluginBackendDescriptor {
+                backend_id: backend_id.clone(),
+                backend_name: label,
+                plugin_id: plugin_id.to_string(),
+                plugin_name: plugin_name.clone(),
+                exec_path: exec_path.clone(),
+                requested_capabilities: requested_capabilities.clone(),
+                approval: ApprovalState::Approved {
+                    capabilities: approval_caps.clone(),
+                    approved_at_unix_ms: 0,
                 },
-            );
+            };
+            if !backend_is_available(&candidate) {
+                continue;
+            }
+            map.insert(key, candidate);
         }
     }
 

@@ -49,6 +49,19 @@ const STDERR_LOG_MAX_FILES: usize = 5;
 const MAX_PENDING: usize = 1024;
 const MAX_CRASHES: u32 = 5;
 
+fn runtime_container_kind() -> &'static str {
+    if matches!(
+        std::env::var("OPENVCS_FLATPAK").as_deref(),
+        Ok("1") | Ok("true") | Ok("yes") | Ok("on")
+    ) {
+        "flatpak"
+    } else if std::env::var_os("APPIMAGE").is_some() || std::env::var_os("APPDIR").is_some() {
+        "appimage"
+    } else {
+        "native"
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SpawnConfig {
     pub plugin_id: String,
@@ -563,6 +576,9 @@ fn run_wasi_module(cfg: RunWasiConfig) -> Result<(), String> {
         "OPENVCS_PLUGIN_HOST_TIMEOUT_MS",
         host_timeout.as_millis().to_string(),
     );
+    builder.env("OPENVCS_RUNTIME_OS", std::env::consts::OS);
+    builder.env("OPENVCS_RUNTIME_ARCH", std::env::consts::ARCH);
+    builder.env("OPENVCS_RUNTIME_CONTAINER", runtime_container_kind());
     builder.args(&argv);
 
     // Do not preopen the host filesystem into WASI. All file I/O must go through
