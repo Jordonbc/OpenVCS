@@ -37,11 +37,10 @@ jobs:
 
       - name: Compute version tag
         id: version
-        if: matrix.platform == 'ubuntu-24.04'
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="$(grep -m1 '^version *= *\"' Backend/Cargo.toml | sed -E 's/^version *= *\"([^\"]+)\".*/\\1/')"
+          VERSION="$(grep -m1 '^version *= *\"' Backend/Cargo.toml | sed -E 's/^version *= *\"([^\"]+)\".*/\1/')"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=openvcs-v$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -155,8 +154,8 @@ jobs:
           # If your Tauri config expects distDir to already exist, ensure Frontend build outputs there
           # Alternatively, if Backend/tauri.conf.json points to "../Frontend/dist", no change needed.
 
-          tagName: openvcs-v__VERSION__
-          releaseName: 'OpenVCS v__VERSION__'
+          tagName: ${{ steps.version.outputs.tag }}
+          releaseName: OpenVCS v${{ steps.version.outputs.version }}
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
