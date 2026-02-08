@@ -5,8 +5,8 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const scriptDir = __dirname;
-const repoRoot = path.resolve(scriptDir, '..');
-const backendDir = path.join(repoRoot, 'Backend');
+const backendDir = path.resolve(scriptDir, '..');
+const repoRoot = path.resolve(backendDir, '..');
 const pluginSources = path.join(backendDir, 'built-in-plugins');
 const pluginBundles = path.join(repoRoot, 'target', 'openvcs', 'built-in-plugins');
 

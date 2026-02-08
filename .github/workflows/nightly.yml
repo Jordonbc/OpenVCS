@@ -179,6 +179,9 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
 
+      - name: Install OpenVCS SDK CLI
+        run: cargo install --locked openvcs-sdk --bin cargo-openvcs
+
       - name: Install Linux deps
         if: matrix.platform == 'ubuntu-24.04'
         run: |
@@ -193,7 +196,7 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream elfutils
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49
           # Cargo/rustc must come from the Flatpak SDK environment (not the host toolchain).
