@@ -3,8 +3,8 @@
   "productName": "OpenVCS",
   "identifier": "dev.jordon.openvcs",
   "build": {
-    "beforeDevCommand": "node ../scripts/ensure-built-in-plugins.js && npm run dev --prefix ../Frontend",
-    "beforeBuildCommand": "node ../scripts/ensure-built-in-plugins.js && npm run build --prefix ../Frontend",
+    "beforeDevCommand": "node scripts/ensure-built-in-plugins.js && npm run dev --prefix ../Frontend",
+    "beforeBuildCommand": "node scripts/ensure-built-in-plugins.js && npm run build --prefix ../Frontend",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../Frontend/dist"
   },
