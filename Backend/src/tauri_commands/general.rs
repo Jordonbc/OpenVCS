@@ -77,20 +77,21 @@ pub async fn add_repo<R: Runtime>(
 }
 
 fn default_backend_id(state: &AppState) -> Option<BackendId> {
+    let mut backends = crate::plugin_vcs_backends::list_plugin_vcs_backends().ok()?;
+    backends.sort_by(|a, b| a.backend_id.as_ref().cmp(b.backend_id.as_ref()));
+
     let desired = state.config().general.default_backend.trim().to_string();
     if !desired.is_empty() {
         let desired = BackendId::from(desired);
-        if crate::plugin_vcs_backends::has_plugin_vcs_backend(&desired) {
+        if backends
+            .iter()
+            .any(|backend| backend.backend_id.as_ref() == desired.as_ref())
+        {
             return Some(desired);
         }
     }
 
-    crate::plugin_vcs_backends::list_plugin_vcs_backends()
-        .ok()
-        .and_then(|mut backends| {
-            backends.sort_by(|a, b| a.backend_id.as_ref().cmp(b.backend_id.as_ref()));
-            backends.into_iter().next().map(|b| b.backend_id)
-        })
+    backends.into_iter().next().map(|b| b.backend_id)
 }
 
 pub async fn add_repo_internal<R: Runtime>(
@@ -112,17 +113,12 @@ pub async fn add_repo_internal<R: Runtime>(
 
     let open_path = path.clone();
     let backend_label = backend_id.as_ref().to_string();
-    let prefer_plugin = plugin_vcs_backends::has_plugin_vcs_backend(&backend_id);
     let backend_id_for_task = backend_id.clone();
     let handle = async_runtime::spawn_blocking(move || {
-        if prefer_plugin {
-            plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
-                backend_id_for_task,
-                Path::new(&open_path),
-            )
-        } else {
-            Err(openvcs_core::VcsError::Unsupported(backend_id_for_task))
-        }
+        plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
+            backend_id_for_task,
+            Path::new(&open_path),
+        )
     })
     .await
     .map_err(|e| format!("add_repo task failed: {e}"))?

@@ -3307,9 +3307,9 @@ dependencies = [
 
 [[package]]
 name = "openvcs-core"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4591a65e0ca0caca2810d345b7c1a2a2f691711bae8181a7d380f031d3970a0e"
+checksum = "706c4aa8b72515997a4b518b6e5372bd39213a841774a6675123ad19d3c99d1d"
 dependencies = [
  "log",
  "serde",

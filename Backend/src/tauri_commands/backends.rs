@@ -15,7 +15,7 @@ use crate::state::AppState;
 use crate::tauri_commands::shared::progress_bridge;
 
 #[tauri::command]
-pub fn list_vcs_backends_cmd() -> Vec<(String, String)> {
+pub fn list_vcs_backends_cmd(state: State<'_, AppState>) -> Vec<(String, String)> {
     info!("list_vcs_backends_cmd called");
 
     let mut map: BTreeMap<String, String> = BTreeMap::new();
@@ -33,6 +33,25 @@ pub fn list_vcs_backends_cmd() -> Vec<(String, String)> {
     }
 
     let backends: Vec<(String, String)> = map.into_iter().collect();
+
+    if backends.len() == 1 {
+        let only_backend_id = backends[0].0.as_str();
+        let mut cfg = state.config();
+        if cfg.general.default_backend.trim() != only_backend_id {
+            cfg.general.default_backend = only_backend_id.to_string();
+            if let Err(err) = state.set_config(cfg) {
+                warn!(
+                    "list_vcs_backends_cmd: failed to persist auto default backend `{}`: {}",
+                    only_backend_id, err
+                );
+            } else {
+                info!(
+                    "list_vcs_backends_cmd: auto-selected sole backend `{}` as default",
+                    only_backend_id
+                );
+            }
+        }
+    }
 
     info!("Found {} registered VCS backends", backends.len());
     for (id, name) in &backends {
@@ -52,8 +71,7 @@ pub async fn set_vcs_backend_cmd(
         backend_id
     );
 
-    let prefer_plugin = plugin_vcs_backends::has_plugin_vcs_backend(&backend_id);
-    if !prefer_plugin {
+    if plugin_vcs_backends::plugin_vcs_backend_descriptor(&backend_id).is_err() {
         warn!("set_vcs_backend_cmd: unknown VCS backend `{}`", backend_id);
         return Err(format!("Unknown VCS backend: {backend_id}"));
     }
@@ -141,11 +159,8 @@ pub async fn call_vcs_backend_method<R: Runtime>(
         return Err("method is empty".to_string());
     }
 
-    let list = plugin_vcs_backends::list_plugin_vcs_backends()?;
-    let desc = list
-        .into_iter()
-        .find(|d| d.backend_id.as_ref() == backend_id.as_ref())
-        .ok_or_else(|| format!("Unknown VCS backend: {backend_id_str}"))?;
+    let desc = plugin_vcs_backends::plugin_vcs_backend_descriptor(&backend_id)
+        .map_err(|_| format!("Unknown VCS backend: {backend_id_str}"))?;
 
     let repo_root = state
         .current_repo()

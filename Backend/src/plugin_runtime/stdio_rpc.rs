@@ -576,9 +576,6 @@ fn run_wasi_module(cfg: RunWasiConfig) -> Result<(), String> {
         "OPENVCS_PLUGIN_HOST_TIMEOUT_MS",
         host_timeout.as_millis().to_string(),
     );
-    builder.env("OPENVCS_RUNTIME_OS", std::env::consts::OS);
-    builder.env("OPENVCS_RUNTIME_ARCH", std::env::consts::ARCH);
-    builder.env("OPENVCS_RUNTIME_CONTAINER", runtime_container_kind());
     builder.args(&argv);
 
     // Do not preopen the host filesystem into WASI. All file I/O must go through
@@ -616,6 +613,18 @@ fn handle_host_request(spawn: &SpawnConfig, req: RpcRequest) -> RpcResponse {
         .collect::<std::collections::HashSet<_>>();
 
     match req.method.as_str() {
+        "runtime.info" => RpcResponse {
+            id: req.id,
+            ok: true,
+            result: serde_json::json!({
+                "os": std::env::consts::OS,
+                "arch": std::env::consts::ARCH,
+                "container": runtime_container_kind(),
+            }),
+            error: None,
+            error_code: None,
+            error_data: None,
+        },
         "events.subscribe" => {
             let name = req
                 .params

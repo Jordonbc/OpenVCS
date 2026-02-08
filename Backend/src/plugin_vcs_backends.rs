@@ -1,17 +1,14 @@
 use crate::plugin_bundles::{ApprovalState, PluginBundleStore, PluginManifest, VcsBackendProvide};
 use crate::plugin_paths::{built_in_plugin_dirs, PLUGIN_MANIFEST_NAME};
-use crate::plugin_runtime::stdio_rpc::{RpcConfig, SpawnConfig, StdioRpcProcess};
 use crate::plugin_runtime::vcs_proxy::PluginVcsProxy;
 use crate::settings::AppConfig;
 use log::warn;
 use openvcs_core::{BackendId, Result as VcsResult, Vcs, VcsError};
-use serde_json::Value;
 use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
     sync::Arc,
-    time::Duration,
 };
 
 fn is_plugin_enabled_in_settings(plugin_id: &str, default_enabled: bool) -> bool {
@@ -72,37 +69,6 @@ fn load_manifest_from_dir(plugin_dir: &Path) -> Option<PluginManifest> {
     serde_json::from_str(&text).ok()
 }
 
-fn backend_is_available(desc: &PluginBackendDescriptor) -> bool {
-    let rpc = StdioRpcProcess::new(
-        SpawnConfig {
-            plugin_id: desc.plugin_id.clone(),
-            component_label: format!("vcs-probe-{}", desc.backend_id.as_ref()),
-            exec_path: desc.exec_path.clone(),
-            args: vec!["--backend".into(), desc.backend_id.as_ref().to_string()],
-            requested_capabilities: desc.requested_capabilities.clone(),
-            approval: desc.approval.clone(),
-            allowed_workspace_root: None,
-        },
-        RpcConfig {
-            timeout: Duration::from_secs(5),
-        },
-    );
-
-    match rpc.call("caps", Value::Null) {
-        Ok(_) => true,
-        Err(err) => {
-            warn!(
-                "plugin_vcs_backends: backend {} from plugin {} unavailable: {}: {}",
-                desc.backend_id,
-                desc.plugin_id,
-                err.code,
-                err.message
-            );
-            false
-        }
-    }
-}
-
 fn builtin_plugin_manifests() -> Vec<(PathBuf, PluginManifest)> {
     let mut out = Vec::new();
     for root in built_in_plugin_dirs() {
@@ -159,9 +125,6 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
                 requested_capabilities: installed.requested_capabilities.clone(),
                 approval: installed.approval.clone(),
             };
-            if !backend_is_available(&candidate) {
-                continue;
-            }
             let key = backend_id.as_ref().to_string();
             map.insert(key, candidate);
         }
@@ -220,9 +183,6 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
                     approved_at_unix_ms: 0,
                 },
             };
-            if !backend_is_available(&candidate) {
-                continue;
-            }
             map.insert(key, candidate);
         }
     }
@@ -237,19 +197,21 @@ pub fn has_plugin_vcs_backend(backend_id: &BackendId) -> bool {
     })
 }
 
+pub fn plugin_vcs_backend_descriptor(
+    backend_id: &BackendId,
+) -> Result<PluginBackendDescriptor, String> {
+    list_plugin_vcs_backends()?
+        .into_iter()
+        .find(|d| d.backend_id.as_ref() == backend_id.as_ref())
+        .ok_or_else(|| format!("Unknown VCS backend: {backend_id}"))
+}
+
 pub fn open_repo_via_plugin_vcs_backend(
     backend_id: BackendId,
     path: &Path,
 ) -> VcsResult<Arc<dyn Vcs>> {
-    let backend_id_for_err = backend_id.clone();
-    let list = list_plugin_vcs_backends().map_err(|e| VcsError::Backend {
-        backend: backend_id_for_err,
-        msg: e,
-    })?;
-    let desc = list
-        .into_iter()
-        .find(|d| d.backend_id.as_ref() == backend_id.as_ref())
-        .ok_or_else(|| VcsError::Unsupported(backend_id.clone()))?;
+    let desc = plugin_vcs_backend_descriptor(&backend_id)
+        .map_err(|_| VcsError::Unsupported(backend_id.clone()))?;
 
     PluginVcsProxy::open_with_process(
         desc.plugin_id,
