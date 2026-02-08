@@ -20,8 +20,8 @@ permissions:
 env:
   # Scheduled runs should always build from Dev. Manual runs should build from the selected branch.
   TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'Dev' }}
-  # Flatpak is currently disabled in CI; set to '1' to re-enable.
-  OPENVCS_ENABLE_FLATPAK: '0'
+  # Flatpak is enabled in CI.
+  OPENVCS_ENABLE_FLATPAK: '1'
 
 jobs:
   check-changes:
