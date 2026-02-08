@@ -25,6 +25,9 @@ test:
 tauri-build:
   node scripts/tauri-build.js
 
+build-flatpak:
+  flatpak-builder --force-clean --user --install build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml
+
 fix:
   cargo fmt --all
   cargo clippy --fix --all-targets --all-features --allow-dirty --allow-staged
