@@ -87,7 +87,7 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream elfutils
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49
           # Cargo/rustc must come from the Flatpak SDK environment (not the host toolchain).
