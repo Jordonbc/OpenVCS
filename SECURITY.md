@@ -2,13 +2,15 @@
 
 ## Supported Versions
 
-The following versions currently receive security updates:
+OpenVCS is experimental. However, responsible disclosure is appreciated, and I will triage reports as quickly as reasonably possible.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| Latest Stable   | :white_check_mark: |
-| Pre-Releases   | :x:                |
-| Nightly   | :x:                |
+Security fixes are provided on a best-effort basis for the following:
+
+| Version        | Supported          |
+| ------------- | ------------------ |
+| Latest release | :white_check_mark: |
+| Pre-releases   | :x:                |
+| Nightly        | :x:                |
 
 > **Note**  
 > Nightly and pre-release builds may contain fixes earlier, but are not considered supported security release channels.
@@ -19,8 +21,8 @@ Please report security vulnerabilities responsibly and **do not open public issu
 
 Use GitHub’s private security advisories for this repository to report vulnerabilities.
 
-We do not currently offer a bug bounty program.
+I do not currently offer a bug bounty program.
 
-We aim to acknowledge reports within 72 hours.
+I aim to acknowledge reports within 72 hours.
 
-We will respond as soon as reasonably possible and coordinate any fixes or disclosure as needed.
+I will respond as soon as reasonably possible and coordinate any fixes or disclosure as needed.
