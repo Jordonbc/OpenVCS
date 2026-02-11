@@ -3,6 +3,14 @@ use tauri::{Emitter, Manager, Runtime, Window};
 use tauri_plugin_updater::UpdaterExt;
 
 #[tauri::command]
+/// Downloads and installs an available application update.
+///
+/// # Parameters
+/// - `window`: Calling window handle used for progress events.
+///
+/// # Returns
+/// - `Ok(())` when no update exists or installation succeeds.
+/// - `Err(String)` when updater operations fail.
 pub async fn updater_install_now<R: Runtime>(window: Window<R>) -> Result<(), String> {
     let app = window.app_handle();
     let updater = app.updater().map_err(|e| e.to_string())?;

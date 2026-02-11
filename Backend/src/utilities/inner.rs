@@ -14,6 +14,10 @@ pub struct AboutInfo {
 }
 
 impl AboutInfo {
+    /// Gathers application and target-platform metadata for About UI.
+    ///
+    /// # Returns
+    /// - A populated [`AboutInfo`] record.
     pub fn gather() -> Self {
         // Compile-time package metadata from Cargo
         let name = env!("CARGO_PKG_NAME").to_string();
@@ -46,6 +50,15 @@ impl AboutInfo {
     }
 }
 
+/// Opens a native folder picker and returns the selected directory path.
+///
+/// # Parameters
+/// - `app`: Tauri app handle.
+/// - `title`: Dialog title string.
+///
+/// # Returns
+/// - `Some(String)` selected directory path.
+/// - `None` when canceled.
 pub async fn browse_directory_async<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     title: &str,
@@ -62,6 +75,16 @@ pub async fn browse_directory_async<R: tauri::Runtime>(
     rx.await.unwrap_or(None)
 }
 
+/// Opens a native file picker and returns the selected file path.
+///
+/// # Parameters
+/// - `app`: Tauri app handle.
+/// - `title`: Dialog title string.
+/// - `extensions`: Optional extension filter list.
+///
+/// # Returns
+/// - `Some(String)` selected file path.
+/// - `None` when canceled.
 pub async fn browse_file_async<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     title: &str,

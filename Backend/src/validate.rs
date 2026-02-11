@@ -55,6 +55,13 @@ fn looks_like_path(s: &str) -> bool {
     win_abs.is_match(s)
 }
 
+/// Validates whether a string looks like a supported Git URL.
+///
+/// # Parameters
+/// - `url`: Candidate URL string.
+///
+/// # Returns
+/// - Validation result with `ok` and optional reason.
 pub fn validate_git_url(url: String) -> Validation {
     if is_probably_git_url(&url) {
         Validation {
@@ -71,6 +78,13 @@ pub fn validate_git_url(url: String) -> Validation {
     }
 }
 
+/// Validates a repository path for add/open operations.
+///
+/// # Parameters
+/// - `path`: Candidate absolute repository path.
+///
+/// # Returns
+/// - Validation result with `ok` and optional reason.
 pub fn validate_add_path(path: String) -> Validation {
     if !looks_like_path(&path) {
         return Validation {
@@ -107,6 +121,14 @@ pub fn validate_add_path(path: String) -> Validation {
     }
 }
 
+/// Validates clone URL and destination inputs.
+///
+/// # Parameters
+/// - `url`: Source repository URL.
+/// - `dest`: Destination path.
+///
+/// # Returns
+/// - Validation result with `ok` and optional reason.
 pub fn validate_clone_input(url: String, dest: String) -> Validation {
     if !is_probably_git_url(&url) {
         return Validation {

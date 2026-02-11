@@ -30,6 +30,14 @@ fn registry() -> &'static Mutex<Registry> {
     })
 }
 
+/// Registers a plugin's stdin handle for outbound host->plugin messages.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin id to register.
+/// - `stdin`: IO handle containing the writable plugin stdin channel.
+///
+/// # Returns
+/// - `()`.
 pub fn register_plugin_io(plugin_id: &str, stdin: PluginIoHandle) {
     if let Ok(mut lock) = registry().lock() {
         lock.io.insert(plugin_id.to_string(), stdin);
@@ -39,6 +47,13 @@ pub fn register_plugin_io(plugin_id: &str, stdin: PluginIoHandle) {
 }
 
 #[allow(dead_code)]
+/// Removes a plugin from the runtime event registry.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin id to remove.
+///
+/// # Returns
+/// - `()`.
 pub fn unregister_plugin(plugin_id: &str) {
     if let Ok(mut lock) = registry().lock() {
         lock.io.remove(plugin_id);
@@ -47,6 +62,14 @@ pub fn unregister_plugin(plugin_id: &str) {
     }
 }
 
+/// Subscribes a plugin to a named host/plugin event channel.
+///
+/// # Parameters
+/// - `plugin_id`: Subscriber plugin id.
+/// - `event`: Event name to subscribe to.
+///
+/// # Returns
+/// - `()`.
 pub fn subscribe(plugin_id: &str, event: &str) {
     if let Ok(mut lock) = registry().lock() {
         lock.subs
@@ -56,12 +79,30 @@ pub fn subscribe(plugin_id: &str, event: &str) {
     }
 }
 
+/// Emits an event originating from a plugin to other subscribers.
+///
+/// # Parameters
+/// - `plugin_id`: Originating plugin id.
+/// - `name`: Event name.
+/// - `payload`: JSON event payload.
+///
+/// # Returns
+/// - `()`.
 pub fn emit_from_plugin(plugin_id: &str, name: &str, payload: Value) {
     // For now this just fans out to other plugin subscribers.
     // Host-side internal listeners can be added later.
     emit_to_plugins(Some(plugin_id), name, payload);
 }
 
+/// Broadcasts an event to subscribed plugins, optionally excluding the origin.
+///
+/// # Parameters
+/// - `origin_plugin_id`: Optional plugin id to exclude from delivery.
+/// - `name`: Event name.
+/// - `payload`: JSON event payload.
+///
+/// # Returns
+/// - `()`.
 pub fn emit_to_plugins(origin_plugin_id: Option<&str>, name: &str, payload: Value) {
     let targets: Vec<(String, PluginIoHandle, u64)> = {
         let Ok(mut lock) = registry().lock() else {

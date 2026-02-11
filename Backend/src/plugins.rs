@@ -382,6 +382,10 @@ fn discover_theme_dirs_recursive(dir: &Path, depth: usize, out: &mut Vec<PathBuf
     }
 }
 
+/// Lists discovered plugins from user and built-in plugin roots.
+///
+/// # Returns
+/// - Plugin summaries sorted by display name.
 pub fn list_plugins() -> Vec<PluginSummary> {
     let mut out: Vec<PluginSummary> = Vec::new();
     let mut seen = HashSet::new();
@@ -420,6 +424,14 @@ pub fn list_plugins() -> Vec<PluginSummary> {
     out
 }
 
+/// Loads plugin metadata and optional entry script text by plugin id.
+///
+/// # Parameters
+/// - `id`: Plugin id to load (case-insensitive).
+///
+/// # Returns
+/// - `Ok(PluginPayload)` when a matching plugin is found.
+/// - `Err(String)` if the id is empty or no plugin matches.
 pub fn load_plugin(id: &str) -> Result<PluginPayload, String> {
     let requested = id.trim();
     if requested.is_empty() {
@@ -486,6 +498,10 @@ pub fn load_plugin(id: &str) -> Result<PluginPayload, String> {
     Err(format!("plugin `{}` not found", requested))
 }
 
+/// Lists all discovered theme directories grouped by plugin id.
+///
+/// # Returns
+/// - A flat list of plugin/theme directory pairs.
 pub fn plugin_theme_dirs() -> Vec<PluginThemeDir> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();

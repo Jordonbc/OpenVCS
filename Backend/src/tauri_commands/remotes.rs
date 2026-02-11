@@ -126,6 +126,16 @@ struct SshAuthPrompt {
 }
 
 #[tauri::command]
+/// Creates or updates a remote URL by name.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `name`: Remote name.
+/// - `url`: Remote URL.
+///
+/// # Returns
+/// - `Ok(())` when remote is set.
+/// - `Err(String)` on validation or backend failure.
 pub async fn git_set_remote_url(
     state: State<'_, AppState>,
     name: String,
@@ -154,6 +164,15 @@ pub async fn git_set_remote_url(
 }
 
 #[tauri::command]
+/// Fetches updates for the current branch's upstream (or origin fallback).
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress/events.
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(())` when fetch completes.
+/// - `Err(String)` when no repo/branch is selected or fetch fails.
 pub async fn git_fetch<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -220,6 +239,15 @@ pub async fn git_fetch<R: Runtime>(
 }
 
 #[tauri::command]
+/// Fetches all branch refs from all configured remotes.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress/events.
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(())` when all remotes fetch successfully.
+/// - `Err(String)` when one or more remotes fail.
 pub async fn git_fetch_all<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -296,6 +324,15 @@ pub async fn git_fetch_all<R: Runtime>(
 }
 
 #[tauri::command]
+/// Performs a fast-forward-only pull from the current branch upstream.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress/events.
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(PullResult)` describing whether pull executed or was skipped.
+/// - `Err(String)` when pull fails.
 pub async fn git_pull<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -402,6 +439,15 @@ pub struct PullResult {
 }
 
 #[tauri::command]
+/// Pushes the current branch to `origin` and refreshes tracking refs.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress/events.
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(())` when push completes.
+/// - `Err(String)` when push fails.
 pub async fn git_push<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -461,6 +507,15 @@ pub async fn git_push<R: Runtime>(
 }
 
 #[tauri::command]
+/// Soft-resets HEAD to upstream to undo unpushed commits.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress/events.
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(())` when reset succeeds.
+/// - `Err(String)` when nothing is ahead or reset fails.
 pub async fn git_undo_since_push<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -497,6 +552,16 @@ pub async fn git_undo_since_push<R: Runtime>(
 }
 
 #[tauri::command]
+/// Soft-resets HEAD to a selected commit, constrained to ahead-of-upstream history.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress/events.
+/// - `state`: Shared application state.
+/// - `id`: Target commit id/prefix.
+///
+/// # Returns
+/// - `Ok(())` when reset succeeds.
+/// - `Err(String)` when validation or reset fails.
 pub async fn git_undo_to_commit<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,

@@ -10,6 +10,14 @@ use crate::state::AppState;
 use super::{current_repo_or_err, run_repo_task};
 
 #[tauri::command]
+/// Returns repository status payload (files + ahead/behind).
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(StatusPayload)` status details.
+/// - `Err(String)` when status computation fails.
 pub async fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_status", repo, move |repo| {
@@ -32,6 +40,16 @@ pub async fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, Str
 }
 
 #[tauri::command]
+/// Returns commit log entries for a rev range.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `limit`: Optional max commit count.
+/// - `rev`: Optional revision/range expression.
+///
+/// # Returns
+/// - `Ok(Vec<CommitItem>)` commit list.
+/// - `Err(String)` on backend failure.
 pub async fn git_log(
     state: State<'_, AppState>,
     limit: Option<usize>,
@@ -57,6 +75,15 @@ pub async fn git_log(
 }
 
 #[tauri::command]
+/// Returns diff lines for a single file.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `path`: Repository-relative file path.
+///
+/// # Returns
+/// - `Ok(Vec<String>)` diff lines.
+/// - `Err(String)` on backend failure.
 pub async fn git_diff_file(
     state: State<'_, AppState>,
     path: String,
@@ -71,6 +98,15 @@ pub async fn git_diff_file(
 }
 
 #[tauri::command]
+/// Returns diff lines for a commit/revision.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `id`: Commit id or revision spec.
+///
+/// # Returns
+/// - `Ok(Vec<String>)` diff lines.
+/// - `Err(String)` on backend failure.
 pub async fn git_diff_commit(
     state: State<'_, AppState>,
     id: String,
@@ -83,6 +119,15 @@ pub async fn git_diff_commit(
 }
 
 #[tauri::command]
+/// Discards changes for explicit file paths.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `paths`: Repository-relative paths to discard.
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` on backend failure.
 pub async fn git_discard_paths(
     state: State<'_, AppState>,
     paths: Vec<String>,
@@ -96,6 +141,15 @@ pub async fn git_discard_paths(
 }
 
 #[tauri::command]
+/// Applies a reverse patch to discard selected hunks.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `patch`: Unified patch text.
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` on backend failure.
 pub async fn git_discard_patch(state: State<'_, AppState>, patch: String) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_discard_patch", repo, move |repo| {

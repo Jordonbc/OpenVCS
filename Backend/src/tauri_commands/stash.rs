@@ -10,6 +10,14 @@ use crate::state::AppState;
 use super::{current_repo_or_err, run_repo_task};
 
 #[tauri::command]
+/// Lists stash entries for the current repository.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(Vec<StashItem>)` stash list.
+/// - `Err(String)` when listing fails.
 pub async fn git_stash_list(state: State<'_, AppState>) -> Result<Vec<StashItem>, String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_stash_list", repo, move |repo| {
@@ -34,6 +42,17 @@ pub async fn git_stash_list(state: State<'_, AppState>) -> Result<Vec<StashItem>
 }
 
 #[tauri::command]
+/// Creates a stash entry.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `message`: Optional stash message.
+/// - `include_untracked`: Optional include-untracked flag.
+/// - `paths`: Optional path subset.
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` on stash failure.
 pub async fn git_stash_push(
     state: State<'_, AppState>,
     message: Option<String>,
@@ -57,6 +76,15 @@ pub async fn git_stash_push(
 }
 
 #[tauri::command]
+/// Applies a stash entry without dropping it.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `selector`: Optional stash selector (defaults to latest).
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` on apply failure.
 pub async fn git_stash_apply(
     state: State<'_, AppState>,
     selector: Option<String>,
@@ -72,6 +100,15 @@ pub async fn git_stash_apply(
 }
 
 #[tauri::command]
+/// Pops a stash entry (apply + drop).
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `selector`: Optional stash selector (defaults to latest).
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` on pop failure.
 pub async fn git_stash_pop(
     state: State<'_, AppState>,
     selector: Option<String>,
@@ -87,6 +124,15 @@ pub async fn git_stash_pop(
 }
 
 #[tauri::command]
+/// Drops a stash entry.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `selector`: Optional stash selector (defaults to latest).
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` on drop failure.
 pub async fn git_stash_drop(
     state: State<'_, AppState>,
     selector: Option<String>,
@@ -110,6 +156,15 @@ pub async fn git_stash_drop(
 }
 
 #[tauri::command]
+/// Shows patch lines for a stash entry.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `selector`: Optional stash selector (defaults to latest).
+///
+/// # Returns
+/// - `Ok(Vec<String>)` patch lines.
+/// - `Err(String)` on lookup failure.
 pub async fn git_stash_show(
     state: State<'_, AppState>,
     selector: Option<String>,

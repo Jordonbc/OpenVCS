@@ -69,6 +69,14 @@ fn keyscan(_host: &str) -> Result<String, String> {
 }
 
 #[command]
+/// Scans and appends a host key entry to `~/.ssh/known_hosts`.
+///
+/// # Parameters
+/// - `host`: Hostname to trust.
+///
+/// # Returns
+/// - `Ok(())` when the host key is already present or appended successfully.
+/// - `Err(String)` when validation, scanning, or file write fails.
 pub fn ssh_trust_host(host: String) -> Result<(), String> {
     let host = host.trim();
     if host.is_empty() {
@@ -101,6 +109,11 @@ pub fn ssh_trust_host(host: String) -> Result<(), String> {
 }
 
 #[command]
+/// Lists identities currently loaded in the active SSH agent.
+///
+/// # Returns
+/// - `Ok(SshCommandOutput)` with command exit/status output.
+/// - `Err(String)` when command execution fails.
 pub fn ssh_agent_list_keys() -> Result<SshCommandOutput, String> {
     // Exit codes:
     // 0 = keys listed, 1 = agent has no keys, 2 = agent not running/unreachable (platform dependent).
@@ -114,6 +127,11 @@ pub struct SshKeyCandidate {
 }
 
 #[command]
+/// Lists candidate private key files from `~/.ssh`.
+///
+/// # Returns
+/// - `Ok(Vec<SshKeyCandidate>)` sorted candidate list.
+/// - `Err(String)` when home/ssh directory resolution fails.
 pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
     let dir = ssh_dir_path()?;
     let Ok(read_dir) = fs::read_dir(&dir) else {
@@ -162,6 +180,14 @@ pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
 }
 
 #[command]
+/// Adds a private key file to the active SSH agent via `ssh-add`.
+///
+/// # Parameters
+/// - `path`: Key file path.
+///
+/// # Returns
+/// - `Ok(SshCommandOutput)` with command result output.
+/// - `Err(String)` when validation or command execution fails.
 pub fn ssh_add_key(path: String) -> Result<SshCommandOutput, String> {
     let p = path.trim();
     if p.is_empty() {

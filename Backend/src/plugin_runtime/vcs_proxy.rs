@@ -18,6 +18,19 @@ pub struct PluginVcsProxy {
 }
 
 impl PluginVcsProxy {
+    /// Opens a repository through a plugin module process and returns a VCS trait object.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Owning plugin identifier.
+    /// - `backend_id`: Backend id exposed by the plugin.
+    /// - `exec_path`: Path to the plugin wasm/module executable.
+    /// - `approval`: Capability approval state for the plugin version.
+    /// - `requested_capabilities`: Capabilities requested by the plugin.
+    /// - `repo_path`: Repository working-tree path to open.
+    ///
+    /// # Returns
+    /// - `Ok(Arc<dyn Vcs>)` when the plugin backend is opened successfully.
+    /// - `Err(VcsError)` when startup or open RPC fails.
     pub fn open_with_process(
         plugin_id: String,
         backend_id: BackendId,

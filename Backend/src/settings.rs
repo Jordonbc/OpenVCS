@@ -1,3 +1,5 @@
+//! Global application configuration types and persistence helpers.
+
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -7,6 +9,7 @@ fn default_true() -> bool {
     true
 }
 
+/// Root global settings document persisted as TOML.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub schema_version: u32,
@@ -56,6 +59,7 @@ impl Default for AppConfig {
     }
 }
 
+/// Settings for app-wide behavior and startup UX.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct General {
     #[serde(default)]
@@ -97,6 +101,7 @@ fn default_theme_pack() -> String {
     "default".to_string()
 }
 
+/// Settings that control Git backend behavior.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Git {
     #[serde(default)]
@@ -145,6 +150,7 @@ impl Default for Git {
     }
 }
 
+/// Settings for authentication and signing tools.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Credentials {
     #[serde(default)]
@@ -174,6 +180,7 @@ impl Default for Credentials {
     }
 }
 
+/// Settings that control diff rendering and external tools.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Diff {
     #[serde(default)]
@@ -209,6 +216,7 @@ impl Default for Diff {
     }
 }
 
+/// Git LFS behavior settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lfs {
     #[serde(default)]
@@ -231,6 +239,7 @@ impl Default for Lfs {
     }
 }
 
+/// Performance and animation tuning options.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Performance {
     #[serde(default)]
@@ -250,6 +259,7 @@ impl Default for Performance {
     }
 }
 
+/// Integrations with editors and issue providers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Integrations {
     #[serde(default)]
@@ -270,6 +280,7 @@ impl Default for Integrations {
     }
 }
 
+/// Plugin enable/disable overrides.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Plugins {
     /// Plugin ids that are installed but disabled.
@@ -284,6 +295,7 @@ pub struct Plugins {
     pub enabled: Vec<String>,
 }
 
+/// User interface and accessibility options.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ux {
     #[serde(default)]
@@ -310,6 +322,7 @@ impl Default for Ux {
     }
 }
 
+/// Advanced networking and force-push safety options.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Advanced {
     #[serde(default)]
@@ -329,6 +342,7 @@ impl Default for Advanced {
     }
 }
 
+/// Experimental features that may change between releases.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Experimental {
     #[serde(default)]
@@ -339,6 +353,7 @@ pub struct Experimental {
     pub sparse_checkout_ui: bool,
 }
 
+/// Logging verbosity and retention options.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Logging {
     #[serde(default)]
@@ -365,6 +380,7 @@ fn default_retain_archives() -> u32 {
     10
 }
 
+/// Theme preference for application chrome.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -375,6 +391,7 @@ pub enum Theme {
     System,
 }
 
+/// Preferred language for localized UI text.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -384,6 +401,7 @@ pub enum Language {
     EN,
 }
 
+/// Release channel used by update checks.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -394,6 +412,7 @@ pub enum UpdateChannel {
     Nightly,
 }
 
+/// SSH binary selection strategy for Git operations.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -405,6 +424,7 @@ pub enum GitSshBinary {
     Custom,
 }
 
+/// Policy used when Git hooks are encountered.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -415,6 +435,7 @@ pub enum HookPolicy {
     Allow,
 }
 
+/// Credential helper preference used for HTTPS authentication.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -424,6 +445,7 @@ pub enum CredentialHelper {
     None,
 }
 
+/// SSH agent integration mode.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -435,6 +457,7 @@ pub enum SshAgent {
     None,
 }
 
+/// Whitespace filtering mode for diffs.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -445,6 +468,7 @@ pub enum WhitespaceMode {
     All,
 }
 
+/// Executable and arguments for an optional external diff/merge tool.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalTool {
     #[serde(default)]
@@ -455,6 +479,10 @@ pub struct ExternalTool {
     pub args: String,
 }
 impl ExternalTool {
+    /// Returns a disabled external tool configuration.
+    ///
+    /// # Returns
+    /// - An [`ExternalTool`] with `enabled = false` and empty command fields.
     pub fn disabled() -> Self {
         Self {
             enabled: false,
@@ -469,6 +497,7 @@ impl Default for ExternalTool {
     }
 }
 
+/// Preferred editor integration target.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -482,6 +511,7 @@ pub enum EditorChoice {
     Custom,
 }
 
+/// Preferred issue provider mapping mode.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -493,6 +523,7 @@ pub enum IssueProvider {
     Forgejo,
 }
 
+/// Color-vision accessibility mode for diff/UI accents.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -504,6 +535,7 @@ pub enum ColorBlindMode {
     Tritanopia,
 }
 
+/// Force-push confirmation policy.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -514,6 +546,7 @@ pub enum ForcePushPolicy {
     Never,
 }
 
+/// HTTP proxy configuration used for network operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Proxy {
     #[serde(default)]
@@ -522,6 +555,10 @@ pub struct Proxy {
     pub url: String,
 }
 impl Proxy {
+    /// Returns the default proxy configuration that uses the system proxy settings.
+    ///
+    /// # Returns
+    /// - A [`Proxy`] configured with [`ProxyMode::System`].
     pub fn system() -> Self {
         Self {
             mode: ProxyMode::System,
@@ -535,6 +572,7 @@ impl Default for Proxy {
     }
 }
 
+/// Proxy mode selection.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -545,6 +583,7 @@ pub enum ProxyMode {
     Off,
 }
 
+/// Application log verbosity.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -560,6 +599,9 @@ pub enum LogLevel {
 //
 impl AppConfig {
     /// ~/.config/openvcs/openvcs.conf (XDG/macOS/Windows aware)
+    ///
+    /// # Returns
+    /// - Filesystem path to the global OpenVCS config file.
     pub fn path() -> PathBuf {
         if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
             pd.config_dir().join("openvcs.conf")
@@ -569,6 +611,9 @@ impl AppConfig {
     }
 
     /// Load from disk or fall back to defaults; then migrate+validate.
+    ///
+    /// # Returns
+    /// - A valid [`AppConfig`] loaded from disk or synthesized from defaults.
     pub fn load_or_default() -> Self {
         let p = Self::path();
         let mut cfg = match fs::read_to_string(&p) {
@@ -581,6 +626,10 @@ impl AppConfig {
     }
 
     /// Pretty TOML write with atomic-ish replace.
+    ///
+    /// # Returns
+    /// - `Ok(())` when the config file was written successfully.
+    /// - `Err(io::Error)` when writing or renaming fails.
     pub fn save(&self) -> io::Result<()> {
         let p = Self::path();
         if let Some(parent) = p.parent() {
@@ -593,6 +642,9 @@ impl AppConfig {
     }
 
     /// Future-proof migrations between schema versions.
+    ///
+    /// # Returns
+    /// - `()`.
     pub fn migrate(&mut self) {
         match self.schema_version {
             0 => { /* never shipped */ }
@@ -603,6 +655,9 @@ impl AppConfig {
     }
 
     /// Clamp and normalize values so hand edits can’t break the app.
+    ///
+    /// # Returns
+    /// - `()`.
     pub fn validate(&mut self) {
         // General: nothing to clamp right now.
         if self.general.theme_pack.trim().is_empty() {

@@ -12,6 +12,15 @@ use crate::state::AppState;
 use super::{current_repo_or_err, run_repo_task};
 
 #[tauri::command]
+/// Returns conflict details for a repository file.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `path`: Repository-relative path in conflict.
+///
+/// # Returns
+/// - `Ok(ConflictDetails)` with conflict metadata/content.
+/// - `Err(String)` when lookup fails.
 pub async fn git_conflict_details(
     state: State<'_, AppState>,
     path: String,
@@ -26,6 +35,16 @@ pub async fn git_conflict_details(
 }
 
 #[tauri::command]
+/// Resolves a conflict file by checking out `ours` or `theirs`.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `path`: Repository-relative conflict file path.
+/// - `side`: Conflict side selector (`ours` or `theirs`).
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` on validation or checkout failure.
 pub async fn git_resolve_conflict_side(
     state: State<'_, AppState>,
     path: String,
@@ -48,6 +67,16 @@ pub async fn git_resolve_conflict_side(
 }
 
 #[tauri::command]
+/// Writes merge-result content to a conflicted file.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `path`: Repository-relative file path.
+/// - `content`: Resolved file content to write.
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` when write/save fails.
 pub async fn git_save_merge_result(
     state: State<'_, AppState>,
     path: String,
@@ -72,6 +101,15 @@ fn tool_args(tool: &ExternalTool) -> (String, Vec<String>) {
 }
 
 #[tauri::command]
+/// Launches the configured external merge tool for a file.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `path`: Repository-relative path to open in the tool.
+///
+/// # Returns
+/// - `Ok(())` when the tool process is started.
+/// - `Err(String)` when tool config is missing or spawn fails.
 pub async fn git_launch_merge_tool(state: State<'_, AppState>, path: String) -> Result<(), String> {
     let cfg = state.config();
     let tool = cfg.diff.external_merge.clone();

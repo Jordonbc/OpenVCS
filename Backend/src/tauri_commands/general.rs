@@ -26,16 +26,34 @@ struct RepoSelectedPayload {
 }
 
 #[tauri::command]
+/// Returns static build/runtime information shown in the About dialog.
+///
+/// # Returns
+/// - A populated [`utilities::AboutInfo`] payload.
 pub fn about_info() -> utilities::AboutInfo {
     utilities::AboutInfo::gather()
 }
 
 #[tauri::command]
+/// Opens or resolves project license information.
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` on failure.
 pub fn show_licenses() -> Result<(), String> {
     Ok(())
 }
 
 #[tauri::command]
+/// Opens a native folder picker dialog.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+/// - `purpose`: Optional purpose hint used to customize dialog title.
+///
+/// # Returns
+/// - `Some(String)` with the selected folder path.
+/// - `None` when canceled.
 pub async fn browse_directory<R: Runtime>(
     window: Window<R>,
     purpose: Option<String>,
@@ -49,6 +67,15 @@ pub async fn browse_directory<R: Runtime>(
 }
 
 #[tauri::command]
+/// Opens a native file picker dialog.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+/// - `purpose`: Optional purpose hint used for title/filter selection.
+///
+/// # Returns
+/// - `Some(String)` with the selected file path.
+/// - `None` when canceled.
 pub async fn browse_file<R: Runtime>(window: Window<R>, purpose: Option<String>) -> Option<String> {
     let title = match purpose.as_deref() {
         Some("install_plugin") => "Select an OpenVCS plugin bundle (.ovcsp)",
@@ -62,6 +89,17 @@ pub async fn browse_file<R: Runtime>(window: Window<R>, purpose: Option<String>)
 }
 
 #[tauri::command]
+/// Opens a repository using the selected or default backend.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+/// - `state`: Shared application state.
+/// - `path`: Repository path to open.
+/// - `backend_id`: Optional explicit backend id.
+///
+/// # Returns
+/// - `Ok(())` when the repository is opened.
+/// - `Err(String)` when backend resolution or open fails.
 pub async fn add_repo<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -94,6 +132,17 @@ fn default_backend_id(state: &AppState) -> Option<BackendId> {
     backends.into_iter().next().map(|b| b.backend_id)
 }
 
+/// Internal helper that opens a repository and publishes `repo:selected`.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+/// - `state`: Shared application state.
+/// - `path`: Repository path to open.
+/// - `backend_id`: Backend id used to open the repository.
+///
+/// # Returns
+/// - `Ok(())` when the repo is opened and state/event updates succeed.
+/// - `Err(String)` when validation or backend open fails.
 pub async fn add_repo_internal<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -147,6 +196,18 @@ pub async fn add_repo_internal<R: Runtime>(
 }
 
 #[tauri::command]
+/// Clones a repository into `dest` then opens it in the UI.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+/// - `state`: Shared application state.
+/// - `url`: Source repository URL.
+/// - `dest`: Destination parent directory.
+/// - `backend_id`: Optional backend id override.
+///
+/// # Returns
+/// - `Ok(())` when clone/open succeeds.
+/// - `Err(String)` when validation or clone/open fails.
 pub async fn clone_repo<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -195,21 +256,51 @@ pub async fn clone_repo<R: Runtime>(
 }
 
 #[tauri::command]
+/// Validates a user-entered Git URL.
+///
+/// # Parameters
+/// - `url`: Candidate URL string.
+///
+/// # Returns
+/// - Validation result describing whether the URL is acceptable.
 pub fn validate_git_url(url: String) -> validate::Validation {
     validate::validate_git_url(url)
 }
 
 #[tauri::command]
+/// Validates a repository path for add/open operations.
+///
+/// # Parameters
+/// - `path`: Candidate filesystem path.
+///
+/// # Returns
+/// - Validation result describing whether the path is acceptable.
 pub fn validate_add_path(path: String) -> validate::Validation {
     validate::validate_add_path(path)
 }
 
 #[tauri::command]
+/// Validates clone inputs (URL and destination path).
+///
+/// # Parameters
+/// - `url`: Source repository URL.
+/// - `dest`: Destination path.
+///
+/// # Returns
+/// - Validation result describing whether cloning can proceed.
 pub fn validate_clone_input(url: String, dest: String) -> validate::Validation {
     validate::validate_clone_input(url, dest)
 }
 
 #[tauri::command]
+/// Returns the current repository path, if a repo is selected.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Some(String)` repository path when selected.
+/// - `None` otherwise.
 pub fn current_repo_path(state: State<'_, AppState>) -> Option<String> {
     state
         .current_repo()
@@ -223,6 +314,13 @@ pub struct RecentRepoDto {
 }
 
 #[tauri::command]
+/// Returns recently opened repositories for UI display.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - A list of recent repository DTOs.
 pub fn list_recent_repos(state: State<'_, AppState>) -> Vec<RecentRepoDto> {
     state
         .recents()
@@ -241,6 +339,17 @@ pub fn list_recent_repos(state: State<'_, AppState>) -> Vec<RecentRepoDto> {
 }
 
 #[tauri::command]
+/// Opens a repository path selected by the UI.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+/// - `state`: Shared application state.
+/// - `path`: Repository path to open.
+/// - `backend_id`: Optional backend id override.
+///
+/// # Returns
+/// - `Ok(())` when repository open succeeds.
+/// - `Err(String)` when backend resolution/open fails.
 pub async fn open_repo<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -256,6 +365,16 @@ pub async fn open_repo<R: Runtime>(
 }
 
 #[tauri::command]
+/// Opens or creates a repository-local dotfile using the host opener.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+/// - `state`: Shared application state.
+/// - `name`: Dotfile name relative to repository root.
+///
+/// # Returns
+/// - `Ok(())` when file open succeeds.
+/// - `Err(String)` when no repo is selected or file IO/opening fails.
 pub fn open_repo_dotfile<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -284,6 +403,14 @@ pub fn open_repo_dotfile<R: Runtime>(
 }
 
 #[tauri::command]
+/// Opens the project documentation URL in the system browser.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` when opening the URL fails.
 pub fn open_docs<R: Runtime>(window: Window<R>) -> Result<(), String> {
     window
         .app_handle()
@@ -293,12 +420,28 @@ pub fn open_docs<R: Runtime>(window: Window<R>) -> Result<(), String> {
 }
 
 #[tauri::command]
+/// Exits the application process.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+///
+/// # Returns
+/// - `Ok(())`.
 pub fn exit_app<R: Runtime>(window: Window<R>) -> Result<(), String> {
     window.app_handle().exit(0);
     Ok(())
 }
 
 #[tauri::command]
+/// Performs a manual update check and emits availability events.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+///
+/// # Returns
+/// - `Ok(true)` when an update is available.
+/// - `Ok(false)` when no update is available.
+/// - `Err(String)` when updater access/check fails.
 pub async fn check_for_updates<R: Runtime>(window: Window<R>) -> Result<bool, String> {
     let app_handle = window.app_handle();
     match app_handle.updater() {

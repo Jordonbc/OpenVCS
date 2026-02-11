@@ -76,6 +76,14 @@ fn apply_merge_template(
 }
 
 #[tauri::command]
+/// Returns normalized local/remote branches for the current repository.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(Vec<BranchItem>)` sorted branch list.
+/// - `Err(String)` when repository access fails.
 pub async fn git_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_list_branches", repo, move |repo| {
@@ -178,6 +186,14 @@ pub struct HeadStatus {
 }
 
 #[tauri::command]
+/// Returns HEAD status (detached/current branch/commit).
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(HeadStatus)` with branch and commit data.
+/// - `Err(String)` when repository queries fail.
 pub async fn git_head_status(state: State<'_, AppState>) -> Result<HeadStatus, String> {
     use openvcs_core::models::LogQuery;
 
@@ -202,6 +218,15 @@ pub async fn git_head_status(state: State<'_, AppState>) -> Result<HeadStatus, S
 }
 
 #[tauri::command]
+/// Checks out an existing branch.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `name`: Branch name to checkout.
+///
+/// # Returns
+/// - `Ok(())` when checkout succeeds.
+/// - `Err(String)` when validation or checkout fails.
 pub async fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let branch = name.trim();
     if branch.is_empty() {
@@ -225,6 +250,16 @@ pub async fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Re
 }
 
 #[tauri::command]
+/// Deletes a branch.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `name`: Branch name to delete.
+/// - `force`: Optional force-delete flag.
+///
+/// # Returns
+/// - `Ok(())` when deletion succeeds.
+/// - `Err(String)` when validation or deletion fails.
 pub async fn git_delete_branch(
     state: State<'_, AppState>,
     name: String,
@@ -246,6 +281,16 @@ pub async fn git_delete_branch(
 }
 
 #[tauri::command]
+/// Renames a branch.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `old_name`: Existing branch name.
+/// - `new_name`: New branch name.
+///
+/// # Returns
+/// - `Ok(())` when rename succeeds.
+/// - `Err(String)` when validation or rename fails.
 pub async fn git_rename_branch(
     state: State<'_, AppState>,
     old_name: String,
@@ -271,6 +316,15 @@ pub async fn git_rename_branch(
 }
 
 #[tauri::command]
+/// Merges a source branch into the current branch.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `name`: Source branch to merge.
+///
+/// # Returns
+/// - `Ok(())` when merge succeeds.
+/// - `Err(String)` when validation or merge fails.
 pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let name = name.trim();
     if name.is_empty() {
@@ -333,6 +387,14 @@ pub struct MergeContext {
 }
 
 #[tauri::command]
+/// Returns whether a merge operation is currently in progress.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(MergeContext)` merge state payload.
+/// - `Err(String)` when repository access fails.
 pub async fn git_merge_context(state: State<'_, AppState>) -> Result<MergeContext, String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_merge_context", repo, move |repo| {
@@ -343,6 +405,14 @@ pub async fn git_merge_context(state: State<'_, AppState>) -> Result<MergeContex
 }
 
 #[tauri::command]
+/// Aborts the current merge operation.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(())` when abort succeeds.
+/// - `Err(String)` when abort fails.
 pub async fn git_merge_abort(state: State<'_, AppState>) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_merge_abort", repo, move |repo| {
@@ -352,6 +422,14 @@ pub async fn git_merge_abort(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+/// Continues the current merge operation.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(())` when continuation succeeds.
+/// - `Err(String)` when continuation fails.
 pub async fn git_merge_continue(state: State<'_, AppState>) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_merge_continue", repo, move |repo| {
@@ -361,6 +439,16 @@ pub async fn git_merge_continue(state: State<'_, AppState>) -> Result<(), String
 }
 
 #[tauri::command]
+/// Sets upstream tracking branch for a local branch.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `branch`: Local branch name.
+/// - `upstream`: Upstream ref name.
+///
+/// # Returns
+/// - `Ok(())` when upstream is updated.
+/// - `Err(String)` when validation or update fails.
 pub async fn git_set_upstream(
     state: State<'_, AppState>,
     branch: String,
@@ -384,6 +472,17 @@ pub async fn git_set_upstream(
 }
 
 #[tauri::command]
+/// Creates a branch, optionally from another branch and optionally checks it out.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `name`: New branch name.
+/// - `from`: Optional base branch to checkout before creation.
+/// - `checkout`: Optional flag to checkout the new branch.
+///
+/// # Returns
+/// - `Ok(())` when creation succeeds.
+/// - `Err(String)` when backend operations fail.
 pub async fn git_create_branch(
     state: State<'_, AppState>,
     name: String,
@@ -432,6 +531,14 @@ pub struct RepoSummary {
 }
 
 #[tauri::command]
+/// Returns a compact summary of the current repository.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(RepoSummary)` containing path/current branch/branch list.
+/// - `Err(String)` when repository access fails.
 pub async fn get_repo_summary(state: State<'_, AppState>) -> Result<RepoSummary, String> {
     let repo = current_repo_or_err(&state)?;
     let (path, current) = run_repo_task("get_repo_summary", repo, move |repo| {
@@ -455,6 +562,14 @@ pub async fn get_repo_summary(state: State<'_, AppState>) -> Result<RepoSummary,
 }
 
 #[tauri::command]
+/// Returns the current local branch name.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(String)` branch name.
+/// - `Err(String)` when detached HEAD or backend failure occurs.
 pub async fn git_current_branch(state: State<'_, AppState>) -> Result<String, String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_current_branch", repo, move |repo| {

@@ -117,6 +117,14 @@ struct ProcessHandle {
 }
 
 impl StdioRpcProcess {
+    /// Creates a new lazily-started stdio RPC process wrapper.
+    ///
+    /// # Parameters
+    /// - `spawn`: Process spawn configuration and capability policy.
+    /// - `cfg`: RPC behavior configuration (timeouts, etc.).
+    ///
+    /// # Returns
+    /// - A new [`StdioRpcProcess`] instance.
     pub fn new(spawn: SpawnConfig, cfg: RpcConfig) -> Self {
         Self {
             spawn,
@@ -134,12 +142,24 @@ impl StdioRpcProcess {
         }
     }
 
+    /// Sets or clears the event sink used for plugin-emitted `VcsEvent` values.
+    ///
+    /// # Parameters
+    /// - `sink`: Optional callback invoked for plugin events.
+    ///
+    /// # Returns
+    /// - `()`.
     pub fn set_event_sink(&self, sink: Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>>) {
         if let Ok(mut lock) = self.on_event.lock() {
             *lock = sink;
         }
     }
 
+    /// Ensures the backing plugin process is running and ready for RPC calls.
+    ///
+    /// # Returns
+    /// - `Ok(())` when the process is running.
+    /// - `Err(String)` if startup/validation fails or the plugin is disabled.
     pub fn ensure_running(&self) -> Result<(), String> {
         if *self.disabled.lock().unwrap() {
             return Err(format!(
@@ -185,6 +205,15 @@ impl StdioRpcProcess {
         self.spawn_wasm()
     }
 
+    /// Sends a JSON-RPC style request to the plugin and waits for a response.
+    ///
+    /// # Parameters
+    /// - `method`: RPC method name.
+    /// - `params`: JSON parameters payload.
+    ///
+    /// # Returns
+    /// - `Ok(Value)` with the response result payload.
+    /// - `Err(RpcError)` when the plugin is unavailable, times out, or returns an error.
     pub fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
         if let Err(e) = self.ensure_running() {
             return Err(RpcError {

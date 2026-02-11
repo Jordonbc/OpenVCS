@@ -1,3 +1,5 @@
+//! Plugin bundle installation, indexing, and component discovery.
+
 use crate::plugin_paths::{built_in_plugin_dirs, ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME};
 use log::warn;
 use serde::{Deserialize, Serialize};
@@ -9,11 +11,16 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 use xz2::read::XzDecoder;
 
+/// Safety and resource limits enforced during bundle extraction.
 #[derive(Debug, Clone, Copy)]
 pub struct InstallerLimits {
+    /// Maximum number of files allowed in an extracted bundle.
     pub max_files: u64,
+    /// Maximum size of an individual extracted file.
     pub max_file_bytes: u64,
+    /// Maximum total extracted bytes for a bundle.
     pub max_total_bytes: u64,
+    /// Maximum accepted expansion ratio between compressed and uncompressed bytes.
     pub max_compression_ratio: u64,
 }
 
@@ -28,6 +35,7 @@ impl Default for InstallerLimits {
     }
 }
 
+/// Capability approval status for an installed plugin version.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ApprovalState {
@@ -44,6 +52,7 @@ pub enum ApprovalState {
     },
 }
 
+/// Versioned installation metadata for a plugin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstalledPluginVersion {
     pub version: String,
@@ -54,6 +63,7 @@ pub struct InstalledPluginVersion {
     pub approval: ApprovalState,
 }
 
+/// Persisted plugin index stored under `<plugin>/index.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstalledPluginIndex {
     pub plugin_id: String,
@@ -63,11 +73,13 @@ pub struct InstalledPluginIndex {
     pub versions: BTreeMap<String, InstalledPluginVersion>,
 }
 
+/// Pointer to the active installed version stored in `current.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CurrentPointer {
     pub version: String,
 }
 
+/// Result metadata returned after installing a plugin bundle.
 #[derive(Debug, Clone, Serialize)]
 pub struct InstalledPlugin {
     pub plugin_id: String,
@@ -79,6 +91,7 @@ pub struct InstalledPlugin {
     pub install_dir: PathBuf,
 }
 
+/// Manifest representation of backend declarations in `openvcs.plugin.json`.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum VcsBackendProvide {
@@ -90,6 +103,7 @@ pub enum VcsBackendProvide {
     },
 }
 
+/// Manifest module component declaration.
 #[derive(Debug, Deserialize)]
 pub struct PluginManifestModule {
     #[serde(default)]
@@ -98,12 +112,14 @@ pub struct PluginManifestModule {
     pub vcs_backends: Vec<VcsBackendProvide>,
 }
 
+/// Manifest functions component declaration.
 #[derive(Debug, Deserialize)]
 pub struct PluginManifestFunctions {
     #[serde(default)]
     pub exec: Option<String>,
 }
 
+/// Parsed plugin manifest payload.
 #[derive(Debug, Deserialize)]
 pub struct PluginManifest {
     pub id: String,
@@ -173,10 +189,12 @@ fn sanitize_tar_name(name: &str) -> Result<PathBuf, String> {
     Ok(p.to_path_buf())
 }
 
+/// Filesystem-backed store for installed plugin bundles.
 pub struct PluginBundleStore {
     root: PathBuf,
 }
 
+/// Installed module component metadata and resolved executable path.
 #[derive(Debug, Clone)]
 pub struct ModuleComponent {
     pub exec: String,
@@ -184,12 +202,14 @@ pub struct ModuleComponent {
     pub vcs_backends: Vec<(String, Option<String>)>,
 }
 
+/// Installed functions component metadata and resolved executable path.
 #[derive(Debug, Clone)]
 pub struct FunctionsComponent {
     pub exec: String,
     pub exec_path: PathBuf,
 }
 
+/// Active component metadata for a plugin selected by `current.json`.
 #[derive(Debug, Clone)]
 pub struct InstalledPluginComponents {
     pub plugin_id: String,
@@ -202,12 +222,23 @@ pub struct InstalledPluginComponents {
 }
 
 impl PluginBundleStore {
+    /// Creates a store rooted at the default plugins directory.
+    ///
+    /// # Returns
+    /// - A [`PluginBundleStore`] rooted at [`plugins_dir`].
     pub fn new_default() -> Self {
         let root = plugins_dir();
         ensure_dir(&root);
         Self { root }
     }
 
+    /// Returns the root directory for a specific plugin id.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier used as a directory name under the store root.
+    ///
+    /// # Returns
+    /// - Path to the plugin root directory.
     pub fn plugin_root_dir(&self, plugin_id: &str) -> PathBuf {
         self.root.join(plugin_id.trim())
     }
@@ -217,10 +248,27 @@ impl PluginBundleStore {
         Self { root }
     }
 
+    /// Installs a `.ovcsp` bundle using default installer limits.
+    ///
+    /// # Parameters
+    /// - `bundle_path`: Path to the plugin bundle archive.
+    ///
+    /// # Returns
+    /// - `Ok(InstalledPlugin)` with installed metadata.
+    /// - `Err(String)` when validation, extraction, or index updates fail.
     pub fn install_ovcsp(&self, bundle_path: &Path) -> Result<InstalledPlugin, String> {
         self.install_ovcsp_with_limits(bundle_path, InstallerLimits::default())
     }
 
+    /// Installs a `.ovcsp` bundle and validates extraction against provided limits.
+    ///
+    /// # Parameters
+    /// - `bundle_path`: Path to the plugin bundle archive.
+    /// - `limits`: Extraction and compression safety limits to enforce.
+    ///
+    /// # Returns
+    /// - `Ok(InstalledPlugin)` with installed metadata and resolved install directory.
+    /// - `Err(String)` when bundle structure is invalid or filesystem operations fail.
     pub fn install_ovcsp_with_limits(
         &self,
         bundle_path: &Path,
@@ -509,6 +557,11 @@ impl PluginBundleStore {
         })
     }
 
+    /// Ensures shipped built-in bundles are installed and up to date locally.
+    ///
+    /// # Returns
+    /// - `Ok(())` when all built-in bundles are synchronized.
+    /// - `Err(String)` when one or more bundles fail to sync.
     pub fn sync_built_in_plugins(&self) -> Result<(), String> {
         let mut errors = Vec::new();
         for bundle in builtin_bundle_paths() {
@@ -549,6 +602,14 @@ impl PluginBundleStore {
         Ok(())
     }
 
+    /// Removes an installed non-built-in plugin and all of its versions.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier to uninstall.
+    ///
+    /// # Returns
+    /// - `Ok(())` when the plugin is removed or not installed.
+    /// - `Err(String)` if the id is invalid, built-in, or removal fails.
     pub fn uninstall_plugin(&self, plugin_id: &str) -> Result<(), String> {
         let id = plugin_id.trim();
         if id.is_empty() {
@@ -565,6 +626,11 @@ impl PluginBundleStore {
         fs::remove_dir_all(&dir).map_err(|e| format!("remove {}: {e}", dir.display()))
     }
 
+    /// Lists installed plugin indices discovered from the plugin store root.
+    ///
+    /// # Returns
+    /// - `Ok(Vec<InstalledPluginIndex>)` sorted by plugin id.
+    /// - `Err(String)` when the plugin root cannot be read.
     pub fn list_installed(&self) -> Result<Vec<InstalledPluginIndex>, String> {
         if !self.root.is_dir() {
             return Ok(Vec::new());
@@ -591,6 +657,15 @@ impl PluginBundleStore {
         Ok(out)
     }
 
+    /// Resolves the filesystem directory for the current version of a plugin.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier to query.
+    ///
+    /// # Returns
+    /// - `Ok(Some(PathBuf))` with the current plugin directory.
+    /// - `Ok(None)` if no current version is configured.
+    /// - `Err(String)` if the id is invalid or metadata cannot be parsed.
     pub fn get_current_dir(&self, plugin_id: &str) -> Result<Option<PathBuf>, String> {
         let id = plugin_id.trim();
         if id.is_empty() {
@@ -615,6 +690,15 @@ impl PluginBundleStore {
         }
     }
 
+    /// Returns metadata for the currently selected plugin version, if present.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier to query.
+    ///
+    /// # Returns
+    /// - `Ok(Some(InstalledPluginVersion))` when a current version exists.
+    /// - `Ok(None)` when the plugin or current version is missing.
+    /// - `Err(String)` if the id is invalid.
     pub fn get_current_installed(
         &self,
         plugin_id: &str,
@@ -632,6 +716,16 @@ impl PluginBundleStore {
         Ok(index.versions.get(ver).cloned())
     }
 
+    /// Updates capability approval for a specific plugin version.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier to update.
+    /// - `version`: Installed version key to modify.
+    /// - `approved`: `true` to approve, `false` to deny.
+    ///
+    /// # Returns
+    /// - `Ok(())` when approval state is updated.
+    /// - `Err(String)` if the plugin/version is missing or index write fails.
     pub fn approve_capabilities(
         &self,
         plugin_id: &str,
@@ -660,6 +754,15 @@ impl PluginBundleStore {
         Ok(())
     }
 
+    /// Loads resolved components for the current plugin version.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier to load.
+    ///
+    /// # Returns
+    /// - `Ok(Some(InstalledPluginComponents))` when current metadata is valid.
+    /// - `Ok(None)` when no current version is available.
+    /// - `Err(String)` when manifests or entrypoints are invalid.
     pub fn load_current_components(
         &self,
         plugin_id: &str,
@@ -766,6 +869,11 @@ impl PluginBundleStore {
         }))
     }
 
+    /// Lists resolved components for every plugin with a valid current version.
+    ///
+    /// # Returns
+    /// - `Ok(Vec<InstalledPluginComponents>)` sorted by plugin id.
+    /// - `Err(String)` when store traversal fails.
     pub fn list_current_components(&self) -> Result<Vec<InstalledPluginComponents>, String> {
         if !self.root.is_dir() {
             return Ok(Vec::new());
@@ -819,6 +927,10 @@ impl PluginBundleStore {
 
 static BUILT_IN_PLUGIN_IDS: OnceLock<HashSet<String>> = OnceLock::new();
 
+/// Returns the set of built-in plugin identifiers normalized to lowercase.
+///
+/// # Returns
+/// - A process-wide cached set of lowercase built-in plugin ids.
 pub fn built_in_plugin_ids() -> &'static HashSet<String> {
     BUILT_IN_PLUGIN_IDS.get_or_init(read_built_in_plugin_ids)
 }

@@ -7,16 +7,37 @@ use tauri::Manager;
 use tauri::{Runtime, Window};
 
 #[tauri::command]
+/// Lists plugin summaries discovered by the backend.
+///
+/// # Returns
+/// - Plugin summaries for built-in and user plugins.
 pub fn list_plugins() -> Vec<plugins::PluginSummary> {
     plugins::list_plugins()
 }
 
 #[tauri::command]
+/// Loads details for a specific plugin id.
+///
+/// # Parameters
+/// - `id`: Plugin id to load.
+///
+/// # Returns
+/// - `Ok(PluginPayload)` when found.
+/// - `Err(String)` when loading fails.
 pub fn load_plugin(id: String) -> Result<plugins::PluginPayload, String> {
     plugins::load_plugin(id.trim())
 }
 
 #[tauri::command]
+/// Installs an `.ovcsp` plugin bundle.
+///
+/// # Parameters
+/// - `window`: Calling window handle used for capability prompt events.
+/// - `bundle_path`: Filesystem path to the bundle.
+///
+/// # Returns
+/// - `Ok(InstalledPlugin)` with install metadata.
+/// - `Err(String)` when installation fails.
 pub async fn install_ovcsp<R: Runtime>(
     window: Window<R>,
     bundle_path: String,
@@ -39,16 +60,39 @@ pub async fn install_ovcsp<R: Runtime>(
 }
 
 #[tauri::command]
+/// Lists installed plugin bundle indices.
+///
+/// # Returns
+/// - `Ok(Vec<InstalledPluginIndex>)` on success.
+/// - `Err(String)` when listing fails.
 pub fn list_installed_bundles() -> Result<Vec<InstalledPluginIndex>, String> {
     PluginBundleStore::new_default().list_installed()
 }
 
 #[tauri::command]
+/// Uninstalls a plugin by id.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin id to remove.
+///
+/// # Returns
+/// - `Ok(())` when removal succeeds.
+/// - `Err(String)` when validation/removal fails.
 pub fn uninstall_plugin(plugin_id: String) -> Result<(), String> {
     PluginBundleStore::new_default().uninstall_plugin(plugin_id.trim())
 }
 
 #[tauri::command]
+/// Approves or denies requested capabilities for a plugin version.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin id.
+/// - `version`: Installed plugin version.
+/// - `approved`: Approval decision.
+///
+/// # Returns
+/// - `Ok(())` when state is updated.
+/// - `Err(String)` when update fails.
 pub fn approve_plugin_capabilities(
     plugin_id: String,
     version: String,
@@ -62,6 +106,14 @@ pub fn approve_plugin_capabilities(
 }
 
 #[tauri::command]
+/// Lists callable functions exported by a plugin's functions component.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin id to inspect.
+///
+/// # Returns
+/// - `Ok(Value)` containing function descriptors.
+/// - `Err(String)` when plugin lookup or RPC fails.
 pub fn list_plugin_functions(plugin_id: String) -> Result<Value, String> {
     let store = PluginBundleStore::new_default();
     let Some(components) = store.load_current_components(plugin_id.trim())? else {
@@ -95,6 +147,16 @@ pub fn list_plugin_functions(plugin_id: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
+/// Invokes a plugin function by id.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin id to invoke.
+/// - `function_id`: Function id exported by the plugin.
+/// - `args`: JSON argument payload.
+///
+/// # Returns
+/// - `Ok(Value)` function result payload.
+/// - `Err(String)` when invocation fails.
 pub fn invoke_plugin_function(
     plugin_id: String,
     function_id: String,
@@ -135,6 +197,16 @@ pub fn invoke_plugin_function(
 }
 
 #[tauri::command]
+/// Calls an arbitrary method on a plugin module component.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin id to invoke.
+/// - `method`: Module RPC method name.
+/// - `params`: Optional JSON params payload.
+///
+/// # Returns
+/// - `Ok(Value)` method result payload.
+/// - `Err(String)` when lookup/validation/RPC fails.
 pub fn call_plugin_module_method(
     plugin_id: String,
     method: String,

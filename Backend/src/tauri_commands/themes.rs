@@ -33,6 +33,13 @@ fn enabled_plugins(cfg: &settings::AppConfig) -> HashSet<String> {
 }
 
 #[tauri::command]
+/// Lists themes filtered to those from enabled plugins (plus built-ins).
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - Theme summaries visible to the current configuration.
 pub fn list_themes(state: State<'_, AppState>) -> Vec<themes::ThemeSummary> {
     let cfg: settings::AppConfig = state.config();
     let enabled = enabled_plugins(&cfg);
@@ -54,6 +61,15 @@ pub fn list_themes(state: State<'_, AppState>) -> Vec<themes::ThemeSummary> {
 }
 
 #[tauri::command]
+/// Loads a theme payload, rejecting themes from disabled plugins.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `id`: Theme id to load.
+///
+/// # Returns
+/// - `Ok(ThemePayload)` when theme is found and allowed.
+/// - `Err(String)` when load fails or the owning plugin is disabled.
 pub fn load_theme(state: State<'_, AppState>, id: String) -> Result<themes::ThemePayload, String> {
     let cfg: settings::AppConfig = state.config();
     let enabled = enabled_plugins(&cfg);

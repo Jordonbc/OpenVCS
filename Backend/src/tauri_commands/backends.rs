@@ -15,6 +15,13 @@ use crate::state::AppState;
 use crate::tauri_commands::shared::progress_bridge;
 
 #[tauri::command]
+/// Lists VCS backends currently available from plugins.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - A list of `(backend_id, display_name)` tuples.
 pub fn list_vcs_backends_cmd(state: State<'_, AppState>) -> Vec<(String, String)> {
     info!("list_vcs_backends_cmd called");
 
@@ -62,6 +69,15 @@ pub fn list_vcs_backends_cmd(state: State<'_, AppState>) -> Vec<(String, String)
 }
 
 #[tauri::command]
+/// Sets the default backend and reopens the current repository with it when possible.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `backend_id`: Backend id to activate.
+///
+/// # Returns
+/// - `Ok(())` when backend selection/reopen succeeds.
+/// - `Err(String)` when the backend id is unknown or reopen fails.
 pub async fn set_vcs_backend_cmd(
     state: State<'_, AppState>,
     backend_id: BackendId,
@@ -119,6 +135,14 @@ pub async fn set_vcs_backend_cmd(
 }
 
 #[tauri::command]
+/// Reopens the currently selected repository using its current backend id.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(())` when no repo is open or reopen succeeds.
+/// - `Err(String)` when reopen fails.
 pub async fn reopen_current_repo_cmd(state: State<'_, AppState>) -> Result<(), String> {
     let Some(repo) = state.current_repo() else {
         return Ok(());
@@ -145,6 +169,17 @@ pub async fn reopen_current_repo_cmd(state: State<'_, AppState>) -> Result<(), S
 ///
 /// This is intentionally backend-agnostic so plugin UI can access backend-specific helpers
 /// (e.g. Git LFS) without hardcoding them into the host's generic VCS trait.
+///
+/// # Parameters
+/// - `window`: Calling Tauri window handle.
+/// - `state`: Shared application state.
+/// - `backend_id`: Backend id to invoke.
+/// - `method`: RPC method name.
+/// - `params`: JSON payload passed to the backend method.
+///
+/// # Returns
+/// - `Ok(Value)` containing the backend method result.
+/// - `Err(String)` when validation, backend resolution, or RPC execution fails.
 #[tauri::command]
 pub async fn call_vcs_backend_method<R: Runtime>(
     window: Window<R>,

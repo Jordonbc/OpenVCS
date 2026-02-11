@@ -1,3 +1,5 @@
+//! Discovery and opening logic for plugin-provided VCS backends.
+
 use crate::plugin_bundles::{ApprovalState, PluginBundleStore, PluginManifest, VcsBackendProvide};
 use crate::plugin_paths::{built_in_plugin_dirs, PLUGIN_MANIFEST_NAME};
 use crate::plugin_runtime::vcs_proxy::PluginVcsProxy;
@@ -42,14 +44,22 @@ fn is_plugin_enabled_in_settings(plugin_id: &str, default_enabled: bool) -> bool
     default_enabled || enabled.iter().any(|id| id == &plugin_id)
 }
 
+/// Metadata describing a single plugin-provided backend implementation.
 #[derive(Debug, Clone)]
 pub struct PluginBackendDescriptor {
+    /// Logical backend identifier (for example `git`).
     pub backend_id: BackendId,
+    /// Optional human-readable backend name.
     pub backend_name: Option<String>,
+    /// Owning plugin identifier.
     pub plugin_id: String,
+    /// Optional human-readable plugin name.
     pub plugin_name: Option<String>,
+    /// Executable used to proxy backend operations.
     pub exec_path: std::path::PathBuf,
+    /// Capabilities requested by the plugin version providing this backend.
     pub requested_capabilities: Vec<String>,
+    /// Current capability approval state for the plugin version.
     pub approval: ApprovalState,
 }
 
@@ -92,6 +102,11 @@ fn builtin_plugin_manifests() -> Vec<(PathBuf, PluginManifest)> {
     out
 }
 
+/// Lists VCS backends currently available from installed and built-in plugins.
+///
+/// # Returns
+/// - `Ok(Vec<PluginBackendDescriptor>)` containing discovered backend descriptors.
+/// - `Err(String)` if installed plugin components cannot be loaded.
 pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
     let store = PluginBundleStore::new_default();
     let plugins = store.list_current_components()?;
@@ -190,6 +205,14 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
     Ok(map.into_values().collect())
 }
 
+/// Returns whether a plugin-provided backend exists for the given backend id.
+///
+/// # Parameters
+/// - `backend_id`: Backend identifier to probe.
+///
+/// # Returns
+/// - `true` when a matching plugin backend is available.
+/// - `false` otherwise.
 pub fn has_plugin_vcs_backend(backend_id: &BackendId) -> bool {
     list_plugin_vcs_backends().ok().is_some_and(|v| {
         v.iter()
@@ -197,6 +220,14 @@ pub fn has_plugin_vcs_backend(backend_id: &BackendId) -> bool {
     })
 }
 
+/// Resolves the descriptor for a specific plugin-provided backend id.
+///
+/// # Parameters
+/// - `backend_id`: Backend identifier to resolve.
+///
+/// # Returns
+/// - `Ok(PluginBackendDescriptor)` for the matching backend.
+/// - `Err(String)` if the backend is unknown or lookup fails.
 pub fn plugin_vcs_backend_descriptor(
     backend_id: &BackendId,
 ) -> Result<PluginBackendDescriptor, String> {
@@ -206,6 +237,15 @@ pub fn plugin_vcs_backend_descriptor(
         .ok_or_else(|| format!("Unknown VCS backend: {backend_id}"))
 }
 
+/// Opens a repository through a plugin backend process.
+///
+/// # Parameters
+/// - `backend_id`: Backend identifier to open through.
+/// - `path`: Repository working tree path.
+///
+/// # Returns
+/// - `Ok(Arc<dyn Vcs>)` with an opened backend proxy.
+/// - `Err(VcsError)` when descriptor resolution or backend startup fails.
 pub fn open_repo_via_plugin_vcs_backend(
     backend_id: BackendId,
     path: &Path,

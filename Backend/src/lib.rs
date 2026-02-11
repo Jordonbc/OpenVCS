@@ -1,3 +1,8 @@
+//! OpenVCS backend application crate.
+//!
+//! This crate wires together Tauri command handlers, runtime state,
+//! plugin discovery, and startup behavior.
+
 use log::warn;
 use openvcs_core::BackendId;
 use std::sync::Arc;
@@ -80,6 +85,13 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
     }
 }
 
+/// Starts the OpenVCS backend runtime and Tauri application.
+///
+/// This configures logging, plugin bundle synchronization, startup restore
+/// behavior, update checks, and all IPC handlers exposed to the frontend.
+///
+/// # Returns
+/// - `()`. This function runs the Tauri event loop until application exit.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize logging
@@ -158,7 +170,8 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-/// Returns the set of command handlers for the app.
+/// Returns the generated invoke handler that routes frontend IPC calls
+/// to the backend command functions.
 fn build_invoke_handler<R: tauri::Runtime>(
 ) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![

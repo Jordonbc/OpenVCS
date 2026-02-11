@@ -1,3 +1,8 @@
+//! Aggregates the backend's Tauri command modules.
+//!
+//! Each submodule defines command handlers grouped by feature area, and this
+//! module re-exports them so the crate can build a single invoke handler.
+
 mod backends;
 mod branches;
 mod commit;
@@ -31,4 +36,5 @@ pub use status::*;
 pub use themes::*;
 pub use updater::*;
 
+/// Internal helpers shared across command modules.
 pub(crate) use shared::{current_repo_or_err, progress_bridge, run_repo_task, ProgressPayload};

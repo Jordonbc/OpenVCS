@@ -43,6 +43,15 @@ fn normalize_gitignore_entry(path: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
+/// Adds repository-relative paths to `.gitignore` if not already present.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `paths`: Repository-relative paths to ignore.
+///
+/// # Returns
+/// - `Ok(())` when update succeeds.
+/// - `Err(String)` when validation or file IO fails.
 pub async fn git_add_to_gitignore_paths(
     state: State<'_, AppState>,
     paths: Vec<String>,
@@ -98,6 +107,16 @@ pub async fn git_add_to_gitignore_paths(
 }
 
 #[tauri::command]
+/// Opens a repository file with the host system opener.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+/// - `state`: Shared application state.
+/// - `path`: Repository-relative path to open.
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` when no repo is selected, path is invalid, or open fails.
 pub fn open_repo_file<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -165,6 +184,15 @@ fn decode_repo_text(bytes: &[u8]) -> String {
 }
 
 #[tauri::command]
+/// Reads a repository file as text, with UTF-16 fallback decoding.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `path`: Repository-relative file path.
+///
+/// # Returns
+/// - `Ok(String)` decoded text content.
+/// - `Err(String)` when no repo is selected, path is invalid, or read fails.
 pub fn read_repo_file_text(state: State<'_, AppState>, path: String) -> Result<String, String> {
     let repo = state
         .current_repo()

@@ -7,6 +7,11 @@ use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
 static ACTIVE_LOG_FILE: OnceLock<Arc<Mutex<std::fs::File>>> = OnceLock::new();
 
+/// Truncates the currently active `logs/openvcs.log` file in place.
+///
+/// # Returns
+/// - `Ok(())` if the active log file is cleared or not yet initialized.
+/// - `Err(String)` if file locking or truncation fails.
 pub fn clear_active_log_file() -> Result<(), String> {
     let Some(file) = ACTIVE_LOG_FILE.get() else {
         return Ok(());
@@ -22,6 +27,9 @@ pub fn clear_active_log_file() -> Result<(), String> {
 
 /// Initialize logging: console (env_logger) + append to `./logs/openvcs.log`.
 /// Respects `RUST_LOG` for filtering; sets a sensible default if missing.
+///
+/// # Returns
+/// - `()`.
 pub fn init() {
     // Load persisted settings early (does not require AppState) for logging configuration
     let cfg = AppConfig::load_or_default();

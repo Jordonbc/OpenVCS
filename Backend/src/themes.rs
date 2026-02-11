@@ -169,6 +169,10 @@ fn namespaced_plugin_paired_with(plugin_id: &str, paired_with: &str) -> String {
     }
 }
 
+/// Returns the built-in default theme summary.
+///
+/// # Returns
+/// - Summary metadata for the default theme.
 pub fn default_theme_summary() -> ThemeSummary {
     ThemeSummary {
         id: DEFAULT_THEME_ID.to_string(),
@@ -183,6 +187,10 @@ pub fn default_theme_summary() -> ThemeSummary {
     }
 }
 
+/// Returns the built-in default theme payload.
+///
+/// # Returns
+/// - Theme payload for the default theme.
 pub fn default_theme_payload() -> ThemePayload {
     ThemePayload {
         summary: default_theme_summary(),
@@ -192,6 +200,10 @@ pub fn default_theme_payload() -> ThemePayload {
     }
 }
 
+/// Lists available themes from built-in and plugin theme directories.
+///
+/// # Returns
+/// - Theme summaries sorted by name, prefixed with the default theme.
 pub fn list_themes() -> Vec<ThemeSummary> {
     let mut summaries: Vec<ThemeSummary> = Vec::new();
     let mut seen = HashSet::new();
@@ -250,6 +262,14 @@ pub fn list_themes() -> Vec<ThemeSummary> {
     out
 }
 
+/// Loads a theme payload by id.
+///
+/// # Parameters
+/// - `id`: Theme id (supports plugin namespaced ids).
+///
+/// # Returns
+/// - `Ok(ThemePayload)` when found.
+/// - `Err(String)` when the id is ambiguous or missing.
 pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
     let requested = id.trim();
     if requested.is_empty() || requested.eq_ignore_ascii_case(DEFAULT_THEME_ID) {

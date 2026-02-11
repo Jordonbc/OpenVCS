@@ -42,16 +42,37 @@ fn read_last_lines(path: &std::path::Path, max_lines: usize) -> std::io::Result<
 }
 
 #[tauri::command]
+/// Returns the current in-memory VCS/output log.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - A cloned list of output log entries.
 pub fn get_output_log(state: tauri::State<'_, AppState>) -> Vec<OutputLogEntry> {
     state.output_log()
 }
 
 #[tauri::command]
+/// Clears the in-memory VCS/output log.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `()`.
 pub fn clear_output_log(state: tauri::State<'_, AppState>) {
     state.clear_output_log();
 }
 
 #[tauri::command]
+/// Reads and returns recent lines from `logs/openvcs.log`.
+///
+/// # Parameters
+/// - `max_lines`: Optional number of lines to return (clamped).
+///
+/// # Returns
+/// - Parsed log lines converted to [`OutputLogEntry`] values.
 pub fn tail_app_log(max_lines: Option<usize>) -> Vec<OutputLogEntry> {
     use crate::output_log::{OutputLevel, OutputLogEntry};
 
@@ -70,11 +91,24 @@ pub fn tail_app_log(max_lines: Option<usize>) -> Vec<OutputLogEntry> {
 }
 
 #[tauri::command]
+/// Truncates the active application log file.
+///
+/// # Returns
+/// - `Ok(())` when clear succeeds.
+/// - `Err(String)` when truncation fails.
 pub fn clear_app_log() -> Result<(), String> {
     crate::logging::clear_active_log_file()
 }
 
 #[tauri::command]
+/// Opens or focuses the dedicated output log window.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+///
+/// # Returns
+/// - `Ok(())` when a window is focused or created.
+/// - `Err(String)` when window creation fails.
 pub fn open_output_log_window<R: Runtime>(window: Window<R>) -> Result<(), String> {
     let app = window.app_handle().clone();
     if let Some(existing) = app.get_webview_window("output-log") {

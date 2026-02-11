@@ -1,3 +1,5 @@
+//! Path resolution helpers for installed and built-in plugins.
+
 use directories::ProjectDirs;
 use log::{info, warn};
 use std::{
@@ -6,7 +8,9 @@ use std::{
     sync::OnceLock,
 };
 
+/// File name expected for plugin manifests.
 pub const PLUGIN_MANIFEST_NAME: &str = "openvcs.plugin.json";
+/// Directory name used for built-in plugin bundles.
 pub const BUILT_IN_PLUGINS_DIR_NAME: &str = "built-in-plugins";
 
 // If the Tauri runtime resolves a resource directory at startup, we store
@@ -14,6 +18,10 @@ pub const BUILT_IN_PLUGINS_DIR_NAME: &str = "built-in-plugins";
 // application bundle.
 static RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
+/// Returns the user-writable plugin installation directory.
+///
+/// # Returns
+/// - The absolute config-directory path used to store installed plugins.
 pub fn plugins_dir() -> PathBuf {
     if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
         pd.config_dir().join("plugins")
@@ -22,12 +30,23 @@ pub fn plugins_dir() -> PathBuf {
     }
 }
 
+/// Creates a directory path recursively and logs failures.
+///
+/// # Parameters
+/// - `path`: Directory path to create if missing.
+///
+/// # Returns
+/// - `()`.
 pub fn ensure_dir(path: &Path) {
     if let Err(err) = std::fs::create_dir_all(path) {
         warn!("plugins: failed to create {}: {}", path.display(), err);
     }
 }
 
+/// Returns discovered built-in plugin directories that currently exist.
+///
+/// # Returns
+/// - Existing filesystem directories searched for built-in plugins.
 pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
 
@@ -100,6 +119,12 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
 /// Set the resolved Tauri resource directory so the plugin discovery can
 /// include resources embedded inside the application bundle. Call this from
 /// the Tauri `setup` callback with `app.path().resolve("built-in-plugins", BaseDirectory::Resource)`.
+///
+/// # Parameters
+/// - `path`: Resource directory path resolved by Tauri at runtime.
+///
+/// # Returns
+/// - `()`.
 pub fn set_resource_dir(path: PathBuf) {
     // it's fine if this fails to set more than once; first set wins.
     let _ = RESOURCE_DIR.set(path);

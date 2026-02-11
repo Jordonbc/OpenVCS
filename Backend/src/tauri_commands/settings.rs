@@ -9,16 +9,40 @@ use crate::state::AppState;
 use super::run_repo_task;
 
 #[tauri::command]
+/// Returns global application settings.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(AppConfig)` with current settings.
 pub fn get_global_settings(state: State<'_, AppState>) -> Result<AppConfig, String> {
     Ok(state.config())
 }
 
 #[tauri::command]
+/// Replaces and persists global application settings.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `cfg`: New global settings payload.
+///
+/// # Returns
+/// - `Ok(())` when settings are applied.
+/// - `Err(String)` when validation/persistence fails.
 pub fn set_global_settings(state: State<'_, AppState>, cfg: AppConfig) -> Result<(), String> {
     state.set_config(cfg)
 }
 
 #[tauri::command]
+/// Returns repository-local settings merged with current repo values when available.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(RepoConfig)` current effective repository settings.
+/// - `Err(String)` when repo queries fail.
 pub async fn get_repo_settings(state: State<'_, AppState>) -> Result<RepoConfig, String> {
     let mut cfg = state.repo_config();
     if let Some(repo) = state.current_repo() {
@@ -68,6 +92,15 @@ pub async fn get_repo_settings(state: State<'_, AppState>) -> Result<RepoConfig,
 }
 
 #[tauri::command]
+/// Updates repository-local settings and applies identity/remote changes.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `cfg`: Repository settings payload.
+///
+/// # Returns
+/// - `Ok(())` when updates are applied.
+/// - `Err(String)` when backend operations fail.
 pub async fn set_repo_settings(state: State<'_, AppState>, cfg: RepoConfig) -> Result<(), String> {
     let cfg_clone = cfg.clone();
     state.set_repo_config(RepoConfig { ..cfg.clone() })?;

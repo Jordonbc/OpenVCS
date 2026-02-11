@@ -1,11 +1,15 @@
+//! Repository-local settings payloads exchanged with the frontend.
+
 use serde::{Deserialize, Serialize};
 
+/// Name/URL pair for a configured Git remote.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteConfig {
     pub name: String,
     pub url: String,
 }
 
+/// Repository-specific settings that can override global defaults.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RepoConfig {
     /// Repository-local user.name (if set)
