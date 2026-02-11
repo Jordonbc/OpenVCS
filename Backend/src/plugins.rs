@@ -74,10 +74,24 @@ struct RawPluginManifest {
     default_enabled: bool,
 }
 
+/// Serde helper for skipping `false` values.
+///
+/// # Parameters
+/// - `v`: Boolean value.
+///
+/// # Returns
+/// - `true` when value is false.
 fn is_false(v: &bool) -> bool {
     !*v
 }
 
+/// Trims optional strings and removes empties.
+///
+/// # Parameters
+/// - `value`: Optional string.
+///
+/// # Returns
+/// - Trimmed non-empty string or `None`.
 fn clean_opt(value: Option<String>) -> Option<String> {
     value.and_then(|v| {
         let trimmed = v.trim();
@@ -89,6 +103,13 @@ fn clean_opt(value: Option<String>) -> Option<String> {
     })
 }
 
+/// Trims, deduplicates, and normalizes tag lists.
+///
+/// # Parameters
+/// - `tags`: Raw tag list.
+///
+/// # Returns
+/// - Deduplicated normalized tag list.
 fn clean_tags(tags: Vec<String>) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
@@ -113,6 +134,10 @@ enum PluginOrigin {
 }
 
 impl PluginOrigin {
+    /// Returns serialized source label.
+    ///
+    /// # Returns
+    /// - Source label string.
     fn as_str(&self) -> &'static str {
         match self {
             PluginOrigin::BuiltIn => "built-in",
@@ -121,6 +146,10 @@ impl PluginOrigin {
     }
 }
 
+/// Resolves plugin root directories (user + built-in).
+///
+/// # Returns
+/// - Unique list of plugin root paths with origin metadata.
 fn plugin_roots() -> Vec<(PathBuf, PluginOrigin)> {
     let mut roots: Vec<(PathBuf, PluginOrigin)> = Vec::new();
     let mut seen = HashSet::new();
@@ -141,6 +170,14 @@ fn plugin_roots() -> Vec<(PathBuf, PluginOrigin)> {
     roots
 }
 
+/// Resolves plugin directory for flat or versioned layouts.
+///
+/// # Parameters
+/// - `path`: Candidate plugin directory.
+///
+/// # Returns
+/// - `Some(PathBuf)` resolved plugin content directory.
+/// - `None` when unresolved.
 fn resolve_plugin_dir(path: &Path) -> Option<PathBuf> {
     let direct = path.join(PLUGIN_MANIFEST_NAME);
     if direct.is_file() {
@@ -166,6 +203,14 @@ fn resolve_plugin_dir(path: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Reads and validates plugin manifest from a directory.
+///
+/// # Parameters
+/// - `path`: Plugin directory.
+///
+/// # Returns
+/// - `Ok((PathBuf, RawPluginManifest))` resolved directory and manifest.
+/// - `Err(String)` when missing or invalid.
 fn read_manifest_from_directory(path: &Path) -> Result<(PathBuf, RawPluginManifest), String> {
     let resolved = resolve_plugin_dir(path).unwrap_or_else(|| path.to_path_buf());
     let manifest_path = resolved.join(PLUGIN_MANIFEST_NAME);
@@ -193,6 +238,14 @@ fn read_manifest_from_directory(path: &Path) -> Result<(PathBuf, RawPluginManife
     Ok((resolved, manifest))
 }
 
+/// Returns icon MIME type from file extension.
+///
+/// # Parameters
+/// - `path`: Icon file path.
+///
+/// # Returns
+/// - `Some(&str)` MIME type for supported extensions.
+/// - `None` for unsupported extensions.
 fn icon_mime_for_path(path: &Path) -> Option<&'static str> {
     let ext = path
         .extension()?
@@ -209,6 +262,14 @@ fn icon_mime_for_path(path: &Path) -> Option<&'static str> {
     }
 }
 
+/// Finds a supported icon file within a plugin directory.
+///
+/// # Parameters
+/// - `plugin_dir`: Plugin directory path.
+///
+/// # Returns
+/// - `Some(PathBuf)` icon path.
+/// - `None` when no supported icon exists.
 fn find_icon_path(plugin_dir: &Path) -> Option<PathBuf> {
     for ext in ["png", "jpg", "jpeg", "webp", "avif", "svg"] {
         let candidate = plugin_dir.join(format!("icon.{ext}"));
@@ -219,6 +280,14 @@ fn find_icon_path(plugin_dir: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Loads icon bytes and returns a data URL for UI use.
+///
+/// # Parameters
+/// - `plugin_dir`: Plugin directory path.
+///
+/// # Returns
+/// - `Some(String)` icon data URL.
+/// - `None` when icon is missing/invalid.
 fn icon_data_url(plugin_dir: &Path) -> Option<String> {
     let path = find_icon_path(plugin_dir)?;
     let mime = icon_mime_for_path(&path)?;
@@ -250,12 +319,26 @@ fn icon_data_url(plugin_dir: &Path) -> Option<String> {
     Some(format!("data:{mime};base64,{encoded}"))
 }
 
+/// Encodes SVG bytes as percent-escaped UTF-8 data URL content.
+///
+/// # Parameters
+/// - `data`: SVG bytes.
+///
+/// # Returns
+/// - Percent-encoded UTF-8 string.
 fn encode_svg_utf8_data(data: &[u8]) -> String {
     // Some WebViews are flaky with base64-encoded SVG data URLs; percent-encoded UTF-8 tends to be more reliable.
     let text = String::from_utf8_lossy(data);
     percent_encode_uri_component(text.trim())
 }
 
+/// Encodes bytes as base64 text.
+///
+/// # Parameters
+/// - `data`: Raw bytes.
+///
+/// # Returns
+/// - Base64-encoded string.
 fn encode_base64(data: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     if data.is_empty() {
@@ -294,6 +377,13 @@ fn encode_base64(data: &[u8]) -> String {
     out
 }
 
+/// Percent-encodes bytes for URI component contexts.
+///
+/// # Parameters
+/// - `input`: Raw text.
+///
+/// # Returns
+/// - Percent-encoded output string.
 fn percent_encode_uri_component(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for &b in input.as_bytes() {
@@ -310,6 +400,13 @@ fn percent_encode_uri_component(input: &str) -> String {
     out
 }
 
+/// Converts a nibble value to uppercase hexadecimal character.
+///
+/// # Parameters
+/// - `v`: Nibble value.
+///
+/// # Returns
+/// - Hex digit char.
 fn nibble_hex(v: u8) -> char {
     match v {
         0..=9 => (b'0' + v) as char,
@@ -318,6 +415,15 @@ fn nibble_hex(v: u8) -> char {
     }
 }
 
+/// Converts a raw manifest into a plugin summary payload.
+///
+/// # Parameters
+/// - `plugin_dir`: Resolved plugin directory.
+/// - `manifest`: Raw manifest payload.
+/// - `source`: Plugin source.
+///
+/// # Returns
+/// - Normalized plugin summary.
 fn manifest_to_summary(
     plugin_dir: &Path,
     manifest: RawPluginManifest,
@@ -341,6 +447,13 @@ fn manifest_to_summary(
     }
 }
 
+/// Discovers theme directories under a plugin.
+///
+/// # Parameters
+/// - `plugin_dir`: Plugin directory path.
+///
+/// # Returns
+/// - Deduplicated theme directory list.
 fn discover_theme_dirs(plugin_dir: &Path) -> Vec<PathBuf> {
     let root = plugin_dir.join(PLUGIN_THEMES_DIR_NAME);
     let mut out: Vec<PathBuf> = Vec::new();
@@ -355,6 +468,15 @@ fn discover_theme_dirs(plugin_dir: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// Recursively discovers theme directories to a fixed depth.
+///
+/// # Parameters
+/// - `dir`: Directory to scan.
+/// - `depth`: Remaining recursion depth.
+/// - `out`: Accumulator for discovered directories.
+///
+/// # Returns
+/// - `()`.
 fn discover_theme_dirs_recursive(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
     if depth == 0 {
         return;

@@ -8,6 +8,13 @@ pub struct Validation {
 
 // Expand ~ to home; leave other paths untouched.
 // Returns (normalized_path_string, exists, is_dir)
+/// Normalizes and probes a filesystem path for existence/dir status.
+///
+/// # Parameters
+/// - `input`: Raw user path input.
+///
+/// # Returns
+/// - Tuple of normalized path, exists flag, and is-dir flag.
 fn normalize_and_probe(input: &str) -> (String, bool, bool) {
     let mut s = input.trim().to_string();
     if s.starts_with('~') {
@@ -19,6 +26,14 @@ fn normalize_and_probe(input: &str) -> (String, bool, bool) {
     (s.clone(), p.exists(), p.is_dir())
 }
 
+/// Heuristically checks whether a string looks like a Git URL.
+///
+/// # Parameters
+/// - `u`: Candidate URL string.
+///
+/// # Returns
+/// - `true` when URL matches supported Git URL forms.
+/// - `false` otherwise.
 fn is_probably_git_url(u: &str) -> bool {
     let u = u.trim();
     if u.is_empty() {
@@ -41,6 +56,14 @@ fn is_probably_git_url(u: &str) -> bool {
     false
 }
 
+/// Checks whether a string looks like an absolute filesystem path.
+///
+/// # Parameters
+/// - `s`: Candidate path string.
+///
+/// # Returns
+/// - `true` when path format looks absolute.
+/// - `false` otherwise.
 fn looks_like_path(s: &str) -> bool {
     let s = s.trim();
     if s.is_empty() {

@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{fs, io};
 
+/// Serde helper default for `true`.
+///
+/// # Returns
+/// - `true`.
 fn default_true() -> bool {
     true
 }
@@ -40,6 +44,10 @@ pub struct AppConfig {
 }
 
 impl Default for AppConfig {
+    /// Returns default global configuration values.
+    ///
+    /// # Returns
+    /// - Default [`AppConfig`].
     fn default() -> Self {
         Self {
             schema_version: 1,
@@ -82,6 +90,10 @@ pub struct General {
     pub crash_reports: bool,
 }
 impl Default for General {
+    /// Returns default general settings values.
+    ///
+    /// # Returns
+    /// - Default [`General`].
     fn default() -> Self {
         Self {
             theme: Theme::System,
@@ -97,6 +109,10 @@ impl Default for General {
     }
 }
 
+/// Returns the default theme pack id.
+///
+/// # Returns
+/// - Default theme pack string.
 fn default_theme_pack() -> String {
     "default".to_string()
 }
@@ -134,6 +150,10 @@ pub struct Git {
     pub merge_commit_message_template: String,
 }
 impl Default for Git {
+    /// Returns default Git settings values.
+    ///
+    /// # Returns
+    /// - Default [`Git`].
     fn default() -> Self {
         Self {
             backend: String::new(),
@@ -168,6 +188,10 @@ pub struct Credentials {
     pub signing_key: String,
 }
 impl Default for Credentials {
+    /// Returns default credential settings values.
+    ///
+    /// # Returns
+    /// - Default [`Credentials`].
     fn default() -> Self {
         Self {
             helper: CredentialHelper::OsKeychain,
@@ -202,6 +226,10 @@ pub struct Diff {
     pub binary_exts: Vec<String>,
 }
 impl Default for Diff {
+    /// Returns default diff settings values.
+    ///
+    /// # Returns
+    /// - Default [`Diff`].
     fn default() -> Self {
         Self {
             tab_width: 4,
@@ -229,6 +257,10 @@ pub struct Lfs {
     pub background_fetch_on_checkout: bool,
 }
 impl Default for Lfs {
+    /// Returns default LFS settings values.
+    ///
+    /// # Returns
+    /// - Default [`Lfs`].
     fn default() -> Self {
         Self {
             enabled: true,
@@ -250,6 +282,10 @@ pub struct Performance {
     pub animations: bool,
 }
 impl Default for Performance {
+    /// Returns default performance settings values.
+    ///
+    /// # Returns
+    /// - Default [`Performance`].
     fn default() -> Self {
         Self {
             progressive_render: true,
@@ -271,6 +307,10 @@ pub struct Integrations {
     pub host_overrides: std::collections::BTreeMap<String, IssueProvider>,
 }
 impl Default for Integrations {
+    /// Returns default integration settings values.
+    ///
+    /// # Returns
+    /// - Default [`Integrations`].
     fn default() -> Self {
         Self {
             default_editor: EditorChoice::System,
@@ -311,6 +351,10 @@ pub struct Ux {
     pub recents_limit: u32,
 }
 impl Default for Ux {
+    /// Returns default UX settings values.
+    ///
+    /// # Returns
+    /// - Default [`Ux`].
     fn default() -> Self {
         Self {
             ui_scale: 1.0,
@@ -333,6 +377,10 @@ pub struct Advanced {
     pub proxy: Proxy,
 }
 impl Default for Advanced {
+    /// Returns default advanced settings values.
+    ///
+    /// # Returns
+    /// - Default [`Advanced`].
     fn default() -> Self {
         Self {
             confirm_force_push: ForcePushPolicy::Always,
@@ -367,6 +415,10 @@ pub struct Logging {
     pub retain_archives: u32,
 }
 impl Default for Logging {
+    /// Returns default logging settings values.
+    ///
+    /// # Returns
+    /// - Default [`Logging`].
     fn default() -> Self {
         Self {
             level: LogLevel::Info,
@@ -376,6 +428,10 @@ impl Default for Logging {
     }
 }
 
+/// Serde helper default for retained log archive count.
+///
+/// # Returns
+/// - Archive count default.
 fn default_retain_archives() -> u32 {
     10
 }
@@ -492,6 +548,10 @@ impl ExternalTool {
     }
 }
 impl Default for ExternalTool {
+    /// Returns the disabled default external tool config.
+    ///
+    /// # Returns
+    /// - Default [`ExternalTool`].
     fn default() -> Self {
         Self::disabled()
     }
@@ -567,6 +627,10 @@ impl Proxy {
     }
 }
 impl Default for Proxy {
+    /// Returns the default system-proxy configuration.
+    ///
+    /// # Returns
+    /// - Default [`Proxy`].
     fn default() -> Self {
         Proxy::system()
     }

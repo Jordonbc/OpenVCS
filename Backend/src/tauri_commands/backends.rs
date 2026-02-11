@@ -236,6 +236,16 @@ pub async fn call_vcs_backend_method<R: Runtime>(
     call_res.map_err(|e| format!("{}: {}", e.code, e.message))
 }
 
+/// Resolves optional backend workspace path and enforces repo-root confinement.
+///
+/// # Parameters
+/// - `repo_root`: Repository root path.
+/// - `params`: Backend method params.
+///
+/// # Returns
+/// - `Ok(Some(PathBuf))` resolved workspace path.
+/// - `Ok(None)` when no path restriction should be applied.
+/// - `Err(String)` when requested path escapes repo root.
 fn resolve_allowed_workspace_root(
     repo_root: &Path,
     params: &Value,

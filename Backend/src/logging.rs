@@ -39,10 +39,25 @@ pub fn init() {
         file: Arc<Mutex<std::fs::File>>,
     }
     impl log::Log for DualLogger {
+        /// Delegates enable filtering to console logger.
+        ///
+        /// # Parameters
+        /// - `m`: Log metadata.
+        ///
+        /// # Returns
+        /// - `true` when record is enabled.
+        /// - `false` otherwise.
         fn enabled(&self, m: &log::Metadata) -> bool {
             // Delegate filtering to env_logger
             self.console.enabled(m)
         }
+        /// Writes log record to console and active log file.
+        ///
+        /// # Parameters
+        /// - `r`: Log record.
+        ///
+        /// # Returns
+        /// - `()`.
         fn log(&self, r: &log::Record) {
             if self.enabled(r.metadata()) {
                 self.console.log(r);
@@ -51,6 +66,10 @@ pub fn init() {
                 }
             }
         }
+        /// Flushes console and file logging outputs.
+        ///
+        /// # Returns
+        /// - `()`.
         fn flush(&self) {
             self.console.flush();
             if let Ok(mut f) = self.file.lock() {
@@ -118,6 +137,13 @@ pub fn init() {
     }
 }
 
+/// Rotates existing active log into a timestamped zip archive.
+///
+/// # Parameters
+/// - `dir`: Logs directory path.
+///
+/// # Returns
+/// - `()`.
 fn rotate_existing_log(dir: &std::path::Path) {
     let active = dir.join("openvcs.log");
     let Ok(mut src) = std::fs::File::open(&active) else {
@@ -187,6 +213,14 @@ fn rotate_existing_log(dir: &std::path::Path) {
     }
 }
 
+/// Prunes old log archives, keeping only newest `keep` entries.
+///
+/// # Parameters
+/// - `dir`: Logs directory path.
+/// - `keep`: Number of archives to retain.
+///
+/// # Returns
+/// - `()`.
 fn prune_archives(dir: &std::path::Path, keep: usize) {
     use std::path::PathBuf;
     let Ok(read) = fs::read_dir(dir) else {

@@ -25,6 +25,10 @@ pub struct InstallerLimits {
 }
 
 impl Default for InstallerLimits {
+    /// Returns default installer safety limits.
+    ///
+    /// # Returns
+    /// - Default [`InstallerLimits`] values.
     fn default() -> Self {
         Self {
             max_files: 4096,
@@ -137,6 +141,10 @@ pub struct PluginManifest {
     pub functions: Option<PluginManifestFunctions>,
 }
 
+/// Returns current Unix timestamp in milliseconds.
+///
+/// # Returns
+/// - Millisecond Unix timestamp.
 fn now_unix_ms() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -145,6 +153,14 @@ fn now_unix_ms() -> u64 {
         .as_millis() as u64
 }
 
+/// Computes SHA-256 hex digest for a file.
+///
+/// # Parameters
+/// - `path`: File path.
+///
+/// # Returns
+/// - `Ok(String)` lowercase hex digest.
+/// - `Err(String)` when file IO fails.
 fn sha256_hex_file(path: &Path) -> Result<String, String> {
     let mut f = fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
     let mut hasher = Sha256::new();
@@ -161,6 +177,14 @@ fn sha256_hex_file(path: &Path) -> Result<String, String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
+/// Validates and normalizes a tar entry path to prevent path traversal.
+///
+/// # Parameters
+/// - `name`: Raw tar entry path.
+///
+/// # Returns
+/// - `Ok(PathBuf)` sanitized relative path.
+/// - `Err(String)` when path is unsafe.
 fn sanitize_tar_name(name: &str) -> Result<PathBuf, String> {
     if name.contains('\0') {
         return Err("tar entry contains NUL".to_string());
@@ -244,6 +268,13 @@ impl PluginBundleStore {
     }
 
     #[cfg(test)]
+    /// Creates a store rooted at an explicit test directory.
+    ///
+    /// # Parameters
+    /// - `root`: Store root path.
+    ///
+    /// # Returns
+    /// - Store instance rooted at `root`.
     fn new_at(root: PathBuf) -> Self {
         Self { root }
     }
@@ -578,6 +609,14 @@ impl PluginBundleStore {
         }
     }
 
+    /// Installs/updates a single built-in bundle when needed.
+    ///
+    /// # Parameters
+    /// - `bundle_path`: Built-in bundle path.
+    ///
+    /// # Returns
+    /// - `Ok(())` when bundle is already current or installed successfully.
+    /// - `Err(String)` on install/validation failures.
     fn ensure_built_in_bundle(&self, bundle_path: &Path) -> Result<(), String> {
         let bundle_sha256 = sha256_hex_file(bundle_path)?;
         let (_manifest_path, manifest) = locate_manifest_tar_xz(bundle_path)?;
@@ -898,12 +937,29 @@ impl PluginBundleStore {
         Ok(out)
     }
 
+    /// Reads plugin index metadata from disk.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin id.
+    ///
+    /// # Returns
+    /// - `Some(InstalledPluginIndex)` when present and parseable.
+    /// - `None` otherwise.
     fn read_index(&self, plugin_id: &str) -> Option<InstalledPluginIndex> {
         let p = self.root.join(plugin_id).join("index.json");
         let text = fs::read_to_string(p).ok()?;
         serde_json::from_str(&text).ok()
     }
 
+    /// Writes plugin index metadata atomically.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin id.
+    /// - `index`: Index payload.
+    ///
+    /// # Returns
+    /// - `Ok(())` on success.
+    /// - `Err(String)` on serialization or IO failure.
     fn write_index(&self, plugin_id: &str, index: &InstalledPluginIndex) -> Result<(), String> {
         let p = self.root.join(plugin_id).join("index.json");
         let tmp = p.with_extension("json.tmp");
@@ -914,6 +970,15 @@ impl PluginBundleStore {
         Ok(())
     }
 
+    /// Writes current-version pointer atomically.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin id.
+    /// - `cur`: Current version payload.
+    ///
+    /// # Returns
+    /// - `Ok(())` on success.
+    /// - `Err(String)` on serialization or IO failure.
     fn write_current(&self, plugin_id: &str, cur: &CurrentPointer) -> Result<(), String> {
         let p = self.root.join(plugin_id).join("current.json");
         let tmp = p.with_extension("json.tmp");
@@ -935,6 +1000,10 @@ pub fn built_in_plugin_ids() -> &'static HashSet<String> {
     BUILT_IN_PLUGIN_IDS.get_or_init(read_built_in_plugin_ids)
 }
 
+/// Reads built-in plugin ids from bundled `.ovcsp` archives.
+///
+/// # Returns
+/// - Lowercased built-in plugin id set.
 fn read_built_in_plugin_ids() -> HashSet<String> {
     let mut out: HashSet<String> = HashSet::new();
 
@@ -961,6 +1030,10 @@ fn read_built_in_plugin_ids() -> HashSet<String> {
     out
 }
 
+/// Lists discovered built-in `.ovcsp` bundle files.
+///
+/// # Returns
+/// - Bundle file paths.
 fn builtin_bundle_paths() -> Vec<PathBuf> {
     let mut out = Vec::new();
     for root in built_in_plugin_dirs() {
@@ -986,6 +1059,14 @@ fn builtin_bundle_paths() -> Vec<PathBuf> {
     out
 }
 
+/// Chooses an install version string from manifest version or bundle hash.
+///
+/// # Parameters
+/// - `manifest`: Parsed manifest.
+/// - `bundle_sha256`: Bundle digest.
+///
+/// # Returns
+/// - Version string used for installation metadata.
 fn derive_install_version(manifest: &PluginManifest, bundle_sha256: &str) -> String {
     manifest
         .version
@@ -996,6 +1077,14 @@ fn derive_install_version(manifest: &PluginManifest, bundle_sha256: &str) -> Str
         .unwrap_or_else(|| format!("sha256-{}", &bundle_sha256[..12]))
 }
 
+/// Finds and parses `openvcs.plugin.json` from a tar.xz bundle.
+///
+/// # Parameters
+/// - `bundle_path`: Bundle file path.
+///
+/// # Returns
+/// - `Ok((PathBuf, PluginManifest))` manifest path inside archive and manifest payload.
+/// - `Err(String)` on read/parse/validation failure.
 fn locate_manifest_tar_xz(bundle_path: &Path) -> Result<(PathBuf, PluginManifest), String> {
     let file =
         fs::File::open(bundle_path).map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
@@ -1047,6 +1136,13 @@ fn locate_manifest_tar_xz(bundle_path: &Path) -> Result<(PathBuf, PluginManifest
     Ok((manifest_path, manifest))
 }
 
+/// Normalizes capability identifiers (trim/sort/dedup).
+///
+/// # Parameters
+/// - `caps`: Raw capability list.
+///
+/// # Returns
+/// - Normalized capability list.
 fn normalize_capabilities(mut caps: Vec<String>) -> Vec<String> {
     for c in &mut caps {
         *c = c.trim().to_string();
@@ -1057,14 +1153,38 @@ fn normalize_capabilities(mut caps: Vec<String>) -> Vec<String> {
     caps
 }
 
+/// Normalizes optional exec name values.
+///
+/// # Parameters
+/// - `exec`: Optional exec string.
+///
+/// # Returns
+/// - Trimmed non-empty exec name or `None`.
 fn normalize_exec(exec: Option<String>) -> Option<String> {
     exec.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
+/// Applies platform-specific executable naming.
+///
+/// # Parameters
+/// - `base`: Base executable name.
+///
+/// # Returns
+/// - Platform-adjusted executable name.
 fn platform_exec_name(base: &str) -> String {
     base.to_string()
 }
 
+/// Validates that a declared entrypoint exists and is a wasm module.
+///
+/// # Parameters
+/// - `version_dir`: Installed version directory.
+/// - `exec`: Optional exec name.
+/// - `label`: Component label for error messages.
+///
+/// # Returns
+/// - `Ok(())` when valid.
+/// - `Err(String)` when invalid or missing.
 fn validate_entrypoint(version_dir: &Path, exec: Option<&str>, label: &str) -> Result<(), String> {
     let Some(exec) = exec else {
         return Ok(());
@@ -1113,6 +1233,13 @@ mod tests {
         kind: TarEntryKind,
     }
 
+    /// Builds a tar.xz bundle from synthetic test entries.
+    ///
+    /// # Parameters
+    /// - `entries`: Tar entries to include.
+    ///
+    /// # Returns
+    /// - Encoded tar.xz bytes.
     fn make_tar_xz_bundle(entries: Vec<TarEntry>) -> Vec<u8> {
         let cursor = Cursor::new(Vec::<u8>::new());
         let encoder = XzEncoder::new(cursor, 6);
@@ -1149,7 +1276,22 @@ mod tests {
         encoder.finish().unwrap().into_inner()
     }
 
+    /// Builds a minimal raw tar.xz bundle from `(path, bytes)` tuples.
+    ///
+    /// # Parameters
+    /// - `entries`: Raw path/data entries.
+    ///
+    /// # Returns
+    /// - Encoded tar.xz bytes.
     fn make_raw_tar_xz_bundle(entries: Vec<(String, Vec<u8>)>) -> Vec<u8> {
+        /// Writes an octal tar header field.
+        ///
+        /// # Parameters
+        /// - `field`: Mutable tar field bytes.
+        /// - `value`: Numeric value to encode.
+        ///
+        /// # Returns
+        /// - `()`.
         fn write_octal(field: &mut [u8], value: u64) {
             field.fill(0);
             let width = field.len();
@@ -1162,6 +1304,14 @@ mod tests {
             }
         }
 
+        /// Creates a POSIX tar header block for a file.
+        ///
+        /// # Parameters
+        /// - `name`: Tar entry name.
+        /// - `size`: Entry size in bytes.
+        ///
+        /// # Returns
+        /// - 512-byte tar header.
         fn tar_header(name: &str, size: u64) -> [u8; 512] {
             let mut h = [0u8; 512];
             let name_bytes = name.as_bytes();
@@ -1207,6 +1357,13 @@ mod tests {
         out
     }
 
+    /// Writes bundle bytes to a temporary `.ovcsp` file.
+    ///
+    /// # Parameters
+    /// - `bytes`: Bundle bytes.
+    ///
+    /// # Returns
+    /// - Tempdir handle and bundle path.
     fn write_bundle_to_temp(bytes: &[u8]) -> (tempfile::TempDir, PathBuf) {
         let dir = tempdir().unwrap();
         let path = dir.path().join("bundle.ovcsp");
@@ -1214,11 +1371,23 @@ mod tests {
         (dir, path)
     }
 
+    /// Builds a minimal manifest JSON payload used by tests.
+    ///
+    /// # Parameters
+    /// - `id`: Plugin id.
+    /// - `extra`: Extra JSON fragment appended into the object.
+    ///
+    /// # Returns
+    /// - Manifest JSON bytes.
     fn basic_manifest(id: &str, extra: &str) -> Vec<u8> {
         format!("{{\"id\":\"{id}\",\"name\":\"Test\",\"version\":\"1.0.0\"{extra}}}").into_bytes()
     }
 
     #[test]
+    /// Verifies installer enforces file-count limits.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_enforces_file_count_and_size_limits() {
         let mut entries = vec![TarEntry {
             name: "test.plugin/openvcs.plugin.json".into(),
@@ -1251,6 +1420,10 @@ mod tests {
     }
 
     #[test]
+    /// Verifies installer requires manifest at expected path.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_requires_manifest_at_expected_location() {
         let bundle = make_tar_xz_bundle(vec![TarEntry {
             name: "test.plugin/other.json".into(),
@@ -1268,6 +1441,10 @@ mod tests {
     }
 
     #[test]
+    /// Verifies installer validates declared entrypoints.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_validates_declared_entrypoints_exist() {
         let bundle = make_tar_xz_bundle(vec![TarEntry {
             name: "test.plugin/openvcs.plugin.json".into(),
@@ -1288,6 +1465,10 @@ mod tests {
     }
 
     #[test]
+    /// Verifies installer accepts valid tar.xz bundles.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_accepts_tar_xz_bundles() {
         let bundle = make_tar_xz_bundle(vec![
             TarEntry {
@@ -1317,6 +1498,10 @@ mod tests {
     }
 
     #[test]
+    /// Verifies installer rejects zip-slip parent path traversal.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_rejects_tar_zipslip_parent_dir() {
         let bundle = make_raw_tar_xz_bundle(vec![
             (
@@ -1335,6 +1520,10 @@ mod tests {
     }
 
     #[test]
+    /// Verifies installer rejects symlink entries.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_rejects_tar_symlink_entries() {
         let bundle = make_tar_xz_bundle(vec![
             TarEntry {
@@ -1362,6 +1551,10 @@ mod tests {
     }
 
     #[test]
+    /// Verifies installer rejects suspicious compression ratios.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_rejects_tar_suspicious_compression_ratio() {
         let big = vec![0u8; 2 * 1024 * 1024];
         let bundle = make_tar_xz_bundle(vec![

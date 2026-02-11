@@ -114,6 +114,14 @@ pub async fn add_repo<R: Runtime>(
     add_repo_internal(window, state, path, be).await
 }
 
+/// Chooses default backend from settings or first available backend.
+///
+/// # Parameters
+/// - `state`: Application state.
+///
+/// # Returns
+/// - `Some(BackendId)` when available.
+/// - `None` when no backend is available.
 fn default_backend_id(state: &AppState) -> Option<BackendId> {
     let mut backends = crate::plugin_vcs_backends::list_plugin_vcs_backends().ok()?;
     backends.sort_by(|a, b| a.backend_id.as_ref().cmp(b.backend_id.as_ref()));
@@ -460,6 +468,13 @@ pub async fn check_for_updates<R: Runtime>(window: Window<R>) -> Result<bool, St
     }
 }
 
+/// Infers target folder name from repository URL.
+///
+/// # Parameters
+/// - `url`: Source repository URL.
+///
+/// # Returns
+/// - Inferred repository directory name.
 fn infer_repo_dir_from_url(url: &str) -> String {
     let trimmed = url.trim_end_matches('/');
     let last = trimmed.rsplit('/').next().unwrap_or(trimmed);

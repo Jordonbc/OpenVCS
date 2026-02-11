@@ -10,6 +10,14 @@ use crate::state::AppState;
 
 use super::{current_repo_or_err, progress_bridge, run_repo_task, ProgressPayload};
 
+/// Extracts host name from common Git remote URL formats.
+///
+/// # Parameters
+/// - `url`: Remote URL.
+///
+/// # Returns
+/// - `Some(String)` host when parsed.
+/// - `None` otherwise.
 fn host_from_remote_url(url: &str) -> Option<String> {
     let u = url.trim();
     if u.is_empty() {
@@ -51,6 +59,14 @@ fn host_from_remote_url(url: &str) -> Option<String> {
     None
 }
 
+/// Heuristically detects unknown-host-key style errors.
+///
+/// # Parameters
+/// - `msg`: Error text.
+///
+/// # Returns
+/// - `true` when text resembles host-key issues.
+/// - `false` otherwise.
 fn looks_like_unknown_host_key(msg: &str) -> bool {
     let m = msg.to_lowercase();
     m.contains("the authenticity of host")
@@ -61,6 +77,14 @@ fn looks_like_unknown_host_key(msg: &str) -> bool {
         || m.contains("strict host key checking")
 }
 
+/// Heuristically detects SSH authentication failures.
+///
+/// # Parameters
+/// - `msg`: Error text.
+///
+/// # Returns
+/// - `true` when text resembles auth failure.
+/// - `false` otherwise.
 fn looks_like_ssh_auth_failure(msg: &str) -> bool {
     let m = msg.to_lowercase();
     m.contains("permission denied")
@@ -69,6 +93,15 @@ fn looks_like_ssh_auth_failure(msg: &str) -> bool {
         || m.contains("authentication failed")
 }
 
+/// Returns remote URL for a named remote.
+///
+/// # Parameters
+/// - `repo`: Repository backend.
+/// - `remote`: Remote name.
+///
+/// # Returns
+/// - `Some(String)` URL when found.
+/// - `None` otherwise.
 fn remote_url_for(repo: &dyn Vcs, remote: &str) -> Option<String> {
     let remote = remote.trim();
     if remote.is_empty() {
@@ -81,6 +114,16 @@ fn remote_url_for(repo: &dyn Vcs, remote: &str) -> Option<String> {
         .find_map(|(name, url)| if name == remote { Some(url) } else { None })
 }
 
+/// Emits SSH host-key/auth prompt events based on failure text.
+///
+/// # Parameters
+/// - `app`: App handle for event emission.
+/// - `remote`: Remote name.
+/// - `url`: Remote URL.
+/// - `msg`: Error message.
+///
+/// # Returns
+/// - `()`.
 fn emit_ssh_prompt<R: Runtime>(app: &tauri::AppHandle<R>, remote: &str, url: &str, msg: &str) {
     if looks_like_unknown_host_key(msg) {
         if let Some(host) = host_from_remote_url(url) {

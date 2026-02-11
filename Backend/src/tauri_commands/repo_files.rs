@@ -9,6 +9,14 @@ use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};
 
+/// Validates a repo-relative path and blocks absolute/parent traversal paths.
+///
+/// # Parameters
+/// - `input`: Raw path input.
+///
+/// # Returns
+/// - `Ok(PathBuf)` normalized relative path.
+/// - `Err(String)` when invalid.
 fn safe_relative_path(input: &str) -> Result<PathBuf, String> {
     let candidate = PathBuf::from(input);
     if candidate.as_os_str().is_empty() {
@@ -27,6 +35,14 @@ fn safe_relative_path(input: &str) -> Result<PathBuf, String> {
     Ok(candidate)
 }
 
+/// Normalizes a `.gitignore` entry from a repo-relative path.
+///
+/// # Parameters
+/// - `path`: Raw path input.
+///
+/// # Returns
+/// - `Ok(String)` normalized gitignore entry.
+/// - `Err(String)` when invalid.
 fn normalize_gitignore_entry(path: &str) -> Result<String, String> {
     let rel = safe_relative_path(path)?;
     let mut s = rel.to_string_lossy().replace('\\', "/");
@@ -140,6 +156,13 @@ pub fn open_repo_file<R: Runtime>(
         .map_err(|e| format!("Failed to open file: {e}"))
 }
 
+/// Decodes repository file bytes with UTF-16 heuristics fallback.
+///
+/// # Parameters
+/// - `bytes`: Raw file bytes.
+///
+/// # Returns
+/// - Best-effort decoded text.
 fn decode_repo_text(bytes: &[u8]) -> String {
     if bytes.len() >= 2 && bytes.len().is_multiple_of(2) && bytes.contains(&0) {
         let (endianness, start) = if bytes.starts_with(&[0xFF, 0xFE]) {

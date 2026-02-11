@@ -49,6 +49,10 @@ const STDERR_LOG_MAX_FILES: usize = 5;
 const MAX_PENDING: usize = 1024;
 const MAX_CRASHES: u32 = 5;
 
+/// Detects the runtime container type for diagnostics/feature gating.
+///
+/// # Returns
+/// - Container label (`flatpak`, `appimage`, or `native`).
 fn runtime_container_kind() -> &'static str {
     if matches!(
         std::env::var("OPENVCS_FLATPAK").as_deref(),
@@ -79,6 +83,10 @@ pub struct RpcConfig {
 }
 
 impl Default for RpcConfig {
+    /// Returns default RPC configuration values.
+    ///
+    /// # Returns
+    /// - Default [`RpcConfig`] with standard timeout.
     fn default() -> Self {
         Self {
             timeout: DEFAULT_TIMEOUT,
@@ -268,6 +276,14 @@ impl StdioRpcProcess {
         }
     }
 
+    /// Serializes and writes a plugin message to child stdin.
+    ///
+    /// # Parameters
+    /// - `msg`: Message to send.
+    ///
+    /// # Returns
+    /// - `Ok(())` on success.
+    /// - `Err(String)` when serialization/write/flush fails.
     fn write_message(&self, msg: &PluginMessage) -> Result<(), String> {
         let line = serde_json::to_string(msg).map_err(|e| format!("serialize: {e}"))?;
         let mut lock = self.stdin.lock().unwrap();
@@ -290,6 +306,10 @@ impl StdioRpcProcess {
         Ok(())
     }
 
+    /// Increments crash counters and updates disable/backoff policy.
+    ///
+    /// # Returns
+    /// - `()`.
     fn record_crash(&self) {
         let mut crashes = self.crash_count.lock().unwrap();
         *crashes = crashes.saturating_add(1);
@@ -301,6 +321,10 @@ impl StdioRpcProcess {
         }
     }
 
+    /// Tears down the running plugin process and clears pending requests.
+    ///
+    /// # Returns
+    /// - `()`.
     fn kill_process(&self) {
         // Drop stdin so the child sees EOF.
         *self.stdin.lock().unwrap() = None;
@@ -334,6 +358,11 @@ impl StdioRpcProcess {
         }
     }
 
+    /// Spawns the WASI plugin process and wire-up IO/event threads.
+    ///
+    /// # Returns
+    /// - `Ok(())` when spawn succeeds.
+    /// - `Err(String)` when pipe/setup operations fail.
     fn spawn_wasm(&self) -> Result<(), String> {
         let (stdin_reader, stdin_writer) =
             os_pipe::pipe().map_err(|e| format!("create stdin pipe: {e}"))?;
@@ -417,12 +446,28 @@ impl StdioRpcProcess {
 }
 
 impl Drop for StdioRpcProcess {
+    /// Ensures the child process is cleaned up during drop.
+    ///
+    /// # Returns
+    /// - `()`.
     fn drop(&mut self) {
         // Best-effort cleanup; ignore errors.
         self.kill_process();
     }
 }
 
+/// Reads plugin stdout lines and dispatches responses/events/host requests.
+///
+/// # Parameters
+/// - `stdout`: Readable stdout stream.
+/// - `spawn`: Spawn metadata used for host request handling.
+/// - `pending`: Pending-response map.
+/// - `stdin_for_responses`: Writable stdin for sending host responses.
+/// - `on_event`: Optional event callback sink.
+/// - `stdout_log_path`: Path used for logging unparsable lines.
+///
+/// # Returns
+/// - `()`.
 fn read_stdout_loop(
     stdout: impl io::Read,
     spawn: SpawnConfig,
@@ -477,6 +522,16 @@ fn read_stdout_loop(
     }
 }
 
+/// Reads plugin stderr, persists logs, and forwards messages to host logging.
+///
+/// # Parameters
+/// - `stderr`: Readable stderr stream.
+/// - `path`: Destination stderr log path.
+/// - `plugin_id`: Plugin id for log prefixes.
+/// - `component`: Component label for log prefixes.
+///
+/// # Returns
+/// - `()`.
 fn read_stderr_loop(stderr: impl io::Read, path: PathBuf, plugin_id: String, component: String) {
     let reader = BufReader::new(stderr);
     for line in reader.lines().map_while(Result::ok) {
@@ -496,6 +551,14 @@ fn read_stderr_loop(stderr: impl io::Read, path: PathBuf, plugin_id: String, com
     }
 }
 
+/// Checks whether a file is a wasm module by extension and magic bytes.
+///
+/// # Parameters
+/// - `path`: Candidate executable path.
+///
+/// # Returns
+/// - `true` when file looks like wasm.
+/// - `false` otherwise.
 fn is_wasm_module(path: &Path) -> bool {
     if path.extension().and_then(|s| s.to_str()) != Some("wasm") {
         return false;
@@ -511,6 +574,14 @@ fn is_wasm_module(path: &Path) -> bool {
     )
 }
 
+/// Parses `[LEVEL]` prefixes emitted by plugin stderr logging.
+///
+/// # Parameters
+/// - `line`: Raw stderr line.
+///
+/// # Returns
+/// - `Some((Level, &str))` parsed level and message tail.
+/// - `None` when no recognized level prefix exists.
 fn parse_plugin_stderr_level(line: &str) -> Option<(log::Level, &str)> {
     let line = line.trim();
     if !line.starts_with('[') {
@@ -531,6 +602,13 @@ fn parse_plugin_stderr_level(line: &str) -> Option<(log::Level, &str)> {
     Some((level, rest))
 }
 
+/// Returns approved capabilities and workspace root from spawn config.
+///
+/// # Parameters
+/// - `spawn`: Spawn config.
+///
+/// # Returns
+/// - Tuple of approved capability ids and optional workspace root.
 fn approved_caps_and_workspace(spawn: &SpawnConfig) -> (Vec<String>, Option<PathBuf>) {
     let approved_caps = match &spawn.approval {
         ApprovalState::Approved { capabilities, .. } => capabilities.clone(),
@@ -551,6 +629,14 @@ pub struct RunWasiConfig {
     pub stderr: os_pipe::PipeWriter,
 }
 
+/// Executes a plugin wasm module inside a WASI runtime.
+///
+/// # Parameters
+/// - `cfg`: WASI execution configuration and IO handles.
+///
+/// # Returns
+/// - `Ok(())` when module exits successfully.
+/// - `Err(String)` when module load/instantiate/call fails.
 fn run_wasi_module(cfg: RunWasiConfig) -> Result<(), String> {
     let RunWasiConfig {
         wasm_path,
@@ -626,6 +712,14 @@ fn run_wasi_module(cfg: RunWasiConfig) -> Result<(), String> {
     Ok(())
 }
 
+/// Handles host-side RPC methods requested by plugin code.
+///
+/// # Parameters
+/// - `spawn`: Plugin spawn/config metadata.
+/// - `req`: Incoming RPC request.
+///
+/// # Returns
+/// - RPC response payload.
 fn handle_host_request(spawn: &SpawnConfig, req: RpcRequest) -> RpcResponse {
     let deny = |code: &str, msg: &str| RpcResponse {
         id: req.id,
@@ -880,6 +974,15 @@ fn handle_host_request(spawn: &SpawnConfig, req: RpcRequest) -> RpcResponse {
     }
 }
 
+/// Resolves a path under a workspace root and blocks escapes.
+///
+/// # Parameters
+/// - `root`: Allowed workspace root.
+/// - `path`: Relative or absolute candidate path.
+///
+/// # Returns
+/// - `Ok(PathBuf)` resolved safe path.
+/// - `Err(String)` when invalid or outside root.
 fn resolve_under_root(root: &Path, path: &str) -> Result<PathBuf, String> {
     if path.contains('\0') {
         return Err("path contains NUL".to_string());
@@ -915,6 +1018,16 @@ fn resolve_under_root(root: &Path, path: &str) -> Result<PathBuf, String> {
     Ok(root.join(clean))
 }
 
+/// Writes bytes to a file constrained to workspace root.
+///
+/// # Parameters
+/// - `root`: Allowed workspace root.
+/// - `rel`: Relative file path.
+/// - `bytes`: File bytes to write.
+///
+/// # Returns
+/// - `Ok(())` when write succeeds.
+/// - `Err(String)` when resolution/IO fails.
 fn write_file_under_root(root: &Path, rel: &str, bytes: &[u8]) -> Result<(), String> {
     let path = resolve_under_root(root, rel)?;
     if let Some(parent) = path.parent() {
@@ -924,11 +1037,24 @@ fn write_file_under_root(root: &Path, rel: &str, bytes: &[u8]) -> Result<(), Str
 }
 
 // Move helper functions above the test module to avoid `items_after_test_module` warnings.
+/// Reads bytes from a file constrained to workspace root.
+///
+/// # Parameters
+/// - `root`: Allowed workspace root.
+/// - `rel`: Relative file path.
+///
+/// # Returns
+/// - `Ok(Vec<u8>)` file bytes.
+/// - `Err(String)` when resolution/IO fails.
 fn read_file_under_root(root: &Path, rel: &str) -> Result<Vec<u8>, String> {
     let joined = resolve_under_root(root, rel)?;
     fs::read(&joined).map_err(|e| format!("read {}: {e}", joined.display()))
 }
 
+/// Builds a sanitized environment map for child process execution.
+///
+/// # Returns
+/// - Whitelisted environment key/value pairs.
 fn sanitized_env() -> Vec<(OsString, OsString)> {
     let mut out: Vec<(OsString, OsString)> = Vec::new();
 
@@ -955,6 +1081,14 @@ fn sanitized_env() -> Vec<(OsString, OsString)> {
     out
 }
 
+/// Returns per-plugin stderr log path.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin identifier.
+/// - `component`: Component label.
+///
+/// # Returns
+/// - Log file path.
 fn plugin_stderr_log_path(plugin_id: &str, component: &str) -> PathBuf {
     crate::plugin_bundles::PluginBundleStore::new_default()
         .plugin_root_dir(plugin_id)
@@ -962,6 +1096,14 @@ fn plugin_stderr_log_path(plugin_id: &str, component: &str) -> PathBuf {
         .join(format!("{component}.stderr.log"))
 }
 
+/// Returns per-plugin stdout log path.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin identifier.
+/// - `component`: Component label.
+///
+/// # Returns
+/// - Log file path.
 fn plugin_stdout_log_path(plugin_id: &str, component: &str) -> PathBuf {
     crate::plugin_bundles::PluginBundleStore::new_default()
         .plugin_root_dir(plugin_id)
@@ -973,6 +1115,13 @@ fn plugin_stdout_log_path(plugin_id: &str, component: &str) -> PathBuf {
 // Implemented as separate functions per-platform to keep unsafe blocks small
 // and clearly documented.
 #[cfg(unix)]
+/// Converts a unix pipe reader into an owned `File`.
+///
+/// # Parameters
+/// - `r`: Pipe reader handle.
+///
+/// # Returns
+/// - Owned file descriptor wrapper.
 fn into_file_from_reader(r: os_pipe::PipeReader) -> std::fs::File {
     // Safety: we consume the PipeReader and immediately create a File which
     // becomes the sole owner of the underlying fd.
@@ -980,6 +1129,13 @@ fn into_file_from_reader(r: os_pipe::PipeReader) -> std::fs::File {
 }
 
 #[cfg(unix)]
+/// Converts a unix pipe writer into an owned `File`.
+///
+/// # Parameters
+/// - `w`: Pipe writer handle.
+///
+/// # Returns
+/// - Owned file descriptor wrapper.
 fn into_file_from_writer(w: os_pipe::PipeWriter) -> std::fs::File {
     // Safety: we consume the PipeWriter and immediately create a File which
     // becomes the sole owner of the underlying fd.
@@ -987,6 +1143,13 @@ fn into_file_from_writer(w: os_pipe::PipeWriter) -> std::fs::File {
 }
 
 #[cfg(windows)]
+/// Converts a windows pipe reader into an owned `File`.
+///
+/// # Parameters
+/// - `r`: Pipe reader handle.
+///
+/// # Returns
+/// - Owned file handle wrapper.
 fn into_file_from_reader(r: os_pipe::PipeReader) -> std::fs::File {
     // Safety: we consume the PipeReader and immediately create a File which
     // becomes the sole owner of the underlying handle.
@@ -994,12 +1157,28 @@ fn into_file_from_reader(r: os_pipe::PipeReader) -> std::fs::File {
 }
 
 #[cfg(windows)]
+/// Converts a windows pipe writer into an owned `File`.
+///
+/// # Parameters
+/// - `w`: Pipe writer handle.
+///
+/// # Returns
+/// - Owned file handle wrapper.
 fn into_file_from_writer(w: os_pipe::PipeWriter) -> std::fs::File {
     // Safety: we consume the PipeWriter and immediately create a File which
     // becomes the sole owner of the underlying handle.
     unsafe { std::fs::File::from_raw_handle(w.into_raw_handle()) }
 }
 
+/// Appends a timestamped line to a plugin log file.
+///
+/// # Parameters
+/// - `path`: Log file path.
+/// - `line`: Log line text.
+///
+/// # Returns
+/// - `Ok(())` when append succeeds.
+/// - `Err(io::Error)` on IO failure.
 fn append_log_line(path: &Path, line: &str) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -1017,6 +1196,14 @@ fn append_log_line(path: &Path, line: &str) -> io::Result<()> {
     Ok(())
 }
 
+/// Rotates a plugin log file when it exceeds configured size.
+///
+/// # Parameters
+/// - `path`: Log file path.
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(io::Error)` on metadata/IO failure.
 fn rotate_if_needed(path: &Path) -> io::Result<()> {
     let meta = match fs::metadata(path) {
         Ok(m) => m,
@@ -1057,6 +1244,10 @@ mod tests {
     use super::*;
 
     #[test]
+    /// Verifies a minimal wasm plugin can be started.
+    ///
+    /// # Returns
+    /// - `()`.
     fn runs_minimal_wasm_module() {
         // Minimal wasm module exporting an empty `_start`.
         // (module (func (export "_start")))
@@ -1092,6 +1283,10 @@ mod tests {
     }
 
     #[test]
+    /// Verifies absolute paths under root are accepted by resolver.
+    ///
+    /// # Returns
+    /// - `()`.
     fn resolve_under_root_allows_absolute_under_root() {
         let dir = tempfile::tempdir().expect("tempdir");
         let root = dir.path().join("root");
@@ -1105,6 +1300,10 @@ mod tests {
     }
 
     #[test]
+    /// Verifies parent-directory escapes are rejected for writes.
+    ///
+    /// # Returns
+    /// - `()`.
     fn write_file_under_root_rejects_parent_dir_escape() {
         let dir = tempfile::tempdir().expect("tempdir");
         let root = dir.path().join("root");

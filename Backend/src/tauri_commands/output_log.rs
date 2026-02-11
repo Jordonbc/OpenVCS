@@ -3,6 +3,15 @@ use tauri::{Manager, Runtime, WebviewUrl, WebviewWindowBuilder, Window};
 use crate::output_log::OutputLogEntry;
 use crate::state::AppState;
 
+/// Reads up to the last `max_lines` lines from a log file efficiently.
+///
+/// # Parameters
+/// - `path`: Log file path.
+/// - `max_lines`: Maximum lines to return.
+///
+/// # Returns
+/// - `Ok(Vec<String>)` log lines.
+/// - `Err(std::io::Error)` on file IO failure.
 fn read_last_lines(path: &std::path::Path, max_lines: usize) -> std::io::Result<Vec<String>> {
     use std::io::{Read, Seek};
 

@@ -91,6 +91,13 @@ pub async fn git_save_merge_result(
     .await
 }
 
+/// Splits external tool config into executable path and args.
+///
+/// # Parameters
+/// - `tool`: External tool configuration.
+///
+/// # Returns
+/// - Tuple of executable path and parsed args.
 fn tool_args(tool: &ExternalTool) -> (String, Vec<String>) {
     let path = tool.path.clone();
     let args = split(tool.args.trim())

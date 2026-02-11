@@ -20,6 +20,10 @@ struct Registry {
 
 static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
 
+/// Returns global plugin-event registry singleton.
+///
+/// # Returns
+/// - Shared registry mutex reference.
 fn registry() -> &'static Mutex<Registry> {
     REGISTRY.get_or_init(|| {
         Mutex::new(Registry {

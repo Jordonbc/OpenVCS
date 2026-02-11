@@ -2,6 +2,13 @@ use crate::{plugins, settings, state::AppState, themes};
 use std::collections::HashSet;
 use tauri::State;
 
+/// Computes set of enabled plugin ids based on settings and plugin defaults.
+///
+/// # Parameters
+/// - `cfg`: App configuration snapshot.
+///
+/// # Returns
+/// - Lowercase set of enabled plugin ids.
 fn enabled_plugins(cfg: &settings::AppConfig) -> HashSet<String> {
     let disabled: HashSet<String> = cfg
         .plugins

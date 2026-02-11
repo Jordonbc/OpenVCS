@@ -9,6 +9,14 @@ use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};
 
+/// Extracts repository owner/user segment from remote URL.
+///
+/// # Parameters
+/// - `url`: Remote URL.
+///
+/// # Returns
+/// - `Some(String)` owner segment.
+/// - `None` when not parseable.
 fn repo_username_from_origin(url: &str) -> Option<String> {
     let u = url.trim();
     if u.is_empty() {
@@ -36,6 +44,14 @@ fn repo_username_from_origin(url: &str) -> Option<String> {
     None
 }
 
+/// Extracts repository name segment from remote URL.
+///
+/// # Parameters
+/// - `url`: Remote URL.
+///
+/// # Returns
+/// - `Some(String)` repository name.
+/// - `None` when not parseable.
 fn repo_name_from_origin(url: &str) -> Option<String> {
     let u = url.trim();
     if u.is_empty() {
@@ -61,6 +77,17 @@ fn repo_name_from_origin(url: &str) -> Option<String> {
     None
 }
 
+/// Expands merge-message template placeholders.
+///
+/// # Parameters
+/// - `template`: Template string.
+/// - `source_branch`: Source branch name.
+/// - `target_branch`: Target branch name.
+/// - `repo_name`: Repository name.
+/// - `repo_username`: Repository owner/user.
+///
+/// # Returns
+/// - Rendered merge message.
 fn apply_merge_template(
     template: &str,
     source_branch: &str,
@@ -101,6 +128,13 @@ pub async fn git_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchI
             e.to_string()
         })?;
 
+        /// Infers branch kind from full ref prefix.
+        ///
+        /// # Parameters
+        /// - `full_ref`: Full ref name.
+        ///
+        /// # Returns
+        /// - Inferred branch kind.
         fn infer_kind(full_ref: &str) -> BranchKind {
             if let Some(rest) = full_ref.strip_prefix("refs/heads/") {
                 let _ = rest;

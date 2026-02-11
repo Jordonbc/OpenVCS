@@ -28,6 +28,14 @@ mod utilities;
 mod validate;
 mod workarounds;
 
+/// Selects preferred backend from settings or first available plugin backend.
+///
+/// # Parameters
+/// - `_cfg`: Current application config.
+///
+/// # Returns
+/// - `Some(BackendId)` when a backend is available.
+/// - `None` otherwise.
 fn preferred_vcs_backend_id(_cfg: &settings::AppConfig) -> Option<BackendId> {
     let desired = _cfg.general.default_backend.trim().to_string();
     if !desired.is_empty() {
@@ -47,6 +55,12 @@ fn preferred_vcs_backend_id(_cfg: &settings::AppConfig) -> Option<BackendId> {
 
 /// Attempt to reopen the most recent repository at startup if the
 /// global setting `general.reopen_last_repos` is enabled.
+///
+/// # Parameters
+/// - `app_handle`: Application handle used to access state and emit events.
+///
+/// # Returns
+/// - `()`.
 fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
     use crate::repo::Repo;
     use std::path::Path;
@@ -172,6 +186,9 @@ pub fn run() {
 
 /// Returns the generated invoke handler that routes frontend IPC calls
 /// to the backend command functions.
+///
+/// # Returns
+/// - Tauri invoke handler closure.
 fn build_invoke_handler<R: tauri::Runtime>(
 ) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![

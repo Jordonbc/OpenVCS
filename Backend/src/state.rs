@@ -16,6 +16,13 @@ use serde::{Deserialize, Serialize};
 /// Default number of recent repositories stored when settings are missing or invalid.
 pub const MAX_RECENTS: usize = 10;
 
+/// Applies Git SSH-related environment variables from current settings.
+///
+/// # Parameters
+/// - `cfg`: Current app configuration.
+///
+/// # Returns
+/// - `()`.
 fn apply_git_ssh_env(cfg: &AppConfig) {
     // Prefer config-driven runtime env so the VCS backend (in another crate) can read it.
     // Keep env var names stable for packaging and troubleshooting.
@@ -275,6 +282,10 @@ struct RecentFileEntry {
     path: String,
 }
 
+/// Returns the path for persisted recent repositories JSON file.
+///
+/// # Returns
+/// - Recents file path.
 fn recents_file_path() -> PathBuf {
     if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
         pd.data_dir().join("recents.json")
@@ -283,6 +294,11 @@ fn recents_file_path() -> PathBuf {
     }
 }
 
+/// Loads recent repositories from disk.
+///
+/// # Returns
+/// - `Ok(Vec<PathBuf>)` loaded recent paths.
+/// - `Err(String)` on read failures.
 fn load_recents_from_disk() -> Result<Vec<PathBuf>, String> {
     let p = recents_file_path();
     let data = match fs::read_to_string(&p) {
@@ -315,6 +331,14 @@ fn load_recents_from_disk() -> Result<Vec<PathBuf>, String> {
     Ok(out)
 }
 
+/// Persists recent repositories to disk.
+///
+/// # Parameters
+/// - `list`: Recent repository paths to persist.
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` on serialization/write failures.
 fn save_recents_to_disk(list: &[PathBuf]) -> Result<(), String> {
     let p = recents_file_path();
     if let Some(parent) = p.parent() {
@@ -331,6 +355,10 @@ fn save_recents_to_disk(list: &[PathBuf]) -> Result<(), String> {
 }
 
 impl AppState {
+    /// Enforces recents limit from config and persists resulting list.
+    ///
+    /// # Returns
+    /// - `()`.
     fn enforce_recents_limit_and_persist(&self) {
         let limit = self.config.read().ux.recents_limit as usize;
         let max_items = if limit == 0 { MAX_RECENTS } else { limit };

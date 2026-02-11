@@ -3,16 +3,31 @@ use std::{fs, path::PathBuf, process::Command};
 use serde::Serialize;
 use tauri::command;
 
+/// Returns `~/.ssh/known_hosts` path.
+///
+/// # Returns
+/// - `Ok(PathBuf)` known-hosts path.
+/// - `Err(String)` when home directory cannot be resolved.
 fn known_hosts_path() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
     Ok(home.join(".ssh").join("known_hosts"))
 }
 
+/// Returns `~/.ssh` directory path.
+///
+/// # Returns
+/// - `Ok(PathBuf)` ssh directory path.
+/// - `Err(String)` when home directory cannot be resolved.
 fn ssh_dir_path() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
     Ok(home.join(".ssh"))
 }
 
+/// Ensures `~/.ssh` directory exists.
+///
+/// # Returns
+/// - `Ok(PathBuf)` created/existing ssh directory path.
+/// - `Err(String)` on resolution or create failure.
 fn ensure_ssh_dir() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
     let dir = home.join(".ssh");
@@ -27,6 +42,15 @@ pub struct SshCommandOutput {
     pub stderr: String,
 }
 
+/// Runs a command and captures exit code/stdout/stderr.
+///
+/// # Parameters
+/// - `cmd`: Executable name.
+/// - `args`: Argument list.
+///
+/// # Returns
+/// - `Ok(SshCommandOutput)` command output.
+/// - `Err(String)` on spawn failure.
 fn run_command(cmd: &str, args: &[&str]) -> Result<SshCommandOutput, String> {
     let out = Command::new(cmd)
         .args(args)
@@ -41,6 +65,14 @@ fn run_command(cmd: &str, args: &[&str]) -> Result<SshCommandOutput, String> {
 }
 
 #[cfg(not(target_os = "windows"))]
+/// Scans SSH host keys using `ssh-keyscan`.
+///
+/// # Parameters
+/// - `host`: Hostname to scan.
+///
+/// # Returns
+/// - `Ok(String)` scanned key lines.
+/// - `Err(String)` on command failure.
 fn keyscan(host: &str) -> Result<String, String> {
     let out = Command::new("ssh-keyscan")
         .arg("-H")
@@ -64,6 +96,13 @@ fn keyscan(host: &str) -> Result<String, String> {
 }
 
 #[cfg(target_os = "windows")]
+/// Windows placeholder for host-key scan support.
+///
+/// # Parameters
+/// - `_host`: Ignored hostname.
+///
+/// # Returns
+/// - Always `Err(String)` until implemented.
 fn keyscan(_host: &str) -> Result<String, String> {
     Err("SSH host key scanning is not implemented for Windows yet".to_string())
 }

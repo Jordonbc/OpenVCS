@@ -13,6 +13,15 @@ use std::{
     sync::Arc,
 };
 
+/// Determines whether a plugin is enabled considering config overrides.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin id.
+/// - `default_enabled`: Manifest default enabled flag.
+///
+/// # Returns
+/// - `true` when plugin should be active.
+/// - `false` otherwise.
 fn is_plugin_enabled_in_settings(plugin_id: &str, default_enabled: bool) -> bool {
     let plugin_id = plugin_id.trim().to_lowercase();
     if plugin_id.is_empty() {
@@ -63,6 +72,13 @@ pub struct PluginBackendDescriptor {
     pub approval: ApprovalState,
 }
 
+/// Normalizes capability ids (trim/sort/dedup).
+///
+/// # Parameters
+/// - `caps`: Raw capability list.
+///
+/// # Returns
+/// - Normalized capability list.
 fn normalize_capabilities(mut caps: Vec<String>) -> Vec<String> {
     for cap in &mut caps {
         *cap = cap.trim().to_string();
@@ -73,12 +89,24 @@ fn normalize_capabilities(mut caps: Vec<String>) -> Vec<String> {
     caps
 }
 
+/// Reads a plugin manifest from a plugin directory.
+///
+/// # Parameters
+/// - `plugin_dir`: Plugin directory path.
+///
+/// # Returns
+/// - `Some(PluginManifest)` on success.
+/// - `None` on read/parse failure.
 fn load_manifest_from_dir(plugin_dir: &Path) -> Option<PluginManifest> {
     let manifest_path = plugin_dir.join(PLUGIN_MANIFEST_NAME);
     let text = fs::read_to_string(&manifest_path).ok()?;
     serde_json::from_str(&text).ok()
 }
 
+/// Lists manifests from built-in plugin directories.
+///
+/// # Returns
+/// - Directory/manifest pairs for readable built-in plugins.
 fn builtin_plugin_manifests() -> Vec<(PathBuf, PluginManifest)> {
     let mut out = Vec::new();
     for root in built_in_plugin_dirs() {
