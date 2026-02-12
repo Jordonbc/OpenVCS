@@ -89,6 +89,10 @@ Run commands from the **workspace root** unless stated otherwise.
 - **Bridge:** Tauri `invoke` for request/response, events for progress.
 - **Local‑first:** No telemetry or background tracking.
 
+# ExecPlans
+
+When writing complex features or significant refactors, use an ExecPlan (as described in .agent/PLANS.md) from design to implementation.
+
 ## Assets
 
 - Screenshots may be tracked via **Git LFS**. GitHub renders LFS PNGs/JPEGs correctly in Markdown.
