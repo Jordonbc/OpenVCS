@@ -116,13 +116,6 @@ pub struct PluginManifestModule {
     pub vcs_backends: Vec<VcsBackendProvide>,
 }
 
-/// Manifest functions component declaration.
-#[derive(Debug, Deserialize)]
-pub struct PluginManifestFunctions {
-    #[serde(default)]
-    pub exec: Option<String>,
-}
-
 /// Parsed plugin manifest payload.
 #[derive(Debug, Deserialize)]
 pub struct PluginManifest {
@@ -138,7 +131,7 @@ pub struct PluginManifest {
     #[serde(default)]
     pub module: Option<PluginManifestModule>,
     #[serde(default)]
-    pub functions: Option<PluginManifestFunctions>,
+    pub functions: Option<serde_json::Value>,
 }
 
 /// Returns current Unix timestamp in milliseconds.
@@ -226,13 +219,6 @@ pub struct ModuleComponent {
     pub vcs_backends: Vec<(String, Option<String>)>,
 }
 
-/// Installed functions component metadata and resolved executable path.
-#[derive(Debug, Clone)]
-pub struct FunctionsComponent {
-    pub exec: String,
-    pub exec_path: PathBuf,
-}
-
 /// Active component metadata for a plugin selected by `current.json`.
 #[derive(Debug, Clone)]
 pub struct InstalledPluginComponents {
@@ -242,7 +228,6 @@ pub struct InstalledPluginComponents {
     pub default_enabled: bool,
     pub requested_capabilities: Vec<String>,
     pub module: Option<ModuleComponent>,
-    pub functions: Option<FunctionsComponent>,
 }
 
 impl PluginBundleStore {
@@ -528,13 +513,15 @@ impl PluginBundleStore {
             ));
         }
 
-        let (module_exec, functions_exec) = (
-            normalize_exec(manifest.module.and_then(|m| m.exec)),
-            normalize_exec(manifest.functions.and_then(|f| f.exec)),
-        );
+        if manifest.functions.is_some() {
+            return Err(
+                "manifest uses unsupported field 'functions'; use module.exec only".to_string(),
+            );
+        }
+
+        let module_exec = normalize_exec(manifest.module.and_then(|m| m.exec));
 
         validate_entrypoint(&staging_version_dir, module_exec.as_deref(), "module")?;
-        validate_entrypoint(&staging_version_dir, functions_exec.as_deref(), "functions")?;
 
         // Promote staged version into place (flat layout, drop old version directory).
         if plugin_dir.exists() {
@@ -814,6 +801,12 @@ impl PluginBundleStore {
             .map_err(|e| format!("read {}: {e}", manifest_path.display()))?;
         let manifest: PluginManifest = serde_json::from_str(&text)
             .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
+        if manifest.functions.is_some() {
+            return Err(format!(
+                "manifest {} uses unsupported field 'functions'; use module.exec only",
+                manifest_path.display()
+            ));
+        }
         let id = manifest.id.trim().to_string();
         if id.is_empty() {
             return Err("manifest id is empty".to_string());
@@ -876,21 +869,9 @@ impl PluginBundleStore {
             })
         });
 
-        let functions = manifest.functions.and_then(|f| {
-            let exec = f.exec?.trim().to_string();
-            if exec.is_empty() {
-                return None;
-            }
-            let exec_path = version_dir.join("bin").join(platform_exec_name(&exec));
-            Some(FunctionsComponent { exec, exec_path })
-        });
-
         // Validate that declared entrypoints exist (defense-in-depth; installer should have ensured).
         if let Some(m) = &module {
             validate_entrypoint(&version_dir, Some(&m.exec), "module")?;
-        }
-        if let Some(f) = &functions {
-            validate_entrypoint(&version_dir, Some(&f.exec), "functions")?;
         }
 
         Ok(Some(InstalledPluginComponents {
@@ -904,7 +885,6 @@ impl PluginBundleStore {
 
             requested_capabilities,
             module,
-            functions,
         }))
     }
 
@@ -1462,6 +1442,30 @@ mod tests {
 
         let err = store.install_ovcsp(&bundle_path);
         assert!(err.is_err());
+    }
+
+    #[test]
+    /// Verifies installer rejects deprecated functions component manifests.
+    ///
+    /// # Returns
+    /// - `()`.
+    fn install_rejects_functions_component() {
+        let bundle = make_tar_xz_bundle(vec![TarEntry {
+            name: "test.plugin/openvcs.plugin.json".into(),
+            data: basic_manifest("test.plugin", ",\"functions\":{\"exec\":\"legacy.wasm\"}"),
+            unix_mode: None,
+            kind: TarEntryKind::File,
+        }]);
+
+        let (_tmp, bundle_path) = write_bundle_to_temp(&bundle);
+        let store_root = tempdir().unwrap();
+        let store = PluginBundleStore::new_at(store_root.path().to_path_buf());
+
+        let err = store.install_ovcsp(&bundle_path).unwrap_err();
+        assert_eq!(
+            err,
+            "manifest uses unsupported field 'functions'; use module.exec only"
+        );
     }
 
     #[test]

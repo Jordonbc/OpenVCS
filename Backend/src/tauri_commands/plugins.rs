@@ -106,7 +106,7 @@ pub fn approve_plugin_capabilities(
 }
 
 #[tauri::command]
-/// Lists callable functions exported by a plugin's functions component.
+/// Lists callable functions exported by a plugin module component.
 ///
 /// # Parameters
 /// - `plugin_id`: Plugin id to inspect.
@@ -119,8 +119,8 @@ pub fn list_plugin_functions(plugin_id: String) -> Result<Value, String> {
     let Some(components) = store.load_current_components(plugin_id.trim())? else {
         return Err("plugin not installed".to_string());
     };
-    let Some(functions) = components.functions else {
-        return Err("plugin has no functions component".to_string());
+    let Some(module) = components.module else {
+        return Err("plugin has no module component".to_string());
     };
 
     let installed = store
@@ -130,8 +130,8 @@ pub fn list_plugin_functions(plugin_id: String) -> Result<Value, String> {
     let rpc = StdioRpcProcess::new(
         SpawnConfig {
             plugin_id: components.plugin_id,
-            component_label: "functions".into(),
-            exec_path: functions.exec_path,
+            component_label: "module".into(),
+            exec_path: module.exec_path,
             args: Vec::new(),
             requested_capabilities: installed.requested_capabilities,
             approval: installed.approval,
@@ -166,8 +166,8 @@ pub fn invoke_plugin_function(
     let Some(components) = store.load_current_components(plugin_id.trim())? else {
         return Err("plugin not installed".to_string());
     };
-    let Some(functions) = components.functions else {
-        return Err("plugin has no functions component".to_string());
+    let Some(module) = components.module else {
+        return Err("plugin has no module component".to_string());
     };
 
     let installed = store
@@ -177,8 +177,8 @@ pub fn invoke_plugin_function(
     let rpc = StdioRpcProcess::new(
         SpawnConfig {
             plugin_id: components.plugin_id,
-            component_label: "functions".into(),
-            exec_path: functions.exec_path,
+            component_label: "module".into(),
+            exec_path: module.exec_path,
             args: Vec::new(),
             requested_capabilities: installed.requested_capabilities,
             approval: installed.approval,
