@@ -267,10 +267,7 @@ impl PluginRuntimeManager {
             default_enabled: components.default_enabled,
             spawn: SpawnConfig {
                 plugin_id: components.plugin_id,
-                component_label: "module".into(),
                 exec_path: module.exec_path,
-                args: Vec::new(),
-                requested_capabilities: installed.requested_capabilities,
                 approval: installed.approval,
                 allowed_workspace_root,
             },

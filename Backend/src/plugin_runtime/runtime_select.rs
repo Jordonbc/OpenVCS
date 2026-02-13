@@ -65,10 +65,7 @@ mod tests {
 
         let err = match create_runtime_instance(SpawnConfig {
             plugin_id: "test.plugin".to_string(),
-            component_label: "module".to_string(),
             exec_path: wasm_path,
-            args: Vec::new(),
-            requested_capabilities: Vec::new(),
             approval: ApprovalState::Approved {
                 capabilities: Vec::new(),
                 approved_at_unix_ms: 0,

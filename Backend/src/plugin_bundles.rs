@@ -241,17 +241,6 @@ impl PluginBundleStore {
         Self { root }
     }
 
-    /// Returns the root directory for a specific plugin id.
-    ///
-    /// # Parameters
-    /// - `plugin_id`: Plugin identifier used as a directory name under the store root.
-    ///
-    /// # Returns
-    /// - Path to the plugin root directory.
-    pub fn plugin_root_dir(&self, plugin_id: &str) -> PathBuf {
-        self.root.join(plugin_id.trim())
-    }
-
     #[cfg(test)]
     /// Creates a store rooted at an explicit test directory.
     ///

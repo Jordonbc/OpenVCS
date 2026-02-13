@@ -4,9 +4,6 @@ use std::sync::Arc;
 
 /// Runtime instance abstraction used by the plugin runtime manager.
 pub trait PluginRuntimeInstance: Send + Sync {
-    /// Returns runtime transport kind identifier (`component`).
-    fn runtime_kind(&self) -> &'static str;
-
     /// Ensures the underlying runtime instance is started.
     fn ensure_running(&self) -> Result<(), String>;
 

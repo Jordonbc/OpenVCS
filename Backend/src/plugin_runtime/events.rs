@@ -34,22 +34,6 @@ fn registry() -> &'static Mutex<Registry> {
     })
 }
 
-/// Registers a plugin's stdin handle for outbound host->plugin messages.
-///
-/// # Parameters
-/// - `plugin_id`: Plugin id to register.
-/// - `stdin`: IO handle containing the writable plugin stdin channel.
-///
-/// # Returns
-/// - `()`.
-pub fn register_plugin_io(plugin_id: &str, stdin: PluginIoHandle) {
-    if let Ok(mut lock) = registry().lock() {
-        lock.io.insert(plugin_id.to_string(), stdin);
-        lock.next_id.entry(plugin_id.to_string()).or_insert(1);
-        lock.subs.entry(plugin_id.to_string()).or_default();
-    }
-}
-
 #[allow(dead_code)]
 /// Removes a plugin from the runtime event registry.
 ///

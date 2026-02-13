@@ -310,10 +310,6 @@ fn encode_method_result<T: Serialize>(
 }
 
 impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
-    fn runtime_kind(&self) -> &'static str {
-        "component"
-    }
-
     fn ensure_running(&self) -> Result<(), String> {
         let mut lock = self.runtime.lock();
         if lock.is_some() {

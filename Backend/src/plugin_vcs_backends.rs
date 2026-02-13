@@ -40,8 +40,6 @@ pub struct PluginBackendDescriptor {
     pub plugin_name: Option<String>,
     /// Executable used to proxy backend operations.
     pub exec_path: std::path::PathBuf,
-    /// Capabilities requested by the plugin version providing this backend.
-    pub requested_capabilities: Vec<String>,
     /// Current capability approval state for the plugin version.
     pub approval: ApprovalState,
 }
@@ -139,7 +137,6 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
                 plugin_id: p.plugin_id.clone(),
                 plugin_name: p.name.clone(),
                 exec_path: module.exec_path.clone(),
-                requested_capabilities: installed.requested_capabilities.clone(),
                 approval: installed.approval.clone(),
             };
             let key = backend_id.as_ref().to_string();
@@ -194,7 +191,6 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
                 plugin_id: plugin_id.to_string(),
                 plugin_name: plugin_name.clone(),
                 exec_path: exec_path.clone(),
-                requested_capabilities: requested_capabilities.clone(),
                 approval: ApprovalState::Approved {
                     capabilities: approval_caps.clone(),
                     approved_at_unix_ms: 0,
@@ -260,7 +256,6 @@ pub fn open_repo_via_plugin_vcs_backend(
         backend_id,
         desc.exec_path,
         desc.approval,
-        desc.requested_capabilities,
         path,
     )
 }

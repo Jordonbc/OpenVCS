@@ -27,7 +27,6 @@ impl PluginVcsProxy {
     /// - `backend_id`: Backend id exposed by the plugin.
     /// - `exec_path`: Path to the plugin wasm/module executable.
     /// - `approval`: Capability approval state for the plugin version.
-    /// - `requested_capabilities`: Capabilities requested by the plugin.
     /// - `repo_path`: Repository working-tree path to open.
     ///
     /// # Returns
@@ -38,7 +37,6 @@ impl PluginVcsProxy {
         backend_id: BackendId,
         exec_path: PathBuf,
         approval: ApprovalState,
-        requested_capabilities: Vec<String>,
         repo_path: &Path,
     ) -> Result<Arc<dyn Vcs>, VcsError> {
         let workdir = repo_path.to_path_buf();
@@ -49,10 +47,7 @@ impl PluginVcsProxy {
         })?;
         let spawn = SpawnConfig {
             plugin_id,
-            component_label: format!("vcs-backend-{}", backend_id.as_ref()),
             exec_path,
-            args: Vec::new(),
-            requested_capabilities,
             approval,
             allowed_workspace_root: Some(workdir.clone()),
         };
