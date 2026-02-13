@@ -3281,7 +3281,7 @@ dependencies = [
  "env_logger",
  "hex",
  "log",
- "openvcs-core",
+ "openvcs-core 0.1.8",
  "os_pipe",
  "parking_lot",
  "regex",
@@ -3308,6 +3308,16 @@ dependencies = [
 [[package]]
 name = "openvcs-core"
 version = "0.1.8"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "openvcs-core"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "706c4aa8b72515997a4b518b6e5372bd39213a841774a6675123ad19d3c99d1d"
 dependencies = [
@@ -3324,7 +3334,7 @@ dependencies = [
  "git2",
  "linkme",
  "log",
- "openvcs-core",
+ "openvcs-core 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

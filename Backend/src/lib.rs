@@ -176,6 +176,8 @@ pub fn run() {
             // If the main window is closed, exit the app even if auxiliary windows are open.
             if window.label() == "main" {
                 if let WindowEvent::CloseRequested { .. } = event {
+                    let state = window.app_handle().state::<state::AppState>();
+                    state.plugin_runtime().stop_all_plugins();
                     window.app_handle().exit(0);
                 }
             }

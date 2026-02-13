@@ -1,7 +1,6 @@
 use crate::plugin_runtime::component_instance::ComponentPluginRuntimeInstance;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
-use crate::plugin_runtime::stdio_instance::StdioPluginRuntimeInstance;
-use crate::plugin_runtime::stdio_rpc::SpawnConfig;
+use crate::plugin_runtime::spawn::SpawnConfig;
 use std::path::Path;
 use std::sync::Arc;
 use wasmtime::component::Component;
@@ -18,25 +17,22 @@ pub fn is_component_module(path: &Path) -> bool {
 }
 
 /// Selects and creates a runtime instance for a plugin module.
-pub fn create_runtime_instance(spawn: SpawnConfig) -> Arc<dyn PluginRuntimeInstance> {
-    let runtime: Arc<dyn PluginRuntimeInstance> = if is_component_module(&spawn.exec_path) {
-        Arc::new(ComponentPluginRuntimeInstance::new(spawn.clone()))
-    } else {
-        log::warn!(
-            "plugin runtime: using deprecated stdio fallback for plugin `{}` ({})",
-            spawn.plugin_id,
+pub fn create_runtime_instance(spawn: SpawnConfig) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
+    if !is_component_module(&spawn.exec_path) {
+        return Err(format!(
+            "plugin runtime: `{}` is not a component-model plugin (stdio runtime removed)",
             spawn.exec_path.display()
-        );
-        Arc::new(StdioPluginRuntimeInstance::new(spawn.clone()))
-    };
+        ));
+    }
 
+    let runtime: Arc<dyn PluginRuntimeInstance> =
+        Arc::new(ComponentPluginRuntimeInstance::new(spawn.clone()));
     log::info!(
-        "plugin runtime: selected `{}` transport for plugin `{}` ({})",
-        runtime.runtime_kind(),
+        "plugin runtime: selected `component` transport for plugin `{}` ({})",
         spawn.plugin_id,
         spawn.exec_path.display()
     );
-    runtime
+    Ok(runtime)
 }
 
 #[cfg(test)]
@@ -62,12 +58,12 @@ mod tests {
     }
 
     #[test]
-    fn selection_uses_stdio_fallback_for_core_wasm() {
+    fn selection_rejects_core_wasm() {
         let temp = tempdir().expect("tempdir");
         let wasm_path = temp.path().join("plugin.wasm");
         fs::write(&wasm_path, MINIMAL_WASM).expect("write wasm");
 
-        let runtime = create_runtime_instance(SpawnConfig {
+        let err = match create_runtime_instance(SpawnConfig {
             plugin_id: "test.plugin".to_string(),
             component_label: "module".to_string(),
             exec_path: wasm_path,
@@ -78,8 +74,10 @@ mod tests {
                 approved_at_unix_ms: 0,
             },
             allowed_workspace_root: None,
-        });
-
-        assert_eq!(runtime.runtime_kind(), "stdio");
+        }) {
+            Ok(_) => panic!("expected non-component runtime rejection"),
+            Err(err) => err,
+        };
+        assert!(err.contains("stdio runtime removed"));
     }
 }

@@ -1,11 +1,12 @@
 use crate::plugin_bundles::{InstalledPluginComponents, PluginBundleStore};
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::runtime_select::create_runtime_instance;
-use crate::plugin_runtime::stdio_rpc::SpawnConfig;
+use crate::plugin_runtime::spawn::SpawnConfig;
 use crate::settings::AppConfig;
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -19,7 +20,12 @@ struct ModuleRuntimeSpec {
 /// Owns long-lived module plugin processes and coordinates lifecycle actions.
 pub struct PluginRuntimeManager {
     store: PluginBundleStore,
-    processes: Mutex<HashMap<String, Arc<dyn PluginRuntimeInstance>>>,
+    processes: Mutex<HashMap<String, RunningPlugin>>,
+}
+
+struct RunningPlugin {
+    runtime: Arc<dyn PluginRuntimeInstance>,
+    workspace_root: Option<PathBuf>,
 }
 
 impl Default for PluginRuntimeManager {
@@ -60,10 +66,10 @@ impl PluginRuntimeManager {
     /// - `Err(String)` when plugin lookup/startup fails.
     pub fn start_plugin(&self, plugin_id: &str) -> Result<(), String> {
         let key = normalize_plugin_key(plugin_id)?;
-        if let Some(existing) = self.processes.lock().get(&key).cloned() {
-            return existing.ensure_running();
+        if let Some(existing) = self.processes.lock().get(&key) {
+            return existing.runtime.ensure_running();
         }
-        let spec = self.resolve_module_runtime_spec(plugin_id)?;
+        let spec = self.resolve_module_runtime_spec(plugin_id, None)?;
         self.start_plugin_spec(spec)
     }
 
@@ -82,9 +88,17 @@ impl PluginRuntimeManager {
         let key = normalize_plugin_key(plugin_id)?;
         let process = self.processes.lock().remove(&key);
         if let Some(process) = process {
-            process.stop();
+            process.runtime.stop();
         }
         Ok(())
+    }
+
+    /// Stops all running plugins.
+    pub fn stop_all_plugins(&self) {
+        let running = std::mem::take(&mut *self.processes.lock());
+        for (_, process) in running {
+            process.runtime.stop();
+        }
     }
 
     /// Synchronizes runtime process state with current persisted plugin settings.
@@ -159,7 +173,20 @@ impl PluginRuntimeManager {
         method: &str,
         params: Value,
     ) -> Result<Value, String> {
-        let spec = self.resolve_module_runtime_spec(plugin_id)?;
+        self.call_module_method_for_workspace_with_config(cfg, plugin_id, method, params, None)
+    }
+
+    /// Calls a module RPC method through the persistent plugin process with an
+    /// optional workspace-root confinement.
+    pub fn call_module_method_for_workspace_with_config(
+        &self,
+        cfg: &AppConfig,
+        plugin_id: &str,
+        method: &str,
+        params: Value,
+        allowed_workspace_root: Option<PathBuf>,
+    ) -> Result<Value, String> {
+        let spec = self.resolve_module_runtime_spec(plugin_id, allowed_workspace_root)?;
         if !cfg.is_plugin_enabled(&spec.plugin_id, spec.default_enabled) {
             return Err(format!("plugin `{}` is disabled", spec.plugin_id));
         }
@@ -169,33 +196,56 @@ impl PluginRuntimeManager {
             .processes
             .lock()
             .get(&spec.key)
-            .cloned()
+            .map(|p| Arc::clone(&p.runtime))
             .ok_or_else(|| format!("plugin `{}` is not running", spec.plugin_id))?;
         rpc.call(method, params)
     }
 
     fn start_plugin_spec(&self, spec: ModuleRuntimeSpec) -> Result<(), String> {
-        if let Some(existing) = self.processes.lock().get(&spec.key).cloned() {
-            return existing.ensure_running();
+        if let Some(existing) = self.processes.lock().get(&spec.key) {
+            if existing.workspace_root == spec.spawn.allowed_workspace_root {
+                return existing.runtime.ensure_running();
+            }
         }
 
-        let instance = self.create_instance(&spec);
+        let instance = self.create_instance(&spec)?;
         instance.ensure_running()?;
 
         let mut lock = self.processes.lock();
-        if let Some(existing) = lock.get(&spec.key).cloned() {
-            drop(lock);
-            return existing.ensure_running();
+        if let Some(existing) = lock.get(&spec.key) {
+            if existing.workspace_root == spec.spawn.allowed_workspace_root {
+                let runtime = Arc::clone(&existing.runtime);
+                drop(lock);
+                return runtime.ensure_running();
+            }
         }
-        lock.insert(spec.key, instance);
+        let runtime_to_stop = lock.get(&spec.key).map(|existing| Arc::clone(&existing.runtime));
+        if let Some(runtime) = runtime_to_stop {
+            runtime.stop();
+            lock.remove(&spec.key);
+        }
+        lock.insert(
+            spec.key,
+            RunningPlugin {
+                runtime: instance,
+                workspace_root: spec.spawn.allowed_workspace_root.clone(),
+            },
+        );
         Ok(())
     }
 
-    fn create_instance(&self, spec: &ModuleRuntimeSpec) -> Arc<dyn PluginRuntimeInstance> {
+    fn create_instance(
+        &self,
+        spec: &ModuleRuntimeSpec,
+    ) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
         create_runtime_instance(spec.spawn.clone())
     }
 
-    fn resolve_module_runtime_spec(&self, plugin_id: &str) -> Result<ModuleRuntimeSpec, String> {
+    fn resolve_module_runtime_spec(
+        &self,
+        plugin_id: &str,
+        allowed_workspace_root: Option<PathBuf>,
+    ) -> Result<ModuleRuntimeSpec, String> {
         let requested = plugin_id.trim();
         if requested.is_empty() {
             return Err("plugin id is empty".to_string());
@@ -222,7 +272,7 @@ impl PluginRuntimeManager {
                 args: Vec::new(),
                 requested_capabilities: installed.requested_capabilities,
                 approval: installed.approval,
-                allowed_workspace_root: None,
+                allowed_workspace_root,
             },
         })
     }
@@ -233,6 +283,15 @@ impl PluginRuntimeManager {
             .into_iter()
             .find(|components| components.plugin_id.eq_ignore_ascii_case(plugin_id))
             .ok_or_else(|| "plugin not installed".to_string())
+    }
+}
+
+impl Drop for PluginRuntimeManager {
+    fn drop(&mut self) {
+        let running = std::mem::take(&mut *self.processes.get_mut());
+        for (_, process) in running {
+            process.runtime.stop();
+        }
     }
 }
 

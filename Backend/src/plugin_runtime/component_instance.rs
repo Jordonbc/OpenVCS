@@ -1,7 +1,10 @@
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
-use crate::plugin_runtime::stdio_rpc::handle_host_request;
-use crate::plugin_runtime::stdio_rpc::SpawnConfig;
-use openvcs_core::plugin_protocol::RpcRequest;
+use crate::plugin_runtime::host_api::{
+    host_emit_event, host_process_exec_git, host_runtime_info, host_subscribe_event,
+    host_ui_notify, host_workspace_read_file, host_workspace_write_file,
+};
+use crate::plugin_runtime::spawn::SpawnConfig;
+use openvcs_core::app_api::Host as AppHostApi;
 use parking_lot::Mutex;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -30,36 +33,88 @@ struct ComponentHostState {
 }
 
 impl ComponentHostState {
-    fn host_error(
-        code: impl Into<String>,
-        message: impl Into<String>,
+    fn map_host_error(
+        err: openvcs_core::app_api::ComponentError,
     ) -> bindings::openvcs::plugin::host_api::HostError {
         bindings::openvcs::plugin::host_api::HostError {
-            code: code.into(),
-            message: message.into(),
+            code: err.code,
+            message: err.message,
         }
     }
+}
 
-    fn host_call(
-        &self,
-        method: &str,
-        params: Value,
-    ) -> Result<Value, bindings::openvcs::plugin::host_api::HostError> {
-        let req = RpcRequest {
-            id: 0,
-            method: method.to_string(),
-            params,
-        };
-        let rsp = handle_host_request(&self.spawn, req);
-        if rsp.ok {
-            Ok(rsp.result)
+impl AppHostApi for ComponentHostState {
+    fn get_runtime_info(&mut self) -> Result<openvcs_core::RuntimeInfo, openvcs_core::app_api::ComponentError> {
+        Ok(host_runtime_info())
+    }
+
+    fn subscribe_event(
+        &mut self,
+        event_name: &str,
+    ) -> Result<(), openvcs_core::app_api::ComponentError> {
+        host_subscribe_event(&self.spawn, event_name)
+    }
+
+    fn emit_event(
+        &mut self,
+        event_name: &str,
+        payload: &[u8],
+    ) -> Result<(), openvcs_core::app_api::ComponentError> {
+        host_emit_event(&self.spawn, event_name, payload)
+    }
+
+    fn ui_notify(&mut self, message: &str) -> Result<(), openvcs_core::app_api::ComponentError> {
+        host_ui_notify(&self.spawn, message)
+    }
+
+    fn workspace_read_file(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<u8>, openvcs_core::app_api::ComponentError> {
+        host_workspace_read_file(&self.spawn, path)
+    }
+
+    fn workspace_write_file(
+        &mut self,
+        path: &str,
+        content: &[u8],
+    ) -> Result<(), openvcs_core::app_api::ComponentError> {
+        host_workspace_write_file(&self.spawn, path, content)
+    }
+
+    fn process_exec_git(
+        &mut self,
+        cwd: Option<&str>,
+        args: &[String],
+        env: &[(String, String)],
+        stdin: Option<&str>,
+    ) -> Result<openvcs_core::app_api::ProcessExecOutput, openvcs_core::app_api::ComponentError> {
+        host_process_exec_git(&self.spawn, cwd, args, env, stdin)
+    }
+
+    fn host_log(&mut self, level: openvcs_core::app_api::ComponentLogLevel, target: &str, message: &str) {
+        let target = if target.trim().is_empty() {
+            format!("plugin.{}", self.spawn.plugin_id)
         } else {
-            Err(Self::host_error(
-                rsp.error_code.unwrap_or_else(|| "host.error".to_string()),
-                rsp.error
-                    .unwrap_or_else(|| "unknown host error".to_string()),
-            ))
-        }
+            format!("plugin.{}.{}", self.spawn.plugin_id, target)
+        };
+        match level {
+            openvcs_core::app_api::ComponentLogLevel::Trace => {
+                log::trace!(target: &target, "{message}")
+            }
+            openvcs_core::app_api::ComponentLogLevel::Debug => {
+                log::debug!(target: &target, "{message}")
+            }
+            openvcs_core::app_api::ComponentLogLevel::Info => {
+                log::info!(target: &target, "{message}")
+            }
+            openvcs_core::app_api::ComponentLogLevel::Warn => {
+                log::warn!(target: &target, "{message}")
+            }
+            openvcs_core::app_api::ComponentLogLevel::Error => {
+                log::error!(target: &target, "{message}")
+            }
+        };
     }
 }
 
@@ -70,20 +125,11 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         bindings::openvcs::plugin::host_api::RuntimeInfo,
         bindings::openvcs::plugin::host_api::HostError,
     > {
-        let value = self.host_call("runtime.info", Value::Null)?;
+        let value = AppHostApi::get_runtime_info(self).map_err(ComponentHostState::map_host_error)?;
         Ok(bindings::openvcs::plugin::host_api::RuntimeInfo {
-            os: value
-                .get("os")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            arch: value
-                .get("arch")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            container: value
-                .get("container")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
+            os: value.os,
+            arch: value.arch,
+            container: value.container,
         })
     }
 
@@ -91,11 +137,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         &mut self,
         event_name: String,
     ) -> Result<(), bindings::openvcs::plugin::host_api::HostError> {
-        self.host_call(
-            "events.subscribe",
-            serde_json::json!({ "name": event_name }),
-        )?;
-        Ok(())
+        AppHostApi::subscribe_event(self, &event_name).map_err(ComponentHostState::map_host_error)
     }
 
     fn emit_event(
@@ -103,34 +145,21 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         event_name: String,
         payload: Vec<u8>,
     ) -> Result<(), bindings::openvcs::plugin::host_api::HostError> {
-        let payload_json = if payload.is_empty() {
-            Value::Null
-        } else {
-            serde_json::from_slice(&payload)
-                .map_err(|e| Self::host_error("host.invalid_payload", e.to_string()))?
-        };
-        self.host_call(
-            "events.emit",
-            serde_json::json!({ "name": event_name, "payload": payload_json }),
-        )?;
-        Ok(())
+        AppHostApi::emit_event(self, &event_name, &payload).map_err(ComponentHostState::map_host_error)
     }
 
     fn ui_notify(
         &mut self,
         message: String,
     ) -> Result<(), bindings::openvcs::plugin::host_api::HostError> {
-        self.host_call("ui.notify", serde_json::json!({ "message": message }))?;
-        Ok(())
+        AppHostApi::ui_notify(self, &message).map_err(ComponentHostState::map_host_error)
     }
 
     fn workspace_read_file(
         &mut self,
         path: String,
     ) -> Result<Vec<u8>, bindings::openvcs::plugin::host_api::HostError> {
-        let value = self.host_call("workspace.readFile", serde_json::json!({ "path": path }))?;
-        let bytes = value.as_str().unwrap_or_default().as_bytes().to_vec();
-        Ok(bytes)
+        AppHostApi::workspace_read_file(self, &path).map_err(ComponentHostState::map_host_error)
     }
 
     fn workspace_write_file(
@@ -138,14 +167,8 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         path: String,
         content: Vec<u8>,
     ) -> Result<(), bindings::openvcs::plugin::host_api::HostError> {
-        self.host_call(
-            "workspace.writeFile",
-            serde_json::json!({
-                "path": path,
-                "content": String::from_utf8_lossy(&content),
-            }),
-        )?;
-        Ok(())
+        AppHostApi::workspace_write_file(self, &path, &content)
+            .map_err(ComponentHostState::map_host_error)
     }
 
     fn process_exec_git(
@@ -158,36 +181,23 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         bindings::openvcs::plugin::host_api::ProcessExecOutput,
         bindings::openvcs::plugin::host_api::HostError,
     > {
-        let env_obj = env
+        let env = env
             .into_iter()
-            .map(|var| (var.key, Value::String(var.value)))
-            .collect::<serde_json::Map<_, _>>();
-        let value = self.host_call(
-            "process.exec",
-            serde_json::json!({
-                "program": "git",
-                "cwd": cwd.unwrap_or_default(),
-                "args": args,
-                "env": env_obj,
-                "stdin": stdin.unwrap_or_default(),
-            }),
-        )?;
+            .map(|var| (var.key, var.value))
+            .collect::<Vec<_>>();
+        let value = AppHostApi::process_exec_git(
+            self,
+            cwd.as_deref(),
+            &args,
+            &env,
+            stdin.as_deref(),
+        )
+        .map_err(ComponentHostState::map_host_error)?;
         Ok(bindings::openvcs::plugin::host_api::ProcessExecOutput {
-            success: value
-                .get("success")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false),
-            status: value.get("status").and_then(|v| v.as_i64()).unwrap_or(-1) as i32,
-            stdout: value
-                .get("stdout")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string(),
-            stderr: value
-                .get("stderr")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string(),
+            success: value.success,
+            status: value.status,
+            stdout: value.stdout,
+            stderr: value.stderr,
         })
     }
 
@@ -197,28 +207,24 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         target: String,
         message: String,
     ) {
-        let target = if target.trim().is_empty() {
-            format!("plugin.{}", self.spawn.plugin_id)
-        } else {
-            format!("plugin.{}.{}", self.spawn.plugin_id, target)
-        };
-        match level {
+        let level = match level {
             bindings::openvcs::plugin::host_api::LogLevel::Trace => {
-                log::trace!(target: &target, "{message}")
+                openvcs_core::app_api::ComponentLogLevel::Trace
             }
             bindings::openvcs::plugin::host_api::LogLevel::Debug => {
-                log::debug!(target: &target, "{message}")
+                openvcs_core::app_api::ComponentLogLevel::Debug
             }
             bindings::openvcs::plugin::host_api::LogLevel::Info => {
-                log::info!(target: &target, "{message}")
+                openvcs_core::app_api::ComponentLogLevel::Info
             }
             bindings::openvcs::plugin::host_api::LogLevel::Warn => {
-                log::warn!(target: &target, "{message}")
+                openvcs_core::app_api::ComponentLogLevel::Warn
             }
             bindings::openvcs::plugin::host_api::LogLevel::Error => {
-                log::error!(target: &target, "{message}")
+                openvcs_core::app_api::ComponentLogLevel::Error
             }
-        }
+        };
+        AppHostApi::host_log(self, level, &target, &message);
     }
 }
 

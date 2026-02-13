@@ -1,7 +1,7 @@
 use crate::plugin_bundles::ApprovalState;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::runtime_select::create_runtime_instance;
-use crate::plugin_runtime::stdio_rpc::SpawnConfig;
+use crate::plugin_runtime::spawn::SpawnConfig;
 use crate::settings::AppConfig;
 use openvcs_core::models::{
     Capabilities, ConflictDetails, ConflictSide, FetchOptions, LogQuery, StashItem, StatusPayload,
@@ -56,7 +56,10 @@ impl PluginVcsProxy {
             approval,
             allowed_workspace_root: Some(workdir.clone()),
         };
-        let runtime = create_runtime_instance(spawn);
+        let runtime = create_runtime_instance(spawn).map_err(|e| VcsError::Backend {
+            backend: backend_id.clone(),
+            msg: e,
+        })?;
         let p = PluginVcsProxy {
             backend_id,
             workdir,

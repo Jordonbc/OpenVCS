@@ -3,17 +3,14 @@ use std::sync::Arc;
 
 use log::{error, info, warn};
 use serde_json::Value;
-use tauri::{async_runtime, Manager, Runtime, State, Window};
+use tauri::{async_runtime, Runtime, State, Window};
 
 use openvcs_core::BackendId;
 use std::collections::BTreeMap;
 
-use crate::plugin_runtime::runtime_select::create_runtime_instance;
-use crate::plugin_runtime::stdio_rpc::SpawnConfig;
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::state::AppState;
-use crate::tauri_commands::shared::progress_bridge;
 
 #[tauri::command]
 /// Lists VCS backends currently available from plugins.
@@ -183,7 +180,7 @@ pub async fn reopen_current_repo_cmd(state: State<'_, AppState>) -> Result<(), S
 /// - `Err(String)` when validation, backend resolution, or RPC execution fails.
 #[tauri::command]
 pub async fn call_vcs_backend_method<R: Runtime>(
-    window: Window<R>,
+    _window: Window<R>,
     state: State<'_, AppState>,
     backend_id: BackendId,
     method: String,
@@ -204,35 +201,16 @@ pub async fn call_vcs_backend_method<R: Runtime>(
         .ok_or_else(|| "No repository selected".to_string())?;
     let allowed_workspace_root = resolve_allowed_workspace_root(&repo_root, &params)?;
 
-    // Run the backend RPC on a blocking thread so the Tauri main thread and
-    // webview are not blocked by long-running operations (e.g. LFS transfers).
-    let backend_id_clone = backend_id_str.clone();
-    let method_clone = method.clone();
-    let params_clone = params.clone();
-    let desc_clone = desc.clone();
-    let on_event = progress_bridge(window.app_handle().clone());
-
-    let call_task = async_runtime::spawn_blocking(move || {
-        let runtime = create_runtime_instance(SpawnConfig {
-            plugin_id: desc_clone.plugin_id,
-            component_label: format!("vcs-backend-{}", backend_id_clone),
-            exec_path: desc_clone.exec_path,
-            args: Vec::new(),
-            requested_capabilities: desc_clone.requested_capabilities,
-            approval: desc_clone.approval,
+    let cfg = state.config();
+    state
+        .plugin_runtime()
+        .call_module_method_for_workspace_with_config(
+            &cfg,
+            &desc.plugin_id,
+            &method,
+            params,
             allowed_workspace_root,
-        });
-        runtime.set_event_sink(Some(on_event));
-        let call = runtime.call(&method_clone, params_clone);
-        runtime.stop();
-        call
-    });
-
-    let call_res = call_task
-        .await
-        .map_err(|e| format!("call_vcs_backend_method task failed: {e}"))?;
-
-    call_res
+        )
 }
 
 /// Resolves optional backend workspace path and enforces repo-root confinement.
