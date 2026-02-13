@@ -197,10 +197,7 @@ impl PluginRuntimeManager {
 
     fn create_instance(&self, spec: &ModuleRuntimeSpec) -> Arc<dyn PluginRuntimeInstance> {
         if is_component_module(&spec.spawn.exec_path) {
-            return Arc::new(ComponentPluginRuntimeInstance::new(
-                spec.spawn.plugin_id.clone(),
-                spec.spawn.exec_path.clone(),
-            ));
+            return Arc::new(ComponentPluginRuntimeInstance::new(spec.spawn.clone()));
         }
 
         log::warn!(

@@ -758,7 +758,7 @@ fn run_wasi_module(cfg: RunWasiConfig) -> Result<(), String> {
 ///
 /// # Returns
 /// - RPC response payload.
-fn handle_host_request(spawn: &SpawnConfig, req: RpcRequest) -> RpcResponse {
+pub(crate) fn handle_host_request(spawn: &SpawnConfig, req: RpcRequest) -> RpcResponse {
     let deny = |code: &str, msg: &str| RpcResponse {
         id: req.id,
         ok: false,
