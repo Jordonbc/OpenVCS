@@ -676,6 +676,19 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
                     let out = invoke!("branch_upstream", call_get_branch_upstream, &p.branch)?;
                     encode_method_result(&self.spawn.plugin_id, method, out)
                 }
+                "hard_reset_head" => {
+                    let out = invoke!("hard_reset_head", call_hard_reset_head)?;
+                    encode_method_result(&self.spawn.plugin_id, method, out)
+                }
+                "reset_soft_to" => {
+                    #[derive(serde::Deserialize)]
+                    struct Params {
+                        rev: String,
+                    }
+                    let p: Params = parse_method_params(method, params)?;
+                    let out = invoke!("reset_soft_to", call_reset_soft_to, &p.rev)?;
+                    encode_method_result(&self.spawn.plugin_id, method, out)
+                }
                 "get_identity" => {
                     let out = invoke!("get_identity", call_get_identity)?;
                     let mapped = out.map(|identity| (identity.name, identity.email));
@@ -772,13 +785,15 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
                         commit: Option<String>,
                         #[serde(default)]
                         rev: Option<String>,
+                        #[serde(default)]
+                        no_edit: bool,
                     }
                     let p: Params = parse_method_params(method, params)?;
                     let commit = p
                         .commit
                         .or(p.rev)
                         .ok_or_else(|| "missing `commit`/`rev`".to_string())?;
-                    let out = invoke!("revert_commit", call_revert_commit, &commit)?;
+                    let out = invoke!("revert_commit", call_revert_commit, &commit, p.no_edit)?;
                     encode_method_result(&self.spawn.plugin_id, method, out)
                 }
                 _ => Err(format!(
