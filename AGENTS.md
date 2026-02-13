@@ -1,45 +1,44 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-- `Backend/`: Rust + Tauri application code (`src/`), commands (`src/tauri_commands/`), and plugin runtime.
-- `Backend/built-in-plugins/`: git submodules for bundled plugins; initialize/update with `git submodule update --init --recursive`.
-- `Frontend/`: TypeScript + Vite UI (`src/scripts/`, `src/styles/`, `src/modals/`), with Vitest tests colocated as `*.test.ts`.
-- `docs/`: architecture and plugin docs plus UI assets.
-- `packaging/flatpak/`: Flatpak manifests and packaging notes.
-- Root files: workspace `Cargo.toml`, `Justfile`, and project docs (`README.md`, `ARCHITECTURE.md`, `SECURITY.md`).
+## Project structure & module organization
+- `Backend/`: Rust + Tauri backend (`src/`), commands (`src/tauri_commands/`), plugin runtime (`src/plugin_runtime/`), and bundled plugin support (`src/plugin_runtime`, `scripts/`).
+- `Backend/built-in-plugins/`: local copies of bundled plugins (do not edit their code unless explicitly requested; update submodule pointers instead).
+- `Frontend/`: TypeScript + Vite UI code (`src/scripts/`, `src/styles/`, `src/modals/`), with Vitest tests colocated as `*.test.ts` files.
+- `docs/`: UX docs, plugin architecture notes, and plugin/theme packaging guides referenced by contributors.
+- `packaging/flatpak/`: Flatpak manifests and Flatpak-specific build notes.
+- Supporting files at the repo root include the workspace `Cargo.toml`, `Justfile`, `README.md`, `ARCHITECTURE.md`, `SECURITY.md`, and installer scripts.
 
-## Build, Test, and Development Commands
-- `just build` (or `just build client|plugins`): build frontend, backend, and plugin bundles.
-- `git submodule update --init --recursive`: fetch submodule content (required before plugin builds/tests).
-- `just test`: workspace Rust tests + frontend TypeScript check + Vitest run.
-- `just fix`: run `cargo fmt`, `cargo clippy --fix`, and frontend typecheck.
-- `cargo tauri dev`: run the desktop app in development mode.
-- `npm --prefix Frontend run dev`: run frontend-only Vite dev server.
-- `just tauri-build`: production Tauri build wrapper.
+## Build, test, and development commands
+- `just build` (or `just build client|plugins`): builds the backend, frontend, and plugin bundles from the workspace Justfile.
+- `just test`: runs workspace Rust tests plus frontend type-check + Vitest via the Justfile.
+- `just fix`: formatter/lint quick fixes (runs `cargo fmt`, `cargo clippy --fix`, frontend type-check, and bundle verification).
+- `cargo tauri dev`: run the desktop app in dev mode (`Backend/` directory).
+- `npm --prefix Frontend run dev`: run the frontend-only Vite dev server; use `npm --prefix Frontend exec tsc -- -p tsconfig.json --noEmit` for TS checks and `npm --prefix Frontend test` for Vitest when needed.
+- `just tauri-build`: production Tauri build wrapper (AppImage/Flatpak). `git submodule update --init --recursive` is required before building bundled plugins.
 
-## Coding Style & Naming Conventions
-- Rust: format with `cargo fmt --all`; keep clippy-clean (`cargo clippy --all-targets -- -D warnings`).
-- TypeScript: 2-space indentation, ES modules, and small feature-focused files under `Frontend/src/scripts/features/`.
-- Tests: name frontend tests `*.test.ts` near the implementation (example: `Frontend/src/scripts/lib/dom.test.ts`).
-- Naming: use `snake_case` for Rust modules/functions and `camelCase` for TypeScript variables/functions.
+## Plugin runtime & host expectations
+- Plugin components live under `Backend/built-in-plugins/` and follow the manifest format in `openvcs.plugin.json`. Built-in bundles ship with the AppImage/Flatpak and are also built by the SDK (`cargo openvcs dist`).
+- The backend loads plugin modules as Wasmtime component-model `*.wasm` files via `Backend/src/plugin_runtime/component_instance.rs`. The canonical host/plugin contract is defined in `Core/wit/openvcs-core.wit` (see `openvcs_core::app_api`).
+- When changing host APIs, capability strings, or runtime behavior, update `Core/wit/openvcs-core.wit`, the generated bindings, and the runtime logic in `Backend/src/plugin_runtime`.
 
-# ExecPlans
+## Coding style & conventions
+- Rust: run `cargo fmt --all`, keep `cargo clippy --all-targets -- -D warnings` clean, prefer `snake_case` for modules/functions and `PascalCase` for structs/enums.
+- TypeScript: 2-space indentation, ES modules, small feature-focused files under `Frontend/src/scripts/features/`. Tests should be alongside the code (`*.test.ts`).
+- Keep plugin UI contributions (e.g., `Backend/built-in-plugins/Git/entry.js`) concise and prefer host APIs (`OpenVCS.invoke`, settings/actions) documented in `docs/`.
 
-When writing complex features or significant refactors, use an ExecPlan (as described in .agent/PLANS.md) from design to implementation.
+## ExecPlans
+- For multi-component features or refactors, create/update an ExecPlan (`Client/PLANS.md`). Outline design, component impacts, and how the plugin runtime is exercised.
 
-## Testing Guidelines
-- Run full checks before opening a PR: `just test`.
-- For frontend-only work, run `cd Frontend && npm test` and `npm exec tsc -- -p tsconfig.json --noEmit`.
-- Add or update tests for behavior changes; prefer focused unit tests over broad snapshots.
+## Testing guidelines
+- Run `just test` before PRs; frontend-only work should at least cover `npm --prefix Frontend exec tsc -- -p tsconfig.json --noEmit` and `npm --prefix Frontend test`.
+- Use `cargo tauri dev` to verify runtime plugin interactions (especially when touching `Backend/src/plugin_runtime/`), and make sure `docs/plugin architecture.md` stays aligned with behavior.
 
-## Commit & Pull Request Guidelines
-- Follow existing commit style: short imperative subject, optional scope prefix (examples: `backend: fix tauri precommands`, `ci: add wasm32-wasip1 target`, `chore(deps): bump @types/node`).
-- Keep commits logically scoped; avoid mixing frontend/backend refactors unless required.
-- Do not directly modify plugin code under `Backend/built-in-plugins/`; only update submodule pointers in this repository when explicitly requested.
-- PRs should include: summary of behavior changes, linked issue(s), test evidence (command output), and screenshots for UI changes.
-- Target the `Dev` branch for normal development work.
+## Commit & PR guidelines
+- Use short, imperative commit subjects (optionally scoped, e.g., `backend: refresh plugin runtime config`). Keep changelist focused; avoid mixing UI and backend refactors unless necessary.
+- PRs should target the `Dev` branch, include a summary, issue links, commands/tests run, and highlight architecture implications (host API changes, plugin capability updates, security decisions).
+- Do not modify plugin code inside submodules unless explicitly asked; treat submodule updates as pointer bumps after upstream changes.
+- Keep this AGENTS (and other module-level copies you rely on) current whenever workflows, tooling, or responsibilities change so future contributors can find accurate guidance.
 
-## Security & Configuration Tips
-- Review `SECURITY.md` before changing update, plugin, or network-related code paths.
-- Do not commit secrets; keep local overrides in files like `.env.tauri.local`.
-- Do not directly edit code inside git submodules (including `Backend/built-in-plugins/*`) unless the task explicitly requires a submodule update; treat submodule changes as pointer-only updates in this repo.
+## Security & configuration notes
+- Review `SECURITY.md` before making plugin, plugin-install, or network-related changes.
+- Keep secrets out of the repo; use `.env.tauri.local` for local overrides and do not check them in. If new config flags are introduced, document them in `docs/` and update relevant settings screens/logs.
