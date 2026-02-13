@@ -20,6 +20,7 @@
 - Plugin components live under `Backend/built-in-plugins/` and follow the manifest format in `openvcs.plugin.json`. Built-in bundles ship with the AppImage/Flatpak and are also built by the SDK (`cargo openvcs dist`).
 - The backend loads plugin modules as Wasmtime component-model `*.wasm` files via `Backend/src/plugin_runtime/component_instance.rs`. The canonical host/plugin contract is defined in `Core/wit/openvcs-core.wit` (see `openvcs_core::app_api`).
 - When changing host APIs, capability strings, or runtime behavior, update `Core/wit/openvcs-core.wit`, the generated bindings, and the runtime logic in `Backend/src/plugin_runtime`.
+- JavaScript-based plugin UI contributions (e.g., `entry.js`) are deprecated: route new UI work through the host/app APIs rather than embedding JS so bundles remain Wasm-only.
 
 ## Coding style & conventions
 - Rust: run `cargo fmt --all`, keep `cargo clippy --all-targets -- -D warnings` clean, prefer `snake_case` for modules/functions and `PascalCase` for structs/enums.
