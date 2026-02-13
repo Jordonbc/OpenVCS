@@ -512,9 +512,10 @@ fn read_stdout_loop(
                 }
             }
             PluginMessage::Event { event } => {
+                log_plugin_event(&spawn.plugin_id, &spawn.component_label, &event);
                 if let Ok(lock) = on_event.lock() {
                     if let Some(cb) = lock.as_ref() {
-                        cb(event);
+                        cb(event.clone());
                     }
                 }
             }
@@ -560,6 +561,31 @@ fn read_stderr_loop(stderr: impl io::Read, path: PathBuf, plugin_id: String, com
         } else {
             log::info!("{}{}", prefix, line);
         }
+    }
+}
+
+/// Forwards plugin events into host logs even when no explicit event sink is set.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin id for log prefix.
+/// - `component`: Component label for log prefix.
+/// - `event`: Event payload from plugin stdout.
+///
+/// # Returns
+/// - `()`.
+fn log_plugin_event(plugin_id: &str, component: &str, event: &VcsEvent) {
+    let prefix = format!("[plugin:{plugin_id}:{component}] ");
+    match event {
+        VcsEvent::Info { msg } => log::info!("{}{}", prefix, msg),
+        VcsEvent::RemoteMessage { msg } => log::info!("{}{}", prefix, msg),
+        VcsEvent::Progress { phase, detail } => log::info!("{}{}: {}", prefix, phase, detail),
+        VcsEvent::Auth { method, detail } => log::info!("{}auth {}: {}", prefix, method, detail),
+        VcsEvent::PushStatus { refname, status } => {
+            let status = status.as_deref().unwrap_or("unknown");
+            log::info!("{}push {} -> {}", prefix, refname, status);
+        }
+        VcsEvent::Warning { msg } => log::warn!("{}{}", prefix, msg),
+        VcsEvent::Error { msg } => log::error!("{}{}", prefix, msg),
     }
 }
 

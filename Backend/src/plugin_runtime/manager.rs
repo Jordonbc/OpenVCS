@@ -1,10 +1,16 @@
 use crate::plugin_bundles::{InstalledPluginComponents, PluginBundleStore};
-use crate::plugin_runtime::stdio_rpc::{RpcConfig, RpcError, SpawnConfig, StdioRpcProcess};
+use crate::plugin_runtime::component_instance::ComponentPluginRuntimeInstance;
+use crate::plugin_runtime::instance::PluginRuntimeInstance;
+use crate::plugin_runtime::stdio_instance::StdioPluginRuntimeInstance;
+use crate::plugin_runtime::stdio_rpc::SpawnConfig;
 use crate::settings::AppConfig;
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::Arc;
+use wasmtime::component::Component;
+use wasmtime::Engine;
 
 #[derive(Clone)]
 struct ModuleRuntimeSpec {
@@ -17,7 +23,7 @@ struct ModuleRuntimeSpec {
 /// Owns long-lived module plugin processes and coordinates lifecycle actions.
 pub struct PluginRuntimeManager {
     store: PluginBundleStore,
-    processes: Mutex<HashMap<String, Arc<StdioRpcProcess>>>,
+    processes: Mutex<HashMap<String, Arc<dyn PluginRuntimeInstance>>>,
 }
 
 impl Default for PluginRuntimeManager {
@@ -169,7 +175,7 @@ impl PluginRuntimeManager {
             .get(&spec.key)
             .cloned()
             .ok_or_else(|| format!("plugin `{}` is not running", spec.plugin_id))?;
-        rpc.call(method, params).map_err(format_rpc_error)
+        rpc.call(method, params)
     }
 
     fn start_plugin_spec(&self, spec: ModuleRuntimeSpec) -> Result<(), String> {
@@ -177,19 +183,32 @@ impl PluginRuntimeManager {
             return existing.ensure_running();
         }
 
-        let rpc = Arc::new(StdioRpcProcess::new(
-            spec.spawn.clone(),
-            RpcConfig::default(),
-        ));
-        rpc.ensure_running()?;
+        let instance = self.create_instance(&spec);
+        instance.ensure_running()?;
 
         let mut lock = self.processes.lock();
         if let Some(existing) = lock.get(&spec.key).cloned() {
             drop(lock);
             return existing.ensure_running();
         }
-        lock.insert(spec.key, rpc);
+        lock.insert(spec.key, instance);
         Ok(())
+    }
+
+    fn create_instance(&self, spec: &ModuleRuntimeSpec) -> Arc<dyn PluginRuntimeInstance> {
+        if is_component_module(&spec.spawn.exec_path) {
+            return Arc::new(ComponentPluginRuntimeInstance::new(
+                spec.spawn.plugin_id.clone(),
+                spec.spawn.exec_path.clone(),
+            ));
+        }
+
+        log::warn!(
+            "plugin runtime: using deprecated stdio fallback for plugin `{}` ({})",
+            spec.spawn.plugin_id,
+            spec.spawn.exec_path.display()
+        );
+        Arc::new(StdioPluginRuntimeInstance::new(spec.spawn.clone()))
     }
 
     fn resolve_module_runtime_spec(&self, plugin_id: &str) -> Result<ModuleRuntimeSpec, String> {
@@ -241,8 +260,13 @@ fn normalize_plugin_key(plugin_id: &str) -> Result<String, String> {
     Ok(plugin_id)
 }
 
-fn format_rpc_error(err: RpcError) -> String {
-    format!("{}: {}", err.code, err.message)
+fn is_component_module(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+
+    let engine = Engine::default();
+    Component::from_file(&engine, path).is_ok()
 }
 
 #[cfg(test)]
