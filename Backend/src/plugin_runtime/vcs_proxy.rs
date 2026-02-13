@@ -1,5 +1,7 @@
 use crate::plugin_bundles::ApprovalState;
-use crate::plugin_runtime::stdio_rpc::{RpcConfig, RpcError, SpawnConfig, StdioRpcProcess};
+use crate::plugin_runtime::instance::PluginRuntimeInstance;
+use crate::plugin_runtime::runtime_select::create_runtime_instance;
+use crate::plugin_runtime::stdio_rpc::SpawnConfig;
 use crate::settings::AppConfig;
 use openvcs_core::models::{
     Capabilities, ConflictDetails, ConflictSide, FetchOptions, LogQuery, StashItem, StatusPayload,
@@ -14,7 +16,7 @@ use std::sync::Arc;
 pub struct PluginVcsProxy {
     backend_id: BackendId,
     workdir: PathBuf,
-    rpc: StdioRpcProcess,
+    runtime: Arc<dyn PluginRuntimeInstance>,
 }
 
 impl PluginVcsProxy {
@@ -54,18 +56,20 @@ impl PluginVcsProxy {
             approval,
             allowed_workspace_root: Some(workdir.clone()),
         };
-        let rpc = StdioRpcProcess::new(spawn, RpcConfig::default());
+        let runtime = create_runtime_instance(spawn);
         let p = PluginVcsProxy {
             backend_id,
             workdir,
-            rpc,
+            runtime,
         };
-        p.rpc
-            .call(
-                "open",
-                json!({ "path": path_to_utf8(repo_path)?, "config": cfg }),
-            )
-            .map_err(map_rpc_err)?;
+        p.runtime.ensure_running().map_err(|e| VcsError::Backend {
+            backend: p.backend_id.clone(),
+            msg: e,
+        })?;
+        p.call_unit(
+            "open",
+            json!({ "path": path_to_utf8(repo_path)?, "config": cfg }),
+        )?;
         Ok(Arc::new(p))
     }
 
@@ -79,7 +83,12 @@ impl PluginVcsProxy {
     /// - `Ok(Value)` RPC result payload.
     /// - `Err(VcsError)` on RPC failure.
     fn call_value(&self, method: &str, params: Value) -> Result<Value, VcsError> {
-        self.rpc.call(method, params).map_err(map_rpc_err)
+        self.runtime
+            .call(method, params)
+            .map_err(|e| VcsError::Backend {
+                backend: self.backend_id.clone(),
+                msg: e,
+            })
     }
 
     /// Calls a plugin RPC method and deserializes its JSON result.
@@ -128,10 +137,16 @@ impl PluginVcsProxy {
     {
         let sink: Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>> =
             on.map(|cb| Arc::new(move |evt| cb(evt)) as _);
-        self.rpc.set_event_sink(sink);
+        self.runtime.set_event_sink(sink);
         let res = f();
-        self.rpc.set_event_sink(None);
+        self.runtime.set_event_sink(None);
         res
+    }
+}
+
+impl Drop for PluginVcsProxy {
+    fn drop(&mut self) {
+        self.runtime.stop();
     }
 }
 
@@ -769,20 +784,6 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn stash_show(&self, selector: &str) -> VcsResult<Vec<String>> {
         self.call_json("stash_show", json!({ "selector": selector }))
-    }
-}
-
-/// Converts an RPC error into a backend-scoped [`VcsError`].
-///
-/// # Parameters
-/// - `err`: RPC error payload.
-///
-/// # Returns
-/// - Converted backend error.
-fn map_rpc_err(err: RpcError) -> VcsError {
-    VcsError::Backend {
-        backend: BackendId::from("plugin"),
-        msg: format!("{}: {}", err.code, err.message),
     }
 }
 

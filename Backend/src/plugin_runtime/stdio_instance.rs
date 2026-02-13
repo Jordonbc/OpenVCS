@@ -1,6 +1,8 @@
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::stdio_rpc::{RpcConfig, SpawnConfig, StdioRpcProcess};
+use openvcs_core::models::VcsEvent;
 use serde_json::Value;
+use std::sync::Arc;
 
 /// Stdio-backed runtime instance implementation.
 ///
@@ -20,6 +22,10 @@ impl StdioPluginRuntimeInstance {
 }
 
 impl PluginRuntimeInstance for StdioPluginRuntimeInstance {
+    fn runtime_kind(&self) -> &'static str {
+        "stdio"
+    }
+
     fn ensure_running(&self) -> Result<(), String> {
         self.rpc.ensure_running()
     }
@@ -28,6 +34,10 @@ impl PluginRuntimeInstance for StdioPluginRuntimeInstance {
         self.rpc
             .call(method, params)
             .map_err(|e| format!("{}: {}", e.code, e.message))
+    }
+
+    fn set_event_sink(&self, sink: Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>>) {
+        self.rpc.set_event_sink(sink);
     }
 
     fn stop(&self) {

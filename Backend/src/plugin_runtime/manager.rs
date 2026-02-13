@@ -1,16 +1,12 @@
 use crate::plugin_bundles::{InstalledPluginComponents, PluginBundleStore};
-use crate::plugin_runtime::component_instance::ComponentPluginRuntimeInstance;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
-use crate::plugin_runtime::stdio_instance::StdioPluginRuntimeInstance;
+use crate::plugin_runtime::runtime_select::create_runtime_instance;
 use crate::plugin_runtime::stdio_rpc::SpawnConfig;
 use crate::settings::AppConfig;
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
 use std::sync::Arc;
-use wasmtime::component::Component;
-use wasmtime::Engine;
 
 #[derive(Clone)]
 struct ModuleRuntimeSpec {
@@ -196,16 +192,7 @@ impl PluginRuntimeManager {
     }
 
     fn create_instance(&self, spec: &ModuleRuntimeSpec) -> Arc<dyn PluginRuntimeInstance> {
-        if is_component_module(&spec.spawn.exec_path) {
-            return Arc::new(ComponentPluginRuntimeInstance::new(spec.spawn.clone()));
-        }
-
-        log::warn!(
-            "plugin runtime: using deprecated stdio fallback for plugin `{}` ({})",
-            spec.spawn.plugin_id,
-            spec.spawn.exec_path.display()
-        );
-        Arc::new(StdioPluginRuntimeInstance::new(spec.spawn.clone()))
+        create_runtime_instance(spec.spawn.clone())
     }
 
     fn resolve_module_runtime_spec(&self, plugin_id: &str) -> Result<ModuleRuntimeSpec, String> {
@@ -255,15 +242,6 @@ fn normalize_plugin_key(plugin_id: &str) -> Result<String, String> {
         return Err("plugin id is empty".to_string());
     }
     Ok(plugin_id)
-}
-
-fn is_component_module(path: &Path) -> bool {
-    if !path.is_file() {
-        return false;
-    }
-
-    let engine = Engine::default();
-    Component::from_file(&engine, path).is_ok()
 }
 
 #[cfg(test)]
@@ -324,6 +302,35 @@ mod tests {
         assert!(manager.processes.lock().contains_key("beta.plugin"));
     }
 
+    #[test]
+    fn start_plugin_rejects_plugins_without_module_component() {
+        let temp = tempdir().expect("tempdir");
+        write_non_runtime_plugin(temp.path(), "themes.plugin", true);
+        let manager = PluginRuntimeManager::new(PluginBundleStore::new_at(temp.path().into()));
+
+        let err = manager
+            .start_plugin("themes.plugin")
+            .expect_err("expected missing module error");
+        assert!(err.contains("plugin has no module component"));
+    }
+
+    #[test]
+    fn sync_ignores_plugins_without_module_component() {
+        let temp = tempdir().expect("tempdir");
+        write_plugin(temp.path(), "runtime.plugin", true);
+        write_non_runtime_plugin(temp.path(), "themes.plugin", true);
+        let manager = PluginRuntimeManager::new(PluginBundleStore::new_at(temp.path().into()));
+
+        let cfg = AppConfig::default();
+        manager
+            .sync_plugin_runtime_with_config(&cfg)
+            .expect("sync succeeds");
+
+        let running = manager.processes.lock();
+        assert!(running.contains_key("runtime.plugin"));
+        assert!(!running.contains_key("themes.plugin"));
+    }
+
     fn write_plugin(root: &std::path::Path, plugin_id: &str, default_enabled: bool) {
         let plugin_dir = root.join(plugin_id);
         fs::create_dir_all(plugin_dir.join("bin")).expect("create plugin dir");
@@ -338,6 +345,57 @@ mod tests {
                 "exec": "plugin.wasm",
                 "vcs_backends": []
             }
+        });
+        fs::write(
+            plugin_dir.join("openvcs.plugin.json"),
+            serde_json::to_vec_pretty(&manifest).expect("serialize manifest"),
+        )
+        .expect("write manifest");
+
+        let mut versions = BTreeMap::new();
+        versions.insert(
+            "1.0.0".to_string(),
+            InstalledPluginVersion {
+                version: "1.0.0".to_string(),
+                bundle_sha256: "sha".to_string(),
+                installed_at_unix_ms: 0,
+                requested_capabilities: Vec::new(),
+                approval: ApprovalState::Approved {
+                    capabilities: Vec::new(),
+                    approved_at_unix_ms: 0,
+                },
+            },
+        );
+        let index = InstalledPluginIndex {
+            plugin_id: plugin_id.to_string(),
+            current: Some("1.0.0".to_string()),
+            versions,
+        };
+        fs::write(
+            plugin_dir.join("index.json"),
+            serde_json::to_vec_pretty(&index).expect("serialize index"),
+        )
+        .expect("write index");
+
+        let current = CurrentPointer {
+            version: "1.0.0".to_string(),
+        };
+        fs::write(
+            plugin_dir.join("current.json"),
+            serde_json::to_vec_pretty(&current).expect("serialize current"),
+        )
+        .expect("write current");
+    }
+
+    fn write_non_runtime_plugin(root: &std::path::Path, plugin_id: &str, default_enabled: bool) {
+        let plugin_dir = root.join(plugin_id);
+        fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+
+        let manifest = serde_json::json!({
+            "id": plugin_id,
+            "name": "Theme Plugin",
+            "version": "1.0.0",
+            "default_enabled": default_enabled
         });
         fs::write(
             plugin_dir.join("openvcs.plugin.json"),

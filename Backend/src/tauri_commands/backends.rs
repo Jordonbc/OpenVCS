@@ -8,7 +8,8 @@ use tauri::{async_runtime, Manager, Runtime, State, Window};
 use openvcs_core::BackendId;
 use std::collections::BTreeMap;
 
-use crate::plugin_runtime::stdio_rpc::{RpcConfig, SpawnConfig, StdioRpcProcess};
+use crate::plugin_runtime::runtime_select::create_runtime_instance;
+use crate::plugin_runtime::stdio_rpc::SpawnConfig;
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::state::AppState;
@@ -212,28 +213,26 @@ pub async fn call_vcs_backend_method<R: Runtime>(
     let on_event = progress_bridge(window.app_handle().clone());
 
     let call_task = async_runtime::spawn_blocking(move || {
-        let rpc = StdioRpcProcess::new(
-            SpawnConfig {
-                plugin_id: desc_clone.plugin_id,
-                component_label: format!("vcs-backend-{}", backend_id_clone),
-                exec_path: desc_clone.exec_path,
-                args: Vec::new(),
-                requested_capabilities: desc_clone.requested_capabilities,
-                approval: desc_clone.approval,
-                allowed_workspace_root,
-            },
-            RpcConfig::default(),
-        );
-        rpc.set_event_sink(Some(on_event));
-
-        rpc.call(&method_clone, params_clone)
+        let runtime = create_runtime_instance(SpawnConfig {
+            plugin_id: desc_clone.plugin_id,
+            component_label: format!("vcs-backend-{}", backend_id_clone),
+            exec_path: desc_clone.exec_path,
+            args: Vec::new(),
+            requested_capabilities: desc_clone.requested_capabilities,
+            approval: desc_clone.approval,
+            allowed_workspace_root,
+        });
+        runtime.set_event_sink(Some(on_event));
+        let call = runtime.call(&method_clone, params_clone);
+        runtime.stop();
+        call
     });
 
     let call_res = call_task
         .await
         .map_err(|e| format!("call_vcs_backend_method task failed: {e}"))?;
 
-    call_res.map_err(|e| format!("{}: {}", e.code, e.message))
+    call_res
 }
 
 /// Resolves optional backend workspace path and enforces repo-root confinement.
