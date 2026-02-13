@@ -31,7 +31,12 @@ pub fn get_global_settings(state: State<'_, AppState>) -> Result<AppConfig, Stri
 /// - `Ok(())` when settings are applied.
 /// - `Err(String)` when validation/persistence fails.
 pub fn set_global_settings(state: State<'_, AppState>, cfg: AppConfig) -> Result<(), String> {
-    state.set_config(cfg)
+    state.set_config(cfg.clone())?;
+    state
+        .plugin_runtime()
+        .sync_plugin_runtime_with_config(&cfg)
+        .map_err(|err| format!("settings saved but plugin runtime sync failed: {err}"))?;
+    Ok(())
 }
 
 #[tauri::command]

@@ -1,5 +1,7 @@
 use crate::plugin_bundles::ApprovalState;
-use crate::plugin_runtime::events::{register_plugin_io, PluginIoHandle, PluginStdin};
+use crate::plugin_runtime::events::{
+    register_plugin_io, unregister_plugin, PluginIoHandle, PluginStdin,
+};
 use openvcs_core::models::VcsEvent;
 use openvcs_core::plugin_protocol::{PluginMessage, RpcRequest, RpcResponse};
 use serde_json::Value;
@@ -326,6 +328,8 @@ impl StdioRpcProcess {
     /// # Returns
     /// - `()`.
     fn kill_process(&self) {
+        unregister_plugin(&self.spawn.plugin_id);
+
         // Drop stdin so the child sees EOF.
         *self.stdin.lock().unwrap() = None;
 
@@ -356,6 +360,14 @@ impl StdioRpcProcess {
                 });
             }
         }
+    }
+
+    /// Explicitly stops the running plugin process.
+    ///
+    /// # Returns
+    /// - `()`.
+    pub fn stop(&self) {
+        self.kill_process();
     }
 
     /// Spawns the WASI plugin process and wire-up IO/event threads.

@@ -217,7 +217,7 @@ pub async fn call_vcs_backend_method<R: Runtime>(
                 plugin_id: desc_clone.plugin_id,
                 component_label: format!("vcs-backend-{}", backend_id_clone),
                 exec_path: desc_clone.exec_path,
-                args: vec!["--backend".into(), backend_id_clone.clone()],
+                args: Vec::new(),
                 requested_capabilities: desc_clone.requested_capabilities,
                 approval: desc_clone.approval,
                 allowed_workspace_root,

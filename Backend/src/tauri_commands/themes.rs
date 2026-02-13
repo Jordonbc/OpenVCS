@@ -10,29 +10,13 @@ use tauri::State;
 /// # Returns
 /// - Lowercase set of enabled plugin ids.
 fn enabled_plugins(cfg: &settings::AppConfig) -> HashSet<String> {
-    let disabled: HashSet<String> = cfg
-        .plugins
-        .disabled
-        .iter()
-        .map(|s| s.trim().to_ascii_lowercase())
-        .collect();
-    let enabled: HashSet<String> = cfg
-        .plugins
-        .enabled
-        .iter()
-        .map(|s| s.trim().to_ascii_lowercase())
-        .collect();
-
     let mut out = HashSet::new();
     for p in plugins::list_plugins() {
         let id = p.id.trim().to_ascii_lowercase();
         if id.is_empty() {
             continue;
         }
-        if disabled.contains(&id) {
-            continue;
-        }
-        if enabled.contains(&id) || p.default_enabled {
+        if cfg.is_plugin_enabled(&id, p.default_enabled) {
             out.insert(id);
         }
     }

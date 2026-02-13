@@ -705,6 +705,36 @@ impl AppConfig {
         fs::rename(tmp, p)
     }
 
+    /// Returns whether a plugin should be considered enabled by current settings.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin id to evaluate.
+    /// - `default_enabled`: Manifest-provided default enabled flag.
+    ///
+    /// # Returns
+    /// - `true` when plugin should be active.
+    /// - `false` otherwise.
+    pub fn is_plugin_enabled(&self, plugin_id: &str, default_enabled: bool) -> bool {
+        let plugin_id = plugin_id.trim().to_ascii_lowercase();
+        if plugin_id.is_empty() {
+            return false;
+        }
+        if self
+            .plugins
+            .disabled
+            .iter()
+            .any(|id| id.trim().eq_ignore_ascii_case(&plugin_id))
+        {
+            return false;
+        }
+        default_enabled
+            || self
+                .plugins
+                .enabled
+                .iter()
+                .any(|id| id.trim().eq_ignore_ascii_case(&plugin_id))
+    }
+
     /// Future-proof migrations between schema versions.
     ///
     /// # Returns

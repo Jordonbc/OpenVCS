@@ -260,7 +260,7 @@ impl PluginBundleStore {
     ///
     /// # Returns
     /// - Store instance rooted at `root`.
-    fn new_at(root: PathBuf) -> Self {
+    pub(crate) fn new_at(root: PathBuf) -> Self {
         Self { root }
     }
 

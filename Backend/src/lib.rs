@@ -144,6 +144,10 @@ pub fn run() {
                     );
                 }
             }
+            let state = app.state::<state::AppState>();
+            if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {
+                warn!("plugins: failed to sync runtime on startup: {}", err);
+            }
             // On startup, optionally reopen the last repository if enabled in settings.
             try_reopen_last_repo(app.handle());
 

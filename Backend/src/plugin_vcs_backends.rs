@@ -23,34 +23,8 @@ use std::{
 /// - `true` when plugin should be active.
 /// - `false` otherwise.
 fn is_plugin_enabled_in_settings(plugin_id: &str, default_enabled: bool) -> bool {
-    let plugin_id = plugin_id.trim().to_lowercase();
-    if plugin_id.is_empty() {
-        return false;
-    }
-
     let cfg = AppConfig::load_or_default();
-    let disabled: Vec<String> = cfg
-        .plugins
-        .disabled
-        .iter()
-        .map(|s| s.trim().to_lowercase())
-        .filter(|s| !s.is_empty())
-        .collect();
-    if disabled.iter().any(|id| id == &plugin_id) {
-        return false;
-    }
-
-    let enabled: Vec<String> = cfg
-        .plugins
-        .enabled
-        .iter()
-        .map(|s| s.trim().to_lowercase())
-        .filter(|s| !s.is_empty())
-        .collect();
-
-    // `enabled` is additive (explicit opt-in), not an allowlist.
-    // Plugins remain active by their manifest default unless explicitly disabled.
-    default_enabled || enabled.iter().any(|id| id == &plugin_id)
+    cfg.is_plugin_enabled(plugin_id, default_enabled)
 }
 
 /// Metadata describing a single plugin-provided backend implementation.

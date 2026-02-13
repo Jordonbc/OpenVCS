@@ -1,10 +1,11 @@
 use crate::plugin_bundles::{InstalledPlugin, InstalledPluginIndex, PluginBundleStore};
-use crate::plugin_runtime::stdio_rpc::{RpcConfig, SpawnConfig, StdioRpcProcess};
 use crate::plugins;
+use crate::state::AppState;
+use log::warn;
 use serde_json::Value;
 use tauri::Emitter;
 use tauri::Manager;
-use tauri::{Runtime, Window};
+use tauri::{Runtime, State, Window};
 
 #[tauri::command]
 /// Lists plugin summaries discovered by the backend.
@@ -40,6 +41,7 @@ pub fn load_plugin(id: String) -> Result<plugins::PluginPayload, String> {
 /// - `Err(String)` when installation fails.
 pub async fn install_ovcsp<R: Runtime>(
     window: Window<R>,
+    state: State<'_, AppState>,
     bundle_path: String,
 ) -> Result<InstalledPlugin, String> {
     let store = PluginBundleStore::new_default();
@@ -54,6 +56,10 @@ pub async fn install_ovcsp<R: Runtime>(
                 "capabilities": installed.requested_capabilities,
             }),
         );
+    }
+
+    if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {
+        warn!("plugins: runtime sync after install failed: {}", err);
     }
 
     Ok(installed)
@@ -78,8 +84,10 @@ pub fn list_installed_bundles() -> Result<Vec<InstalledPluginIndex>, String> {
 /// # Returns
 /// - `Ok(())` when removal succeeds.
 /// - `Err(String)` when validation/removal fails.
-pub fn uninstall_plugin(plugin_id: String) -> Result<(), String> {
-    PluginBundleStore::new_default().uninstall_plugin(plugin_id.trim())
+pub fn uninstall_plugin(state: State<'_, AppState>, plugin_id: String) -> Result<(), String> {
+    let plugin_id = plugin_id.trim().to_string();
+    state.plugin_runtime().stop_plugin(&plugin_id)?;
+    PluginBundleStore::new_default().uninstall_plugin(&plugin_id)
 }
 
 #[tauri::command]
@@ -94,15 +102,21 @@ pub fn uninstall_plugin(plugin_id: String) -> Result<(), String> {
 /// - `Ok(())` when state is updated.
 /// - `Err(String)` when update fails.
 pub fn approve_plugin_capabilities(
+    state: State<'_, AppState>,
     plugin_id: String,
     version: String,
     approved: bool,
 ) -> Result<(), String> {
-    PluginBundleStore::new_default().approve_capabilities(
-        plugin_id.trim(),
-        version.trim(),
-        approved,
-    )
+    let plugin_id = plugin_id.trim().to_string();
+    PluginBundleStore::new_default().approve_capabilities(&plugin_id, version.trim(), approved)?;
+
+    if !approved {
+        let _ = state.plugin_runtime().stop_plugin(&plugin_id);
+    } else if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {
+        warn!("plugins: runtime sync after approval failed: {}", err);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -114,36 +128,17 @@ pub fn approve_plugin_capabilities(
 /// # Returns
 /// - `Ok(Value)` containing function descriptors.
 /// - `Err(String)` when plugin lookup or RPC fails.
-pub fn list_plugin_functions(plugin_id: String) -> Result<Value, String> {
-    let store = PluginBundleStore::new_default();
-    let Some(components) = store.load_current_components(plugin_id.trim())? else {
-        return Err("plugin not installed".to_string());
-    };
-    let Some(module) = components.module else {
-        return Err("plugin has no module component".to_string());
-    };
-
-    let installed = store
-        .get_current_installed(&components.plugin_id)?
-        .ok_or_else(|| "plugin is not installed".to_string())?;
-
-    let rpc = StdioRpcProcess::new(
-        SpawnConfig {
-            plugin_id: components.plugin_id,
-            component_label: "module".into(),
-            exec_path: module.exec_path,
-            args: Vec::new(),
-            requested_capabilities: installed.requested_capabilities,
-            approval: installed.approval,
-            allowed_workspace_root: None,
-        },
-        RpcConfig::default(),
-    );
-
-    let v = rpc
-        .call("functions.list", Value::Null)
-        .map_err(|e| format!("{}: {}", e.code, e.message))?;
-    Ok(v)
+pub fn list_plugin_functions(
+    state: State<'_, AppState>,
+    plugin_id: String,
+) -> Result<Value, String> {
+    let cfg = state.config();
+    state.plugin_runtime().call_module_method_with_config(
+        &cfg,
+        plugin_id.trim(),
+        "functions.list",
+        Value::Null,
+    )
 }
 
 #[tauri::command]
@@ -158,42 +153,18 @@ pub fn list_plugin_functions(plugin_id: String) -> Result<Value, String> {
 /// - `Ok(Value)` function result payload.
 /// - `Err(String)` when invocation fails.
 pub fn invoke_plugin_function(
+    state: State<'_, AppState>,
     plugin_id: String,
     function_id: String,
     args: Value,
 ) -> Result<Value, String> {
-    let store = PluginBundleStore::new_default();
-    let Some(components) = store.load_current_components(plugin_id.trim())? else {
-        return Err("plugin not installed".to_string());
-    };
-    let Some(module) = components.module else {
-        return Err("plugin has no module component".to_string());
-    };
-
-    let installed = store
-        .get_current_installed(&components.plugin_id)?
-        .ok_or_else(|| "plugin is not installed".to_string())?;
-
-    let rpc = StdioRpcProcess::new(
-        SpawnConfig {
-            plugin_id: components.plugin_id,
-            component_label: "module".into(),
-            exec_path: module.exec_path,
-            args: Vec::new(),
-            requested_capabilities: installed.requested_capabilities,
-            approval: installed.approval,
-            allowed_workspace_root: None,
-        },
-        RpcConfig::default(),
-    );
-
-    let v = rpc
-        .call(
-            "functions.invoke",
-            serde_json::json!({ "id": function_id.trim(), "args": args }),
-        )
-        .map_err(|e| format!("{}: {}", e.code, e.message))?;
-    Ok(v)
+    let cfg = state.config();
+    state.plugin_runtime().call_module_method_with_config(
+        &cfg,
+        plugin_id.trim(),
+        "functions.invoke",
+        serde_json::json!({ "id": function_id.trim(), "args": args }),
+    )
 }
 
 #[tauri::command]
@@ -208,43 +179,19 @@ pub fn invoke_plugin_function(
 /// - `Ok(Value)` method result payload.
 /// - `Err(String)` when lookup/validation/RPC fails.
 pub fn call_plugin_module_method(
+    state: State<'_, AppState>,
     plugin_id: String,
     method: String,
     params: Option<Value>,
 ) -> Result<Value, String> {
-    let store = PluginBundleStore::new_default();
-    let Some(components) = store.load_current_components(plugin_id.trim())? else {
-        return Err("plugin not installed".to_string());
-    };
-    let Some(module) = components.module else {
-        return Err("plugin has no module component".to_string());
-    };
-
-    let installed = store
-        .get_current_installed(&components.plugin_id)?
-        .ok_or_else(|| "plugin is not installed".to_string())?;
-
     let method = method.trim();
     if method.is_empty() {
         return Err("method is empty".to_string());
     }
 
-    let rpc = StdioRpcProcess::new(
-        SpawnConfig {
-            plugin_id: components.plugin_id,
-            component_label: "module".into(),
-            exec_path: module.exec_path,
-            args: Vec::new(),
-            requested_capabilities: installed.requested_capabilities,
-            approval: installed.approval,
-            allowed_workspace_root: None,
-        },
-        RpcConfig::default(),
-    );
-
+    let cfg = state.config();
     let params = params.unwrap_or(Value::Null);
-    let v = rpc
-        .call(method, params)
-        .map_err(|e| format!("{}: {}", e.code, e.message))?;
-    Ok(v)
+    state
+        .plugin_runtime()
+        .call_module_method_with_config(&cfg, plugin_id.trim(), method, params)
 }

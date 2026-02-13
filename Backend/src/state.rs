@@ -7,6 +7,7 @@ use log::{debug, info};
 use parking_lot::RwLock;
 
 use crate::output_log::OutputLogEntry;
+use crate::plugin_runtime::PluginRuntimeManager;
 use crate::repo::Repo;
 use crate::repo_settings::RepoConfig;
 use crate::settings::AppConfig;
@@ -73,6 +74,9 @@ pub struct AppState {
 
     /// MRU list for “Recents”
     recents: RwLock<Vec<PathBuf>>,
+
+    /// Long-lived plugin process runtime manager.
+    plugin_runtime: PluginRuntimeManager,
 }
 
 impl AppState {
@@ -269,6 +273,14 @@ impl AppState {
     /// - A cloned MRU-ordered list of repository paths.
     pub fn recents(&self) -> Vec<PathBuf> {
         self.recents.read().clone()
+    }
+
+    /// Returns the shared plugin runtime manager.
+    ///
+    /// # Returns
+    /// - Plugin runtime manager reference.
+    pub fn plugin_runtime(&self) -> &PluginRuntimeManager {
+        &self.plugin_runtime
     }
 }
 
