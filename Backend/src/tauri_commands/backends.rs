@@ -100,8 +100,15 @@ pub async fn set_vcs_backend_cmd(
 
         let open_path = path.clone();
         let backend_label = backend_id.as_ref().to_string();
+        let cfg = state.config();
+        let runtime_manager = state.plugin_runtime();
         let handle = async_runtime::spawn_blocking(move || {
-            plugin_vcs_backends::open_repo_via_plugin_vcs_backend(backend_id, Path::new(&open_path))
+            plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
+                runtime_manager.as_ref(),
+                &cfg,
+                backend_id,
+                Path::new(&open_path),
+            )
         })
         .await
         .map_err(|e| format!("set_vcs_backend_cmd task failed: {e}"))?
@@ -151,8 +158,15 @@ pub async fn reopen_current_repo_cmd(state: State<'_, AppState>) -> Result<(), S
 
     let backend_label = backend_id.as_ref().to_string();
     let open_path = path.clone();
+    let cfg = state.config();
+    let runtime_manager = state.plugin_runtime();
     let handle = async_runtime::spawn_blocking(move || {
-        plugin_vcs_backends::open_repo_via_plugin_vcs_backend(backend_id, Path::new(&open_path))
+        plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
+            runtime_manager.as_ref(),
+            &cfg,
+            backend_id,
+            Path::new(&open_path),
+        )
     })
     .await
     .map_err(|e| format!("reopen_current_repo_cmd task failed: {e}"))?

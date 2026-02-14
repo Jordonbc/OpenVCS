@@ -224,9 +224,7 @@ pub struct ModuleComponent {
 pub struct InstalledPluginComponents {
     pub plugin_id: String,
     pub name: Option<String>,
-    pub version: String,
     pub default_enabled: bool,
-    pub requested_capabilities: Vec<String>,
     pub module: Option<ModuleComponent>,
 }
 
@@ -808,22 +806,6 @@ impl PluginBundleStore {
             ));
         }
 
-        let version = manifest
-            .version
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| {
-                version_dir
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string()
-            });
-
-        let requested_capabilities = normalize_capabilities(manifest.capabilities.clone());
-
         let module = manifest.module.and_then(|m| {
             let exec = m.exec?.trim().to_string();
             if exec.is_empty() {
@@ -869,10 +851,7 @@ impl PluginBundleStore {
                 .name
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
-            version,
             default_enabled: manifest.default_enabled,
-
-            requested_capabilities,
             module,
         }))
     }

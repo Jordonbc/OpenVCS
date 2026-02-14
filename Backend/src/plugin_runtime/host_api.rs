@@ -186,7 +186,10 @@ pub fn host_ui_notify(spawn: &SpawnConfig, message: &str) -> Result<(), Componen
     Ok(())
 }
 
-pub fn host_workspace_read_file(spawn: &SpawnConfig, path: &str) -> Result<Vec<u8>, ComponentError> {
+pub fn host_workspace_read_file(
+    spawn: &SpawnConfig,
+    path: &str,
+) -> Result<Vec<u8>, ComponentError> {
     let (caps, workspace_root) = approved_caps_and_workspace(spawn);
     if !caps.contains("workspace.read") && !caps.contains("workspace.write") {
         return Err(host_error(

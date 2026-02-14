@@ -201,6 +201,26 @@ impl PluginRuntimeManager {
         rpc.call(method, params)
     }
 
+    /// Returns the persistent runtime instance for a plugin workspace.
+    pub fn runtime_for_workspace_with_config(
+        &self,
+        cfg: &AppConfig,
+        plugin_id: &str,
+        allowed_workspace_root: Option<PathBuf>,
+    ) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
+        let spec = self.resolve_module_runtime_spec(plugin_id, allowed_workspace_root)?;
+        if !cfg.is_plugin_enabled(&spec.plugin_id, spec.default_enabled) {
+            return Err(format!("plugin `{}` is disabled", spec.plugin_id));
+        }
+
+        self.start_plugin_spec(spec.clone())?;
+        self.processes
+            .lock()
+            .get(&spec.key)
+            .map(|p| Arc::clone(&p.runtime))
+            .ok_or_else(|| format!("plugin `{}` is not running", spec.plugin_id))
+    }
+
     fn start_plugin_spec(&self, spec: ModuleRuntimeSpec) -> Result<(), String> {
         if let Some(existing) = self.processes.lock().get(&spec.key) {
             if existing.workspace_root == spec.spawn.allowed_workspace_root {
@@ -219,7 +239,9 @@ impl PluginRuntimeManager {
                 return runtime.ensure_running();
             }
         }
-        let runtime_to_stop = lock.get(&spec.key).map(|existing| Arc::clone(&existing.runtime));
+        let runtime_to_stop = lock
+            .get(&spec.key)
+            .map(|existing| Arc::clone(&existing.runtime));
         if let Some(runtime) = runtime_to_stop {
             runtime.stop();
             lock.remove(&spec.key);

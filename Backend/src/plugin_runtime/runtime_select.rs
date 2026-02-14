@@ -17,7 +17,9 @@ pub fn is_component_module(path: &Path) -> bool {
 }
 
 /// Selects and creates a runtime instance for a plugin module.
-pub fn create_runtime_instance(spawn: SpawnConfig) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
+pub fn create_runtime_instance(
+    spawn: SpawnConfig,
+) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
     if !is_component_module(&spawn.exec_path) {
         return Err(format!(
             "plugin runtime: `{}` is not a component-model plugin (stdio runtime removed)",

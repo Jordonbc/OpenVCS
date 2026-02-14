@@ -1,8 +1,8 @@
 //! Discovery and opening logic for plugin-provided VCS backends.
 
-use crate::plugin_bundles::{ApprovalState, PluginBundleStore, PluginManifest, VcsBackendProvide};
+use crate::plugin_bundles::{PluginBundleStore, PluginManifest, VcsBackendProvide};
 use crate::plugin_paths::{built_in_plugin_dirs, PLUGIN_MANIFEST_NAME};
-use crate::plugin_runtime::vcs_proxy::PluginVcsProxy;
+use crate::plugin_runtime::{vcs_proxy::PluginVcsProxy, PluginRuntimeManager};
 use crate::settings::AppConfig;
 use log::warn;
 use openvcs_core::{BackendId, Result as VcsResult, Vcs, VcsError};
@@ -38,10 +38,6 @@ pub struct PluginBackendDescriptor {
     pub plugin_id: String,
     /// Optional human-readable plugin name.
     pub plugin_name: Option<String>,
-    /// Executable used to proxy backend operations.
-    pub exec_path: std::path::PathBuf,
-    /// Current capability approval state for the plugin version.
-    pub approval: ApprovalState,
 }
 
 /// Normalizes capability ids (trim/sort/dedup).
@@ -51,16 +47,6 @@ pub struct PluginBackendDescriptor {
 ///
 /// # Returns
 /// - Normalized capability list.
-fn normalize_capabilities(mut caps: Vec<String>) -> Vec<String> {
-    for cap in &mut caps {
-        *cap = cap.trim().to_string();
-    }
-    caps.retain(|cap| !cap.is_empty());
-    caps.sort();
-    caps.dedup();
-    caps
-}
-
 /// Reads a plugin manifest from a plugin directory.
 ///
 /// # Parameters
@@ -119,15 +105,6 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
         let Some(module) = p.module else {
             continue;
         };
-        let installed = store
-            .get_current_installed(&p.plugin_id)?
-            .unwrap_or_else(|| crate::plugin_bundles::InstalledPluginVersion {
-                version: p.version.clone(),
-                bundle_sha256: String::new(),
-                installed_at_unix_ms: 0,
-                requested_capabilities: p.requested_capabilities.clone(),
-                approval: ApprovalState::Pending,
-            });
 
         for (id, name) in module.vcs_backends {
             let backend_id = BackendId::from(id.as_str());
@@ -136,8 +113,6 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
                 backend_name: name,
                 plugin_id: p.plugin_id.clone(),
                 plugin_name: p.name.clone(),
-                exec_path: module.exec_path.clone(),
-                approval: installed.approval.clone(),
             };
             let key = backend_id.as_ref().to_string();
             map.insert(key, candidate);
@@ -172,8 +147,6 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
             );
             continue;
         }
-        let requested_capabilities = normalize_capabilities(manifest.capabilities.clone());
-        let approval_caps = requested_capabilities.clone();
         let plugin_name = manifest.name.clone();
         for provide in &module.vcs_backends {
             let (id, label) = match provide {
@@ -190,11 +163,6 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
                 backend_name: label,
                 plugin_id: plugin_id.to_string(),
                 plugin_name: plugin_name.clone(),
-                exec_path: exec_path.clone(),
-                approval: ApprovalState::Approved {
-                    capabilities: approval_caps.clone(),
-                    approved_at_unix_ms: 0,
-                },
             };
             map.insert(key, candidate);
         }
@@ -245,17 +213,25 @@ pub fn plugin_vcs_backend_descriptor(
 /// - `Ok(Arc<dyn Vcs>)` with an opened backend proxy.
 /// - `Err(VcsError)` when descriptor resolution or backend startup fails.
 pub fn open_repo_via_plugin_vcs_backend(
+    runtime_manager: &PluginRuntimeManager,
+    cfg: &AppConfig,
     backend_id: BackendId,
     path: &Path,
 ) -> VcsResult<Arc<dyn Vcs>> {
     let desc = plugin_vcs_backend_descriptor(&backend_id)
         .map_err(|_| VcsError::Unsupported(backend_id.clone()))?;
 
-    PluginVcsProxy::open_with_process(
-        desc.plugin_id,
-        backend_id,
-        desc.exec_path,
-        desc.approval,
-        path,
-    )
+    let cfg_value = serde_json::to_value(cfg).map_err(|e| VcsError::Backend {
+        backend: backend_id.clone(),
+        msg: format!("serialize config: {e}"),
+    })?;
+
+    let runtime = runtime_manager
+        .runtime_for_workspace_with_config(cfg, &desc.plugin_id, Some(path.to_path_buf()))
+        .map_err(|e| VcsError::Backend {
+            backend: backend_id.clone(),
+            msg: e,
+        })?;
+
+    PluginVcsProxy::open_with_process(backend_id, runtime, path, cfg_value)
 }

@@ -80,7 +80,10 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
 
         let path_str = path.to_string_lossy().to_string();
         if crate::plugin_vcs_backends::has_plugin_vcs_backend(&backend) {
+            let runtime_manager = state.plugin_runtime();
             match crate::plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
+                runtime_manager.as_ref(),
+                &app_config,
                 backend,
                 Path::new(&path),
             ) {

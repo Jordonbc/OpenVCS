@@ -5,7 +5,10 @@ use log::{info, warn};
 use std::{
     env,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        OnceLock,
+    },
 };
 
 /// File name expected for plugin manifests.
@@ -17,6 +20,7 @@ pub const BUILT_IN_PLUGINS_DIR_NAME: &str = "built-in-plugins";
 // it here so plugin discovery can include resources embedded in the
 // application bundle.
 static RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
+static LOGGED_BUILTIN_DIRS: AtomicBool = AtomicBool::new(false);
 
 /// Returns the user-writable plugin installation directory.
 ///
@@ -102,15 +106,20 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
         })
         .collect();
 
-    if result.is_empty() {
-        info!("plugins: no built-in plugin directories found");
-    } else {
-        let joined = result
-            .iter()
-            .map(|p| p.display().to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
-        info!("plugins: checked built-in plugin directories: {}", joined);
+    if LOGGED_BUILTIN_DIRS
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+    {
+        if result.is_empty() {
+            info!("plugins: no built-in plugin directories found");
+        } else {
+            let joined = result
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            info!("plugins: checked built-in plugin directories: {}", joined);
+        }
     }
 
     result

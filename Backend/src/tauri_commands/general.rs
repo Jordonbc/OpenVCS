@@ -171,8 +171,12 @@ pub async fn add_repo_internal<R: Runtime>(
     let open_path = path.clone();
     let backend_label = backend_id.as_ref().to_string();
     let backend_id_for_task = backend_id.clone();
+    let cfg = state.config();
+    let runtime_manager = state.plugin_runtime();
     let handle = async_runtime::spawn_blocking(move || {
         plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
+            runtime_manager.as_ref(),
+            &cfg,
             backend_id_for_task,
             Path::new(&open_path),
         )

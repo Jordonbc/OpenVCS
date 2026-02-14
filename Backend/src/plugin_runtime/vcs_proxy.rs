@@ -1,8 +1,4 @@
-use crate::plugin_bundles::ApprovalState;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
-use crate::plugin_runtime::runtime_select::create_runtime_instance;
-use crate::plugin_runtime::spawn::SpawnConfig;
-use crate::settings::AppConfig;
 use openvcs_core::models::{
     Capabilities, ConflictDetails, ConflictSide, FetchOptions, LogQuery, StashItem, StatusPayload,
     StatusSummary, VcsEvent,
@@ -20,41 +16,24 @@ pub struct PluginVcsProxy {
 }
 
 impl PluginVcsProxy {
-    /// Opens a repository through a plugin module process and returns a VCS trait object.
+    /// Opens a repository through a previously started plugin module runtime.
     ///
     /// # Parameters
-    /// - `plugin_id`: Owning plugin identifier.
     /// - `backend_id`: Backend id exposed by the plugin.
-    /// - `exec_path`: Path to the plugin wasm/module executable.
-    /// - `approval`: Capability approval state for the plugin version.
+    /// - `runtime`: Persistent plugin runtime instance.
     /// - `repo_path`: Repository working-tree path to open.
+    /// - `cfg`: Serialized config payload forwarded to the plugin.
     ///
     /// # Returns
     /// - `Ok(Arc<dyn Vcs>)` when the plugin backend is opened successfully.
     /// - `Err(VcsError)` when startup or open RPC fails.
     pub fn open_with_process(
-        plugin_id: String,
         backend_id: BackendId,
-        exec_path: PathBuf,
-        approval: ApprovalState,
+        runtime: Arc<dyn PluginRuntimeInstance>,
         repo_path: &Path,
+        cfg: serde_json::Value,
     ) -> Result<Arc<dyn Vcs>, VcsError> {
         let workdir = repo_path.to_path_buf();
-        let cfg = AppConfig::load_or_default();
-        let cfg = serde_json::to_value(cfg).map_err(|e| VcsError::Backend {
-            backend: backend_id.clone(),
-            msg: format!("serialize config: {e}"),
-        })?;
-        let spawn = SpawnConfig {
-            plugin_id,
-            exec_path,
-            approval,
-            allowed_workspace_root: Some(workdir.clone()),
-        };
-        let runtime = create_runtime_instance(spawn).map_err(|e| VcsError::Backend {
-            backend: backend_id.clone(),
-            msg: e,
-        })?;
         let p = PluginVcsProxy {
             backend_id,
             workdir,
@@ -139,12 +118,6 @@ impl PluginVcsProxy {
         let res = f();
         self.runtime.set_event_sink(None);
         res
-    }
-}
-
-impl Drop for PluginVcsProxy {
-    fn drop(&mut self) {
-        self.runtime.stop();
     }
 }
 

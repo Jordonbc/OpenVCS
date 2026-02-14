@@ -76,7 +76,7 @@ pub struct AppState {
     recents: RwLock<Vec<PathBuf>>,
 
     /// Long-lived plugin process runtime manager.
-    plugin_runtime: PluginRuntimeManager,
+    plugin_runtime: Arc<PluginRuntimeManager>,
 }
 
 impl AppState {
@@ -279,8 +279,8 @@ impl AppState {
     ///
     /// # Returns
     /// - Plugin runtime manager reference.
-    pub fn plugin_runtime(&self) -> &PluginRuntimeManager {
-        &self.plugin_runtime
+    pub fn plugin_runtime(&self) -> Arc<PluginRuntimeManager> {
+        Arc::clone(&self.plugin_runtime)
     }
 }
 
