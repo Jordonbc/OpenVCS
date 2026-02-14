@@ -33,7 +33,7 @@ Backend:
 - `Backend/src/repo.rs`: repository handle wrapper around `Arc<dyn Vcs>`.
 - `Backend/src/plugin_vcs_backends.rs`: backend discovery and open logic.
 - `Backend/src/plugin_bundles.rs`: `.ovcsp` install/index/component resolution.
-- `Backend/src/plugin_runtime/stdio_rpc.rs`: plugin process spawn, RPC transport, restarts/timeouts.
+- `Backend/src/plugin_runtime/component_instance.rs`: plugin component instantiation and typed ABI calls.
 - `Backend/src/plugin_runtime/vcs_proxy.rs`: `Vcs` trait proxy over plugin RPC.
 - `Backend/src/plugins.rs`: plugin discovery/manifest summarization for UI.
 
@@ -44,7 +44,7 @@ Backend:
 - Command boundary:
   Feature-facing backend API lives under `Backend/src/tauri_commands/`.
 - Backend/plugin boundary:
-  Backend communicates with plugin components over stdio JSON-RPC, not in-process APIs.
+  Backend communicates with plugin components over the component-model ABI defined in `Core/wit/openvcs-core.wit`, not in-process APIs.
 - Settings boundary:
   Backend persists/loads app configuration and mediates environment application.
 

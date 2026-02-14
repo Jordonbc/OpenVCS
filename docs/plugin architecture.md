@@ -5,7 +5,7 @@ This document describes OpenVCS’s **secure, out-of-process** plugin system for
 ## Goals (non-negotiables)
 
 - The OpenVCS-Client process **never loads third-party dynamic libraries** and **never runs third-party plugin code in-process**.
-- Every plugin component executes **out-of-process** and communicates over **JSON-RPC (line-delimited JSON) via stdio**.
+- Every plugin component executes **out-of-process** and communicates over the **component-model WIT ABI**.
 - Plugins are **installed (unpacked) before execution**; nothing executes directly from inside a tar.xz archive.
 - The bundle manifest uses the existing `openvcs.plugin.json` format and extends it minimally.
 
@@ -61,8 +61,8 @@ Example:
 - **Module component** (`module`): a plugin-executed WASI module. It is spawned with:
   - module: `bin/<module.exec>` (must end in `.wasm`)
   - arguments: `--backend <backendId>` for each id in `module.vcs_backends`
-  - protocol: stdio JSON-RPC using `openvcs_core::plugin_protocol` message types
-- **Function component** (`functions`): a WASI module exposing callable functions/hooks/commands over the same stdio JSON-RPC transport.
+  - protocol: component-model host/plugin interfaces from `Core/wit/openvcs-core.wit`
+- **Function component** (`functions`): a WASI module exposing callable functions/hooks/commands over the same component-model transport.
 
 ## Installation locations and layout
 

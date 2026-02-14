@@ -48,7 +48,7 @@ UI code under `Frontend/src/scripts/features/` delegates repository operations t
 
 ### 3) Backend to plugin communication is process-isolated
 
-Plugin backend/function components communicate over stdio JSON-RPC (`Backend/src/plugin_runtime/stdio_rpc.rs` and `Backend/src/plugin_runtime/vcs_proxy.rs`), not in-process calls.
+Plugin backend/function components communicate over the component-model ABI (`Backend/src/plugin_runtime/component_instance.rs` and `Backend/src/plugin_runtime/vcs_proxy.rs`), not in-process calls.
 
 ### 4) Safety checks are centralized
 
@@ -134,7 +134,7 @@ When adding or changing behavior:
 - `Backend/src/lib.rs`
 - `Backend/src/tauri_commands/mod.rs`
 - `Backend/src/tauri_commands/shared.rs`
-- `Backend/src/plugin_runtime/stdio_rpc.rs`
+- `Backend/src/plugin_runtime/component_instance.rs`
 - `Backend/src/plugin_runtime/vcs_proxy.rs`
 - `Backend/src/plugin_vcs_backends.rs`
 - `Frontend/src/scripts/lib/tauri.ts`
