@@ -1,16 +1,17 @@
-use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::host_api::{
     host_emit_event, host_process_exec_git, host_runtime_info, host_subscribe_event,
     host_ui_notify, host_workspace_read_file, host_workspace_write_file,
 };
+use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::spawn::SpawnConfig;
 use openvcs_core::app_api::Host as AppHostApi;
 use parking_lot::Mutex;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
-use wasmtime::component::{Component, Linker};
+use wasmtime::component::{Component, Linker, ResourceTable};
 use wasmtime::{Engine, Store};
+use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 mod bindings {
     wasmtime::component::bindgen!({
@@ -27,9 +28,10 @@ struct ComponentRuntime {
     bindings: bindings::OpenvcsPlugin,
 }
 
-#[derive(Clone)]
 struct ComponentHostState {
     spawn: SpawnConfig,
+    table: ResourceTable,
+    wasi: WasiCtx,
 }
 
 impl ComponentHostState {
@@ -44,7 +46,9 @@ impl ComponentHostState {
 }
 
 impl AppHostApi for ComponentHostState {
-    fn get_runtime_info(&mut self) -> Result<openvcs_core::RuntimeInfo, openvcs_core::app_api::ComponentError> {
+    fn get_runtime_info(
+        &mut self,
+    ) -> Result<openvcs_core::RuntimeInfo, openvcs_core::app_api::ComponentError> {
         Ok(host_runtime_info())
     }
 
@@ -88,11 +92,17 @@ impl AppHostApi for ComponentHostState {
         args: &[String],
         env: &[(String, String)],
         stdin: Option<&str>,
-    ) -> Result<openvcs_core::app_api::ProcessExecOutput, openvcs_core::app_api::ComponentError> {
+    ) -> Result<openvcs_core::app_api::ProcessExecOutput, openvcs_core::app_api::ComponentError>
+    {
         host_process_exec_git(&self.spawn, cwd, args, env, stdin)
     }
 
-    fn host_log(&mut self, level: openvcs_core::app_api::ComponentLogLevel, target: &str, message: &str) {
+    fn host_log(
+        &mut self,
+        level: openvcs_core::app_api::ComponentLogLevel,
+        target: &str,
+        message: &str,
+    ) {
         let target = if target.trim().is_empty() {
             format!("plugin.{}", self.spawn.plugin_id)
         } else {
@@ -118,6 +128,15 @@ impl AppHostApi for ComponentHostState {
     }
 }
 
+impl WasiView for ComponentHostState {
+    fn ctx(&mut self) -> WasiCtxView<'_> {
+        WasiCtxView {
+            ctx: &mut self.wasi,
+            table: &mut self.table,
+        }
+    }
+}
+
 impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
     fn get_runtime_info(
         &mut self,
@@ -125,7 +144,8 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         bindings::openvcs::plugin::host_api::RuntimeInfo,
         bindings::openvcs::plugin::host_api::HostError,
     > {
-        let value = AppHostApi::get_runtime_info(self).map_err(ComponentHostState::map_host_error)?;
+        let value =
+            AppHostApi::get_runtime_info(self).map_err(ComponentHostState::map_host_error)?;
         Ok(bindings::openvcs::plugin::host_api::RuntimeInfo {
             os: value.os,
             arch: value.arch,
@@ -145,7 +165,8 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         event_name: String,
         payload: Vec<u8>,
     ) -> Result<(), bindings::openvcs::plugin::host_api::HostError> {
-        AppHostApi::emit_event(self, &event_name, &payload).map_err(ComponentHostState::map_host_error)
+        AppHostApi::emit_event(self, &event_name, &payload)
+            .map_err(ComponentHostState::map_host_error)
     }
 
     fn ui_notify(
@@ -185,14 +206,9 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
             .into_iter()
             .map(|var| (var.key, var.value))
             .collect::<Vec<_>>();
-        let value = AppHostApi::process_exec_git(
-            self,
-            cwd.as_deref(),
-            &args,
-            &env,
-            stdin.as_deref(),
-        )
-        .map_err(ComponentHostState::map_host_error)?;
+        let value =
+            AppHostApi::process_exec_git(self, cwd.as_deref(), &args, &env, stdin.as_deref())
+                .map_err(ComponentHostState::map_host_error)?;
         Ok(bindings::openvcs::plugin::host_api::ProcessExecOutput {
             success: value.success,
             status: value.status,
@@ -248,6 +264,8 @@ impl ComponentPluginRuntimeInstance {
         let component = Component::from_file(&engine, &self.spawn.exec_path)
             .map_err(|e| format!("load component {}: {e}", self.spawn.exec_path.display()))?;
         let mut linker = Linker::new(&engine);
+        wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
+            .map_err(|e| format!("link wasi imports: {e}"))?;
         bindings::OpenvcsPlugin::add_to_linker::<
             ComponentHostState,
             wasmtime::component::HasSelf<ComponentHostState>,
@@ -257,6 +275,8 @@ impl ComponentPluginRuntimeInstance {
             &engine,
             ComponentHostState {
                 spawn: self.spawn.clone(),
+                table: ResourceTable::new(),
+                wasi: WasiCtx::builder().build(),
             },
         );
         let bindings = bindings::OpenvcsPlugin::instantiate(&mut store, &component, &linker)
@@ -381,7 +401,29 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
                 }
                 "branches" => {
                     let out = invoke!("branches", call_list_branches)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
+                    let normalized = out
+                        .into_iter()
+                        .map(|item| {
+                            let kind = match item.kind {
+                                plugin_api::BranchKind::Local => {
+                                    serde_json::json!({ "type": "Local" })
+                                }
+                                plugin_api::BranchKind::Remote(remote) => {
+                                    serde_json::json!({ "type": "Remote", "remote": remote })
+                                }
+                                plugin_api::BranchKind::Unknown => {
+                                    serde_json::json!({ "type": "Unknown" })
+                                }
+                            };
+                            serde_json::json!({
+                                "name": item.name,
+                                "full_ref": item.full_ref,
+                                "kind": kind,
+                                "current": item.current,
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    encode_method_result(&self.spawn.plugin_id, method, normalized)
                 }
                 "local_branches" => {
                     let out = invoke!("local_branches", call_list_local_branches)?;
