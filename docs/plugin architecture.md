@@ -16,11 +16,11 @@ No translation layers. Just **WIT and Rust**.
 
 ## Plugin Types
 
-| Type | Code | Required Functions |
-|------|------|-------------------|
-| **Theme** | No | None |
-| **Code** | Yes | `init`, `deinit` |
-| **Code + VCS** | Yes | `init`, `deinit` + all VCS functions |
+| Type           | Code | Required Functions                   |
+| -------------- | ---- | ------------------------------------ |
+| **Theme**      | No   | None                                 |
+| **Code**       | Yes  | `init`, `deinit`                     |
+| **Code + VCS** | Yes  | `init`, `deinit` + all VCS functions |
 
 VCS is optional - plugins can implement it if they provide a VCS backend.
 
@@ -154,6 +154,7 @@ pub fn get_caps() -> Result<Capabilities, PluginError> { ... }
 ```
 
 The macro:
+
 1. Marks functions as WIT exports
 2. Generates the WIT Guest impl
 3. Handles error conversion
