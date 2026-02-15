@@ -46,7 +46,7 @@ No Rust code. Theme plugins ship UI assets only.
 <pluginId>/
   openvcs.plugin.json
   src/
-    lib.rs      # Rust library with #[openvcs_plugin] marked functions
+    lib.rs      # Rust library
   Cargo.toml
 ```
 
@@ -56,11 +56,20 @@ Plugin author writes:
 // src/lib.rs
 use openvcs_core::plugin_api::*;
 
-#[openvcs_plugin]
-pub fn init() -> Result<(), PluginError> { Ok(()) }
+// Internal helpers - NOT ABI
+fn helper() -> ... { ... }
 
+// Plugin ABI - functions in mod plugin are exported
 #[openvcs_plugin]
-pub fn deinit() -> Result<(), PluginError> { Ok(()) }
+mod plugin {
+    use super::*;
+    
+    pub fn init() -> Result<(), PluginError> { Ok(()) }
+    pub fn deinit() -> Result<(), PluginError> { Ok(()) }
+}
+
+// Generate WIT Guest impl
+openvcs_core::export_plugin!(plugin);
 ```
 
 ### VCS Plugin
@@ -71,23 +80,37 @@ Same as Code Plugin, but implements VCS functions:
 // src/lib.rs
 use openvcs_core::vcs_api::*;
 
-#[openvcs_plugin]
-pub fn init() -> Result<(), PluginError> { Ok(()) }
+// Internal helpers - NOT ABI
+fn helper() -> ... { ... }
 
+// Plugin ABI - functions in mod plugin are exported
 #[openvcs_plugin]
-pub fn deinit() -> Result<(), PluginError> { Ok(()) }
+mod plugin {
+    use super::*;
+    
+    pub fn init() -> Result<(), PluginError> { Ok(()) }
+    pub fn deinit() -> Result<(), PluginError> { Ok(()) }
+    pub fn get_caps() -> Result<Capabilities, PluginError> { ... }
+    pub fn list_branches() -> Result<Vec<BranchItem>, PluginError> { ... }
+    // ... all VCS functions required
+}
 
-#[openvcs_plugin]
-pub fn get_caps() -> Result<Capabilities, PluginError> { ... }
-
-#[openvcs_plugin]
-pub fn list_branches() -> Result<Vec<BranchItem>, PluginError> { ... }
-// ... all VCS functions required
+// Generate WIT Guest impl
+openvcs_core::export_plugin!(plugin);
 ```
+
+## Why This Structure?
+
+The `mod plugin` approach provides clear separation:
+
+- **Outside `mod plugin`** - Internal helpers, not exported to WIT
+- **Inside `mod plugin`** - ABI functions, exported to WIT
+
+This is more explicit than marking every function, while keeping the plugin code organized.
 
 ## WIT Interfaces
 
-### plugin-api (Required)
+### plugin.wit (Required)
 
 Required for all code plugins:
 
@@ -96,9 +119,14 @@ interface plugin-api {
   init: func() -> result<_, plugin-error>
   deinit: func() -> result<_, plugin-error>
 }
+
+world plugin {
+  import host-api;
+  export plugin-api;
+}
 ```
 
-### vcs-api (Optional)
+### vcs.wit (Optional)
 
 For VCS backend plugins:
 
@@ -109,6 +137,11 @@ interface vcs-api {
   list-branches: func() -> result list<branch-item>
   commit: func(message: string, name: string, email: string, paths: list<string>) -> result<string>
   // ... all VCS functions
+}
+
+world vcs {
+  import host-api;
+  export vcs-api;
 }
 ```
 
@@ -139,25 +172,29 @@ Plugins can declare dependencies on other plugins:
 - Required dependencies: plugin fails to load if missing
 - Optional dependencies: plugin loads without them (can check at runtime)
 
-## The `#[openvcs_plugin]` Macro
+## The Macros
 
-Every ABI function must be marked with `#[openvcs_plugin]`:
+### `#[openvcs_plugin]`
+
+Marks a module as containing plugin ABI functions:
 
 ```rust
-use openvcs_core::vcs_api::*;
-
 #[openvcs_plugin]
-pub fn init() -> Result<(), PluginError> { ... }
-
-#[openvcs_plugin]
-pub fn get_caps() -> Result<Capabilities, PluginError> { ... }
+mod plugin {
+    pub fn init() -> ... { }
+    pub fn deinit() -> ... { }
+}
 ```
 
-The macro:
+### `export_plugin!`
 
-1. Marks functions as WIT exports
-2. Generates the WIT Guest impl
-3. Handles error conversion
+Generates the WIT Guest impl:
+
+```rust
+openvcs_core::export_plugin!(plugin);
+```
+
+This must be called after the `#[openvcs_plugin]` mod is defined.
 
 ## Building Plugins
 
