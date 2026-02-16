@@ -1171,15 +1171,23 @@ mod tests {
     use tempfile::tempdir;
     use xz2::write::XzEncoder;
 
+    /// Synthetic tar entry kind used by bundle-construction helpers.
     enum TarEntryKind {
+        /// Regular file entry.
         File,
+        /// Symbolic-link entry targeting `target`.
         Symlink { target: String },
     }
 
+    /// Synthetic tar entry used to build fixture bundles in tests.
     struct TarEntry {
+        /// Path written into the tar header.
         name: String,
+        /// Raw entry payload bytes.
         data: Vec<u8>,
+        /// Optional Unix mode to set in the tar header.
         unix_mode: Option<u32>,
+        /// Tar entry type selector.
         kind: TarEntryKind,
     }
 

@@ -32,6 +32,7 @@ const DEFAULT_PATH_UNIX: &str = "/usr/bin:/bin";
 #[cfg(windows)]
 const DEFAULT_PATH_WINDOWS_SUFFIX: &str = "\\System32";
 
+/// Detects the runtime container kind for diagnostics.
 fn runtime_container_kind() -> &'static str {
     if matches!(
         std::env::var("OPENVCS_FLATPAK").as_deref(),
@@ -45,6 +46,7 @@ fn runtime_container_kind() -> &'static str {
     }
 }
 
+/// Extracts approved capabilities and optional workspace root from spawn config.
 fn approved_caps_and_workspace(spawn: &SpawnConfig) -> (HashSet<String>, Option<PathBuf>) {
     let approved_caps = match &spawn.approval {
         crate::plugin_bundles::ApprovalState::Approved { capabilities, .. } => {
@@ -55,16 +57,22 @@ fn approved_caps_and_workspace(spawn: &SpawnConfig) -> (HashSet<String>, Option<
     (approved_caps, spawn.allowed_workspace_root.clone())
 }
 
+/// Host API result type alias for plugin-facing operations.
 pub(crate) type HostResult<T> = Result<T, PluginError>;
 
 /// Host-side result for `process-exec-git` mapped into WIT bindings by runtime glue.
 pub(crate) struct HostProcessExecOutput {
+    /// Whether the process exited successfully.
     pub success: bool,
+    /// Numeric process exit status code.
     pub status: i32,
+    /// Captured standard output text.
     pub stdout: String,
+    /// Captured standard error text.
     pub stderr: String,
 }
 
+/// Creates a structured plugin host error.
 fn host_error(code: &str, message: impl Into<String>) -> PluginError {
     PluginError {
         code: code.to_string(),
@@ -72,6 +80,7 @@ fn host_error(code: &str, message: impl Into<String>) -> PluginError {
     }
 }
 
+/// Resolves a plugin-supplied path under an allowed workspace root.
 fn resolve_under_root(root: &Path, path: &str) -> Result<PathBuf, String> {
     if path.contains('\0') {
         return Err("path contains NUL".to_string());
@@ -104,6 +113,7 @@ fn resolve_under_root(root: &Path, path: &str) -> Result<PathBuf, String> {
     Ok(root.join(clean))
 }
 
+/// Writes bytes to a relative path constrained to the workspace root.
 fn write_file_under_root(root: &Path, rel: &str, bytes: &[u8]) -> Result<(), String> {
     let path = resolve_under_root(root, rel)?;
     if let Some(parent) = path.parent() {
@@ -112,11 +122,13 @@ fn write_file_under_root(root: &Path, rel: &str, bytes: &[u8]) -> Result<(), Str
     fs::write(&path, bytes).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
+/// Reads bytes from a relative path constrained to the workspace root.
 fn read_file_under_root(root: &Path, rel: &str) -> Result<Vec<u8>, String> {
     let path = resolve_under_root(root, rel)?;
     fs::read(&path).map_err(|e| format!("read {}: {e}", path.display()))
 }
 
+/// Builds a sanitized child-process environment for Git execution.
 fn sanitized_env() -> Vec<(OsString, OsString)> {
     let mut out: Vec<(OsString, OsString)> = Vec::new();
 
@@ -143,6 +155,7 @@ fn sanitized_env() -> Vec<(OsString, OsString)> {
     out
 }
 
+/// Returns runtime metadata exposed to plugins.
 pub fn host_runtime_info() -> openvcs_core::RuntimeInfo {
     openvcs_core::RuntimeInfo {
         os: Some(std::env::consts::OS.to_string()),
@@ -151,6 +164,7 @@ pub fn host_runtime_info() -> openvcs_core::RuntimeInfo {
     }
 }
 
+/// Registers a plugin subscription for a named host event.
 pub fn host_subscribe_event(spawn: &SpawnConfig, event_name: &str) -> HostResult<()> {
     let name = event_name.trim();
     if name.is_empty() {
@@ -160,6 +174,7 @@ pub fn host_subscribe_event(spawn: &SpawnConfig, event_name: &str) -> HostResult
     Ok(())
 }
 
+/// Emits a plugin-originated event with JSON payload validation.
 pub fn host_emit_event(spawn: &SpawnConfig, event_name: &str, payload: &[u8]) -> HostResult<()> {
     let name = event_name.trim();
     if name.is_empty() {
@@ -179,6 +194,7 @@ pub fn host_emit_event(spawn: &SpawnConfig, event_name: &str, payload: &[u8]) ->
     Ok(())
 }
 
+/// Handles plugin notification requests gated by `ui.notifications` capability.
 pub fn host_ui_notify(spawn: &SpawnConfig, message: &str) -> HostResult<()> {
     let (caps, _) = approved_caps_and_workspace(spawn);
     if !caps.contains("ui.notifications") {
@@ -194,6 +210,7 @@ pub fn host_ui_notify(spawn: &SpawnConfig, message: &str) -> HostResult<()> {
     Ok(())
 }
 
+/// Reads a workspace file when the plugin has workspace read access.
 pub fn host_workspace_read_file(spawn: &SpawnConfig, path: &str) -> HostResult<Vec<u8>> {
     let (caps, workspace_root) = approved_caps_and_workspace(spawn);
     if !caps.contains("workspace.read") && !caps.contains("workspace.write") {
@@ -208,6 +225,7 @@ pub fn host_workspace_read_file(spawn: &SpawnConfig, path: &str) -> HostResult<V
     read_file_under_root(root, path).map_err(|err| host_error("workspace.error", err))
 }
 
+/// Writes a workspace file when the plugin has workspace write access.
 pub fn host_workspace_write_file(
     spawn: &SpawnConfig,
     path: &str,
@@ -226,6 +244,7 @@ pub fn host_workspace_write_file(
     write_file_under_root(root, path, content).map_err(|err| host_error("workspace.error", err))
 }
 
+/// Executes `git` with sanitized environment and capability checks.
 pub fn host_process_exec_git(
     spawn: &SpawnConfig,
     cwd: Option<&str>,

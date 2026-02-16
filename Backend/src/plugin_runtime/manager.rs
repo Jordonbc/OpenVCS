@@ -12,21 +12,31 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Clone)]
+/// Fully resolved runtime spec for a module-capable plugin.
 struct ModuleRuntimeSpec {
+    /// Canonical plugin identifier.
     plugin_id: String,
+    /// Normalized lowercase process map key.
     key: String,
+    /// Manifest default-enabled value for this plugin.
     default_enabled: bool,
+    /// Spawn configuration used to instantiate runtime transport.
     spawn: SpawnConfig,
 }
 
 /// Owns long-lived module plugin processes and coordinates lifecycle actions.
 pub struct PluginRuntimeManager {
+    /// Bundle store used to resolve installed plugin metadata.
     store: PluginBundleStore,
+    /// Running plugin runtime instances keyed by normalized plugin id.
     processes: Mutex<HashMap<String, RunningPlugin>>,
 }
 
+/// Runtime handle tracked for a running plugin.
 struct RunningPlugin {
+    /// Runtime instance for dispatching plugin RPC calls.
     runtime: Arc<dyn PluginRuntimeInstance>,
+    /// Workspace confinement root associated with the runtime instance.
     workspace_root: Option<PathBuf>,
 }
 
@@ -180,6 +190,17 @@ impl PluginRuntimeManager {
 
     /// Calls a module RPC method through the persistent plugin process with an
     /// optional workspace-root confinement.
+    ///
+    /// # Parameters
+    /// - `cfg`: App config snapshot used for enabled-state checks.
+    /// - `plugin_id`: Plugin identifier.
+    /// - `method`: RPC method name.
+    /// - `params`: JSON RPC parameters.
+    /// - `allowed_workspace_root`: Optional workspace root for host capability confinement.
+    ///
+    /// # Returns
+    /// - `Ok(Value)` plugin RPC response payload.
+    /// - `Err(String)` when plugin state validation or RPC dispatch fails.
     pub fn call_module_method_for_workspace_with_config(
         &self,
         cfg: &AppConfig,
@@ -204,6 +225,15 @@ impl PluginRuntimeManager {
     }
 
     /// Returns the persistent runtime instance for a plugin workspace.
+    ///
+    /// # Parameters
+    /// - `cfg`: App config snapshot used for enabled-state checks.
+    /// - `plugin_id`: Plugin identifier.
+    /// - `allowed_workspace_root`: Optional workspace root for host capability confinement.
+    ///
+    /// # Returns
+    /// - `Ok(Arc<dyn PluginRuntimeInstance>)` running runtime instance.
+    /// - `Err(String)` when plugin state validation or startup fails.
     pub fn runtime_for_workspace_with_config(
         &self,
         cfg: &AppConfig,
@@ -223,6 +253,7 @@ impl PluginRuntimeManager {
             .ok_or_else(|| format!("plugin `{}` is not running", spec.plugin_id))
     }
 
+    /// Starts or reuses a runtime for a resolved plugin runtime spec.
     fn start_plugin_spec(&self, spec: ModuleRuntimeSpec) -> Result<(), String> {
         if let Some(existing) = self.processes.lock().get(&spec.key) {
             if existing.workspace_root == spec.spawn.allowed_workspace_root {
@@ -258,6 +289,7 @@ impl PluginRuntimeManager {
         Ok(())
     }
 
+    /// Creates a runtime instance for a resolved plugin spec.
     fn create_instance(
         &self,
         spec: &ModuleRuntimeSpec,
@@ -265,6 +297,7 @@ impl PluginRuntimeManager {
         create_runtime_instance(spec.spawn.clone())
     }
 
+    /// Resolves a plugin id into a module runtime specification.
     fn resolve_module_runtime_spec(
         &self,
         plugin_id: &str,
@@ -298,6 +331,7 @@ impl PluginRuntimeManager {
         })
     }
 
+    /// Finds installed plugin components by plugin id (case-insensitive).
     fn find_components(&self, plugin_id: &str) -> Result<InstalledPluginComponents, String> {
         self.store
             .list_current_components()?
@@ -308,6 +342,7 @@ impl PluginRuntimeManager {
 }
 
 impl Drop for PluginRuntimeManager {
+    /// Stops all runtimes when the manager is dropped.
     fn drop(&mut self) {
         let running = std::mem::take(&mut *self.processes.get_mut());
         for (_, process) in running {
@@ -316,6 +351,7 @@ impl Drop for PluginRuntimeManager {
     }
 }
 
+/// Normalizes plugin ids to process map keys.
 fn normalize_plugin_key(plugin_id: &str) -> Result<String, String> {
     let plugin_id = plugin_id.trim().to_ascii_lowercase();
     if plugin_id.is_empty() {
@@ -340,6 +376,7 @@ mod tests {
     ];
 
     #[test]
+    /// Verifies repeated start/stop calls keep runtime state stable.
     fn start_and_stop_are_idempotent() {
         let temp = tempdir().expect("tempdir");
         write_plugin(temp.path(), "test.plugin", true);
@@ -355,6 +392,7 @@ mod tests {
     }
 
     #[test]
+    /// Verifies sync starts and stops plugins according to config toggles.
     fn sync_tracks_enabled_state() {
         let temp = tempdir().expect("tempdir");
         write_plugin(temp.path(), "alpha.plugin", true);
@@ -383,6 +421,7 @@ mod tests {
     }
 
     #[test]
+    /// Verifies runtime start rejects plugins without module components.
     fn start_plugin_rejects_plugins_without_module_component() {
         let temp = tempdir().expect("tempdir");
         write_non_runtime_plugin(temp.path(), "themes.plugin", true);
@@ -395,6 +434,7 @@ mod tests {
     }
 
     #[test]
+    /// Verifies sync ignores non-runtime plugins without module components.
     fn sync_ignores_plugins_without_module_component() {
         let temp = tempdir().expect("tempdir");
         write_plugin(temp.path(), "runtime.plugin", true);
@@ -411,6 +451,7 @@ mod tests {
         assert!(!running.contains_key("themes.plugin"));
     }
 
+    /// Writes a minimal module-capable plugin layout into a temp store.
     fn write_plugin(root: &std::path::Path, plugin_id: &str, default_enabled: bool) {
         let plugin_dir = root.join(plugin_id);
         fs::create_dir_all(plugin_dir.join("bin")).expect("create plugin dir");
@@ -467,6 +508,7 @@ mod tests {
         .expect("write current");
     }
 
+    /// Writes a plugin layout with manifest/index but no runtime module.
     fn write_non_runtime_plugin(root: &std::path::Path, plugin_id: &str, default_enabled: bool) {
         let plugin_dir = root.join(plugin_id);
         fs::create_dir_all(&plugin_dir).expect("create plugin dir");

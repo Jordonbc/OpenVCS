@@ -24,18 +24,26 @@ mod bindings {
 
 use bindings::exports::openvcs::plugin::vcs_api;
 
+/// Live component instance plus generated bindings handle.
 struct ComponentRuntime {
+    /// Wasmtime store containing component state and host context.
     store: Store<ComponentHostState>,
+    /// Generated typed binding entrypoints for the plugin world.
     bindings: bindings::Vcs,
 }
 
+/// Host state stored inside the Wasmtime store for host imports.
 struct ComponentHostState {
+    /// Spawn-time plugin metadata and capability context.
     spawn: SpawnConfig,
+    /// Component resource table used by WASI/component model.
     table: ResourceTable,
+    /// WASI context exposed to the component.
     wasi: WasiCtx,
 }
 
 impl ComponentHostState {
+    /// Converts core host errors into generated WIT host error type.
     fn map_host_error(
         err: openvcs_core::app_api::PluginError,
     ) -> bindings::openvcs::plugin::host_api::HostError {
@@ -47,6 +55,7 @@ impl ComponentHostState {
 }
 
 impl WasiView for ComponentHostState {
+    /// Returns mutable WASI context and resource table view.
     fn ctx(&mut self) -> WasiCtxView<'_> {
         WasiCtxView {
             ctx: &mut self.wasi,
@@ -56,6 +65,7 @@ impl WasiView for ComponentHostState {
 }
 
 impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
+    /// Returns runtime metadata for the current host process.
     fn get_runtime_info(
         &mut self,
     ) -> Result<
@@ -70,6 +80,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         })
     }
 
+    /// Registers an event subscription for this plugin.
     fn subscribe_event(
         &mut self,
         event_name: String,
@@ -77,6 +88,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         host_subscribe_event(&self.spawn, &event_name).map_err(ComponentHostState::map_host_error)
     }
 
+    /// Emits a plugin-originated event through the host event bus.
     fn emit_event(
         &mut self,
         event_name: String,
@@ -86,6 +98,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
             .map_err(ComponentHostState::map_host_error)
     }
 
+    /// Forwards plugin notifications to host-side UI notification handling.
     fn ui_notify(
         &mut self,
         message: String,
@@ -93,6 +106,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         host_ui_notify(&self.spawn, &message).map_err(ComponentHostState::map_host_error)
     }
 
+    /// Reads a workspace file under capability and path constraints.
     fn workspace_read_file(
         &mut self,
         path: String,
@@ -100,6 +114,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         host_workspace_read_file(&self.spawn, &path).map_err(ComponentHostState::map_host_error)
     }
 
+    /// Writes a workspace file under capability and path constraints.
     fn workspace_write_file(
         &mut self,
         path: String,
@@ -109,6 +124,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
             .map_err(ComponentHostState::map_host_error)
     }
 
+    /// Executes `git` in a constrained host environment.
     fn process_exec_git(
         &mut self,
         cwd: Option<String>,
@@ -134,6 +150,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         })
     }
 
+    /// Logs plugin-emitted messages through the host logger.
     fn host_log(
         &mut self,
         level: bindings::openvcs::plugin::host_api::LogLevel,
@@ -168,7 +185,9 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
 
 /// Component-model runtime instance.
 pub struct ComponentPluginRuntimeInstance {
+    /// Spawn configuration used to instantiate and identify the component.
     spawn: SpawnConfig,
+    /// Lazily initialized runtime state.
     runtime: Mutex<Option<ComponentRuntime>>,
 }
 
@@ -181,6 +200,7 @@ impl ComponentPluginRuntimeInstance {
         }
     }
 
+    /// Instantiates the component runtime and executes plugin initialization.
     fn instantiate_runtime(&self) -> Result<ComponentRuntime, String> {
         let engine = Engine::default();
         let component = Component::from_file(&engine, &self.spawn.exec_path)
@@ -218,6 +238,7 @@ impl ComponentPluginRuntimeInstance {
         Ok(ComponentRuntime { store, bindings })
     }
 
+    /// Ensures a runtime exists and executes a closure with mutable access.
     fn with_runtime<T>(
         &self,
         f: impl FnOnce(&mut ComponentRuntime) -> Result<T, String>,
@@ -234,10 +255,12 @@ impl ComponentPluginRuntimeInstance {
     }
 }
 
+/// Deserializes JSON RPC parameters for a named method.
 fn parse_method_params<T: DeserializeOwned>(method: &str, params: Value) -> Result<T, String> {
     serde_json::from_value(params).map_err(|e| format!("invalid params for `{method}`: {e}"))
 }
 
+/// Serializes a method result to JSON with contextual error reporting.
 fn encode_method_result<T: Serialize>(
     plugin_id: &str,
     method: &str,
@@ -252,6 +275,7 @@ fn encode_method_result<T: Serialize>(
 }
 
 impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
+    /// Starts the component runtime when not already running.
     fn ensure_running(&self) -> Result<(), String> {
         let mut lock = self.runtime.lock();
         if lock.is_some() {
@@ -263,6 +287,7 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
     }
 
     #[allow(clippy::let_unit_value)]
+    /// Invokes a v1 ABI method exported by the plugin component.
     fn call(&self, method: &str, params: Value) -> Result<Value, String> {
         self.with_runtime(|runtime| {
             macro_rules! invoke {
@@ -771,6 +796,7 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
         })
     }
 
+    /// Deinitializes and drops the running component runtime.
     fn stop(&self) {
         let mut lock = self.runtime.lock();
         if let Some(runtime) = lock.as_mut() {

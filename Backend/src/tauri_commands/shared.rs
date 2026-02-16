@@ -12,7 +12,9 @@ use crate::repo::Repo;
 use crate::state::AppState;
 
 #[derive(serde::Serialize, Clone)]
+/// Generic progress event payload sent to the UI.
 pub struct ProgressPayload {
+    /// Human-readable progress message.
     pub message: String,
 }
 

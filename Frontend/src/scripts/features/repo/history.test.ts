@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect } from 'vitest'
 
-// Provide matchMedia to avoid jsdom environment errors in modules that access it
-// Set it on global before importing modules that may use it.
-(globalThis as any).matchMedia = (query: string) => ({ matches: false, media: query, addListener: () => {}, removeListener: () => {} })
+/** Provides a minimal `matchMedia` test shim used by history imports. */
+function createMatchMediaMock(query: string) {
+  return { matches: false, media: query, addListener: () => {}, removeListener: () => {} }
+}
+
+// Set matchMedia before importing modules that touch browser media APIs.
+(globalThis as any).matchMedia = createMatchMediaMock
 
 import { parseCommitDiffByFile, formatTimeAgo } from './history'
 

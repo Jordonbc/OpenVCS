@@ -94,6 +94,11 @@ export const statusLabel = (s: string) =>
         s === 'M' ? 'Modified' :
             s === 'D' ? 'Deleted' : 'Changed';
 
+/**
+ * Get CSS class token for a file status code.
+ * @param s - Status code character
+ * @returns CSS class suffix used by status badges
+ */
 export const statusClass = (s: string) =>
     s === 'A' ? 'add' :
         s === '?' ? 'untracked' :
@@ -105,8 +110,11 @@ export const statusClass = (s: string) =>
                             s === 'M' ? 'mod' :
                                 s === 'D' ? 'del' : 'mod';
 
-// Disable the implicit "select all" mode. When clearImplicit is true, drop the
-// auto-filled selection set so later logic only sees explicit user picks.
+/**
+ * Disables implicit select-all behavior.
+ * @param clearImplicit - Whether to clear auto-filled file selections
+ * @returns True when implicit selections were cleared
+ */
 export function disableDefaultSelectAll(clearImplicit = false): boolean {
     const hadImplicit = state.defaultSelectAll && state.selectionImplicitAll;
     if (clearImplicit && hadImplicit) {

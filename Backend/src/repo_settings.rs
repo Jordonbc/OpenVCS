@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 /// Name/URL pair for a configured Git remote.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteConfig {
+    /// Remote name (for example `origin`).
     pub name: String,
+    /// Remote fetch/push URL.
     pub url: String,
 }
 

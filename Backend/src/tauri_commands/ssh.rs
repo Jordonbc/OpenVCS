@@ -38,9 +38,13 @@ fn ensure_ssh_dir() -> Result<PathBuf, String> {
 }
 
 #[derive(Clone, Serialize)]
+/// Process output captured from SSH-related shell commands.
 pub struct SshCommandOutput {
+    /// Process exit code, or `-1` when unavailable.
     pub code: i32,
+    /// UTF-8-decoded standard output.
     pub stdout: String,
+    /// UTF-8-decoded standard error.
     pub stderr: String,
 }
 
@@ -162,8 +166,11 @@ pub fn ssh_agent_list_keys() -> Result<SshCommandOutput, String> {
 }
 
 #[derive(Clone, Serialize)]
+/// Candidate private-key file discovered in `~/.ssh`.
 pub struct SshKeyCandidate {
+    /// Absolute path to the candidate key file.
     pub path: String,
+    /// File name shown in the UI.
     pub name: String,
 }
 

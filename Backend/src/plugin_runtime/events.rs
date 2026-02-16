@@ -5,7 +5,9 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
+/// In-memory mapping of plugin subscriptions by plugin id.
 struct Registry {
+    /// Event names subscribed by each plugin id.
     subs: HashMap<String, HashSet<String>>, // plugin_id -> event names
 }
 

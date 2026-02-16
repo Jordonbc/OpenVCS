@@ -53,6 +53,7 @@ mod tests {
     ];
 
     #[test]
+    /// Verifies that a core Wasm module is rejected as a component.
     fn core_wasm_is_not_detected_as_component() {
         let temp = tempdir().expect("tempdir");
         let wasm_path = temp.path().join("plugin.wasm");
@@ -62,6 +63,7 @@ mod tests {
     }
 
     #[test]
+    /// Verifies runtime selection returns a clear non-component error.
     fn selection_rejects_core_wasm() {
         let temp = tempdir().expect("tempdir");
         let wasm_path = temp.path().join("plugin.wasm");

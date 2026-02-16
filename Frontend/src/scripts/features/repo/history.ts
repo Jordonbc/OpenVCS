@@ -12,8 +12,22 @@ import { hydrateStatus, hydrateCommits } from './hydrate';
 import { updateCommitButton } from './commit';
 import { openCherryPick } from '../cherryPick';
 
+/** Optional toolbar button that opens the selected commit actions menu. */
 const historyActionsBtn = document.getElementById('history-actions-btn') as HTMLButtonElement | null;
 
+/** Optional flags that customize commit actions menu contents. */
+type CommitActionsMenuOptions = {
+    isAhead?: boolean;
+};
+
+/** Parsed commit diff block grouped by file path. */
+export type CommitDiffFile = {
+    path: string;
+    status: string;
+    lines: string[];
+};
+
+/** Toggles visibility of commit actions UI in history mode. */
 function updateHistoryActionsVisibility() {
     if (!historyActionsBtn) return;
     const on = prefs.tab === 'history' && !!(state as any)?.selectedCommit?.id;
@@ -21,7 +35,8 @@ function updateHistoryActionsVisibility() {
     historyActionsBtn.disabled = !on;
 }
 
-async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: { isAhead?: boolean }) {
+/** Builds and shows the commit context menu at screen coordinates. */
+async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: CommitActionsMenuOptions) {
     const items: CtxItem[] = [];
     items.push({
         label: 'Copy hash', action: async () => {
@@ -106,6 +121,7 @@ if (historyActionsBtn && !(historyActionsBtn as any).__wired) {
     window.addEventListener('app:tab-changed', () => updateHistoryActionsVisibility());
 }
 
+/** Renders commit rows filtered by search text and selects the first entry. */
 export function renderHistoryList(query: string): boolean {
     const list = listEl;
     const count = countEl;
@@ -181,6 +197,7 @@ export function renderHistoryList(query: string): boolean {
     return true;
 }
 
+/** Loads metadata and per-file diff details for the selected commit. */
 export async function selectHistory(commit: any, index: number) {
     if (!diffHeadPath || !diffEl) return;
     (state as any).selectedCommit = commit || null;
@@ -236,6 +253,7 @@ export async function selectHistory(commit: any, index: number) {
         const sideEl = diffEl.querySelector('.commit-files');
         const contentEl = diffEl.querySelector('.commit-content');
         if (sideEl && contentEl) {
+            /** Switches the right panel to the selected file diff block. */
             const selectCommitFile = (idx: number) => {
                 if (idx < 0 || idx >= files.length) return;
                 sideEl.querySelectorAll('.row').forEach((r) => r.classList.remove('active'));
@@ -311,9 +329,10 @@ export async function selectHistory(commit: any, index: number) {
     }
 }
 
-export function parseCommitDiffByFile(lines: string[]): { path: string; status: string; lines: string[] }[] {
+/** Splits a full commit diff payload into file-scoped diff blocks. */
+export function parseCommitDiffByFile(lines: string[]): CommitDiffFile[] {
     if (!Array.isArray(lines) || lines.length === 0) return [];
-    const files: { path: string; status: string; lines: string[] }[] = [];
+    const files: CommitDiffFile[] = [];
     let i = 0;
     while (i < lines.length) {
         const l = lines[i] || '';
@@ -340,6 +359,7 @@ export function parseCommitDiffByFile(lines: string[]): { path: string; status: 
     return files;
 }
 
+/** Formats a timestamp-like value into a compact relative time string. */
 export function formatTimeAgo(isoMaybe: string): string {
     try {
         const d = new Date(String(isoMaybe || '').trim());

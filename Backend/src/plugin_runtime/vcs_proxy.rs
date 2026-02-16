@@ -11,9 +11,13 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+/// [`Vcs`] implementation that forwards operations to a plugin runtime.
 pub struct PluginVcsProxy {
+    /// Backend identifier represented by this proxy instance.
     backend_id: BackendId,
+    /// Repository worktree path associated with this backend session.
     workdir: PathBuf,
+    /// Started plugin runtime used for RPC calls.
     runtime: Arc<dyn PluginRuntimeInstance>,
 }
 

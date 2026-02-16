@@ -13,6 +13,7 @@ import { hydrateStatus } from './hydrate';
 import { getVisibleFiles, updateSelectAllState } from './selectionState';
 import { openMergeModal, hasExternalMergeTool, launchExternalMergeTool } from '../conflicts';
 
+/** Scrolls the current diff viewport back to the origin. */
 function scrollDiffToTop() {
     if (!diffEl) return;
     const host = diffEl.closest('.diff-scroll') as HTMLElement | null;
@@ -23,12 +24,14 @@ function scrollDiffToTop() {
     }
 }
 
+/** Regex markers that identify non-textual Git patches. */
 const BINARY_DIFF_INDICATORS = [
     /^binary files /i,
     /^git binary patch/i,
     /^literal /i,
 ];
 
+/** Returns true when the diff payload should be treated as binary. */
 function detectBinaryDiff(lines: string[] = []) {
     if (!Array.isArray(lines) || lines.length === 0) {
         return true;
@@ -42,11 +45,13 @@ function detectBinaryDiff(lines: string[] = []) {
     );
 }
 
+/** Renders a placeholder hunk for binary or unsupported file types. */
 function renderBinaryDiffPlaceholder(path?: string) {
     const label = path ? ` (${escapeHtml(path)})` : '';
     return `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code binary-placeholder">Diff not supported on this file type${label}.</div></div></div>`;
 }
 
+/** Builds a synthetic unified diff for an untracked text file. */
 function buildUntrackedTextPatch(path: string, text: string): string[] {
     const normalized = String(text || '').replace(/\r\n/g, '\n');
     const body = normalized.length ? normalized.split('\n') : [];
@@ -62,11 +67,13 @@ function buildUntrackedTextPatch(path: string, text: string): string[] {
     return out;
 }
 
+/** Highlights a row in the left list for the current tab. */
 export function highlightRow(index: number) {
     const rows = qsa<HTMLElement>((prefs.tab === 'history' ? '.row.commit' : '.row'), listEl || (undefined as any));
     rows.forEach((el, i) => el.classList.toggle('active', i === index));
 }
 
+/** Loads and renders the selected file diff with selection state restored. */
 export async function selectFile(file: FileStatus, index: number) {
     if (!diffHeadPath || !diffEl) return;
     if (!state.diffDirty && state.currentFile === file.path) {
@@ -235,6 +242,7 @@ export async function selectFile(file: FileStatus, index: number) {
     }
 }
 
+/** Loads and renders a stash diff in read-only mode. */
 export async function selectStashDiff(selector: string) {
     if (!diffHeadPath || !diffEl) return;
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
@@ -254,6 +262,7 @@ export async function selectStashDiff(selector: string) {
     }
 }
 
+/** Renders diffs for multiple files in a single combined view. */
 export async function renderCombinedDiff(paths: string[]) {
     if (!diffHeadPath || !diffEl) return;
     clearActiveRows();
@@ -280,6 +289,7 @@ export async function renderCombinedDiff(paths: string[]) {
     scrollDiffToTop();
 }
 
+/** Clears multi-file diff selection state from the list. */
 export function clearDiffSelection() {
     if (!listEl) return;
     if (state.diffSelectedFiles && state.diffSelectedFiles.size > 0) {
@@ -289,12 +299,14 @@ export function clearDiffSelection() {
     }
 }
 
+/** Removes active styling from all rows in the file list. */
 export function clearActiveRows() {
     if (!listEl) return;
     const rows = listEl.querySelectorAll<HTMLElement>('li.row.active');
     rows.forEach((r) => r.classList.remove('active'));
 }
 
+/** Loads and renders conflict details and resolution actions. */
 async function renderConflictView(file: FileStatus) {
     if (!diffEl) return;
     state.currentFile = file.path;
@@ -322,6 +334,7 @@ async function renderConflictView(file: FileStatus) {
     }
 }
 
+/** Builds conflict view markup for text or binary conflicts. */
 function renderConflictMarkup(details: ConflictDetails) {
     const binary = !!details.binary;
     const header = `<div class="conflict-header"><div class="conflict-title">Merge conflict</div>${renderConflictActions(binary)}</div>`;
@@ -330,6 +343,7 @@ function renderConflictMarkup(details: ConflictDetails) {
     return `<div class="conflict-view" data-conflict-path="${pathAttr}" data-conflict-binary="${binary ? '1' : '0'}">${header}${body}</div>`;
 }
 
+/** Renders conflict action buttons based on conflict content type. */
 function renderConflictActions(binary: boolean) {
     const mergeBtn = binary ? '' : '<button class="btn" data-conflict-action="merge">Merge…</button>';
     return `<div class="conflict-actions">
@@ -339,11 +353,13 @@ function renderConflictActions(binary: boolean) {
     </div>`;
 }
 
+/** Renders a compact binary-conflict explanation panel. */
 function renderBinaryConflictBody(details: ConflictDetails) {
     const note = 'This file is binary. Choose which version to keep.';
     return `<div class="conflict-body"><div class="conflict-note">${escapeHtml(note)}</div></div>`;
 }
 
+/** Renders side-by-side panes for textual conflict content. */
 function renderTextConflictBody(details: ConflictDetails) {
     return `<div class="conflict-body"><div class="conflict-panels">
         ${renderConflictPane('Mine', details.ours)}
@@ -351,6 +367,7 @@ function renderTextConflictBody(details: ConflictDetails) {
     </div></div>`;
 }
 
+/** Renders one labeled conflict pane section. */
 function renderConflictPane(label: string, value?: string | null) {
     const safeLabel = escapeHtml(label);
     const hasText = typeof value === 'string' && value.length > 0;
@@ -360,6 +377,7 @@ function renderConflictPane(label: string, value?: string | null) {
     return `<section class="conflict-pane"><header>${safeLabel}</header>${body}</section>`;
 }
 
+/** Wires conflict action buttons to backend commands and UI refreshes. */
 function bindConflictActions(root: HTMLElement, file: FileStatus, details: ConflictDetails) {
     const container = root.querySelector('.conflict-view') as HTMLElement | null;
     if (!container) return;
@@ -404,6 +422,7 @@ function bindConflictActions(root: HTMLElement, file: FileStatus, details: Confl
     }
 }
 
+/** Clears picked styling and checkboxes for all visible rows. */
 function clearAllFileSelections() {
     if (!listEl) return;
     const rows = listEl.querySelectorAll<HTMLElement>('li.row');
@@ -414,6 +433,7 @@ function clearAllFileSelections() {
     });
 }
 
+/** Toggles commit inclusion for a file and syncs current hunk selection. */
 export function toggleFilePick(path: string, on: boolean) {
     if (!path) return;
     disableDefaultSelectAll();
@@ -457,6 +477,7 @@ export function toggleFilePick(path: string, on: boolean) {
     updateCommitButton();
 }
 
+/** Reconciles hunk and line checkbox UI with in-memory selection state. */
 export function updateHunkCheckboxes() {
     const nodes = state.currentDiffHunkNodes;
     if (!nodes || nodes.size === 0) return;
@@ -490,14 +511,17 @@ export function updateHunkCheckboxes() {
     });
 }
 
+/** Tracks whether delegated diff checkbox handlers are already bound. */
 let diffToggleHandlerBound = false;
 
+/** Binds delegated change handling for hunk and line toggles once. */
 function bindHunkToggles(root: HTMLElement) {
     if (!root || diffToggleHandlerBound) return;
     root.addEventListener('change', handleDiffInputChange);
     diffToggleHandlerBound = true;
 }
 
+/** Routes checkbox changes to hunk-level or line-level handlers. */
 function handleDiffInputChange(ev: Event) {
     const target = ev.target as HTMLInputElement | null;
     if (!target || !(target instanceof HTMLInputElement)) return;
@@ -508,6 +532,7 @@ function handleDiffInputChange(ev: Event) {
     }
 }
 
+/** Applies selection updates for a single hunk toggle interaction. */
 function handleHunkToggle(input: HTMLInputElement) {
     const idx = Number(input.dataset.hunk || -1);
     if (!state.currentFile || idx < 0) return;
@@ -546,6 +571,7 @@ function handleHunkToggle(input: HTMLInputElement) {
     updateCommitButton();
 }
 
+/** Applies selection updates for a single changed line toggle. */
 function handleLineToggle(input: HTMLInputElement) {
     const hunk = Number(input.dataset.hunk || -1);
     const line = Number(input.dataset.line || -1);
@@ -587,6 +613,7 @@ function handleLineToggle(input: HTMLInputElement) {
     updateCommitButton();
 }
 
+/** Syncs the file-level checkbox to current hunk and line selections. */
 function syncFileCheckboxWithHunks() {
     if (!state.currentFile) return;
     if (state.currentDiffBinary) {
@@ -622,6 +649,7 @@ function syncFileCheckboxWithHunks() {
     }
 }
 
+/** Returns contiguous hunk indices derived from unified diff lines. */
 export function allHunkIndices(lines: string[]) {
     const meta = state.currentDiffMeta;
     if (meta && meta.totalHunks > 0) {
@@ -635,6 +663,7 @@ export function allHunkIndices(lines: string[]) {
     return starts.map((_, i) => i);
 }
 
+/** Parses diff lines into reusable metadata for hunk rendering. */
 function buildDiffMeta(lines: string[]): DiffMeta {
     const idx = lines.findIndex((l) => (l || '').startsWith('@@'));
     const rest = idx >= 0 ? lines.slice(idx) : [];
@@ -668,6 +697,7 @@ function buildDiffMeta(lines: string[]): DiffMeta {
     };
 }
 
+/** Builds a DOM fragment for diff hunks and caches node references. */
 function buildDiffFragment(lines: string[]): DocumentFragment {
     const meta = buildDiffMeta(lines);
     state.currentDiffMeta = meta;
@@ -759,6 +789,7 @@ function buildDiffFragment(lines: string[]): DocumentFragment {
     return fragment;
 }
 
+/** Renders diff hunks as HTML with selectable hunk and line checkboxes. */
 export function renderHunksWithSelection(lines: string[]) {
     if (!lines || !lines.length) return '';
     let idx = lines.findIndex((l) => l.startsWith('@@'));
@@ -787,6 +818,7 @@ export function renderHunksWithSelection(lines: string[]) {
     return html;
 }
 
+/** Renders diff hunks as static, read-only HTML. */
 export function renderHunksReadonly(lines: string[]) {
     if (!lines || !lines.length) return '';
     let idx = lines.findIndex((l) => l.startsWith('@@'));
@@ -808,12 +840,14 @@ export function renderHunksReadonly(lines: string[]) {
     return html;
 }
 
+/** Renders one read-only diff line row. */
 function hline(ln: string, n: number) {
     const first = (typeof ln === 'string' ? ln[0] : ' ') || ' ';
     const t = first === '+' ? 'add' : first === '-' ? 'del' : '';
     return `<div class="hline ${t}"><div class="gutter">${n}</div><div class="code">${escapeHtml(String(ln))}</div></div>`;
 }
 
+/** Updates a list row checkbox for a specific file path. */
 export function updateListCheckboxForPath(path: string, checked: boolean, indeterminate: boolean) {
     if (!listEl || !path) return;
     const selector = `li.row[data-path="${path.replace(/(["\\])/g, '\\$1')}"] input.pick`;

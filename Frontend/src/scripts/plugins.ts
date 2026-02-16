@@ -5,6 +5,7 @@ import { notify } from './lib/notify';
 import { initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from './lib/scrollbars';
 import type { GlobalSettings, Json, ThemePayload, ThemeSummary } from './types';
 
+/** Describes plugin metadata returned by discovery endpoints. */
 export interface PluginSummary {
     id: string;
     name: string;
@@ -20,11 +21,13 @@ export interface PluginSummary {
     icon_data_url?: string;
 }
 
+/** Holds a plugin manifest summary with optional UI module code. */
 export interface PluginPayload {
     summary: PluginSummary;
     entry?: string | null;
 }
 
+/** Enumerates supported lifecycle hook names for plugin callbacks. */
 export type HookName =
     | 'preCommit' | 'onCommit' | 'postCommit'
     | 'prePush' | 'onPush' | 'postPush'
@@ -32,6 +35,7 @@ export type HookName =
     | 'preBranchCreate' | 'onBranchCreate' | 'postBranchCreate'
     | 'preBranchDelete' | 'onBranchDelete' | 'postBranchDelete';
 
+/** Carries hook execution data and cancellation controls. */
 export interface HookContext<T = unknown> {
     name: HookName;
     data: T;
@@ -40,21 +44,26 @@ export interface HookContext<T = unknown> {
     reason?: string;
 }
 
+/** Defines a hook callback signature used by plugin registrations. */
 export type HookHandler<T = unknown> = (ctx: HookContext<T>) => void | Promise<void>;
+/** Defines a generic plugin action callback signature. */
 export type PluginAction = (payload?: unknown) => void | Promise<void>;
 
+/** Represents a plugin-provided menu entry. */
 export interface PluginMenuItem {
     label: string;
     action: string;
     title?: string;
 }
 
+/** Represents a plugin-provided titlebar action button. */
 export interface PluginTitleButton {
     label: string;
     action: string;
     title?: string;
 }
 
+/** Represents a plugin-provided settings section descriptor. */
 export interface PluginSettingsSection {
     id: string;
     label: string;
@@ -64,6 +73,7 @@ export interface PluginSettingsSection {
     onMount?: (ctx: { modal: HTMLElement; panel: HTMLElement }) => void;
 }
 
+/** Represents a plugin-provided menubar menu contribution. */
 export interface PluginMenubarMenu {
     id: string;
     html: string;
@@ -71,20 +81,24 @@ export interface PluginMenubarMenu {
     after?: string;
 }
 
+/** Lists context menu targets supported by plugin contributions. */
 export type PluginContextMenuTarget = 'files' | 'commits' | 'branches';
 
+/** Represents a single context menu command contributed by a plugin. */
 export interface PluginContextMenuItem {
     label: string;
     action: string;
     title?: string;
 }
 
+/** Groups context menu contributions by target surface. */
 export interface PluginContextMenus {
     files?: PluginContextMenuItem[];
     commits?: PluginContextMenuItem[];
     branches?: PluginContextMenuItem[];
 }
 
+/** Defines the full plugin registration payload accepted by the host. */
 export interface PluginRegistration {
     id?: string;
     name?: string;
@@ -135,10 +149,12 @@ let initialized = false;
 let disabledPlugins = new Set<string>();
 let enabledPlugins = new Set<string>();
 
+/** Normalizes ids for case-insensitive map keys. */
 function normalizeId(value: string): string {
     return String(value || '').trim().toLowerCase();
 }
 
+/** Checks whether a plugin is enabled after overrides are applied. */
 function isPluginEnabled(summary: PluginSummary): boolean {
     const id = normalizeId(summary?.id || '');
     if (!id) return false;
@@ -147,6 +163,7 @@ function isPluginEnabled(summary: PluginSummary): boolean {
     return !!summary?.default_enabled;
 }
 
+/** Removes all injected plugin script nodes. */
 function clearPluginScripts() {
     while (PLUGIN_SCRIPT_NODES.length) {
         const node = PLUGIN_SCRIPT_NODES.pop();
@@ -154,6 +171,7 @@ function clearPluginScripts() {
     }
 }
 
+/** Clears all plugin runtime registries and injected UI. */
 function resetPluginRuntime() {
     clearPluginScripts();
 
@@ -176,6 +194,7 @@ function resetPluginRuntime() {
     if (host) host.replaceChildren();
 }
 
+/** Injects a plugin module into the document head. */
 function injectPluginModule(code: string, pluginId: string) {
     const head = document.head;
     if (!head) return;
@@ -190,6 +209,7 @@ function injectPluginModule(code: string, pluginId: string) {
     PLUGIN_SCRIPT_NODES.push(script);
 }
 
+/** Removes tracked UI nodes that belong to a plugin. */
 function clearPluginUi(pluginId: string) {
     const nodes = pluginUiNodes.get(pluginId) || [];
     for (const node of nodes) {
@@ -198,20 +218,24 @@ function clearPluginUi(pluginId: string) {
     pluginUiNodes.delete(pluginId);
 }
 
+/** Tracks host-inserted UI nodes for plugin cleanup. */
 function trackUiNode(pluginId: string, node: HTMLElement) {
     const list = pluginUiNodes.get(pluginId) || [];
     list.push(node);
     pluginUiNodes.set(pluginId, list);
 }
 
+/** Returns the plugins menu list element. */
 function pluginsMenuList(): HTMLElement | null {
     return document.getElementById('plugins-menu-list');
 }
 
+/** Returns the titlebar plugin action host element. */
 function pluginActionsHost(): HTMLElement | null {
     return document.getElementById('plugin-title-actions');
 }
 
+/** Ensures a disabled placeholder row exists when no plugin menu items exist. */
 function ensurePluginsMenuPlaceholder() {
     const list = pluginsMenuList();
     if (!list) return;
@@ -227,24 +251,28 @@ function ensurePluginsMenuPlaceholder() {
     list.appendChild(btn);
 }
 
+/** Removes the plugin menu placeholder row. */
 function removePluginsMenuPlaceholder() {
     pluginsMenuList()
         ?.querySelector<HTMLElement>('[data-openvcs-plugin-placeholder="true"]')
         ?.remove();
 }
 
+/** Registers a plugin action handler by id. */
 function registerAction(id: string, handler: PluginAction) {
     const key = String(id || '').trim();
     if (!key) return;
     actionHandlers.set(key, handler);
 }
 
+/** Registers a lifecycle hook handler for a plugin. */
 function registerHook(pluginId: string, name: HookName, handler: HookHandler) {
     const list = hookHandlers.get(name) || [];
     list.push({ pluginId, handler });
     hookHandlers.set(name, list);
 }
 
+/** Registers a theme payload exposed by a plugin. */
 function registerTheme(theme: ThemePayload) {
     const id = normalizeId(theme?.summary?.id || '');
     if (!id) return;
@@ -254,12 +282,14 @@ function registerTheme(theme: ThemePayload) {
     }
 }
 
+/** Registers theme summary metadata exposed by a plugin. */
 function registerThemeSummary(summary: ThemeSummary) {
     const id = normalizeId(summary?.id || '');
     if (!id) return;
     registeredThemeSummaries.set(id, summary);
 }
 
+/** Adds a plugin item to the plugins menu list. */
 function addMenuItem(pluginId: string, item: PluginMenuItem) {
     const list = pluginsMenuList();
     if (!list) return;
@@ -279,6 +309,7 @@ function addMenuItem(pluginId: string, item: PluginMenuItem) {
     trackUiNode(pluginId, btn);
 }
 
+/** Adds a plugin action button to the titlebar host. */
 function addTitlebarButton(pluginId: string, btn: PluginTitleButton) {
     const host = pluginActionsHost();
     if (!host) return;
@@ -295,6 +326,7 @@ function addTitlebarButton(pluginId: string, btn: PluginTitleButton) {
     trackUiNode(pluginId, el);
 }
 
+/** Inserts or updates a plugin-provided settings section. */
 function upsertSettingsSection(pluginId: string, section: PluginSettingsSection) {
     const id = String(section?.id || '').trim();
     const label = String(section?.label || '').trim();
@@ -311,6 +343,7 @@ function upsertSettingsSection(pluginId: string, section: PluginSettingsSection)
     if (modal) applyPluginSettingsSections(modal);
 }
 
+/** Inserts or updates a plugin-provided menubar menu. */
 function applyMenubarMenu(pluginId: string, menu: PluginMenubarMenu) {
     const id = String(menu?.id || '').trim();
     const html = String(menu?.html || '');
@@ -341,6 +374,7 @@ function applyMenubarMenu(pluginId: string, menu: PluginMenubarMenu) {
     trackUiNode(pluginId, node);
 }
 
+/** Resolves plugin id during global API registration callbacks. */
 function currentPluginIdForRegistration(explicit?: string): string | null {
     const id = String(explicit || '').trim();
     if (id) return id;
@@ -348,6 +382,7 @@ function currentPluginIdForRegistration(explicit?: string): string | null {
     return ctxId || null;
 }
 
+/** Registers plugin hooks, actions, menus, and theme contributions. */
 function registerPlugin(reg: PluginRegistration) {
     const pluginId = currentPluginIdForRegistration(reg?.id) || null;
     if (!pluginId) return;
@@ -426,6 +461,7 @@ function registerPlugin(reg: PluginRegistration) {
     }
 }
 
+/** Installs the `window.OpenVCS` plugin registration API once. */
 function installGlobalApi() {
     if (window.OpenVCS) return;
     const callPluginMethod = (
@@ -479,6 +515,7 @@ function installGlobalApi() {
     }
 }
 
+/** Renders plugin-provided settings sections inside the settings modal. */
 export function applyPluginSettingsSections(modal?: HTMLElement | null): void {
     const m = modal || (document.getElementById('settings-modal') as HTMLElement | null);
     if (!m) return;
@@ -563,15 +600,18 @@ export function applyPluginSettingsSections(modal?: HTMLElement | null): void {
     }
 }
 
+/** Returns registered theme summaries from loaded plugins. */
 export function getRegisteredThemeSummaries(): ThemeSummary[] {
     return Array.from(registeredThemeSummaries.values());
 }
 
+/** Returns a registered theme payload by id, if available. */
 export function getRegisteredThemePayload(id: string): ThemePayload | null {
     const key = normalizeId(id);
     return registeredThemePayloads.get(key) || null;
 }
 
+/** Executes all handlers registered for a lifecycle hook. */
 export async function runHook<T = unknown>(name: HookName, data: T): Promise<HookContext<T>> {
     const ctx: HookContext<T> = {
         name,
@@ -598,6 +638,7 @@ export async function runHook<T = unknown>(name: HookName, data: T): Promise<Hoo
     return ctx;
 }
 
+/** Executes a plugin action by id and returns whether it ran. */
 export async function runPluginAction(actionId: string, payload?: unknown): Promise<boolean> {
     const id = String(actionId || '').trim();
     if (!id) return false;
@@ -612,12 +653,14 @@ export async function runPluginAction(actionId: string, payload?: unknown): Prom
     return true;
 }
 
+/** Returns plugin-contributed context menu items for a target surface. */
 export function getPluginContextMenuItems(
     target: PluginContextMenuTarget,
 ): PluginContextMenuItem[] {
     return (contextMenuItems.get(target) || []).slice();
 }
 
+/** Loads plugin manifests and installs plugin UI/runtime state. */
 export async function initPlugins(): Promise<void> {
     if (initialized) return;
     initialized = true;
@@ -668,6 +711,7 @@ export async function initPlugins(): Promise<void> {
     ensurePluginsMenuPlaceholder();
 }
 
+/** Reloads plugins by resetting and reinitializing the plugin runtime. */
 export async function reloadPlugins(): Promise<void> {
     installGlobalApi();
     if (!TAURI.has) return;

@@ -155,18 +155,28 @@ fn emit_ssh_prompt<R: Runtime>(app: &tauri::AppHandle<R>, remote: &str, url: &st
 }
 
 #[derive(Clone, serde::Serialize)]
+/// UI event payload requesting unknown-host-key confirmation.
 struct SshHostKeyPrompt {
+    /// Remote host name requiring trust confirmation.
     host: String,
+    /// Remote alias involved in the failed operation.
     remote: String,
+    /// Remote URL associated with the host.
     url: String,
+    /// Raw backend error message.
     message: String,
 }
 
 #[derive(Clone, serde::Serialize)]
+/// UI event payload requesting SSH authentication troubleshooting.
 struct SshAuthPrompt {
+    /// Remote host that rejected authentication.
     host: String,
+    /// Remote alias involved in the failed operation.
     remote: String,
+    /// Remote URL associated with the host.
     url: String,
+    /// Raw backend error message.
     message: String,
 }
 
@@ -477,9 +487,13 @@ pub async fn git_pull<R: Runtime>(
 }
 
 #[derive(serde::Serialize)]
+/// Pull execution result returned to the frontend.
 pub struct PullResult {
+    /// Whether a pull operation ran and updated local refs.
     pub pulled: bool,
+    /// Branch name evaluated for the pull.
     pub branch: String,
+    /// Skip/failure context when no pull was performed.
     pub reason: Option<String>,
 }
 

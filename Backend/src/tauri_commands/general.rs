@@ -22,8 +22,11 @@ use super::progress_bridge;
 const WIKI_URL: &str = "https://github.com/jordonbc/OpenVCS/wiki";
 
 #[derive(serde::Serialize)]
+/// Event payload emitted after selecting/opening a repository.
 struct RepoSelectedPayload {
+    /// Selected repository path.
     path: String,
+    /// Backend identifier that opened the repository.
     backend: String,
 }
 
@@ -322,8 +325,11 @@ pub fn current_repo_path(state: State<'_, AppState>) -> Option<String> {
 }
 
 #[derive(serde::Serialize)]
+/// Serializable recent-repository item for frontend rendering.
 pub struct RecentRepoDto {
+    /// Absolute repository path.
     path: String,
+    /// Last path segment used as a display name when available.
     name: Option<String>,
 }
 

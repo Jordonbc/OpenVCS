@@ -293,6 +293,7 @@ impl AppState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RecentFileEntry {
+    /// Stored repository path string.
     path: String,
 }
 

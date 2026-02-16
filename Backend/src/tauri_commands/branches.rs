@@ -215,9 +215,13 @@ pub async fn git_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchI
 }
 
 #[derive(serde::Serialize)]
+/// HEAD state payload for branch/commit status checks.
 pub struct HeadStatus {
+    /// Whether HEAD is detached from a local branch.
     pub detached: bool,
+    /// Current local branch name when attached.
     pub branch: Option<String>,
+    /// Current HEAD commit id when available.
     pub commit: Option<String>,
 }
 
@@ -418,7 +422,9 @@ pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Resul
 }
 
 #[derive(serde::Serialize)]
+/// Merge-state payload consumed by the UI.
 pub struct MergeContext {
+    /// Whether an in-progress merge is detected in the repository.
     pub in_progress: bool,
 }
 
@@ -560,9 +566,13 @@ pub async fn git_create_branch(
 }
 
 #[derive(serde::Serialize)]
+/// Compact repository snapshot used by quick status views.
 pub struct RepoSummary {
+    /// Absolute repository worktree path.
     path: String,
+    /// Current branch name, or `HEAD` when detached.
     current_branch: String,
+    /// Normalized local/remote branch list.
     branches: Vec<BranchItem>,
 }
 
