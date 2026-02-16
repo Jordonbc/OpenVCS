@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use crate::plugin_paths::{built_in_plugin_dirs, ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME};
 use log::warn;
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};

@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { qs, qsa, setText } from '../lib/dom';
 import { prefs, savePrefs, state, hasRepo, hasChanges } from '../state/state';
 import { TAURI } from '../lib/tauri';

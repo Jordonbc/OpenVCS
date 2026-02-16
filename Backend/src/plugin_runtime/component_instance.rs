@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use crate::plugin_runtime::host_api::{
     host_emit_event, host_process_exec_git, host_runtime_info, host_subscribe_event,
     host_ui_notify, host_workspace_read_file, host_workspace_write_file,

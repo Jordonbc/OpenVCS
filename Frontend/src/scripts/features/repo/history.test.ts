@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect } from 'vitest'
 
 // Provide matchMedia to avoid jsdom environment errors in modules that access it

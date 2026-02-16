@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use crate::plugin_bundles::{InstalledPluginComponents, PluginBundleStore};
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::runtime_select::create_runtime_instance;

@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 // src/scripts/features/branches.ts
 import { qs } from '../lib/dom';
 import { TAURI } from '../lib/tauri';

@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 type MenuAction = (id: string) => void | Promise<void>;
 const MENU_CLOSE_MS = 130;
 

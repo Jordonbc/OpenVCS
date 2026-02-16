@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use crate::settings::{AppConfig, LogLevel};
 use std::fs::{self, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};

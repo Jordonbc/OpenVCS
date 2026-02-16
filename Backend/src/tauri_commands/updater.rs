@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use tauri::{Emitter, Manager, Runtime, Window};
 
 use tauri_plugin_updater::UpdaterExt;

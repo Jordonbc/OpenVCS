@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Discovery and opening logic for plugin-provided VCS backends.
 
 use crate::plugin_bundles::{PluginBundleStore, PluginManifest, VcsBackendProvide};

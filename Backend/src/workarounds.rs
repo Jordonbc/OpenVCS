@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 #[cfg(target_os = "linux")]
 /// Applies a runtime workaround for NVIDIA + Wayland rendering issues.
 ///

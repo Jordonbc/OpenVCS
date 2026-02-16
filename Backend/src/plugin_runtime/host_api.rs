@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use crate::plugin_runtime::spawn::SpawnConfig;
 use openvcs_core::app_api::{ComponentError, ProcessExecOutput};
 use serde_json::Value;

@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use openvcs_core::plugin_protocol::PluginMessage;
 use openvcs_core::plugin_protocol::RpcRequest;
 use serde_json::Value;

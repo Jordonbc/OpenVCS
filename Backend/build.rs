@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use std::{env, fs, path::PathBuf, process::Command};
 
 fn is_flatpak_build() -> bool {

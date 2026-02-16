@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Thin wrapper around an opened backend repository handle.
 
 use openvcs_core::{BackendId, Vcs};

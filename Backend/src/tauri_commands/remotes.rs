@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use log::{error, info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window};
 

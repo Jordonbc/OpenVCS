@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Repository-local settings payloads exchanged with the frontend.
 
 use serde::{Deserialize, Serialize};
