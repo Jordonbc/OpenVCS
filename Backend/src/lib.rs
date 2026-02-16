@@ -271,6 +271,7 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::install_ovcsp,
         tauri_commands::list_installed_bundles,
         tauri_commands::uninstall_plugin,
+        tauri_commands::set_plugin_enabled,
         tauri_commands::approve_plugin_capabilities,
         tauri_commands::list_plugin_functions,
         tauri_commands::invoke_plugin_function,

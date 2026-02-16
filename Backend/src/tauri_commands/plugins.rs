@@ -93,6 +93,31 @@ pub fn uninstall_plugin(state: State<'_, AppState>, plugin_id: String) -> Result
 }
 
 #[tauri::command]
+/// Enables or disables a plugin without triggering a full runtime sync.
+///
+/// This is more efficient than set_global_settings when only toggling
+/// a single plugin's enabled state.
+///
+/// # Parameters
+/// - `state`: Application state.
+/// - `plugin_id`: Plugin id to toggle.
+/// - `enabled`: Whether the plugin should be enabled.
+///
+/// # Returns
+/// - `Ok(())` when the operation succeeds.
+/// - `Err(String)` when the operation fails.
+pub fn set_plugin_enabled(
+    state: State<'_, AppState>,
+    plugin_id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let plugin_id = plugin_id.trim().to_string();
+    state
+        .plugin_runtime()
+        .set_plugin_enabled(&plugin_id, enabled)
+}
+
+#[tauri::command]
 /// Approves or denies requested capabilities for a plugin version.
 ///
 /// # Parameters

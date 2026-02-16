@@ -1288,6 +1288,20 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         }
     };
 
+    const persistSinglePluginToggle = async (pluginId: string, enabled: boolean) => {
+        if (!TAURI.has) return;
+        try {
+            await TAURI.invoke('set_plugin_enabled', { pluginId, enabled });
+            await reloadPlugins();
+            await refreshGitBackendOptions(modal, await TAURI.invoke<GlobalSettings>('get_global_settings'));
+            try {
+                await refreshAvailableThemes();
+            } catch {}
+        } catch {
+            notify('Failed to toggle plugin');
+        }
+    };
+
     if (!(pane as any).__wired) {
         (pane as any).__wired = true;
 
@@ -1476,6 +1490,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             if (!el || el.type !== 'checkbox' || !el.dataset.pluginId) return;
             const id = String(el.dataset.pluginId).trim().toLowerCase();
             if (!id) return;
+            const wasEnabled = state.enabled.has(id);
             if (el.checked) {
                 state.disabled.delete(id);
                 state.enabled.add(id);
@@ -1485,7 +1500,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             }
             updateCounts();
             renderDetails(getFiltered());
-            persistPluginsDisabled().catch(() => {});
+            persistSinglePluginToggle(id, el.checked).catch(() => {});
         });
 
         searchEl.addEventListener('input', () => {

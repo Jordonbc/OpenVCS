@@ -113,6 +113,30 @@ impl PluginRuntimeManager {
         }
     }
 
+    /// Ensures a plugin is running or stopped based on enabled state.
+    ///
+    /// This is more efficient than sync_plugin_runtime_with_config when
+    /// only one plugin's state has changed.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier.
+    /// - `enabled`: Whether the plugin should be running.
+    ///
+    /// # Returns
+    /// - `Ok(())` when the operation succeeds.
+    /// - `Err(String)` when the operation fails.
+    pub fn set_plugin_enabled(&self, plugin_id: &str, enabled: bool) -> Result<(), String> {
+        let key = normalize_plugin_key(plugin_id)?;
+        let is_running = self.processes.lock().contains_key(&key);
+
+        if enabled && !is_running {
+            self.start_plugin(plugin_id)?;
+        } else if !enabled && is_running {
+            self.stop_plugin(plugin_id)?;
+        }
+        Ok(())
+    }
+
     /// Synchronizes runtime process state with current persisted plugin settings.
     ///
     /// # Returns

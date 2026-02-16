@@ -1,5 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+use std::sync::OnceLock;
+
 use crate::plugin_runtime::host_api::{
     host_emit_event, host_process_exec_git, host_runtime_info, host_subscribe_event,
     host_ui_notify, host_workspace_read_file, host_workspace_write_file,
@@ -11,8 +13,20 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
 use wasmtime::component::{Component, Linker, ResourceTable};
-use wasmtime::{Engine, Store};
+use wasmtime::{Cache, CacheConfig, Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
+
+static WASMTIME_ENGINE: OnceLock<Engine> = OnceLock::new();
+
+fn get_wasmtime_engine() -> &'static Engine {
+    WASMTIME_ENGINE.get_or_init(|| {
+        let cache_config = CacheConfig::new();
+        let cache = Cache::new(cache_config).expect("create wasmtime cache");
+        let mut config = Config::default();
+        config.cache(Some(cache));
+        Engine::new(&config).expect("create wasmtime engine")
+    })
+}
 
 mod bindings {
     wasmtime::component::bindgen!({
@@ -202,10 +216,10 @@ impl ComponentPluginRuntimeInstance {
 
     /// Instantiates the component runtime and executes plugin initialization.
     fn instantiate_runtime(&self) -> Result<ComponentRuntime, String> {
-        let engine = Engine::default();
-        let component = Component::from_file(&engine, &self.spawn.exec_path)
+        let engine = get_wasmtime_engine();
+        let component = Component::from_file(engine, &self.spawn.exec_path)
             .map_err(|e| format!("load component {}: {e}", self.spawn.exec_path.display()))?;
-        let mut linker = Linker::new(&engine);
+        let mut linker = Linker::new(engine);
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
             .map_err(|e| format!("link wasi imports: {e}"))?;
         bindings::Vcs::add_to_linker::<
@@ -214,7 +228,7 @@ impl ComponentPluginRuntimeInstance {
         >(&mut linker, |state| state)
         .map_err(|e| format!("link host imports: {e}"))?;
         let mut store = Store::new(
-            &engine,
+            engine,
             ComponentHostState {
                 spawn: self.spawn.clone(),
                 table: ResourceTable::new(),
