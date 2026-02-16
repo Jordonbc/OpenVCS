@@ -41,6 +41,7 @@ const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
 let fetchCloseTimer: number | null = null;
 const FETCH_CLOSE_MS = 130;
 
+/** Closes the Fetch/Pull popover, optionally with a short close animation. */
 function closeFetchPopover() {
     if (!fetchPop || !fetchCaret) return;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -58,6 +59,7 @@ function closeFetchPopover() {
     }, FETCH_CLOSE_MS);
 }
 
+/** Closes transient UI surfaces before a repo switch or hard refresh. */
 function forceCloseTransientUi() {
     closeAllModals();
     closeSheet();
@@ -76,6 +78,7 @@ function forceCloseTransientUi() {
     window.dispatchEvent(new CustomEvent('app:repo-will-switch'));
 }
 
+/** Boots the frontend shell, wires handlers, and hydrates initial state. */
 async function boot() {
     // If launched as the Output Log window, render that view and skip the main app UI.
     if (await initOutputLogViewIfRequested()) return;
