@@ -89,6 +89,26 @@
 - Use `parking_lot` mutexes (faster than std)
 - Derive `Clone`, `Debug`, `Serialize`, `Deserialize` as needed
 
+### Documentation
+
+- **ALL code must be documented**, not just public APIs. This includes:
+  - Rust: Use doc comments (`///` for items, `//!` for modules) for all functions, structs, enums, traits, and fields.
+  - TypeScript: Use JSDoc comments (`/** ... */`) for all functions, classes, interfaces, and types.
+- Include usage examples for complex functions.
+- Keep README files in sync with code changes.
+- Document configuration options and environment variables.
+- All new files must include the following copyright header:
+
+```rust
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+```
+
+```typescript
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+```
+
 ### TypeScript
 
 **Formatting:**
