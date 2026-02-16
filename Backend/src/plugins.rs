@@ -289,7 +289,7 @@ impl PluginCache {
 static PLUGIN_CACHE: OnceLock<Arc<PluginCache>> = OnceLock::new();
 
 fn plugin_cache() -> &'static Arc<PluginCache> {
-    PLUGIN_CACHE.get_or_init(|| PluginCache::initialize())
+    PLUGIN_CACHE.get_or_init(PluginCache::initialize)
 }
 
 /// Resolves plugin root directories (user + built-in).

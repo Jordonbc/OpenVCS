@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::plugin_runtime::spawn::SpawnConfig;
-use openvcs_core::app_api::{ComponentError, ProcessExecOutput};
+use openvcs_core::app_api::PluginError;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::ffi::OsString;
@@ -55,8 +55,18 @@ fn approved_caps_and_workspace(spawn: &SpawnConfig) -> (HashSet<String>, Option<
     (approved_caps, spawn.allowed_workspace_root.clone())
 }
 
-fn host_error(code: &str, message: impl Into<String>) -> ComponentError {
-    ComponentError {
+pub(crate) type HostResult<T> = Result<T, PluginError>;
+
+/// Host-side result for `process-exec-git` mapped into WIT bindings by runtime glue.
+pub(crate) struct HostProcessExecOutput {
+    pub success: bool,
+    pub status: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+fn host_error(code: &str, message: impl Into<String>) -> PluginError {
+    PluginError {
         code: code.to_string(),
         message: message.into(),
     }
@@ -141,7 +151,7 @@ pub fn host_runtime_info() -> openvcs_core::RuntimeInfo {
     }
 }
 
-pub fn host_subscribe_event(spawn: &SpawnConfig, event_name: &str) -> Result<(), ComponentError> {
+pub fn host_subscribe_event(spawn: &SpawnConfig, event_name: &str) -> HostResult<()> {
     let name = event_name.trim();
     if name.is_empty() {
         return Err(host_error("host.invalid_event_name", "event name is empty"));
@@ -150,11 +160,7 @@ pub fn host_subscribe_event(spawn: &SpawnConfig, event_name: &str) -> Result<(),
     Ok(())
 }
 
-pub fn host_emit_event(
-    spawn: &SpawnConfig,
-    event_name: &str,
-    payload: &[u8],
-) -> Result<(), ComponentError> {
+pub fn host_emit_event(spawn: &SpawnConfig, event_name: &str, payload: &[u8]) -> HostResult<()> {
     let name = event_name.trim();
     if name.is_empty() {
         return Err(host_error("host.invalid_event_name", "event name is empty"));
@@ -173,7 +179,7 @@ pub fn host_emit_event(
     Ok(())
 }
 
-pub fn host_ui_notify(spawn: &SpawnConfig, message: &str) -> Result<(), ComponentError> {
+pub fn host_ui_notify(spawn: &SpawnConfig, message: &str) -> HostResult<()> {
     let (caps, _) = approved_caps_and_workspace(spawn);
     if !caps.contains("ui.notifications") {
         return Err(host_error(
@@ -188,10 +194,7 @@ pub fn host_ui_notify(spawn: &SpawnConfig, message: &str) -> Result<(), Componen
     Ok(())
 }
 
-pub fn host_workspace_read_file(
-    spawn: &SpawnConfig,
-    path: &str,
-) -> Result<Vec<u8>, ComponentError> {
+pub fn host_workspace_read_file(spawn: &SpawnConfig, path: &str) -> HostResult<Vec<u8>> {
     let (caps, workspace_root) = approved_caps_and_workspace(spawn);
     if !caps.contains("workspace.read") && !caps.contains("workspace.write") {
         return Err(host_error(
@@ -209,7 +212,7 @@ pub fn host_workspace_write_file(
     spawn: &SpawnConfig,
     path: &str,
     content: &[u8],
-) -> Result<(), ComponentError> {
+) -> HostResult<()> {
     let (caps, workspace_root) = approved_caps_and_workspace(spawn);
     if !caps.contains("workspace.write") {
         return Err(host_error(
@@ -229,7 +232,7 @@ pub fn host_process_exec_git(
     args: &[String],
     env: &[(String, String)],
     stdin: Option<&str>,
-) -> Result<ProcessExecOutput, ComponentError> {
+) -> HostResult<HostProcessExecOutput> {
     let (caps, workspace_root) = approved_caps_and_workspace(spawn);
     if !caps.contains("process.exec") {
         return Err(host_error(
@@ -284,7 +287,7 @@ pub fn host_process_exec_git(
             .map_err(|e| host_error("process.error", format!("wait: {e}")))?
     };
 
-    Ok(ProcessExecOutput {
+    Ok(HostProcessExecOutput {
         success: out.status.success(),
         status: out.status.code().unwrap_or(-1),
         stdout: String::from_utf8_lossy(&out.stdout).to_string(),

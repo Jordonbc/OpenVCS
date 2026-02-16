@@ -6,7 +6,6 @@ use crate::plugin_runtime::host_api::{
 };
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::spawn::SpawnConfig;
-use openvcs_core::app_api::Host as AppHostApi;
 use parking_lot::Mutex;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -18,16 +17,16 @@ use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 mod bindings {
     wasmtime::component::bindgen!({
         path: "../../Core/wit",
-        world: "openvcs-plugin",
+        world: "vcs",
         additional_derives: [serde::Serialize, serde::Deserialize],
     });
 }
 
-use bindings::exports::openvcs::plugin::plugin_api;
+use bindings::exports::openvcs::plugin::vcs_api;
 
 struct ComponentRuntime {
     store: Store<ComponentHostState>,
-    bindings: bindings::OpenvcsPlugin,
+    bindings: bindings::Vcs,
 }
 
 struct ComponentHostState {
@@ -38,95 +37,12 @@ struct ComponentHostState {
 
 impl ComponentHostState {
     fn map_host_error(
-        err: openvcs_core::app_api::ComponentError,
+        err: openvcs_core::app_api::PluginError,
     ) -> bindings::openvcs::plugin::host_api::HostError {
         bindings::openvcs::plugin::host_api::HostError {
             code: err.code,
             message: err.message,
         }
-    }
-}
-
-impl AppHostApi for ComponentHostState {
-    fn get_runtime_info(
-        &mut self,
-    ) -> Result<openvcs_core::RuntimeInfo, openvcs_core::app_api::ComponentError> {
-        Ok(host_runtime_info())
-    }
-
-    fn subscribe_event(
-        &mut self,
-        event_name: &str,
-    ) -> Result<(), openvcs_core::app_api::ComponentError> {
-        host_subscribe_event(&self.spawn, event_name)
-    }
-
-    fn emit_event(
-        &mut self,
-        event_name: &str,
-        payload: &[u8],
-    ) -> Result<(), openvcs_core::app_api::ComponentError> {
-        host_emit_event(&self.spawn, event_name, payload)
-    }
-
-    fn ui_notify(&mut self, message: &str) -> Result<(), openvcs_core::app_api::ComponentError> {
-        host_ui_notify(&self.spawn, message)
-    }
-
-    fn workspace_read_file(
-        &mut self,
-        path: &str,
-    ) -> Result<Vec<u8>, openvcs_core::app_api::ComponentError> {
-        host_workspace_read_file(&self.spawn, path)
-    }
-
-    fn workspace_write_file(
-        &mut self,
-        path: &str,
-        content: &[u8],
-    ) -> Result<(), openvcs_core::app_api::ComponentError> {
-        host_workspace_write_file(&self.spawn, path, content)
-    }
-
-    fn process_exec_git(
-        &mut self,
-        cwd: Option<&str>,
-        args: &[String],
-        env: &[(String, String)],
-        stdin: Option<&str>,
-    ) -> Result<openvcs_core::app_api::ProcessExecOutput, openvcs_core::app_api::ComponentError>
-    {
-        host_process_exec_git(&self.spawn, cwd, args, env, stdin)
-    }
-
-    fn host_log(
-        &mut self,
-        level: openvcs_core::app_api::ComponentLogLevel,
-        target: &str,
-        message: &str,
-    ) {
-        let target = if target.trim().is_empty() {
-            format!("plugin.{}", self.spawn.plugin_id)
-        } else {
-            format!("plugin.{}.{}", self.spawn.plugin_id, target)
-        };
-        match level {
-            openvcs_core::app_api::ComponentLogLevel::Trace => {
-                log::trace!(target: &target, "{message}")
-            }
-            openvcs_core::app_api::ComponentLogLevel::Debug => {
-                log::debug!(target: &target, "{message}")
-            }
-            openvcs_core::app_api::ComponentLogLevel::Info => {
-                log::info!(target: &target, "{message}")
-            }
-            openvcs_core::app_api::ComponentLogLevel::Warn => {
-                log::warn!(target: &target, "{message}")
-            }
-            openvcs_core::app_api::ComponentLogLevel::Error => {
-                log::error!(target: &target, "{message}")
-            }
-        };
     }
 }
 
@@ -146,8 +62,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         bindings::openvcs::plugin::host_api::RuntimeInfo,
         bindings::openvcs::plugin::host_api::HostError,
     > {
-        let value =
-            AppHostApi::get_runtime_info(self).map_err(ComponentHostState::map_host_error)?;
+        let value = host_runtime_info();
         Ok(bindings::openvcs::plugin::host_api::RuntimeInfo {
             os: value.os,
             arch: value.arch,
@@ -159,7 +74,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         &mut self,
         event_name: String,
     ) -> Result<(), bindings::openvcs::plugin::host_api::HostError> {
-        AppHostApi::subscribe_event(self, &event_name).map_err(ComponentHostState::map_host_error)
+        host_subscribe_event(&self.spawn, &event_name).map_err(ComponentHostState::map_host_error)
     }
 
     fn emit_event(
@@ -167,7 +82,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         event_name: String,
         payload: Vec<u8>,
     ) -> Result<(), bindings::openvcs::plugin::host_api::HostError> {
-        AppHostApi::emit_event(self, &event_name, &payload)
+        host_emit_event(&self.spawn, &event_name, &payload)
             .map_err(ComponentHostState::map_host_error)
     }
 
@@ -175,14 +90,14 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         &mut self,
         message: String,
     ) -> Result<(), bindings::openvcs::plugin::host_api::HostError> {
-        AppHostApi::ui_notify(self, &message).map_err(ComponentHostState::map_host_error)
+        host_ui_notify(&self.spawn, &message).map_err(ComponentHostState::map_host_error)
     }
 
     fn workspace_read_file(
         &mut self,
         path: String,
     ) -> Result<Vec<u8>, bindings::openvcs::plugin::host_api::HostError> {
-        AppHostApi::workspace_read_file(self, &path).map_err(ComponentHostState::map_host_error)
+        host_workspace_read_file(&self.spawn, &path).map_err(ComponentHostState::map_host_error)
     }
 
     fn workspace_write_file(
@@ -190,7 +105,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         path: String,
         content: Vec<u8>,
     ) -> Result<(), bindings::openvcs::plugin::host_api::HostError> {
-        AppHostApi::workspace_write_file(self, &path, &content)
+        host_workspace_write_file(&self.spawn, &path, &content)
             .map_err(ComponentHostState::map_host_error)
     }
 
@@ -209,7 +124,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
             .map(|var| (var.key, var.value))
             .collect::<Vec<_>>();
         let value =
-            AppHostApi::process_exec_git(self, cwd.as_deref(), &args, &env, stdin.as_deref())
+            host_process_exec_git(&self.spawn, cwd.as_deref(), &args, &env, stdin.as_deref())
                 .map_err(ComponentHostState::map_host_error)?;
         Ok(bindings::openvcs::plugin::host_api::ProcessExecOutput {
             success: value.success,
@@ -225,24 +140,29 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         target: String,
         message: String,
     ) {
-        let level = match level {
+        let target = if target.trim().is_empty() {
+            format!("plugin.{}", self.spawn.plugin_id)
+        } else {
+            format!("plugin.{}.{}", self.spawn.plugin_id, target)
+        };
+
+        match level {
             bindings::openvcs::plugin::host_api::LogLevel::Trace => {
-                openvcs_core::app_api::ComponentLogLevel::Trace
+                log::trace!(target: &target, "{message}")
             }
             bindings::openvcs::plugin::host_api::LogLevel::Debug => {
-                openvcs_core::app_api::ComponentLogLevel::Debug
+                log::debug!(target: &target, "{message}")
             }
             bindings::openvcs::plugin::host_api::LogLevel::Info => {
-                openvcs_core::app_api::ComponentLogLevel::Info
+                log::info!(target: &target, "{message}")
             }
             bindings::openvcs::plugin::host_api::LogLevel::Warn => {
-                openvcs_core::app_api::ComponentLogLevel::Warn
+                log::warn!(target: &target, "{message}")
             }
             bindings::openvcs::plugin::host_api::LogLevel::Error => {
-                openvcs_core::app_api::ComponentLogLevel::Error
+                log::error!(target: &target, "{message}")
             }
         };
-        AppHostApi::host_log(self, level, &target, &message);
     }
 }
 
@@ -268,7 +188,7 @@ impl ComponentPluginRuntimeInstance {
         let mut linker = Linker::new(&engine);
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
             .map_err(|e| format!("link wasi imports: {e}"))?;
-        bindings::OpenvcsPlugin::add_to_linker::<
+        bindings::Vcs::add_to_linker::<
             ComponentHostState,
             wasmtime::component::HasSelf<ComponentHostState>,
         >(&mut linker, |state| state)
@@ -281,7 +201,7 @@ impl ComponentPluginRuntimeInstance {
                 wasi: WasiCtx::builder().build(),
             },
         );
-        let bindings = bindings::OpenvcsPlugin::instantiate(&mut store, &component, &linker)
+        let bindings = bindings::Vcs::instantiate(&mut store, &component, &linker)
             .map_err(|e| format!("instantiate component {}: {e}", self.spawn.plugin_id))?;
 
         bindings
@@ -342,13 +262,14 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
         Ok(())
     }
 
+    #[allow(clippy::let_unit_value)]
     fn call(&self, method: &str, params: Value) -> Result<Value, String> {
         self.with_runtime(|runtime| {
             macro_rules! invoke {
                 ($method_name:literal, $call:ident $(, $arg:expr )* ) => {
                     runtime
                         .bindings
-                        .openvcs_plugin_plugin_api()
+                        .openvcs_plugin_vcs_api()
                         .$call(&mut runtime.store $(, $arg )* )
                         .map_err(|e| {
                             format!(
@@ -407,13 +328,13 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
                         .into_iter()
                         .map(|item| {
                             let kind = match item.kind {
-                                plugin_api::BranchKind::Local => {
+                                vcs_api::BranchKind::Local => {
                                     serde_json::json!({ "type": "Local" })
                                 }
-                                plugin_api::BranchKind::Remote(remote) => {
+                                vcs_api::BranchKind::Remote(remote) => {
                                     serde_json::json!({ "type": "Remote", "remote": remote })
                                 }
-                                plugin_api::BranchKind::Unknown => {
+                                vcs_api::BranchKind::Unknown => {
                                     serde_json::json!({ "type": "Unknown" })
                                 }
                             };
@@ -492,7 +413,7 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
                     struct Params {
                         remote: String,
                         refspec: String,
-                        opts: plugin_api::FetchOptions,
+                        opts: vcs_api::FetchOptions,
                     }
                     let p: Params = parse_method_params(method, params)?;
                     let out = invoke!(
@@ -560,7 +481,7 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
                 "log_commits" => {
                     #[derive(serde::Deserialize)]
                     struct Params {
-                        query: plugin_api::LogQuery,
+                        query: vcs_api::LogQuery,
                     }
                     let p: Params = parse_method_params(method, params)?;
                     let out = invoke!("log_commits", call_list_commits, &p.query)?;
@@ -597,7 +518,7 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
                     #[derive(serde::Deserialize)]
                     struct Params {
                         path: String,
-                        side: plugin_api::ConflictSide,
+                        side: vcs_api::ConflictSide,
                     }
                     let p: Params = parse_method_params(method, params)?;
                     let out = invoke!(

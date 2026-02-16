@@ -42,13 +42,6 @@ pub struct PluginBackendDescriptor {
     pub plugin_name: Option<String>,
 }
 
-/// Normalizes capability ids (trim/sort/dedup).
-///
-/// # Parameters
-/// - `caps`: Raw capability list.
-///
-/// # Returns
-/// - Normalized capability list.
 /// Reads a plugin manifest from a plugin directory.
 ///
 /// # Parameters
