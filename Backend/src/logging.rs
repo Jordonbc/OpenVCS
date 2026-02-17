@@ -121,7 +121,125 @@ pub fn init() {
         // Extract source from target (e.g., "openvcs_lib::tauri_commands::output_log" -> "output_log")
         let source = target.split("::").last().unwrap_or(target).to_uppercase();
 
-        writeln!(buf, "[{}] [{}] {:5} [{}]: {}", date, time, ts, source, args)
+        // For Debug/Trace level, try to pretty-print JSON-like content in messages
+        let msg = args.to_string();
+
+        let format_braced = |body: &str| {
+            let mut out = String::with_capacity(body.len() + 64);
+            let mut indent: usize = 0;
+            let mut in_string = false;
+            let mut escaped = false;
+
+            for ch in body.chars() {
+                if in_string {
+                    out.push(ch);
+                    if escaped {
+                        escaped = false;
+                    } else if ch == '\\' {
+                        escaped = true;
+                    } else if ch == '"' {
+                        in_string = false;
+                    }
+                    continue;
+                }
+
+                match ch {
+                    '"' => {
+                        in_string = true;
+                        out.push(ch);
+                    }
+                    '{' => {
+                        out.push('{');
+                        indent += 1;
+                        out.push('\n');
+                        out.push_str(&"  ".repeat(indent));
+                    }
+                    '}' => {
+                        indent = indent.saturating_sub(1);
+                        out.push('\n');
+                        out.push_str(&"  ".repeat(indent));
+                        out.push('}');
+                    }
+                    ',' => {
+                        out.push(',');
+                        out.push('\n');
+                        out.push_str(&"  ".repeat(indent));
+                    }
+                    _ => out.push(ch),
+                }
+            }
+
+            out
+        };
+
+        let clean_label = |prefix: &str| {
+            let mut label = prefix.trim().trim_end_matches(':').trim().to_string();
+            for suffix in ["Object", "RemoteRelease"] {
+                if let Some(stripped) = label.strip_suffix(suffix) {
+                    label = stripped.trim().to_string();
+                }
+            }
+            if label.is_empty() {
+                "payload".to_string()
+            } else {
+                label
+            }
+        };
+
+        // Check if message contains JSON-like structure that can be extracted and formatted.
+        if msg.len() > 100 && (ts == log::Level::Debug || ts == log::Level::Trace) {
+            if let (Some(start), Some(end)) = (msg.find('{'), msg.rfind('}')) {
+                let json_part = &msg[start..=end];
+
+                let regex = regex::Regex::new(r#"String\("([^"]*)"\)"#).ok();
+
+                // Strategy 1: strict conversion of common Rust debug wrappers.
+                let mut attempts: Vec<String> = Vec::with_capacity(2);
+                let mut cleaned = json_part.replace("Object ", "");
+                if let Some(re) = &regex {
+                    cleaned = re.replace_all(&cleaned, r#""$1""#).to_string();
+                }
+                attempts.push(cleaned);
+
+                // Strategy 2: aggressive conversion fallback for odd wrapper nesting.
+                let aggressive = json_part
+                    .replace("Object ", "")
+                    .replace("String(\"", "\"")
+                    .replace("\")", "\"");
+                attempts.push(aggressive);
+
+                for json_clean in attempts {
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_clean) {
+                        if let Ok(pretty) = serde_json::to_string_pretty(&value) {
+                            let label = clean_label(&msg[..start]);
+                            let header =
+                                format!("[{}] [{}] {:5} [{}]: {} ", date, time, ts, source, label);
+                            let lines: Vec<&str> = pretty.lines().collect();
+                            return writeln!(
+                                buf,
+                                "{}{}",
+                                header,
+                                lines.join(&format!("\n{}", " ".repeat(header.len())))
+                            );
+                        }
+                    }
+                }
+
+                // Fallback: non-JSON Rust debug structs (e.g., RemoteRelease { ... })
+                let label = clean_label(&msg[..start]);
+                let pretty = format_braced(json_part);
+                let header = format!("[{}] [{}] {:5} [{}]: {} ", date, time, ts, source, label);
+                let lines: Vec<&str> = pretty.lines().collect();
+                return writeln!(
+                    buf,
+                    "{}{}",
+                    header,
+                    lines.join(&format!("\n{}", " ".repeat(header.len())))
+                );
+            }
+        }
+
+        writeln!(buf, "[{}] [{}] {:5} [{}]: {}", date, time, ts, source, msg)
     });
 
     // Wasmtime/Cranelift can be extremely verbose at TRACE/DEBUG and drown out OpenVCS logs.
