@@ -27,6 +27,26 @@ pub fn clear_active_log_file() -> Result<(), String> {
     Ok(())
 }
 
+/// Writes a line directly to the active log file.
+///
+/// # Parameters
+/// - `line`: The line to write (without trailing newline).
+///
+/// # Returns
+/// - `Ok(())` if the line was written.
+/// - `Err(String)` if writing fails or log file not initialized.
+pub fn write_to_log(line: &str) -> Result<(), String> {
+    let Some(file) = ACTIVE_LOG_FILE.get() else {
+        return Ok(());
+    };
+    let mut f = file
+        .lock()
+        .map_err(|_| "log file lock poisoned".to_string())?;
+    writeln!(f, "{}", line).map_err(|e| e.to_string())?;
+    f.flush().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Initialize logging: console (env_logger) + append to `./logs/openvcs.log`.
 /// Respects `RUST_LOG` for filtering; sets a sensible default if missing.
 ///
@@ -80,9 +100,29 @@ pub fn init() {
         }
     }
 
-    // Build console logger (with timestamps) and then mirror to a file if possible.
+    // Build console logger with custom format
     let mut builder = env_logger::Builder::from_default_env();
-    builder.format_timestamp_millis();
+    builder.format(|buf, record| {
+        use std::io::Write;
+        let ts = record.level();
+        let target = record.target();
+        let args = record.args();
+
+        // Format: [YYYY-MM-DD] [HH:MM:SS] LEVEL [SOURCE]: message
+        let now = time::OffsetDateTime::now_utc();
+        let date = format!(
+            "{:04}-{:02}-{:02}",
+            now.year(),
+            now.month() as u8,
+            now.day()
+        );
+        let time = format!("{:02}:{:02}:{:02}", now.hour(), now.minute(), now.second());
+
+        // Extract source from target (e.g., "openvcs_lib::tauri_commands::output_log" -> "output_log")
+        let source = target.split("::").last().unwrap_or(target).to_uppercase();
+
+        writeln!(buf, "[{}] [{}] {:5} [{}]: {}", date, time, ts, source, args)
+    });
 
     // Wasmtime/Cranelift can be extremely verbose at TRACE/DEBUG and drown out OpenVCS logs.
     // Keep these at WARN+ even if the user enables a global TRACE filter.

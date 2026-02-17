@@ -21,31 +21,31 @@ function formatMessage(...args: unknown[]): string {
         .join(" ");
 }
 
-function sendToBackend(level: LogLevel, source: string, message: string): void {
+function sendToBackend(level: LogLevel, message: string): void {
     if (TAURI.has) {
-        TAURI.invoke("log_frontend_message", { level, source, message }).catch(() => {});
+        TAURI.invoke("log_frontend_message", { level, message }).catch(() => {});
     }
 }
 
 function installFrontendLogger(): void {
     console.debug = (...args: unknown[]) => {
         const msg = formatMessage(...args);
-        sendToBackend("debug", "ui", msg);
+        sendToBackend("debug", msg);
     };
 
     console.log = (...args: unknown[]) => {
         const msg = formatMessage(...args);
-        sendToBackend("debug", "ui", msg);
+        sendToBackend("debug", msg);
     };
 
     console.warn = (...args: unknown[]) => {
         const msg = formatMessage(...args);
-        sendToBackend("warn", "ui", msg);
+        sendToBackend("warn", msg);
     };
 
     console.error = (...args: unknown[]) => {
         const msg = formatMessage(...args);
-        sendToBackend("error", "ui", msg);
+        sendToBackend("error", msg);
     };
 }
 

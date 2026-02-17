@@ -88,12 +88,7 @@ pub fn clear_output_log(state: tauri::State<'_, AppState>) {
 ///
 /// # Returns
 /// - `()`.
-pub fn log_frontend_message(
-    state: tauri::State<'_, AppState>,
-    level: String,
-    source: String,
-    message: String,
-) {
+pub fn log_frontend_message(state: tauri::State<'_, AppState>, level: String, message: String) {
     let (output_level, log_level) = match level.to_lowercase().as_str() {
         "debug" | "trace" => (OutputLevel::Info, log::Level::Trace),
         "info" => (OutputLevel::Info, log::Level::Info),
@@ -102,7 +97,21 @@ pub fn log_frontend_message(
         _ => (OutputLevel::Info, log::Level::Info),
     };
 
-    log::log!(log_level, "[{}] {}", source, message);
+    // Write directly to stderr with [FRONTEND] tag
+    let now = time::OffsetDateTime::now_utc();
+    let timestamp = format!(
+        "[{}] [{}]",
+        format!(
+            "{:04}-{:02}-{:02}",
+            now.year(),
+            now.month() as u8,
+            now.day()
+        ),
+        format!("{:02}:{:02}:{:02}", now.hour(), now.minute(), now.second())
+    );
+    let log_line = format!("{} {:5} [FRONTEND]: {}", timestamp, log_level, message);
+    eprintln!("{}", log_line);
+    let _ = crate::logging::write_to_log(&log_line);
 
     let entry = OutputLogEntry::new(
         std::time::SystemTime::now()
@@ -110,7 +119,7 @@ pub fn log_frontend_message(
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0),
         output_level,
-        source,
+        "frontend",
         message,
     );
     state.push_output_log(entry);
