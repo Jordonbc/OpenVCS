@@ -4,7 +4,6 @@ use tauri::{Manager, Runtime, WebviewUrl, WebviewWindowBuilder, Window};
 
 use crate::output_log::{OutputLevel, OutputLogEntry};
 use crate::state::AppState;
-use log;
 
 /// Reads up to the last `max_lines` lines from a log file efficiently.
 ///
@@ -100,14 +99,13 @@ pub fn log_frontend_message(state: tauri::State<'_, AppState>, level: String, me
     // Write directly to stderr with [FRONTEND] tag
     let now = time::OffsetDateTime::now_utc();
     let timestamp = format!(
-        "[{}] [{}]",
-        format!(
-            "{:04}-{:02}-{:02}",
-            now.year(),
-            now.month() as u8,
-            now.day()
-        ),
-        format!("{:02}:{:02}:{:02}", now.hour(), now.minute(), now.second())
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        now.year(),
+        now.month() as u8,
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second()
     );
     let log_line = format!("{} {:5} [FRONTEND]: {}", timestamp, log_level, message);
     eprintln!("{}", log_line);

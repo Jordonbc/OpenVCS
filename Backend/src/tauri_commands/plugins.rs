@@ -3,7 +3,7 @@
 use crate::plugin_bundles::{InstalledPlugin, InstalledPluginIndex, PluginBundleStore};
 use crate::plugins;
 use crate::state::AppState;
-use log::warn;
+use log::{info, warn};
 use serde_json::Value;
 use tauri::Emitter;
 use tauri::Manager;
@@ -49,6 +49,11 @@ pub async fn install_ovcsp<R: Runtime>(
     let store = PluginBundleStore::new_default();
     let installed = store.install_ovcsp(std::path::Path::new(bundle_path.trim()))?;
 
+    info!(
+        "plugin: installed '{}' v{}",
+        installed.plugin_id, installed.version
+    );
+
     if !installed.requested_capabilities.is_empty() {
         let _ = window.app_handle().emit(
             "plugins:capabilities-requested",
@@ -89,7 +94,9 @@ pub fn list_installed_bundles() -> Result<Vec<InstalledPluginIndex>, String> {
 pub fn uninstall_plugin(state: State<'_, AppState>, plugin_id: String) -> Result<(), String> {
     let plugin_id = plugin_id.trim().to_string();
     state.plugin_runtime().stop_plugin(&plugin_id)?;
-    PluginBundleStore::new_default().uninstall_plugin(&plugin_id)
+    PluginBundleStore::new_default().uninstall_plugin(&plugin_id)?;
+    info!("plugin: uninstalled '{}'", plugin_id);
+    Ok(())
 }
 
 #[tauri::command]
@@ -135,7 +142,20 @@ pub fn approve_plugin_capabilities(
     approved: bool,
 ) -> Result<(), String> {
     let plugin_id = plugin_id.trim().to_string();
-    PluginBundleStore::new_default().approve_capabilities(&plugin_id, version.trim(), approved)?;
+    let version = version.trim();
+    PluginBundleStore::new_default().approve_capabilities(&plugin_id, version, approved)?;
+
+    if approved {
+        info!(
+            "plugin: capabilities approved for '{}' v{}",
+            plugin_id, version
+        );
+    } else {
+        info!(
+            "plugin: capabilities denied for '{}' v{}",
+            plugin_id, version
+        );
+    }
 
     if !approved {
         let _ = state.plugin_runtime().stop_plugin(&plugin_id);

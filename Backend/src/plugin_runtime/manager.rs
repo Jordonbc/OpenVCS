@@ -5,6 +5,7 @@ use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::runtime_select::create_runtime_instance;
 use crate::plugin_runtime::spawn::SpawnConfig;
 use crate::settings::AppConfig;
+use log::{info, warn};
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -82,7 +83,9 @@ impl PluginRuntimeManager {
             return existing.runtime.ensure_running();
         }
         let spec = self.resolve_module_runtime_spec(plugin_id, None)?;
-        self.start_plugin_spec(spec)
+        self.start_plugin_spec(spec)?;
+        info!("plugin: started '{}'", plugin_id);
+        Ok(())
     }
 
     /// Stops a plugin module process when present.
@@ -101,15 +104,24 @@ impl PluginRuntimeManager {
         let process = self.processes.lock().remove(&key);
         if let Some(process) = process {
             process.runtime.stop();
+            info!("plugin: stopped '{}'", plugin_id);
         }
         Ok(())
     }
 
     /// Stops all running plugins.
     pub fn stop_all_plugins(&self) {
-        let running = std::mem::take(&mut *self.processes.lock());
-        for (_, process) in running {
-            process.runtime.stop();
+        let running: Vec<String> = {
+            let mut processes = self.processes.lock();
+            let keys: Vec<String> = processes.keys().cloned().collect();
+            for (_, process) in processes.iter_mut() {
+                process.runtime.stop();
+            }
+            processes.clear();
+            keys
+        };
+        if !running.is_empty() {
+            info!("plugin: stopped all ({} plugins)", running.len());
         }
     }
 
@@ -131,8 +143,10 @@ impl PluginRuntimeManager {
 
         if enabled && !is_running {
             self.start_plugin(plugin_id)?;
+            info!("plugin: enabled '{}'", plugin_id);
         } else if !enabled && is_running {
             self.stop_plugin(plugin_id)?;
+            info!("plugin: disabled '{}'", plugin_id);
         }
         Ok(())
     }
@@ -160,6 +174,8 @@ impl PluginRuntimeManager {
         let mut desired_running = HashSet::new();
         let mut errors = Vec::new();
 
+        let before: Vec<String> = self.processes.lock().keys().cloned().collect();
+
         for component in components {
             let plugin_id = component.plugin_id.trim();
             if plugin_id.is_empty() || component.module.is_none() {
@@ -184,9 +200,39 @@ impl PluginRuntimeManager {
             }
         }
 
+        let after: Vec<String> = self.processes.lock().keys().cloned().collect();
+        let started: Vec<&String> = after.iter().filter(|p| !before.contains(p)).collect();
+        let stopped: Vec<&String> = before.iter().filter(|p| !after.contains(p)).collect();
+
+        if !started.is_empty() || !stopped.is_empty() {
+            let mut parts = Vec::new();
+            if !started.is_empty() {
+                parts.push(format!(
+                    "started: {}",
+                    started
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+            if !stopped.is_empty() {
+                parts.push(format!(
+                    "stopped: {}",
+                    stopped
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+            info!("plugin: sync complete - {}", parts.join("; "));
+        }
+
         if errors.is_empty() {
             Ok(())
         } else {
+            warn!("plugin: sync completed with errors: {}", errors.join("; "));
             Err(errors.join("; "))
         }
     }
