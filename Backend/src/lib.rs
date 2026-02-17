@@ -290,6 +290,7 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::open_output_log_window,
         tauri_commands::get_output_log,
         tauri_commands::clear_output_log,
+        tauri_commands::log_frontend_message,
         tauri_commands::tail_app_log,
         tauri_commands::clear_app_log,
         tauri_commands::exit_app,

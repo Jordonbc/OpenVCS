@@ -60,9 +60,13 @@ export function initMenubar(onAction: MenuAction) {
         if (!list || !trigger) return;
         const isOpen = !list.hasAttribute('hidden');
         if (isOpen) {
+            const menuName = trigger.textContent || 'menu';
+            console.log(`UI: Close ${menuName} menu`);
             closeMenus();
             return;
         }
+        const menuName = trigger.textContent || 'menu';
+        console.log(`UI: Open ${menuName} menu`);
         list.classList.remove('is-closing');
         list.removeAttribute('hidden');
         trigger.setAttribute('aria-expanded', 'true');

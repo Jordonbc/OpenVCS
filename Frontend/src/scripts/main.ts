@@ -1,5 +1,6 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+import './lib/logger';
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
@@ -332,23 +333,25 @@ async function boot() {
 
     async function runMenuAction(id?: string | null) {
         switch (id) {
-            case 'clone_repo': openSheet('clone'); break;
-            case 'add_repo':   openSheet('add');   break;
-            case 'open_repo':  openSwitchDrawer(); break;
-            case 'fetch': await defaultFetchAction(); break;
-            case 'push':  await pushChanges();  break;
-            case 'commit': commitBtn?.click(); break;
-            case 'docs': await openDocs(); break;
+            case 'clone_repo': console.log('Action: clone_repo'); openSheet('clone'); break;
+            case 'add_repo':   console.log('Action: add_repo'); openSheet('add'); break;
+            case 'open_repo':  console.log('Action: open_repo'); openSwitchDrawer(); break;
+            case 'fetch': console.log('Action: fetch'); await defaultFetchAction(); break;
+            case 'push':  console.log('Action: push'); await pushChanges();  break;
+            case 'commit': console.log('Action: commit'); commitBtn?.click(); break;
+            case 'docs': console.log('Action: docs'); await openDocs(); break;
             case 'show-output-log':
+                console.log('Action: show-output-log');
                 if (!TAURI.has) { notify('Output Log is available in the desktop app'); break; }
                 try { await TAURI.invoke('open_output_log_window', {}); }
                 catch { notify('Failed to open Output Log'); }
                 break;
-            case 'about': openAbout(); break;
-            case 'settings': openSettings(); break;
-            case 'repo-settings': openRepoSettings(); break;
+            case 'about': console.log('Action: about'); openAbout(); break;
+            case 'settings': console.log('Action: settings'); openSettings(); break;
+            case 'repo-settings': console.log('Action: repo-settings'); openRepoSettings(); break;
             case 'repo-edit-gitignore':
             case 'repo-edit-gitattributes': {
+                console.log('Action:', id);
                 if (!TAURI.has) { notify('Open this in the desktop app to edit repository files'); break; }
                 const name = id === 'repo-edit-gitignore' ? '.gitignore' : '.gitattributes';
                 try { await TAURI.invoke('open_repo_dotfile', { name }); }

@@ -79,6 +79,7 @@ async function rebuildThemePackOptions(
 }
 
 export function openSettings(section?: string){
+    console.log('Opening settings modal', section ? `section: ${section}` : '');
     openModal('settings-modal');
     const modal = document.getElementById('settings-modal') as HTMLElement | null;
     if (!modal) return;
