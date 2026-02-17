@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Discovery and opening logic for plugin-provided VCS backends.
 
+use crate::logging::LogTimer;
 use crate::plugin_bundles::{PluginBundleStore, PluginManifest, VcsBackendProvide};
 use crate::plugin_paths::{built_in_plugin_dirs, PLUGIN_MANIFEST_NAME};
 use crate::plugin_runtime::{vcs_proxy::PluginVcsProxy, PluginRuntimeManager};
 use crate::settings::AppConfig;
-use log::warn;
+use log::{debug, error, info, trace, warn};
 use openvcs_core::{BackendId, Result as VcsResult, Vcs, VcsError};
 use std::{
     collections::BTreeMap,
@@ -14,6 +15,8 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+
+const MODULE: &str = "plugin_vcs_backends";
 
 /// Determines whether a plugin is enabled considering config overrides.
 ///
@@ -26,7 +29,15 @@ use std::{
 /// - `false` otherwise.
 fn is_plugin_enabled_in_settings(plugin_id: &str, default_enabled: bool) -> bool {
     let cfg = AppConfig::load_or_default();
-    cfg.is_plugin_enabled(plugin_id, default_enabled)
+    let enabled = cfg.is_plugin_enabled(plugin_id, default_enabled);
+    trace!(
+        "[{}] is_plugin_enabled_in_settings: plugin={}, default={}, result={}",
+        MODULE,
+        plugin_id,
+        default_enabled,
+        enabled
+    );
+    enabled
 }
 
 /// Metadata describing a single plugin-provided backend implementation.
@@ -52,8 +63,20 @@ pub struct PluginBackendDescriptor {
 /// - `None` on read/parse failure.
 fn load_manifest_from_dir(plugin_dir: &Path) -> Option<PluginManifest> {
     let manifest_path = plugin_dir.join(PLUGIN_MANIFEST_NAME);
+    trace!(
+        "[{}] load_manifest_from_dir: loading from {}",
+        MODULE,
+        manifest_path.display()
+    );
+
     let text = fs::read_to_string(&manifest_path).ok()?;
-    serde_json::from_str(&text).ok()
+    let manifest: PluginManifest = serde_json::from_str(&text).ok()?;
+
+    debug!(
+        "[{}] load_manifest_from_dir: loaded manifest for plugin '{}'",
+        MODULE, manifest.id
+    );
+    Some(manifest)
 }
 
 /// Lists manifests from built-in plugin directories.
@@ -61,14 +84,40 @@ fn load_manifest_from_dir(plugin_dir: &Path) -> Option<PluginManifest> {
 /// # Returns
 /// - Directory/manifest pairs for readable built-in plugins.
 fn builtin_plugin_manifests() -> Vec<(PathBuf, PluginManifest)> {
+    let _timer = LogTimer::new(MODULE, "builtin_plugin_manifests");
+    trace!(
+        "[{}] builtin_plugin_manifests: scanning built-in plugin dirs",
+        MODULE
+    );
+
     let mut out = Vec::new();
-    for root in built_in_plugin_dirs() {
+    let dirs = built_in_plugin_dirs();
+    debug!(
+        "[{}] builtin_plugin_manifests: found {} built-in plugin directories",
+        MODULE,
+        dirs.len()
+    );
+
+    for root in dirs {
         if !root.is_dir() {
+            trace!(
+                "[{}] builtin_plugin_manifests: {} is not a directory",
+                MODULE,
+                root.display()
+            );
             continue;
         }
         let entries = match fs::read_dir(&root) {
             Ok(entries) => entries,
-            Err(_) => continue,
+            Err(e) => {
+                warn!(
+                    "[{}] builtin_plugin_manifests: failed to read {}: {}",
+                    MODULE,
+                    root.display(),
+                    e
+                );
+                continue;
+            }
         };
         for entry in entries.flatten() {
             let plugin_dir = entry.path();
@@ -80,6 +129,12 @@ fn builtin_plugin_manifests() -> Vec<(PathBuf, PluginManifest)> {
             }
         }
     }
+
+    debug!(
+        "[{}] builtin_plugin_manifests: found {} built-in manifests",
+        MODULE,
+        out.len()
+    );
     out
 }
 
@@ -89,20 +144,52 @@ fn builtin_plugin_manifests() -> Vec<(PathBuf, PluginManifest)> {
 /// - `Ok(Vec<PluginBackendDescriptor>)` containing discovered backend descriptors.
 /// - `Err(String)` if installed plugin components cannot be loaded.
 pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
+    let _timer = LogTimer::new(MODULE, "list_plugin_vcs_backends");
+    info!(
+        "[{}] list_plugin_vcs_backends: discovering VCS backends",
+        MODULE
+    );
+
     let store = PluginBundleStore::new_default();
-    let plugins = store.list_current_components()?;
+    let plugins = store.list_current_components().map_err(|e| {
+        error!(
+            "[{}] list_plugin_vcs_backends: failed to list components: {}",
+            MODULE, e
+        );
+        e
+    })?;
+
+    debug!(
+        "[{}] list_plugin_vcs_backends: found {} installed plugins",
+        MODULE,
+        plugins.len()
+    );
     let mut map: BTreeMap<String, PluginBackendDescriptor> = BTreeMap::new();
 
     for p in plugins {
         if !is_plugin_enabled_in_settings(&p.plugin_id, p.default_enabled) {
+            trace!(
+                "[{}] list_plugin_vcs_backends: plugin {} is disabled",
+                MODULE,
+                p.plugin_id
+            );
             continue;
         }
         let Some(module) = p.module else {
+            trace!(
+                "[{}] list_plugin_vcs_backends: plugin {} has no module",
+                MODULE,
+                p.plugin_id
+            );
             continue;
         };
 
         for (id, name) in module.vcs_backends {
             let backend_id = BackendId::from(id.as_str());
+            debug!(
+                "[{}] list_plugin_vcs_backends: found backend '{}' from plugin '{}'",
+                MODULE, backend_id, p.plugin_id
+            );
             let candidate = PluginBackendDescriptor {
                 backend_id: backend_id.clone(),
                 backend_name: name,
@@ -117,12 +204,27 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
     for (plugin_dir, manifest) in builtin_plugin_manifests() {
         let plugin_id = manifest.id.trim();
         if plugin_id.is_empty() {
+            warn!(
+                "[{}] list_plugin_vcs_backends: manifest has empty id at {}",
+                MODULE,
+                plugin_dir.display()
+            );
             continue;
         }
         if !is_plugin_enabled_in_settings(plugin_id, manifest.default_enabled) {
+            trace!(
+                "[{}] list_plugin_vcs_backends: built-in plugin {} is disabled",
+                MODULE,
+                plugin_id
+            );
             continue;
         }
         let Some(module) = &manifest.module else {
+            trace!(
+                "[{}] list_plugin_vcs_backends: built-in plugin {} has no module",
+                MODULE,
+                plugin_id
+            );
             continue;
         };
         let Some(exec_name) = module
@@ -131,17 +233,31 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
             .map(str::trim)
             .filter(|s| !s.is_empty())
         else {
+            trace!(
+                "[{}] list_plugin_vcs_backends: built-in plugin {} has no exec",
+                MODULE,
+                plugin_id
+            );
             continue;
         };
         let exec_path = plugin_dir.join("bin").join(exec_name);
         if !exec_path.is_file() {
             warn!(
-                "plugin_vcs_backends: built-in plugin {} is missing module exec {}",
+                "[{}] list_plugin_vcs_backends: built-in plugin {} is missing module exec {}",
+                MODULE,
                 plugin_id,
                 exec_path.display()
             );
             continue;
         }
+
+        debug!(
+            "[{}] list_plugin_vcs_backends: processing built-in plugin {} at {}",
+            MODULE,
+            plugin_id,
+            plugin_dir.display()
+        );
+
         let plugin_name = manifest.name.clone();
         for provide in &module.vcs_backends {
             let (id, label) = match provide {
@@ -151,8 +267,17 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
             let backend_id = BackendId::from(id.as_str());
             let key = backend_id.as_ref().to_string();
             if map.contains_key(&key) {
+                trace!(
+                    "[{}] list_plugin_vcs_backends: backend {} already registered",
+                    MODULE,
+                    backend_id
+                );
                 continue;
             }
+            debug!(
+                "[{}] list_plugin_vcs_backends: registering built-in backend '{}' from plugin '{}'",
+                MODULE, backend_id, plugin_id
+            );
             let candidate = PluginBackendDescriptor {
                 backend_id: backend_id.clone(),
                 backend_name: label,
@@ -163,7 +288,13 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
         }
     }
 
-    Ok(map.into_values().collect())
+    let result: Vec<_> = map.into_values().collect();
+    info!(
+        "[{}] list_plugin_vcs_backends: discovered {} VCS backends",
+        MODULE,
+        result.len()
+    );
+    Ok(result)
 }
 
 /// Returns whether a plugin-provided backend exists for the given backend id.
@@ -175,10 +306,20 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
 /// - `true` when a matching plugin backend is available.
 /// - `false` otherwise.
 pub fn has_plugin_vcs_backend(backend_id: &BackendId) -> bool {
-    list_plugin_vcs_backends().ok().is_some_and(|v| {
+    trace!(
+        "[{}] has_plugin_vcs_backend: checking for {}",
+        MODULE,
+        backend_id
+    );
+    let result = list_plugin_vcs_backends().ok().is_some_and(|v| {
         v.iter()
             .any(|b| b.backend_id.as_ref() == backend_id.as_ref())
-    })
+    });
+    debug!(
+        "[{}] has_plugin_vcs_backend: {} -> {}",
+        MODULE, backend_id, result
+    );
+    result
 }
 
 /// Resolves the descriptor for a specific plugin-provided backend id.
@@ -192,10 +333,29 @@ pub fn has_plugin_vcs_backend(backend_id: &BackendId) -> bool {
 pub fn plugin_vcs_backend_descriptor(
     backend_id: &BackendId,
 ) -> Result<PluginBackendDescriptor, String> {
-    list_plugin_vcs_backends()?
+    trace!(
+        "[{}] plugin_vcs_backend_descriptor: resolving {}",
+        MODULE,
+        backend_id
+    );
+
+    let backends = list_plugin_vcs_backends()?;
+    let result = backends
         .into_iter()
         .find(|d| d.backend_id.as_ref() == backend_id.as_ref())
-        .ok_or_else(|| format!("Unknown VCS backend: {backend_id}"))
+        .ok_or_else(|| {
+            warn!(
+                "[{}] plugin_vcs_backend_descriptor: unknown backend {}",
+                MODULE, backend_id
+            );
+            format!("Unknown VCS backend: {backend_id}")
+        })?;
+
+    debug!(
+        "[{}] plugin_vcs_backend_descriptor: found {} from plugin {}",
+        MODULE, backend_id, result.plugin_id
+    );
+    Ok(result)
 }
 
 /// Opens a repository through a plugin backend process.
@@ -213,20 +373,83 @@ pub fn open_repo_via_plugin_vcs_backend(
     backend_id: BackendId,
     path: &Path,
 ) -> VcsResult<Arc<dyn Vcs>> {
-    let desc = plugin_vcs_backend_descriptor(&backend_id)
-        .map_err(|_| VcsError::Unsupported(backend_id.clone()))?;
+    let _timer = LogTimer::new(MODULE, "open_repo_via_plugin_vcs_backend");
+    info!(
+        "[{}] open_repo_via_plugin_vcs_backend: backend={}, path={}",
+        MODULE,
+        backend_id,
+        path.display()
+    );
 
-    let cfg_value = serde_json::to_value(cfg).map_err(|e| VcsError::Backend {
-        backend: backend_id.clone(),
-        msg: format!("serialize config: {e}"),
+    let desc = plugin_vcs_backend_descriptor(&backend_id).map_err(|e| {
+        error!(
+            "[{}] open_repo_via_plugin_vcs_backend: failed to resolve backend {}: {}",
+            MODULE, backend_id, e
+        );
+        VcsError::Unsupported(backend_id.clone())
     })?;
+
+    debug!(
+        "[{}] open_repo_via_plugin_vcs_backend: resolved to plugin {}",
+        MODULE, desc.plugin_id
+    );
+
+    let cfg_value = serde_json::to_value(cfg).map_err(|e| {
+        error!(
+            "[{}] open_repo_via_plugin_vcs_backend: failed to serialize config: {}",
+            MODULE, e
+        );
+        VcsError::Backend {
+            backend: backend_id.clone(),
+            msg: format!("serialize config: {e}"),
+        }
+    })?;
+
+    trace!(
+        "[{}] open_repo_via_plugin_vcs_backend: getting runtime for plugin {}",
+        MODULE,
+        desc.plugin_id
+    );
 
     let runtime = runtime_manager
         .runtime_for_workspace_with_config(cfg, &desc.plugin_id, Some(path.to_path_buf()))
-        .map_err(|e| VcsError::Backend {
-            backend: backend_id.clone(),
-            msg: e,
+        .map_err(|e| {
+            error!(
+                "[{}] open_repo_via_plugin_vcs_backend: failed to get runtime for plugin {}: {}",
+                MODULE, desc.plugin_id, e
+            );
+            VcsError::Backend {
+                backend: backend_id.clone(),
+                msg: e,
+            }
         })?;
 
-    PluginVcsProxy::open_with_process(backend_id, runtime, path, cfg_value)
+    debug!(
+        "[{}] open_repo_via_plugin_vcs_backend: opening via plugin proxy",
+        MODULE
+    );
+
+    let result = PluginVcsProxy::open_with_process(backend_id.clone(), runtime, path, cfg_value);
+
+    match &result {
+        Ok(_) => {
+            info!(
+                "[{}] open_repo_via_plugin_vcs_backend: successfully opened {} via {}",
+                MODULE,
+                path.display(),
+                backend_id
+            );
+        }
+        Err(e) => {
+            error!(
+                "[{}] open_repo_via_plugin_vcs_backend: failed to open {} via {}: {}",
+                MODULE,
+                path.display(),
+                backend_id,
+                e
+            );
+        }
+    }
+
+    result
 }

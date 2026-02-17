@@ -1,6 +1,9 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+use log::{debug, info, trace, warn};
 use serde::Serialize;
+
+const MODULE: &str = "utilities";
 
 #[derive(Serialize)]
 pub struct AboutInfo {
@@ -21,6 +24,8 @@ impl AboutInfo {
     /// # Returns
     /// - A populated [`AboutInfo`] record.
     pub fn gather() -> Self {
+        trace!("[{}] AboutInfo::gather: collecting application metadata", MODULE);
+        
         // Compile-time package metadata from Cargo
         let name = env!("CARGO_PKG_NAME").to_string();
         let version = env!("OPENVCS_VERSION").to_string();
@@ -37,6 +42,11 @@ impl AboutInfo {
         // Target platform (of the binary)
         let os = std::env::consts::OS.to_string();
         let arch = std::env::consts::ARCH.to_string();
+
+        debug!(
+            "[{}] AboutInfo::gather: {} v{} on {}-{}",
+            MODULE, name, version, os, arch
+        );
 
         Self {
             name,
@@ -65,6 +75,9 @@ pub async fn browse_directory_async<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     title: &str,
 ) -> Option<String> {
+    let start = std::time::Instant::now();
+    info!("[{}] browse_directory_async: opening folder picker (title='{}')", MODULE, title);
+    
     let dialog = tauri_plugin_dialog::DialogExt::dialog(&app).clone(); // OWNED Dialog<R>
 
     let (tx, rx) = tokio::sync::oneshot::channel::<Option<String>>();
@@ -74,7 +87,25 @@ pub async fn browse_directory_async<R: tauri::Runtime>(
             let _ = tx.send(res.map(|p| p.to_string()));
         });
 
-    rx.await.unwrap_or(None)
+    let result = rx.await.unwrap_or(None);
+    let elapsed = start.elapsed();
+    
+    match &result {
+        Some(path) => {
+            debug!(
+                "[{}] browse_directory_async: selected '{}' in {:?}",
+                MODULE, path, elapsed
+            );
+        }
+        None => {
+            debug!(
+                "[{}] browse_directory_async: canceled in {:?}",
+                MODULE, elapsed
+            );
+        }
+    }
+    
+    result
 }
 
 /// Opens a native file picker and returns the selected file path.
@@ -92,6 +123,12 @@ pub async fn browse_file_async<R: tauri::Runtime>(
     title: &str,
     extensions: &[&str],
 ) -> Option<String> {
+    let start = std::time::Instant::now();
+    info!(
+        "[{}] browse_file_async: opening file picker (title='{}', extensions={:?})",
+        MODULE, title, extensions
+    );
+    
     let dialog = tauri_plugin_dialog::DialogExt::dialog(&app).clone();
 
     let (tx, rx) = tokio::sync::oneshot::channel::<Option<String>>();
@@ -103,5 +140,23 @@ pub async fn browse_file_async<R: tauri::Runtime>(
         let _ = tx.send(res.map(|p| p.to_string()));
     });
 
-    rx.await.unwrap_or(None)
+    let result = rx.await.unwrap_or(None);
+    let elapsed = start.elapsed();
+    
+    match &result {
+        Some(path) => {
+            debug!(
+                "[{}] browse_file_async: selected '{}' in {:?}",
+                MODULE, path, elapsed
+            );
+        }
+        None => {
+            debug!(
+                "[{}] browse_file_async: canceled in {:?}",
+                MODULE, elapsed
+            );
+        }
+    }
+    
+    result
 }

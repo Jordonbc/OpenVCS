@@ -89,7 +89,8 @@ pub fn clear_output_log(state: tauri::State<'_, AppState>) {
 /// - `()`.
 pub fn log_frontend_message(state: tauri::State<'_, AppState>, level: String, message: String) {
     let (output_level, log_level) = match level.to_lowercase().as_str() {
-        "debug" | "trace" => (OutputLevel::Info, log::Level::Trace),
+        "trace" => (OutputLevel::Info, log::Level::Trace),
+        "debug" => (OutputLevel::Info, log::Level::Debug),
         "info" => (OutputLevel::Info, log::Level::Info),
         "warn" | "warning" => (OutputLevel::Warn, log::Level::Warn),
         "error" | "err" => (OutputLevel::Error, log::Level::Error),

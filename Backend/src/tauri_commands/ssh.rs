@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::{fs, path::PathBuf, process::Command};
 
+use log::{debug, error, info, trace, warn};
 use serde::Serialize;
 use tauri::command;
+
+const MODULE: &str = "ssh";
 
 /// Returns `~/.ssh/known_hosts` path.
 ///
@@ -11,8 +14,16 @@ use tauri::command;
 /// - `Ok(PathBuf)` known-hosts path.
 /// - `Err(String)` when home directory cannot be resolved.
 fn known_hosts_path() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
-    Ok(home.join(".ssh").join("known_hosts"))
+    let home = dirs::home_dir().ok_or_else(|| {
+        error!(
+            "[{}] known_hosts_path: could not determine home directory",
+            MODULE
+        );
+        "Could not determine home directory".to_string()
+    })?;
+    let path = home.join(".ssh").join("known_hosts");
+    trace!("[{}] known_hosts_path: {}", MODULE, path.display());
+    Ok(path)
 }
 
 /// Returns `~/.ssh` directory path.
@@ -21,8 +32,16 @@ fn known_hosts_path() -> Result<PathBuf, String> {
 /// - `Ok(PathBuf)` ssh directory path.
 /// - `Err(String)` when home directory cannot be resolved.
 fn ssh_dir_path() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
-    Ok(home.join(".ssh"))
+    let home = dirs::home_dir().ok_or_else(|| {
+        error!(
+            "[{}] ssh_dir_path: could not determine home directory",
+            MODULE
+        );
+        "Could not determine home directory".to_string()
+    })?;
+    let path = home.join(".ssh");
+    trace!("[{}] ssh_dir_path: {}", MODULE, path.display());
+    Ok(path)
 }
 
 /// Ensures `~/.ssh` directory exists.
@@ -31,9 +50,28 @@ fn ssh_dir_path() -> Result<PathBuf, String> {
 /// - `Ok(PathBuf)` created/existing ssh directory path.
 /// - `Err(String)` on resolution or create failure.
 fn ensure_ssh_dir() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
+    let home = dirs::home_dir().ok_or_else(|| {
+        error!(
+            "[{}] ensure_ssh_dir: could not determine home directory",
+            MODULE
+        );
+        "Could not determine home directory".to_string()
+    })?;
     let dir = home.join(".ssh");
-    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create ~/.ssh: {e}"))?;
+    fs::create_dir_all(&dir).map_err(|e| {
+        error!(
+            "[{}] ensure_ssh_dir: failed to create {}: {}",
+            MODULE,
+            dir.display(),
+            e
+        );
+        format!("Failed to create ~/.ssh: {e}")
+    })?;
+    debug!(
+        "[{}] ensure_ssh_dir: ssh directory ready at {}",
+        MODULE,
+        dir.display()
+    );
     Ok(dir)
 }
 
@@ -58,16 +96,35 @@ pub struct SshCommandOutput {
 /// - `Ok(SshCommandOutput)` command output.
 /// - `Err(String)` on spawn failure.
 fn run_command(cmd: &str, args: &[&str]) -> Result<SshCommandOutput, String> {
-    let out = Command::new(cmd)
-        .args(args)
-        .output()
-        .map_err(|e| format!("Failed to run {cmd}: {e}"))?;
+    trace!("[{}] run_command: {} {:?}", MODULE, cmd, args);
+    let start = std::time::Instant::now();
 
-    Ok(SshCommandOutput {
+    let out = Command::new(cmd).args(args).output().map_err(|e| {
+        error!("[{}] run_command: failed to spawn {}: {}", MODULE, cmd, e);
+        format!("Failed to run {cmd}: {e}")
+    })?;
+
+    let elapsed = start.elapsed();
+    let result = SshCommandOutput {
         code: out.status.code().unwrap_or(-1),
         stdout: String::from_utf8_lossy(&out.stdout).trim().to_string(),
         stderr: String::from_utf8_lossy(&out.stderr).trim().to_string(),
-    })
+    };
+
+    if out.status.success() {
+        debug!(
+            "[{}] run_command: {} succeeded in {:?} (code={})",
+            MODULE, cmd, elapsed, result.code
+        );
+        trace!("[{}] run_command: stdout='{}'", MODULE, result.stdout);
+    } else {
+        warn!(
+            "[{}] run_command: {} failed in {:?} (code={}): {}",
+            MODULE, cmd, elapsed, result.code, result.stderr
+        );
+    }
+
+    Ok(result)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -80,24 +137,49 @@ fn run_command(cmd: &str, args: &[&str]) -> Result<SshCommandOutput, String> {
 /// - `Ok(String)` scanned key lines.
 /// - `Err(String)` on command failure.
 fn keyscan(host: &str) -> Result<String, String> {
+    trace!("[{}] keyscan: scanning host '{}'", MODULE, host);
+    let start = std::time::Instant::now();
+
     let out = Command::new("ssh-keyscan")
         .arg("-H")
         .arg(host)
         .output()
-        .map_err(|e| format!("Failed to run ssh-keyscan: {e}"))?;
+        .map_err(|e| {
+            error!("[{}] keyscan: failed to run ssh-keyscan: {}", MODULE, e);
+            format!("Failed to run ssh-keyscan: {e}")
+        })?;
+
+    let elapsed = start.elapsed();
+
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        error!(
+            "[{}] keyscan: failed for '{}' in {:?}: {}",
+            MODULE, host, elapsed, err
+        );
         return Err(if err.is_empty() {
             format!("ssh-keyscan exited with {}", out.status)
         } else {
             err
         });
     }
+
     let s = String::from_utf8_lossy(&out.stdout).to_string();
     let s = s.trim().to_string();
     if s.is_empty() {
+        warn!("[{}] keyscan: no host keys returned for '{}'", MODULE, host);
         return Err("ssh-keyscan returned no host keys".to_string());
     }
+
+    debug!(
+        "[{}] keyscan: got keys for '{}' in {:?}",
+        MODULE, host, elapsed
+    );
+    trace!(
+        "[{}] keyscan: keys='{}'",
+        MODULE,
+        s.lines().take(3).collect::<Vec<_>>().join("\\n")
+    );
     Ok(s)
 }
 
@@ -110,6 +192,7 @@ fn keyscan(host: &str) -> Result<String, String> {
 /// # Returns
 /// - Always `Err(String)` until implemented.
 fn keyscan(_host: &str) -> Result<String, String> {
+    warn!("[{}] keyscan: not implemented for Windows", MODULE);
     Err("SSH host key scanning is not implemented for Windows yet".to_string())
 }
 
@@ -124,16 +207,29 @@ fn keyscan(_host: &str) -> Result<String, String> {
 /// - `Err(String)` when validation, scanning, or file write fails.
 pub fn ssh_trust_host(host: String) -> Result<(), String> {
     let host = host.trim();
+    let start = std::time::Instant::now();
+    info!("[{}] ssh_trust_host: host='{}'", MODULE, host);
+
     if host.is_empty() {
+        warn!("[{}] ssh_trust_host: empty host provided", MODULE);
         return Err("Host cannot be empty".to_string());
     }
 
     ensure_ssh_dir()?;
     let known_hosts = known_hosts_path()?;
+    debug!(
+        "[{}] ssh_trust_host: known_hosts path={}",
+        MODULE,
+        known_hosts.display()
+    );
 
     // Avoid duplicating entries if the host is already present.
     if let Ok(existing) = fs::read_to_string(&known_hosts) {
         if existing.lines().any(|l| l.contains(host)) {
+            debug!(
+                "[{}] ssh_trust_host: host '{}' already in known_hosts",
+                MODULE, host
+            );
             return Ok(());
         }
     }
@@ -148,8 +244,21 @@ pub fn ssh_trust_host(host: String) -> Result<(), String> {
         .append(true)
         .open(&known_hosts)
         .and_then(|mut f| std::io::Write::write_all(&mut f, to_append.as_bytes()))
-        .map_err(|e| format!("Failed to update {}: {e}", known_hosts.display()))?;
+        .map_err(|e| {
+            error!(
+                "[{}] ssh_trust_host: failed to update {}: {}",
+                MODULE,
+                known_hosts.display(),
+                e
+            );
+            format!("Failed to update {}: {e}", known_hosts.display())
+        })?;
 
+    let elapsed = start.elapsed();
+    info!(
+        "[{}] ssh_trust_host: host '{}' trusted in {:?}",
+        MODULE, host, elapsed
+    );
     Ok(())
 }
 
@@ -160,9 +269,29 @@ pub fn ssh_trust_host(host: String) -> Result<(), String> {
 /// - `Ok(SshCommandOutput)` with command exit/status output.
 /// - `Err(String)` when command execution fails.
 pub fn ssh_agent_list_keys() -> Result<SshCommandOutput, String> {
-    // Exit codes:
-    // 0 = keys listed, 1 = agent has no keys, 2 = agent not running/unreachable (platform dependent).
-    run_command("ssh-add", &["-l"])
+    info!("[{}] ssh_agent_list_keys: listing SSH agent keys", MODULE);
+    let result = run_command("ssh-add", &["-l"])?;
+
+    match result.code {
+        0 => {
+            debug!(
+                "[{}] ssh_agent_list_keys: agent has {} keys",
+                MODULE,
+                result.stdout.lines().count()
+            );
+        }
+        1 => {
+            warn!("[{}] ssh_agent_list_keys: agent has no identities", MODULE);
+        }
+        code => {
+            warn!(
+                "[{}] ssh_agent_list_keys: agent returned code {}",
+                MODULE, code
+            );
+        }
+    }
+
+    Ok(result)
 }
 
 #[derive(Clone, Serialize)]
@@ -181,8 +310,17 @@ pub struct SshKeyCandidate {
 /// - `Ok(Vec<SshKeyCandidate>)` sorted candidate list.
 /// - `Err(String)` when home/ssh directory resolution fails.
 pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
+    info!(
+        "[{}] ssh_key_candidates: scanning for SSH key candidates",
+        MODULE
+    );
     let dir = ssh_dir_path()?;
+
     let Ok(read_dir) = fs::read_dir(&dir) else {
+        debug!(
+            "[{}] ssh_key_candidates: ssh directory does not exist or is not readable",
+            MODULE
+        );
         return Ok(vec![]);
     };
 
@@ -203,6 +341,11 @@ pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
             || name.ends_with(".log")
             || name.ends_with(".old")
         {
+            trace!(
+                "[{}] ssh_key_candidates: skipping non-key file: {}",
+                MODULE,
+                name
+            );
             continue;
         }
 
@@ -217,6 +360,7 @@ pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
             continue;
         }
 
+        trace!("[{}] ssh_key_candidates: found candidate: {}", MODULE, name);
         keys.push(SshKeyCandidate {
             path: path.display().to_string(),
             name: name.to_string(),
@@ -224,6 +368,11 @@ pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
     }
 
     keys.sort_by(|a, b| a.name.cmp(&b.name));
+    debug!(
+        "[{}] ssh_key_candidates: found {} candidate keys",
+        MODULE,
+        keys.len()
+    );
     Ok(keys)
 }
 
@@ -238,8 +387,23 @@ pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
 /// - `Err(String)` when validation or command execution fails.
 pub fn ssh_add_key(path: String) -> Result<SshCommandOutput, String> {
     let p = path.trim();
+    info!("[{}] ssh_add_key: path='{}'", MODULE, p);
+
     if p.is_empty() {
+        warn!("[{}] ssh_add_key: empty path provided", MODULE);
         return Err("Path cannot be empty".to_string());
     }
-    run_command("ssh-add", &[p])
+
+    let result = run_command("ssh-add", &[p])?;
+
+    if result.code == 0 {
+        debug!("[{}] ssh_add_key: key added successfully", MODULE);
+    } else {
+        warn!(
+            "[{}] ssh_add_key: failed to add key: {}",
+            MODULE, result.stderr
+        );
+    }
+
+    Ok(result)
 }

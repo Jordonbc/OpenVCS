@@ -4,10 +4,95 @@ use crate::settings::{AppConfig, LogLevel};
 use std::fs::{self, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 use time::{OffsetDateTime, UtcOffset};
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
 static ACTIVE_LOG_FILE: OnceLock<Arc<Mutex<std::fs::File>>> = OnceLock::new();
+
+/// RAII timer that logs operation duration on drop.
+///
+/// Use this to measure and log timing for long-running operations.
+/// The duration is logged at trace level when the timer goes out of scope.
+pub struct LogTimer {
+    start: Instant,
+    operation: &'static str,
+    module: &'static str,
+}
+
+impl LogTimer {
+    /// Creates a new timer for the given operation.
+    ///
+    /// # Parameters
+    /// - `module`: Module/component name (e.g., "vcs_proxy", "ssh").
+    /// - `operation`: Operation name (e.g., "fetch", "push").
+    ///
+    /// # Returns
+    /// - A new `LogTimer` instance.
+    pub fn new(module: &'static str, operation: &'static str) -> Self {
+        Self {
+            start: Instant::now(),
+            operation,
+            module,
+        }
+    }
+
+    /// Returns elapsed time in milliseconds.
+    ///
+    /// # Returns
+    /// - Elapsed time in milliseconds.
+    #[allow(dead_code)]
+    pub fn elapsed_ms(&self) -> u64 {
+        self.start.elapsed().as_millis() as u64
+    }
+}
+
+impl Drop for LogTimer {
+    fn drop(&mut self) {
+        let elapsed = self.start.elapsed();
+        let ms = elapsed.as_millis();
+        let us = elapsed.as_micros() - (ms * 1000);
+        log::trace!(
+            "[{}] {} completed in {}.{:03}ms",
+            self.module,
+            self.operation,
+            ms,
+            us
+        );
+    }
+}
+
+/// Logs an operation entry at info level.
+///
+/// # Parameters
+/// - `module`: Module/component name.
+/// - `operation`: Operation name.
+/// - `details`: Additional details string.
+#[macro_export]
+macro_rules! log_op_enter {
+    ($module:expr, $operation:expr) => {
+        log::info!("[{}] {}: starting", $module, $operation)
+    };
+    ($module:expr, $operation:expr, $($arg:tt)*) => {
+        log::info!("[{}] {}: {}", $module, $operation, format!($($arg)*))
+    };
+}
+
+/// Logs an operation exit at info level.
+///
+/// # Parameters
+/// - `module`: Module/component name.
+/// - `operation`: Operation name.
+/// - `details`: Additional details string.
+#[macro_export]
+macro_rules! log_op_exit {
+    ($module:expr, $operation:expr) => {
+        log::info!("[{}] {}: completed", $module, $operation)
+    };
+    ($module:expr, $operation:expr, $($arg:tt)*) => {
+        log::info!("[{}] {}: {}", $module, $operation, format!($($arg)*))
+    };
+}
 
 /// Truncates the currently active `logs/openvcs.log` file in place.
 ///
