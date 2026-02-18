@@ -146,6 +146,31 @@ impl PluginRuntimeManager {
         }
     }
 
+    /// Checks if a plugin has a runtime module component.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier.
+    ///
+    /// # Returns
+    /// - `Ok(Some(true))` - plugin has a module.
+    /// - `Ok(Some(false))` - plugin has no module.
+    /// - `Err(String)` - plugin not found or other error.
+    pub fn has_module(&self, plugin_id: &str) -> Result<Option<bool>, String> {
+        trace!("has_module: plugin_id='{}'", plugin_id);
+        let requested = plugin_id.trim();
+        if requested.is_empty() {
+            return Err("plugin id is empty".to_string());
+        }
+
+        let components = self.find_components(requested)?;
+        let has_module = components.module.is_some();
+        debug!(
+            "has_module: plugin_id='{}', has_module={}",
+            plugin_id, has_module
+        );
+        Ok(Some(has_module))
+    }
+
     /// Ensures a plugin is running or stopped based on enabled state.
     ///
     /// This is more efficient than sync_plugin_runtime_with_config when
@@ -172,9 +197,23 @@ impl PluginRuntimeManager {
         );
 
         if enabled && !is_running {
-            trace!("set_plugin_enabled: calling start_plugin");
-            self.start_plugin(plugin_id)?;
-            info!("plugin: enabled '{}'", plugin_id);
+            let has_module = self.has_module(plugin_id)?;
+            match has_module {
+                Some(true) => {
+                    trace!("set_plugin_enabled: calling start_plugin");
+                    self.start_plugin(plugin_id)?;
+                    info!("plugin: enabled '{}'", plugin_id);
+                }
+                Some(false) => {
+                    info!(
+                        "plugin '{}' has no runtime module, marked as enabled",
+                        plugin_id
+                    );
+                }
+                None => {
+                    return Err(format!("plugin '{}' not found", plugin_id));
+                }
+            }
         } else if !enabled && is_running {
             trace!("set_plugin_enabled: calling stop_plugin");
             self.stop_plugin(plugin_id)?;
