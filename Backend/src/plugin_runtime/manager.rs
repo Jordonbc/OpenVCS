@@ -5,7 +5,7 @@ use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::runtime_select::create_runtime_instance;
 use crate::plugin_runtime::spawn::SpawnConfig;
 use crate::settings::AppConfig;
-use log::{info, warn};
+use log::{debug, info, trace, warn};
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -78,12 +78,25 @@ impl PluginRuntimeManager {
     /// - `Ok(())` when the plugin is running.
     /// - `Err(String)` when plugin lookup/startup fails.
     pub fn start_plugin(&self, plugin_id: &str) -> Result<(), String> {
+        trace!("start_plugin: plugin_id='{}'", plugin_id);
         let key = normalize_plugin_key(plugin_id)?;
+        debug!("start_plugin: key='{}'", key);
+
         if let Some(existing) = self.processes.lock().get(&key) {
+            debug!("start_plugin: found existing runtime for key='{}'", key);
             return existing.runtime.ensure_running();
         }
+
+        trace!("start_plugin: resolving module runtime spec");
         let spec = self.resolve_module_runtime_spec(plugin_id, None)?;
+        debug!(
+            "start_plugin: resolved spec for plugin_id='{}', key='{}'",
+            spec.plugin_id, spec.key
+        );
+
+        trace!("start_plugin: starting plugin spec");
         self.start_plugin_spec(spec)?;
+        trace!("start_plugin: completed successfully");
         info!("plugin: started '{}'", plugin_id);
         Ok(())
     }
@@ -100,11 +113,19 @@ impl PluginRuntimeManager {
     /// - `Ok(())` after stop/removal.
     /// - `Err(String)` if the identifier is invalid.
     pub fn stop_plugin(&self, plugin_id: &str) -> Result<(), String> {
+        trace!("stop_plugin: plugin_id='{}'", plugin_id);
         let key = normalize_plugin_key(plugin_id)?;
+        debug!("stop_plugin: key='{}'", key);
+
         let process = self.processes.lock().remove(&key);
+        debug!("stop_plugin: removed from processes={}", process.is_some());
+
         if let Some(process) = process {
+            trace!("stop_plugin: calling runtime.stop()");
             process.runtime.stop();
             info!("plugin: stopped '{}'", plugin_id);
+        } else {
+            trace!("stop_plugin: no running process found");
         }
         Ok(())
     }
@@ -138,15 +159,28 @@ impl PluginRuntimeManager {
     /// - `Ok(())` when the operation succeeds.
     /// - `Err(String)` when the operation fails.
     pub fn set_plugin_enabled(&self, plugin_id: &str, enabled: bool) -> Result<(), String> {
+        trace!(
+            "set_plugin_enabled: plugin_id='{}', enabled={}",
+            plugin_id,
+            enabled
+        );
         let key = normalize_plugin_key(plugin_id)?;
         let is_running = self.processes.lock().contains_key(&key);
+        debug!(
+            "set_plugin_enabled: key='{}', currently_running={}",
+            key, is_running
+        );
 
         if enabled && !is_running {
+            trace!("set_plugin_enabled: calling start_plugin");
             self.start_plugin(plugin_id)?;
             info!("plugin: enabled '{}'", plugin_id);
         } else if !enabled && is_running {
+            trace!("set_plugin_enabled: calling stop_plugin");
             self.stop_plugin(plugin_id)?;
             info!("plugin: disabled '{}'", plugin_id);
+        } else {
+            trace!("set_plugin_enabled: no action needed (already in desired state)");
         }
         Ok(())
     }
@@ -325,13 +359,27 @@ impl PluginRuntimeManager {
 
     /// Starts or reuses a runtime for a resolved plugin runtime spec.
     fn start_plugin_spec(&self, spec: ModuleRuntimeSpec) -> Result<(), String> {
+        trace!(
+            "start_plugin_spec: key='{}', workspace_root={:?}",
+            spec.key,
+            spec.spawn.allowed_workspace_root
+        );
+
         if let Some(existing) = self.processes.lock().get(&spec.key) {
+            debug!(
+                "start_plugin_spec: found existing runtime for key='{}'",
+                spec.key
+            );
             if existing.workspace_root == spec.spawn.allowed_workspace_root {
+                trace!("start_plugin_spec: reusing existing runtime with matching workspace");
                 return existing.runtime.ensure_running();
             }
+            debug!("start_plugin_spec: workspace mismatch, will replace runtime");
         }
 
+        trace!("start_plugin_spec: creating new instance");
         let instance = self.create_instance(&spec)?;
+        debug!("start_plugin_spec: instance created, ensuring running");
         instance.ensure_running()?;
 
         let mut lock = self.processes.lock();
@@ -339,16 +387,27 @@ impl PluginRuntimeManager {
             if existing.workspace_root == spec.spawn.allowed_workspace_root {
                 let runtime = Arc::clone(&existing.runtime);
                 drop(lock);
+                trace!("start_plugin_spec: found concurrent insert, reusing");
                 return runtime.ensure_running();
             }
         }
+
         let runtime_to_stop = lock
             .get(&spec.key)
             .map(|existing| Arc::clone(&existing.runtime));
         if let Some(runtime) = runtime_to_stop {
+            debug!(
+                "start_plugin_spec: stopping old runtime for key='{}'",
+                spec.key
+            );
             runtime.stop();
             lock.remove(&spec.key);
         }
+
+        trace!(
+            "start_plugin_spec: inserting new runtime for key='{}'",
+            spec.key
+        );
         lock.insert(
             spec.key,
             RunningPlugin {
@@ -373,28 +432,67 @@ impl PluginRuntimeManager {
         plugin_id: &str,
         allowed_workspace_root: Option<PathBuf>,
     ) -> Result<ModuleRuntimeSpec, String> {
+        trace!(
+            "resolve_module_runtime_spec: plugin_id='{}', workspace_root={:?}",
+            plugin_id,
+            allowed_workspace_root
+        );
+
         let requested = plugin_id.trim();
+        debug!("resolve_module_runtime_spec: trimmed='{}'", requested);
+
         if requested.is_empty() {
             return Err("plugin id is empty".to_string());
         }
 
+        trace!("resolve_module_runtime_spec: calling find_components");
         let components = self.find_components(requested)?;
-        let module = components
-            .module
-            .ok_or_else(|| "plugin has no module component".to_string())?;
+        debug!(
+            "resolve_module_runtime_spec: found components for plugin_id='{}', has_module={}",
+            components.plugin_id,
+            components.module.is_some()
+        );
+
+        trace!("resolve_module_runtime_spec: checking module component");
+        let module = match &components.module {
+            Some(m) => {
+                debug!(
+                    "resolve_module_runtime_spec: module exec_path='{}'",
+                    m.exec_path.display()
+                );
+                m
+            }
+            None => {
+                warn!(
+                    "resolve_module_runtime_spec: plugin '{}' has NO module component",
+                    components.plugin_id
+                );
+                return Err("plugin has no module component".to_string());
+            }
+        };
+
+        trace!("resolve_module_runtime_spec: getting installed plugin info");
         let installed = self
             .store
             .get_current_installed(&components.plugin_id)?
             .ok_or_else(|| "plugin is not installed".to_string())?;
-        let key = components.plugin_id.to_ascii_lowercase();
+        debug!(
+            "resolve_module_runtime_spec: installed approval={:?}",
+            installed.approval
+        );
 
+        let key = components.plugin_id.to_ascii_lowercase();
+        debug!("resolve_module_runtime_spec: resolved key='{}'", key);
+
+        trace!("resolve_module_runtime_spec: building ModuleRuntimeSpec");
+        let exec_path = module.exec_path.clone();
         Ok(ModuleRuntimeSpec {
             plugin_id: components.plugin_id.clone(),
             key,
             default_enabled: components.default_enabled,
             spawn: SpawnConfig {
                 plugin_id: components.plugin_id,
-                exec_path: module.exec_path,
+                exec_path,
                 approval: installed.approval,
                 allowed_workspace_root,
             },
@@ -403,11 +501,28 @@ impl PluginRuntimeManager {
 
     /// Finds installed plugin components by plugin id (case-insensitive).
     fn find_components(&self, plugin_id: &str) -> Result<InstalledPluginComponents, String> {
-        self.store
-            .list_current_components()?
+        trace!("find_components: plugin_id='{}'", plugin_id);
+
+        let all_components = self.store.list_current_components()?;
+        debug!(
+            "find_components: found {} total components",
+            all_components.len()
+        );
+
+        let found = all_components
             .into_iter()
-            .find(|components| components.plugin_id.eq_ignore_ascii_case(plugin_id))
-            .ok_or_else(|| "plugin not installed".to_string())
+            .find(|components| components.plugin_id.eq_ignore_ascii_case(plugin_id));
+
+        match found {
+            Some(comp) => {
+                debug!("find_components: matched plugin_id='{}'", comp.plugin_id);
+                Ok(comp)
+            }
+            None => {
+                warn!("find_components: no plugin found matching '{}'", plugin_id);
+                Err("plugin not installed".to_string())
+            }
+        }
     }
 }
 
@@ -423,10 +538,12 @@ impl Drop for PluginRuntimeManager {
 
 /// Normalizes plugin ids to process map keys.
 fn normalize_plugin_key(plugin_id: &str) -> Result<String, String> {
+    trace!("normalize_plugin_key: input='{}'", plugin_id);
     let plugin_id = plugin_id.trim().to_ascii_lowercase();
     if plugin_id.is_empty() {
         return Err("plugin id is empty".to_string());
     }
+    debug!("normalize_plugin_key: output='{}'", plugin_id);
     Ok(plugin_id)
 }
 

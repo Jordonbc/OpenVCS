@@ -241,10 +241,7 @@ impl PluginBundleStore {
     pub fn new_default() -> Self {
         let root = plugins_dir();
         ensure_dir(&root);
-        trace!(
-            "PluginBundleStore::new_default: root={}",
-            root.display()
-        );
+        trace!("PluginBundleStore::new_default: root={}", root.display());
         Self { root }
     }
 
@@ -316,9 +313,7 @@ impl PluginBundleStore {
         let bundle_sha256 = sha256_hex_file(bundle_path)?;
         let bundle_compressed_bytes = fs::metadata(bundle_path)
             .map_err(|e| {
-                error!(
-                    "install_ovcsp_with_limits: failed to get metadata: {}", e
-                );
+                error!("install_ovcsp_with_limits: failed to get metadata: {}", e);
                 format!("metadata {}: {e}", bundle_path.display())
             })?
             .len();
@@ -332,14 +327,13 @@ impl PluginBundleStore {
         let (manifest_bundle_path, manifest) = locate_manifest_tar_xz(bundle_path)?;
         let plugin_id = manifest.id.trim().to_string();
         if plugin_id.is_empty() {
-            error!(
-                "install_ovcsp_with_limits: manifest id is empty",
-            );
+            error!("install_ovcsp_with_limits: manifest id is empty",);
             return Err("manifest id is empty".to_string());
         }
 
         debug!(
-            "install_ovcsp_with_limits: plugin_id={}, version={:?}", plugin_id, manifest.version
+            "install_ovcsp_with_limits: plugin_id={}, version={:?}",
+            plugin_id, manifest.version
         );
 
         // Enforce that the top-level directory name matches the manifest id.
@@ -351,7 +345,8 @@ impl PluginBundleStore {
             .to_string();
         if bundle_root != plugin_id {
             error!(
-                "install_ovcsp_with_limits: bundle root '{}' does not match manifest id '{}'", bundle_root, plugin_id
+                "install_ovcsp_with_limits: bundle root '{}' does not match manifest id '{}'",
+                bundle_root, plugin_id
             );
             return Err(format!(
                 "bundle root folder '{}' does not match manifest id '{}'",
@@ -562,9 +557,7 @@ impl PluginBundleStore {
         }
 
         if manifest.functions.is_some() {
-            error!(
-                "install_ovcsp_with_limits: manifest uses deprecated 'functions' field",
-            );
+            error!("install_ovcsp_with_limits: manifest uses deprecated 'functions' field",);
             return Err(
                 "manifest uses unsupported field 'functions'; use module.exec only".to_string(),
             );
@@ -575,7 +568,8 @@ impl PluginBundleStore {
         validate_entrypoint(&staging_version_dir, module_exec.as_deref(), "module")?;
 
         debug!(
-            "install_ovcsp_with_limits: extracted {} files, promoting to final location", total_files
+            "install_ovcsp_with_limits: extracted {} files, promoting to final location",
+            total_files
         );
 
         // Promote staged version into place (flat layout, drop old version directory).
@@ -589,7 +583,8 @@ impl PluginBundleStore {
         }
         fs::rename(&staging_version_dir, &plugin_dir).map_err(|e| {
             error!(
-                "install_ovcsp_with_limits: failed to move plugin into place: {}", e
+                "install_ovcsp_with_limits: failed to move plugin into place: {}",
+                e
             );
             format!(
                 "move installed plugin into place {} -> {}: {e}",
@@ -629,7 +624,8 @@ impl PluginBundleStore {
 
         let elapsed = start.elapsed();
         info!(
-            "install_ovcsp_with_limits: installed plugin {} v{} in {:?}", plugin_id, version, elapsed
+            "install_ovcsp_with_limits: installed plugin {} v{} in {:?}",
+            plugin_id, version, elapsed
         );
 
         Ok(InstalledPlugin {
@@ -657,29 +653,19 @@ impl PluginBundleStore {
 
         let mut errors = Vec::new();
         for bundle in &bundles {
-            debug!(
-                "sync_built_in_plugins: checking {}",
-                bundle.display()
-            );
+            debug!("sync_built_in_plugins: checking {}", bundle.display());
             if let Err(err) = self.ensure_built_in_bundle(bundle) {
                 let msg = format!("{}: {}", bundle.display(), err);
-                warn!(
-                    "sync_built_in_plugins: failed to sync: {}", msg
-                );
+                warn!("sync_built_in_plugins: failed to sync: {}", msg);
                 errors.push(msg);
             }
         }
 
         if errors.is_empty() {
-            debug!(
-                "sync_built_in_plugins: all bundles synced successfully",
-            );
+            debug!("sync_built_in_plugins: all bundles synced successfully",);
             Ok(())
         } else {
-            error!(
-                "sync_built_in_plugins: {} bundles failed",
-                errors.len()
-            );
+            error!("sync_built_in_plugins: {} bundles failed", errors.len());
             Err(errors.join("; "))
         }
     }
@@ -693,18 +679,13 @@ impl PluginBundleStore {
     /// - `Ok(())` when bundle is already current or installed successfully.
     /// - `Err(String)` on install/validation failures.
     fn ensure_built_in_bundle(&self, bundle_path: &Path) -> Result<(), String> {
-        trace!(
-            "ensure_built_in_bundle: {}",
-            bundle_path.display()
-        );
+        trace!("ensure_built_in_bundle: {}", bundle_path.display());
 
         let bundle_sha256 = sha256_hex_file(bundle_path)?;
         let (_manifest_path, manifest) = locate_manifest_tar_xz(bundle_path)?;
         let plugin_id = manifest.id.trim();
         if plugin_id.is_empty() {
-            error!(
-                "ensure_built_in_bundle: bundle manifest id is empty",
-            );
+            error!("ensure_built_in_bundle: bundle manifest id is empty",);
             return Err("bundle manifest id is empty".to_string());
         }
         let plugin_id = plugin_id.to_string();
@@ -719,22 +700,23 @@ impl PluginBundleStore {
                 return Ok(());
             }
             debug!(
-                "ensure_built_in_bundle: {} needs update (installed={}, new={})", plugin_id, installed.version, version
+                "ensure_built_in_bundle: {} needs update (installed={}, new={})",
+                plugin_id, installed.version, version
             );
         }
 
-        debug!(
-            "ensure_built_in_bundle: installing {}", plugin_id
-        );
+        debug!("ensure_built_in_bundle: installing {}", plugin_id);
         self.install_ovcsp_with_limits(bundle_path, InstallerLimits::default())?;
 
         if let Err(err) = self.approve_capabilities(&plugin_id, &version, true) {
             warn!(
-                "ensure_built_in_bundle: failed to auto-approve built-in {} ({}): {}", plugin_id, version, err
+                "ensure_built_in_bundle: failed to auto-approve built-in {} ({}): {}",
+                plugin_id, version, err
             );
         } else {
             debug!(
-                "ensure_built_in_bundle: auto-approved built-in {} ({})", plugin_id, version
+                "ensure_built_in_bundle: auto-approved built-in {} ({})",
+                plugin_id, version
             );
         }
         Ok(())
@@ -759,9 +741,7 @@ impl PluginBundleStore {
         }
         let lower = id.to_ascii_lowercase();
         if built_in_plugin_ids().contains(&lower) {
-            warn!(
-                "uninstall_plugin: cannot uninstall built-in plugin {}", id
-            );
+            warn!("uninstall_plugin: cannot uninstall built-in plugin {}", id);
             return Err("built-in plugins cannot be removed".to_string());
         }
         let dir = self.root.join(id);
@@ -788,10 +768,7 @@ impl PluginBundleStore {
     /// - `Err(String)` when the plugin root cannot be read.
     pub fn list_installed(&self) -> Result<Vec<InstalledPluginIndex>, String> {
         let _timer = LogTimer::new(MODULE, "list_installed");
-        trace!(
-            "list_installed: scanning {}",
-            self.root.display()
-        );
+        trace!("list_installed: scanning {}", self.root.display());
 
         if !self.root.is_dir() {
             debug!("list_installed: root does not exist");
@@ -822,10 +799,7 @@ impl PluginBundleStore {
             }
         }
         out.sort_by(|a, b| a.plugin_id.cmp(&b.plugin_id));
-        debug!(
-            "list_installed: found {} installed plugins",
-            out.len()
-        );
+        debug!("list_installed: found {} installed plugins", out.len());
         Ok(out)
     }
 
@@ -875,17 +849,31 @@ impl PluginBundleStore {
         &self,
         plugin_id: &str,
     ) -> Result<Option<InstalledPluginVersion>, String> {
+        trace!("get_current_installed: plugin_id='{}'", plugin_id);
+
         let id = plugin_id.trim();
+        debug!("get_current_installed: trimmed id='{}'", id);
+
         if id.is_empty() {
             return Err("plugin id is empty".to_string());
         }
+
+        trace!("get_current_installed: reading index");
         let Some(index) = self.read_index(id) else {
+            debug!("get_current_installed: no index found for '{}'", id);
             return Ok(None);
         };
+
+        trace!("get_current_installed: checking current pointer");
         let Some(ver) = index.current.as_deref() else {
+            debug!("get_current_installed: no current version for '{}'", id);
             return Ok(None);
         };
-        Ok(index.versions.get(ver).cloned())
+
+        debug!("get_current_installed: current version='{}'", ver);
+        let result = index.versions.get(ver).cloned();
+        debug!("get_current_installed: found={}", result.is_some());
+        Ok(result)
     }
 
     /// Updates capability approval for a specific plugin version.
@@ -1021,12 +1009,19 @@ impl PluginBundleStore {
     /// - `Ok(Vec<InstalledPluginComponents>)` sorted by plugin id.
     /// - `Err(String)` when store traversal fails.
     pub fn list_current_components(&self) -> Result<Vec<InstalledPluginComponents>, String> {
+        trace!("list_current_components: root='{}'", self.root.display());
+
         if !self.root.is_dir() {
+            debug!("list_current_components: root is not a directory, returning empty");
             return Ok(Vec::new());
         }
+
+        trace!("list_current_components: reading directory");
         let entries =
             fs::read_dir(&self.root).map_err(|e| format!("read {}: {e}", self.root.display()))?;
         let mut out = Vec::new();
+
+        trace!("list_current_components: iterating entries");
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_dir() {
@@ -1036,11 +1031,27 @@ impl PluginBundleStore {
                 Some(s) => s.to_string(),
                 None => continue,
             };
+
+            debug!("list_current_components: checking plugin '{}'", plugin_id);
             if let Some(c) = self.load_current_components(&plugin_id)? {
+                debug!(
+                    "list_current_components: plugin '{}' has components, has_module={}",
+                    plugin_id,
+                    c.module.is_some()
+                );
                 out.push(c);
+            } else {
+                debug!(
+                    "list_current_components: plugin '{}' has no current components",
+                    plugin_id
+                );
             }
         }
         out.sort_by(|a, b| a.plugin_id.cmp(&b.plugin_id));
+        debug!(
+            "list_current_components: returning {} components",
+            out.len()
+        );
         Ok(out)
     }
 
@@ -1053,9 +1064,31 @@ impl PluginBundleStore {
     /// - `Some(InstalledPluginIndex)` when present and parseable.
     /// - `None` otherwise.
     fn read_index(&self, plugin_id: &str) -> Option<InstalledPluginIndex> {
+        trace!("read_index: plugin_id='{}'", plugin_id);
         let p = self.root.join(plugin_id).join("index.json");
-        let text = fs::read_to_string(p).ok()?;
-        serde_json::from_str(&text).ok()
+        debug!("read_index: path='{}'", p.display());
+
+        let text = match fs::read_to_string(&p) {
+            Ok(t) => {
+                debug!("read_index: file read successfully");
+                t
+            }
+            Err(e) => {
+                debug!("read_index: failed to read file: {}", e);
+                return None;
+            }
+        };
+
+        match serde_json::from_str(&text) {
+            Ok(index) => {
+                debug!("read_index: parsed index for '{}'", plugin_id);
+                Some(index)
+            }
+            Err(e) => {
+                debug!("read_index: failed to parse index: {}", e);
+                None
+            }
+        }
     }
 
     /// Writes plugin index metadata atomically.

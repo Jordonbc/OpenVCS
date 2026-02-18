@@ -3,6 +3,7 @@
 use crate::plugin_runtime::component_instance::ComponentPluginRuntimeInstance;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::spawn::SpawnConfig;
+use log::{debug, trace};
 use std::path::Path;
 use std::sync::Arc;
 use wasmtime::component::Component;
@@ -10,27 +11,57 @@ use wasmtime::Engine;
 
 /// Returns whether a module path is a valid component-model artifact.
 pub fn is_component_module(path: &Path) -> bool {
+    trace!("is_component_module: path='{}'", path.display());
+
     if !path.is_file() {
+        debug!("is_component_module: path is not a file, returning false");
         return false;
     }
+    debug!("is_component_module: path is a file");
 
     let engine = Engine::default();
-    Component::from_file(&engine, path).is_ok()
+    let result = Component::from_file(&engine, path);
+    trace!(
+        "is_component_module: Component::from_file result={}",
+        result.is_ok()
+    );
+    result.is_ok()
 }
 
 /// Selects and creates a runtime instance for a plugin module.
 pub fn create_runtime_instance(
     spawn: SpawnConfig,
 ) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
+    trace!(
+        "create_runtime_instance: plugin_id='{}', exec_path='{}'",
+        spawn.plugin_id,
+        spawn.exec_path.display()
+    );
+    debug!(
+        "create_runtime_instance: approval={:?}, workspace_root={:?}",
+        spawn.approval, spawn.allowed_workspace_root
+    );
+
+    trace!("create_runtime_instance: validating component module");
     if !is_component_module(&spawn.exec_path) {
+        debug!(
+            "create_runtime_instance: validation failed for '{}'",
+            spawn.exec_path.display()
+        );
         return Err(format!(
             "plugin runtime: `{}` is not a component-model plugin (stdio runtime removed)",
             spawn.exec_path.display()
         ));
     }
 
+    trace!("create_runtime_instance: creating ComponentPluginRuntimeInstance");
     let runtime: Arc<dyn PluginRuntimeInstance> =
         Arc::new(ComponentPluginRuntimeInstance::new(spawn.clone()));
+    debug!(
+        "create_runtime_instance: instance created, plugin_id='{}'",
+        spawn.plugin_id
+    );
+
     log::info!(
         "plugin runtime: selected `component` transport for plugin `{}` ({})",
         spawn.plugin_id,
