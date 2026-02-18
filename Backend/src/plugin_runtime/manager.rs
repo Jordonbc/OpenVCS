@@ -558,8 +558,8 @@ impl PluginRuntimeManager {
                 Ok(comp)
             }
             None => {
-                warn!("find_components: no plugin found matching '{}'", plugin_id);
-                Err("plugin not installed".to_string())
+                warn!("find_components: no plugin found matching '{}' (plugin may exist but has no current version)", plugin_id);
+                Err("plugin has no current version".to_string())
             }
         }
     }

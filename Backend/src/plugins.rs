@@ -1,7 +1,8 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+use crate::plugin_bundles::PluginBundleStore;
 use crate::plugin_paths::{built_in_plugin_dirs, ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME};
-use log::warn;
+use log::{debug, warn};
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -211,6 +212,7 @@ impl PluginCache {
 
     fn reload(&self) {
         let built_in_ids = crate::plugin_bundles::built_in_plugin_ids();
+        let bundle_store = PluginBundleStore::new_default();
         let mut seen = HashSet::new();
         let mut summaries: Vec<PluginSummary> = Vec::new();
         let mut entries: HashMap<String, CachedPlugin> = HashMap::new();
@@ -228,7 +230,16 @@ impl PluginCache {
                             if !seen.insert(norm.clone()) {
                                 continue;
                             }
+
                             let is_built_in = built_in_ids.contains(&norm);
+
+                            if !is_built_in {
+                                if bundle_store.get_current_dir(&norm).ok().flatten().is_none() {
+                                    debug!("plugins: skipping '{}' - not properly installed (no current version)", norm);
+                                    continue;
+                                }
+                            }
+
                             let effective_origin = if is_built_in {
                                 PluginOrigin::BuiltIn
                             } else {
