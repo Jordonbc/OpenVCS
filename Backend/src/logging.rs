@@ -17,23 +17,21 @@ static ACTIVE_LOG_FILE: OnceLock<Arc<Mutex<std::fs::File>>> = OnceLock::new();
 pub struct LogTimer {
     start: Instant,
     operation: &'static str,
-    module: &'static str,
 }
 
 impl LogTimer {
     /// Creates a new timer for the given operation.
     ///
     /// # Parameters
-    /// - `module`: Module/component name (e.g., "vcs_proxy", "ssh").
+    /// - `_module`: Module/component name (unused, kept for API compatibility).
     /// - `operation`: Operation name (e.g., "fetch", "push").
     ///
     /// # Returns
     /// - A new `LogTimer` instance.
-    pub fn new(module: &'static str, operation: &'static str) -> Self {
+    pub fn new(_module: &'static str, operation: &'static str) -> Self {
         Self {
             start: Instant::now(),
             operation,
-            module,
         }
     }
 
@@ -52,13 +50,7 @@ impl Drop for LogTimer {
         let elapsed = self.start.elapsed();
         let ms = elapsed.as_millis();
         let us = elapsed.as_micros() - (ms * 1000);
-        log::trace!(
-            "[{}] {} completed in {}.{:03}ms",
-            self.module,
-            self.operation,
-            ms,
-            us
-        );
+        log::trace!("{} completed in {}.{:03}ms", self.operation, ms, us);
     }
 }
 
