@@ -1284,23 +1284,20 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
                     }
                 }
             } catch {}
-        } catch {
-            notify('Failed to update plugins');
-        }
+        } catch (e) { console.error('Failed to update plugins:', e); notify('Failed to update plugins'); }
     };
 
     const persistSinglePluginToggle = async (pluginId: string, enabled: boolean) => {
         if (!TAURI.has) return;
         try {
             await TAURI.invoke('set_plugin_enabled', { pluginId, enabled });
+            console.log(`Plugin '${pluginId}' ${enabled ? 'enabled' : 'disabled'}`);
             await reloadPlugins();
             await refreshGitBackendOptions(modal, await TAURI.invoke<GlobalSettings>('get_global_settings'));
             try {
                 await refreshAvailableThemes();
-            } catch {}
-        } catch {
-            notify('Failed to toggle plugin');
-        }
+            } catch (e) { console.warn('refreshAvailableThemes failed:', e); }
+        } catch (e) { console.error('Failed to toggle plugin:', e); notify('Failed to toggle plugin'); }
     };
 
     if (!(pane as any).__wired) {
