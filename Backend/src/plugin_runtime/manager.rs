@@ -525,6 +525,7 @@ impl PluginRuntimeManager {
 
         trace!("resolve_module_runtime_spec: building ModuleRuntimeSpec");
         let exec_path = module.exec_path.clone();
+        let is_vcs_backend = !module.vcs_backends.is_empty();
         Ok(ModuleRuntimeSpec {
             plugin_id: components.plugin_id.clone(),
             key,
@@ -534,6 +535,7 @@ impl PluginRuntimeManager {
                 exec_path,
                 approval: installed.approval,
                 allowed_workspace_root,
+                is_vcs_backend,
             },
         })
     }
@@ -677,11 +679,52 @@ mod tests {
         assert!(!running.contains_key("themes.plugin"));
     }
 
+    #[test]
+    /// Verifies spawn config marks VCS backend plugins using manifest data.
+    fn resolve_spec_sets_vcs_backend_flag_from_manifest() {
+        let temp = tempdir().expect("tempdir");
+        write_plugin(temp.path(), "utility.plugin", true);
+        write_vcs_plugin(temp.path(), "git.plugin", true);
+
+        let manager = PluginRuntimeManager::new(PluginBundleStore::new_at(temp.path().into()));
+
+        let utility = manager
+            .resolve_module_runtime_spec("utility.plugin", None)
+            .expect("resolve utility plugin");
+        assert!(!utility.spawn.is_vcs_backend);
+
+        let vcs = manager
+            .resolve_module_runtime_spec("git.plugin", None)
+            .expect("resolve vcs plugin");
+        assert!(vcs.spawn.is_vcs_backend);
+    }
+
     /// Writes a minimal module-capable plugin layout into a temp store.
     fn write_plugin(root: &std::path::Path, plugin_id: &str, default_enabled: bool) {
+        write_plugin_with_backends(root, plugin_id, default_enabled, false);
+    }
+
+    /// Writes a minimal VCS-backend plugin layout into a temp store.
+    fn write_vcs_plugin(root: &std::path::Path, plugin_id: &str, default_enabled: bool) {
+        write_plugin_with_backends(root, plugin_id, default_enabled, true);
+    }
+
+    /// Writes a minimal module-capable plugin layout with optional VCS backends.
+    fn write_plugin_with_backends(
+        root: &std::path::Path,
+        plugin_id: &str,
+        default_enabled: bool,
+        include_vcs_backends: bool,
+    ) {
         let plugin_dir = root.join(plugin_id);
         fs::create_dir_all(plugin_dir.join("bin")).expect("create plugin dir");
         fs::write(plugin_dir.join("bin").join("plugin.wasm"), MINIMAL_WASM).expect("write wasm");
+
+        let vcs_backends = if include_vcs_backends {
+            vec![serde_json::json!({ "id": "git", "name": "Git" })]
+        } else {
+            Vec::new()
+        };
 
         let manifest = serde_json::json!({
             "id": plugin_id,
@@ -690,7 +733,7 @@ mod tests {
             "default_enabled": default_enabled,
             "module": {
                 "exec": "plugin.wasm",
-                "vcs_backends": []
+                "vcs_backends": vcs_backends
             }
         });
         fs::write(

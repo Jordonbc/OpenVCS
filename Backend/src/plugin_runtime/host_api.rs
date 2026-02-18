@@ -86,11 +86,7 @@ fn host_error(code: &str, message: impl Into<String>) -> PluginError {
 
 /// Resolves a plugin-supplied path under an allowed workspace root.
 fn resolve_under_root(root: &Path, path: &str) -> Result<PathBuf, String> {
-    trace!(
-        "resolve_under_root: root={}, path={}",
-        root.display(),
-        path
-    );
+    trace!("resolve_under_root: root={}, path={}", root.display(), path);
     if path.contains('\0') {
         warn!("resolve_under_root: path contains NUL");
         return Err("path contains NUL".to_string());
@@ -105,14 +101,10 @@ fn resolve_under_root(root: &Path, path: &str) -> Result<PathBuf, String> {
             .canonicalize()
             .map_err(|e| format!("canonicalize path {}: {e}", p.display()))?;
         if p.starts_with(&root) {
-            trace!(
-                "resolve_under_root: resolved absolute path within root",
-            );
+            trace!("resolve_under_root: resolved absolute path within root",);
             return Ok(p);
         }
-        warn!(
-            "resolve_under_root: path escapes workspace root",
-        );
+        warn!("resolve_under_root: path escapes workspace root",);
         return Err("path escapes workspace root".to_string());
     }
 
@@ -122,18 +114,13 @@ fn resolve_under_root(root: &Path, path: &str) -> Result<PathBuf, String> {
             Component::Normal(c) => clean.push(c),
             Component::CurDir => {}
             Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
-                warn!(
-                    "resolve_under_root: invalid path component in '{}'", path
-                );
+                warn!("resolve_under_root: invalid path component in '{}'", path);
                 return Err("path must be relative and not contain '..'".to_string());
             }
         }
     }
     let resolved = root.join(clean);
-    trace!(
-        "resolve_under_root: resolved to {}",
-        resolved.display()
-    );
+    trace!("resolve_under_root: resolved to {}", resolved.display());
     Ok(resolved)
 }
 
@@ -161,11 +148,7 @@ fn write_file_under_root(root: &Path, rel: &str, bytes: &[u8]) -> Result<(), Str
 
 /// Reads bytes from a relative path constrained to the workspace root.
 fn read_file_under_root(root: &Path, rel: &str) -> Result<Vec<u8>, String> {
-    trace!(
-        "read_file_under_root: root={}, rel={}",
-        root.display(),
-        rel
-    );
+    trace!("read_file_under_root: root={}, rel={}", root.display(), rel);
     let path = resolve_under_root(root, rel)?;
     let result = fs::read(&path).map_err(|e| {
         error!(
@@ -240,14 +223,16 @@ pub fn host_subscribe_event(spawn: &SpawnConfig, event_name: &str) -> HostResult
 
     if name.is_empty() {
         warn!(
-            "host_subscribe_event: empty event name from plugin {}", spawn.plugin_id
+            "host_subscribe_event: empty event name from plugin {}",
+            spawn.plugin_id
         );
         return Err(host_error("host.invalid_event_name", "event name is empty"));
     }
 
     crate::plugin_runtime::events::subscribe(&spawn.plugin_id, name);
     debug!(
-        "host_subscribe_event: plugin {} subscribed to '{}'", spawn.plugin_id, name
+        "host_subscribe_event: plugin {} subscribed to '{}'",
+        spawn.plugin_id, name
     );
     Ok(())
 }
@@ -265,7 +250,8 @@ pub fn host_emit_event(spawn: &SpawnConfig, event_name: &str, payload: &[u8]) ->
 
     if name.is_empty() {
         warn!(
-            "host_emit_event: empty event name from plugin {}", spawn.plugin_id
+            "host_emit_event: empty event name from plugin {}",
+            spawn.plugin_id
         );
         return Err(host_error("host.invalid_event_name", "event name is empty"));
     }
@@ -275,7 +261,8 @@ pub fn host_emit_event(spawn: &SpawnConfig, event_name: &str, payload: &[u8]) ->
     } else {
         serde_json::from_slice(payload).map_err(|err| {
             error!(
-                "host_emit_event: invalid JSON payload from plugin {}: {}", spawn.plugin_id, err
+                "host_emit_event: invalid JSON payload from plugin {}: {}",
+                spawn.plugin_id, err
             );
             host_error(
                 "host.invalid_payload",
@@ -286,7 +273,8 @@ pub fn host_emit_event(spawn: &SpawnConfig, event_name: &str, payload: &[u8]) ->
 
     crate::plugin_runtime::events::emit_from_plugin(&spawn.plugin_id, name, payload_json);
     debug!(
-        "host_emit_event: plugin {} emitted '{}'", spawn.plugin_id, name
+        "host_emit_event: plugin {} emitted '{}'",
+        spawn.plugin_id, name
     );
     Ok(())
 }
@@ -302,7 +290,8 @@ pub fn host_ui_notify(spawn: &SpawnConfig, message: &str) -> HostResult<()> {
 
     if !caps.contains("ui.notifications") {
         warn!(
-            "host_ui_notify: capability denied for plugin {} (missing ui.notifications)", spawn.plugin_id
+            "host_ui_notify: capability denied for plugin {} (missing ui.notifications)",
+            spawn.plugin_id
         );
         return Err(host_error(
             "capability.denied",
@@ -313,7 +302,8 @@ pub fn host_ui_notify(spawn: &SpawnConfig, message: &str) -> HostResult<()> {
     let message = message.trim();
     if !message.is_empty() {
         info!(
-            "host_ui_notify: plugin[{}] notify: {}", spawn.plugin_id, message
+            "host_ui_notify: plugin[{}] notify: {}",
+            spawn.plugin_id, message
         );
     }
     Ok(())
@@ -332,7 +322,8 @@ pub fn host_workspace_read_file(spawn: &SpawnConfig, path: &str) -> HostResult<V
 
     if !caps.contains("workspace.read") && !caps.contains("workspace.write") {
         warn!(
-            "host_workspace_read_file: capability denied for plugin {} (missing workspace.read)", spawn.plugin_id
+            "host_workspace_read_file: capability denied for plugin {} (missing workspace.read)",
+            spawn.plugin_id
         );
         return Err(host_error(
             "capability.denied",
@@ -342,14 +333,16 @@ pub fn host_workspace_read_file(spawn: &SpawnConfig, path: &str) -> HostResult<V
 
     let Some(root) = workspace_root.as_ref() else {
         warn!(
-            "host_workspace_read_file: no workspace context for plugin {}", spawn.plugin_id
+            "host_workspace_read_file: no workspace context for plugin {}",
+            spawn.plugin_id
         );
         return Err(host_error("workspace.denied", "no workspace context"));
     };
 
     let result = read_file_under_root(root, path).map_err(|err| {
         error!(
-            "host_workspace_read_file: failed for plugin {}: {}", spawn.plugin_id, err
+            "host_workspace_read_file: failed for plugin {}: {}",
+            spawn.plugin_id, err
         );
         host_error("workspace.error", err)
     })?;
@@ -381,7 +374,8 @@ pub fn host_workspace_write_file(
 
     if !caps.contains("workspace.write") {
         warn!(
-            "host_workspace_write_file: capability denied for plugin {} (missing workspace.write)", spawn.plugin_id
+            "host_workspace_write_file: capability denied for plugin {} (missing workspace.write)",
+            spawn.plugin_id
         );
         return Err(host_error(
             "capability.denied",
@@ -391,14 +385,16 @@ pub fn host_workspace_write_file(
 
     let Some(root) = workspace_root.as_ref() else {
         warn!(
-            "host_workspace_write_file: no workspace context for plugin {}", spawn.plugin_id
+            "host_workspace_write_file: no workspace context for plugin {}",
+            spawn.plugin_id
         );
         return Err(host_error("workspace.denied", "no workspace context"));
     };
 
     write_file_under_root(root, path, content).map_err(|err| {
         error!(
-            "host_workspace_write_file: failed for plugin {}: {}", spawn.plugin_id, err
+            "host_workspace_write_file: failed for plugin {}: {}",
+            spawn.plugin_id, err
         );
         host_error("workspace.error", err)
     })?;
@@ -422,7 +418,8 @@ pub fn host_process_exec_git(
 ) -> HostResult<HostProcessExecOutput> {
     let _timer = LogTimer::new(MODULE, "host_process_exec_git");
     info!(
-        "host_process_exec_git: plugin={}, args={:?}", spawn.plugin_id, args
+        "host_process_exec_git: plugin={}, args={:?}",
+        spawn.plugin_id, args
     );
     debug!(
         "host_process_exec_git: cwd={:?}, env_count={}, has_stdin={}",
@@ -440,7 +437,8 @@ pub fn host_process_exec_git(
 
     if !caps.contains("process.exec") {
         warn!(
-            "host_process_exec_git: capability denied for plugin {} (missing process.exec)", spawn.plugin_id
+            "host_process_exec_git: capability denied for plugin {} (missing process.exec)",
+            spawn.plugin_id
         );
         return Err(host_error(
             "capability.denied",
@@ -454,13 +452,15 @@ pub fn host_process_exec_git(
         Some(raw) => {
             let Some(root) = spawn.allowed_workspace_root.as_ref() else {
                 warn!(
-                    "host_process_exec_git: no workspace context for plugin {}", spawn.plugin_id
+                    "host_process_exec_git: no workspace context for plugin {}",
+                    spawn.plugin_id
                 );
                 return Err(host_error("workspace.denied", "no workspace context"));
             };
             Some(resolve_under_root(root, raw).map_err(|e| {
                 warn!(
-                    "host_process_exec_git: invalid cwd for plugin {}: {}", spawn.plugin_id, e
+                    "host_process_exec_git: invalid cwd for plugin {}: {}",
+                    spawn.plugin_id, e
                 );
                 host_error("workspace.denied", e)
             })?)
@@ -492,32 +492,24 @@ pub fn host_process_exec_git(
     let stdin_text = stdin.unwrap_or_default();
     let out = if stdin_text.is_empty() {
         cmd.output().map_err(|e| {
-            error!(
-                "host_process_exec_git: failed to spawn git: {}", e
-            );
+            error!("host_process_exec_git: failed to spawn git: {}", e);
             host_error("process.error", format!("spawn git: {e}"))
         })?
     } else {
         cmd.stdin(Stdio::piped());
         let mut child = cmd.spawn().map_err(|e| {
-            error!(
-                "host_process_exec_git: failed to spawn git: {}", e
-            );
+            error!("host_process_exec_git: failed to spawn git: {}", e);
             host_error("process.error", format!("spawn git: {e}"))
         })?;
         if let Some(mut child_stdin) = child.stdin.take() {
             if let Err(e) = child_stdin.write_all(stdin_text.as_bytes()) {
                 let _ = child.kill();
-                error!(
-                    "host_process_exec_git: failed to write stdin: {}", e
-                );
+                error!("host_process_exec_git: failed to write stdin: {}", e);
                 return Err(host_error("process.error", format!("write stdin: {e}")));
             }
         }
         child.wait_with_output().map_err(|e| {
-            error!(
-                "host_process_exec_git: failed to wait for process: {}", e
-            );
+            error!("host_process_exec_git: failed to wait for process: {}", e);
             host_error("process.error", format!("wait: {e}"))
         })?
     };

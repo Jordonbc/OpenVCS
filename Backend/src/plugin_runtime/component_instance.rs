@@ -28,7 +28,7 @@ fn get_wasmtime_engine() -> &'static Engine {
     })
 }
 
-mod bindings {
+mod bindings_vcs {
     wasmtime::component::bindgen!({
         path: "../../Core/wit",
         world: "vcs",
@@ -36,14 +36,64 @@ mod bindings {
     });
 }
 
-use bindings::exports::openvcs::plugin::vcs_api;
+mod bindings_plugin {
+    wasmtime::component::bindgen!({
+        path: "../../Core/wit",
+        world: "plugin",
+        additional_derives: [serde::Serialize, serde::Deserialize],
+    });
+}
+
+use bindings_vcs::exports::openvcs::plugin::vcs_api;
+
+/// Typed bindings handle selected for the running plugin world.
+enum ComponentBindings {
+    /// Bindings for plugins exporting the `vcs` world.
+    Vcs(bindings_vcs::Vcs),
+    /// Bindings for plugins exporting the base `plugin` world.
+    Plugin(bindings_plugin::Plugin),
+}
 
 /// Live component instance plus generated bindings handle.
 struct ComponentRuntime {
     /// Wasmtime store containing component state and host context.
     store: Store<ComponentHostState>,
     /// Generated typed binding entrypoints for the plugin world.
-    bindings: bindings::Vcs,
+    bindings: ComponentBindings,
+}
+
+impl ComponentRuntime {
+    /// Calls plugin `init` for whichever world is currently loaded.
+    fn call_init(&mut self, plugin_id: &str) -> Result<(), String> {
+        match &self.bindings {
+            ComponentBindings::Vcs(bindings) => bindings
+                .openvcs_plugin_plugin_api()
+                .call_init(&mut self.store)
+                .map_err(|e| format!("component init trap for {}: {e}", plugin_id))?
+                .map_err(|e| format!("component init failed for {}: {}", plugin_id, e.message)),
+            ComponentBindings::Plugin(bindings) => bindings
+                .openvcs_plugin_plugin_api()
+                .call_init(&mut self.store)
+                .map_err(|e| format!("component init trap for {}: {e}", plugin_id))?
+                .map_err(|e| format!("component init failed for {}: {}", plugin_id, e.message)),
+        }
+    }
+
+    /// Calls plugin `deinit` for whichever world is currently loaded.
+    fn call_deinit(&mut self) {
+        match &self.bindings {
+            ComponentBindings::Vcs(bindings) => {
+                let _ = bindings
+                    .openvcs_plugin_plugin_api()
+                    .call_deinit(&mut self.store);
+            }
+            ComponentBindings::Plugin(bindings) => {
+                let _ = bindings
+                    .openvcs_plugin_plugin_api()
+                    .call_deinit(&mut self.store);
+            }
+        }
+    }
 }
 
 /// Host state stored inside the Wasmtime store for host imports.
@@ -58,10 +108,20 @@ struct ComponentHostState {
 
 impl ComponentHostState {
     /// Converts core host errors into generated WIT host error type.
-    fn map_host_error(
+    fn map_host_error_vcs(
         err: openvcs_core::app_api::PluginError,
-    ) -> bindings::openvcs::plugin::host_api::HostError {
-        bindings::openvcs::plugin::host_api::HostError {
+    ) -> bindings_vcs::openvcs::plugin::host_api::HostError {
+        bindings_vcs::openvcs::plugin::host_api::HostError {
+            code: err.code,
+            message: err.message,
+        }
+    }
+
+    /// Converts core host errors into generated WIT host error type.
+    fn map_host_error_plugin(
+        err: openvcs_core::app_api::PluginError,
+    ) -> bindings_plugin::openvcs::plugin::host_api::HostError {
+        bindings_plugin::openvcs::plugin::host_api::HostError {
             code: err.code,
             message: err.message,
         }
@@ -78,16 +138,16 @@ impl WasiView for ComponentHostState {
     }
 }
 
-impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
+impl bindings_vcs::openvcs::plugin::host_api::Host for ComponentHostState {
     /// Returns runtime metadata for the current host process.
     fn get_runtime_info(
         &mut self,
     ) -> Result<
-        bindings::openvcs::plugin::host_api::RuntimeInfo,
-        bindings::openvcs::plugin::host_api::HostError,
+        bindings_vcs::openvcs::plugin::host_api::RuntimeInfo,
+        bindings_vcs::openvcs::plugin::host_api::HostError,
     > {
         let value = host_runtime_info();
-        Ok(bindings::openvcs::plugin::host_api::RuntimeInfo {
+        Ok(bindings_vcs::openvcs::plugin::host_api::RuntimeInfo {
             os: value.os,
             arch: value.arch,
             container: value.container,
@@ -98,8 +158,9 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
     fn subscribe_event(
         &mut self,
         event_name: String,
-    ) -> Result<(), bindings::openvcs::plugin::host_api::HostError> {
-        host_subscribe_event(&self.spawn, &event_name).map_err(ComponentHostState::map_host_error)
+    ) -> Result<(), bindings_vcs::openvcs::plugin::host_api::HostError> {
+        host_subscribe_event(&self.spawn, &event_name)
+            .map_err(ComponentHostState::map_host_error_vcs)
     }
 
     /// Emits a plugin-originated event through the host event bus.
@@ -107,25 +168,25 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         &mut self,
         event_name: String,
         payload: Vec<u8>,
-    ) -> Result<(), bindings::openvcs::plugin::host_api::HostError> {
+    ) -> Result<(), bindings_vcs::openvcs::plugin::host_api::HostError> {
         host_emit_event(&self.spawn, &event_name, &payload)
-            .map_err(ComponentHostState::map_host_error)
+            .map_err(ComponentHostState::map_host_error_vcs)
     }
 
     /// Forwards plugin notifications to host-side UI notification handling.
     fn ui_notify(
         &mut self,
         message: String,
-    ) -> Result<(), bindings::openvcs::plugin::host_api::HostError> {
-        host_ui_notify(&self.spawn, &message).map_err(ComponentHostState::map_host_error)
+    ) -> Result<(), bindings_vcs::openvcs::plugin::host_api::HostError> {
+        host_ui_notify(&self.spawn, &message).map_err(ComponentHostState::map_host_error_vcs)
     }
 
     /// Reads a workspace file under capability and path constraints.
     fn workspace_read_file(
         &mut self,
         path: String,
-    ) -> Result<Vec<u8>, bindings::openvcs::plugin::host_api::HostError> {
-        host_workspace_read_file(&self.spawn, &path).map_err(ComponentHostState::map_host_error)
+    ) -> Result<Vec<u8>, bindings_vcs::openvcs::plugin::host_api::HostError> {
+        host_workspace_read_file(&self.spawn, &path).map_err(ComponentHostState::map_host_error_vcs)
     }
 
     /// Writes a workspace file under capability and path constraints.
@@ -133,9 +194,9 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         &mut self,
         path: String,
         content: Vec<u8>,
-    ) -> Result<(), bindings::openvcs::plugin::host_api::HostError> {
+    ) -> Result<(), bindings_vcs::openvcs::plugin::host_api::HostError> {
         host_workspace_write_file(&self.spawn, &path, &content)
-            .map_err(ComponentHostState::map_host_error)
+            .map_err(ComponentHostState::map_host_error_vcs)
     }
 
     /// Executes `git` in a constrained host environment.
@@ -143,11 +204,11 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         &mut self,
         cwd: Option<String>,
         args: Vec<String>,
-        env: Vec<bindings::openvcs::plugin::host_api::EnvVar>,
+        env: Vec<bindings_vcs::openvcs::plugin::host_api::EnvVar>,
         stdin: Option<String>,
     ) -> Result<
-        bindings::openvcs::plugin::host_api::ProcessExecOutput,
-        bindings::openvcs::plugin::host_api::HostError,
+        bindings_vcs::openvcs::plugin::host_api::ProcessExecOutput,
+        bindings_vcs::openvcs::plugin::host_api::HostError,
     > {
         let env = env
             .into_iter()
@@ -155,8 +216,8 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
             .collect::<Vec<_>>();
         let value =
             host_process_exec_git(&self.spawn, cwd.as_deref(), &args, &env, stdin.as_deref())
-                .map_err(ComponentHostState::map_host_error)?;
-        Ok(bindings::openvcs::plugin::host_api::ProcessExecOutput {
+                .map_err(ComponentHostState::map_host_error_vcs)?;
+        Ok(bindings_vcs::openvcs::plugin::host_api::ProcessExecOutput {
             success: value.success,
             status: value.status,
             stdout: value.stdout,
@@ -167,7 +228,7 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
     /// Logs plugin-emitted messages through the host logger.
     fn host_log(
         &mut self,
-        level: bindings::openvcs::plugin::host_api::LogLevel,
+        level: bindings_vcs::openvcs::plugin::host_api::LogLevel,
         target: String,
         message: String,
     ) {
@@ -178,19 +239,142 @@ impl bindings::openvcs::plugin::host_api::Host for ComponentHostState {
         };
 
         match level {
-            bindings::openvcs::plugin::host_api::LogLevel::Trace => {
+            bindings_vcs::openvcs::plugin::host_api::LogLevel::Trace => {
                 log::trace!(target: &target, "{message}")
             }
-            bindings::openvcs::plugin::host_api::LogLevel::Debug => {
+            bindings_vcs::openvcs::plugin::host_api::LogLevel::Debug => {
                 log::debug!(target: &target, "{message}")
             }
-            bindings::openvcs::plugin::host_api::LogLevel::Info => {
+            bindings_vcs::openvcs::plugin::host_api::LogLevel::Info => {
                 log::info!(target: &target, "{message}")
             }
-            bindings::openvcs::plugin::host_api::LogLevel::Warn => {
+            bindings_vcs::openvcs::plugin::host_api::LogLevel::Warn => {
                 log::warn!(target: &target, "{message}")
             }
-            bindings::openvcs::plugin::host_api::LogLevel::Error => {
+            bindings_vcs::openvcs::plugin::host_api::LogLevel::Error => {
+                log::error!(target: &target, "{message}")
+            }
+        };
+    }
+}
+
+impl bindings_plugin::openvcs::plugin::host_api::Host for ComponentHostState {
+    /// Returns runtime metadata for the current host process.
+    fn get_runtime_info(
+        &mut self,
+    ) -> Result<
+        bindings_plugin::openvcs::plugin::host_api::RuntimeInfo,
+        bindings_plugin::openvcs::plugin::host_api::HostError,
+    > {
+        let value = host_runtime_info();
+        Ok(bindings_plugin::openvcs::plugin::host_api::RuntimeInfo {
+            os: value.os,
+            arch: value.arch,
+            container: value.container,
+        })
+    }
+
+    /// Registers an event subscription for this plugin.
+    fn subscribe_event(
+        &mut self,
+        event_name: String,
+    ) -> Result<(), bindings_plugin::openvcs::plugin::host_api::HostError> {
+        host_subscribe_event(&self.spawn, &event_name)
+            .map_err(ComponentHostState::map_host_error_plugin)
+    }
+
+    /// Emits a plugin-originated event through the host event bus.
+    fn emit_event(
+        &mut self,
+        event_name: String,
+        payload: Vec<u8>,
+    ) -> Result<(), bindings_plugin::openvcs::plugin::host_api::HostError> {
+        host_emit_event(&self.spawn, &event_name, &payload)
+            .map_err(ComponentHostState::map_host_error_plugin)
+    }
+
+    /// Forwards plugin notifications to host-side UI notification handling.
+    fn ui_notify(
+        &mut self,
+        message: String,
+    ) -> Result<(), bindings_plugin::openvcs::plugin::host_api::HostError> {
+        host_ui_notify(&self.spawn, &message).map_err(ComponentHostState::map_host_error_plugin)
+    }
+
+    /// Reads a workspace file under capability and path constraints.
+    fn workspace_read_file(
+        &mut self,
+        path: String,
+    ) -> Result<Vec<u8>, bindings_plugin::openvcs::plugin::host_api::HostError> {
+        host_workspace_read_file(&self.spawn, &path)
+            .map_err(ComponentHostState::map_host_error_plugin)
+    }
+
+    /// Writes a workspace file under capability and path constraints.
+    fn workspace_write_file(
+        &mut self,
+        path: String,
+        content: Vec<u8>,
+    ) -> Result<(), bindings_plugin::openvcs::plugin::host_api::HostError> {
+        host_workspace_write_file(&self.spawn, &path, &content)
+            .map_err(ComponentHostState::map_host_error_plugin)
+    }
+
+    /// Executes `git` in a constrained host environment.
+    fn process_exec_git(
+        &mut self,
+        cwd: Option<String>,
+        args: Vec<String>,
+        env: Vec<bindings_plugin::openvcs::plugin::host_api::EnvVar>,
+        stdin: Option<String>,
+    ) -> Result<
+        bindings_plugin::openvcs::plugin::host_api::ProcessExecOutput,
+        bindings_plugin::openvcs::plugin::host_api::HostError,
+    > {
+        let env = env
+            .into_iter()
+            .map(|var| (var.key, var.value))
+            .collect::<Vec<_>>();
+        let value =
+            host_process_exec_git(&self.spawn, cwd.as_deref(), &args, &env, stdin.as_deref())
+                .map_err(ComponentHostState::map_host_error_plugin)?;
+        Ok(
+            bindings_plugin::openvcs::plugin::host_api::ProcessExecOutput {
+                success: value.success,
+                status: value.status,
+                stdout: value.stdout,
+                stderr: value.stderr,
+            },
+        )
+    }
+
+    /// Logs plugin-emitted messages through the host logger.
+    fn host_log(
+        &mut self,
+        level: bindings_plugin::openvcs::plugin::host_api::LogLevel,
+        target: String,
+        message: String,
+    ) {
+        let target = if target.trim().is_empty() {
+            format!("plugin.{}", self.spawn.plugin_id)
+        } else {
+            format!("plugin.{}.{}", self.spawn.plugin_id, target)
+        };
+
+        match level {
+            bindings_plugin::openvcs::plugin::host_api::LogLevel::Trace => {
+                log::trace!(target: &target, "{message}")
+            }
+            bindings_plugin::openvcs::plugin::host_api::LogLevel::Debug => {
+                log::debug!(target: &target, "{message}")
+            }
+            bindings_plugin::openvcs::plugin::host_api::LogLevel::Info => {
+                log::info!(target: &target, "{message}")
+            }
+            bindings_plugin::openvcs::plugin::host_api::LogLevel::Warn => {
+                log::warn!(target: &target, "{message}")
+            }
+            bindings_plugin::openvcs::plugin::host_api::LogLevel::Error => {
                 log::error!(target: &target, "{message}")
             }
         };
@@ -222,11 +406,6 @@ impl ComponentPluginRuntimeInstance {
         let mut linker = Linker::new(engine);
         wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
             .map_err(|e| format!("link wasi imports: {e}"))?;
-        bindings::Vcs::add_to_linker::<
-            ComponentHostState,
-            wasmtime::component::HasSelf<ComponentHostState>,
-        >(&mut linker, |state| state)
-        .map_err(|e| format!("link host imports: {e}"))?;
         let mut store = Store::new(
             engine,
             ComponentHostState {
@@ -235,21 +414,33 @@ impl ComponentPluginRuntimeInstance {
                 wasi: WasiCtx::builder().build(),
             },
         );
-        let bindings = bindings::Vcs::instantiate(&mut store, &component, &linker)
-            .map_err(|e| format!("instantiate component {}: {e}", self.spawn.plugin_id))?;
+        let bindings = if self.spawn.is_vcs_backend {
+            bindings_vcs::Vcs::add_to_linker::<
+                ComponentHostState,
+                wasmtime::component::HasSelf<ComponentHostState>,
+            >(&mut linker, |state| state)
+            .map_err(|e| format!("link host imports: {e}"))?;
 
-        bindings
-            .openvcs_plugin_plugin_api()
-            .call_init(&mut store)
-            .map_err(|e| format!("component init trap for {}: {e}", self.spawn.plugin_id))?
-            .map_err(|e| {
-                format!(
-                    "component init failed for {}: {}",
-                    self.spawn.plugin_id, e.message
-                )
-            })?;
+            ComponentBindings::Vcs(
+                bindings_vcs::Vcs::instantiate(&mut store, &component, &linker)
+                    .map_err(|e| format!("instantiate component {}: {e}", self.spawn.plugin_id))?,
+            )
+        } else {
+            bindings_plugin::Plugin::add_to_linker::<
+                ComponentHostState,
+                wasmtime::component::HasSelf<ComponentHostState>,
+            >(&mut linker, |state| state)
+            .map_err(|e| format!("link host imports: {e}"))?;
 
-        Ok(ComponentRuntime { store, bindings })
+            ComponentBindings::Plugin(
+                bindings_plugin::Plugin::instantiate(&mut store, &component, &linker)
+                    .map_err(|e| format!("instantiate component {}: {e}", self.spawn.plugin_id))?,
+            )
+        };
+
+        let mut runtime = ComponentRuntime { store, bindings };
+        runtime.call_init(&self.spawn.plugin_id)?;
+        Ok(runtime)
     }
 
     /// Ensures a runtime exists and executes a closure with mutable access.
@@ -301,13 +492,25 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
     }
 
     #[allow(clippy::let_unit_value)]
-    /// Invokes a v1 ABI method exported by the plugin component.
+    /// Invokes a v1 VCS ABI method exported by the plugin component.
+    ///
+    /// Non-VCS plugins only expose lifecycle hooks (`init`/`deinit`) and return
+    /// an error for VCS RPC method calls.
     fn call(&self, method: &str, params: Value) -> Result<Value, String> {
         self.with_runtime(|runtime| {
+            let bindings = match &runtime.bindings {
+                ComponentBindings::Vcs(bindings) => bindings,
+                ComponentBindings::Plugin(_) => {
+                    return Err(format!(
+                        "component method `{method}` requires VCS backend exports for plugin `{}`",
+                        self.spawn.plugin_id
+                    ));
+                }
+            };
+
             macro_rules! invoke {
                 ($method_name:literal, $call:ident $(, $arg:expr )* ) => {
-                    runtime
-                        .bindings
+                    bindings
                         .openvcs_plugin_vcs_api()
                         .$call(&mut runtime.store $(, $arg )* )
                         .map_err(|e| {
@@ -814,10 +1017,7 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
     fn stop(&self) {
         let mut lock = self.runtime.lock();
         if let Some(runtime) = lock.as_mut() {
-            let _ = runtime
-                .bindings
-                .openvcs_plugin_plugin_api()
-                .call_deinit(&mut runtime.store);
+            runtime.call_deinit();
         }
         *lock = None;
     }

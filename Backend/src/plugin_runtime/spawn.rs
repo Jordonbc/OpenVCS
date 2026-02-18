@@ -14,4 +14,6 @@ pub struct SpawnConfig {
     pub approval: ApprovalState,
     /// Optional workspace root constraining file/process host operations.
     pub allowed_workspace_root: Option<PathBuf>,
+    /// Whether this plugin exports a VCS backend interface.
+    pub is_vcs_backend: bool,
 }

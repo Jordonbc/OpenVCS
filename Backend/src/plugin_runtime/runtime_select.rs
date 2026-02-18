@@ -38,8 +38,8 @@ pub fn create_runtime_instance(
         spawn.exec_path.display()
     );
     debug!(
-        "create_runtime_instance: approval={:?}, workspace_root={:?}",
-        spawn.approval, spawn.allowed_workspace_root
+        "create_runtime_instance: approval={:?}, workspace_root={:?}, is_vcs_backend={}",
+        spawn.approval, spawn.allowed_workspace_root, spawn.is_vcs_backend
     );
 
     trace!("create_runtime_instance: validating component module");
@@ -108,6 +108,7 @@ mod tests {
                 approved_at_unix_ms: 0,
             },
             allowed_workspace_root: None,
+            is_vcs_backend: false,
         }) {
             Ok(_) => panic!("expected non-component runtime rejection"),
             Err(err) => err,

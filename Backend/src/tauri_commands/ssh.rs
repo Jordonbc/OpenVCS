@@ -6,7 +6,6 @@ use log::{debug, error, info, trace, warn};
 use serde::Serialize;
 use tauri::command;
 
-
 /// Returns `~/.ssh/known_hosts` path.
 ///
 /// # Returns
@@ -14,9 +13,7 @@ use tauri::command;
 /// - `Err(String)` when home directory cannot be resolved.
 fn known_hosts_path() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| {
-        error!(
-            "known_hosts_path: could not determine home directory",
-        );
+        error!("known_hosts_path: could not determine home directory",);
         "Could not determine home directory".to_string()
     })?;
     let path = home.join(".ssh").join("known_hosts");
@@ -31,9 +28,7 @@ fn known_hosts_path() -> Result<PathBuf, String> {
 /// - `Err(String)` when home directory cannot be resolved.
 fn ssh_dir_path() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| {
-        error!(
-            "ssh_dir_path: could not determine home directory",
-        );
+        error!("ssh_dir_path: could not determine home directory",);
         "Could not determine home directory".to_string()
     })?;
     let path = home.join(".ssh");
@@ -48,24 +43,15 @@ fn ssh_dir_path() -> Result<PathBuf, String> {
 /// - `Err(String)` on resolution or create failure.
 fn ensure_ssh_dir() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| {
-        error!(
-            "ensure_ssh_dir: could not determine home directory",
-        );
+        error!("ensure_ssh_dir: could not determine home directory",);
         "Could not determine home directory".to_string()
     })?;
     let dir = home.join(".ssh");
     fs::create_dir_all(&dir).map_err(|e| {
-        error!(
-            "ensure_ssh_dir: failed to create {}: {}",
-            dir.display(),
-            e
-        );
+        error!("ensure_ssh_dir: failed to create {}: {}", dir.display(), e);
         format!("Failed to create ~/.ssh: {e}")
     })?;
-    debug!(
-        "ensure_ssh_dir: ssh directory ready at {}",
-        dir.display()
-    );
+    debug!("ensure_ssh_dir: ssh directory ready at {}", dir.display());
     Ok(dir)
 }
 
@@ -107,12 +93,14 @@ fn run_command(cmd: &str, args: &[&str]) -> Result<SshCommandOutput, String> {
 
     if out.status.success() {
         debug!(
-            "run_command: {} succeeded in {:?} (code={})", cmd, elapsed, result.code
+            "run_command: {} succeeded in {:?} (code={})",
+            cmd, elapsed, result.code
         );
         trace!("run_command: stdout='{}'", result.stdout);
     } else {
         warn!(
-            "run_command: {} failed in {:?} (code={}): {}", cmd, elapsed, result.code, result.stderr
+            "run_command: {} failed in {:?} (code={}): {}",
+            cmd, elapsed, result.code, result.stderr
         );
     }
 
@@ -145,9 +133,7 @@ fn keyscan(host: &str) -> Result<String, String> {
 
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        error!(
-            "keyscan: failed for '{}' in {:?}: {}", host, elapsed, err
-        );
+        error!("keyscan: failed for '{}' in {:?}: {}", host, elapsed, err);
         return Err(if err.is_empty() {
             format!("ssh-keyscan exited with {}", out.status)
         } else {
@@ -162,9 +148,7 @@ fn keyscan(host: &str) -> Result<String, String> {
         return Err("ssh-keyscan returned no host keys".to_string());
     }
 
-    debug!(
-        "keyscan: got keys for '{}' in {:?}", host, elapsed
-    );
+    debug!("keyscan: got keys for '{}' in {:?}", host, elapsed);
     trace!(
         "keyscan: keys='{}'",
         s.lines().take(3).collect::<Vec<_>>().join("\\n")
@@ -206,17 +190,12 @@ pub fn ssh_trust_host(host: String) -> Result<(), String> {
 
     ensure_ssh_dir()?;
     let known_hosts = known_hosts_path()?;
-    debug!(
-        "ssh_trust_host: known_hosts path={}",
-        known_hosts.display()
-    );
+    debug!("ssh_trust_host: known_hosts path={}", known_hosts.display());
 
     // Avoid duplicating entries if the host is already present.
     if let Ok(existing) = fs::read_to_string(&known_hosts) {
         if existing.lines().any(|l| l.contains(host)) {
-            debug!(
-                "ssh_trust_host: host '{}' already in known_hosts", host
-            );
+            debug!("ssh_trust_host: host '{}' already in known_hosts", host);
             return Ok(());
         }
     }
@@ -241,9 +220,7 @@ pub fn ssh_trust_host(host: String) -> Result<(), String> {
         })?;
 
     let elapsed = start.elapsed();
-    info!(
-        "ssh_trust_host: host '{}' trusted in {:?}", host, elapsed
-    );
+    info!("ssh_trust_host: host '{}' trusted in {:?}", host, elapsed);
     Ok(())
 }
 
@@ -268,9 +245,7 @@ pub fn ssh_agent_list_keys() -> Result<SshCommandOutput, String> {
             warn!("ssh_agent_list_keys: agent has no identities");
         }
         code => {
-            warn!(
-                "ssh_agent_list_keys: agent returned code {}", code
-            );
+            warn!("ssh_agent_list_keys: agent returned code {}", code);
         }
     }
 
@@ -293,15 +268,11 @@ pub struct SshKeyCandidate {
 /// - `Ok(Vec<SshKeyCandidate>)` sorted candidate list.
 /// - `Err(String)` when home/ssh directory resolution fails.
 pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
-    info!(
-        "ssh_key_candidates: scanning for SSH key candidates",
-    );
+    info!("ssh_key_candidates: scanning for SSH key candidates",);
     let dir = ssh_dir_path()?;
 
     let Ok(read_dir) = fs::read_dir(&dir) else {
-        debug!(
-            "ssh_key_candidates: ssh directory does not exist or is not readable",
-        );
+        debug!("ssh_key_candidates: ssh directory does not exist or is not readable",);
         return Ok(vec![]);
     };
 
@@ -322,10 +293,7 @@ pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
             || name.ends_with(".log")
             || name.ends_with(".old")
         {
-            trace!(
-                "ssh_key_candidates: skipping non-key file: {}",
-                name
-            );
+            trace!("ssh_key_candidates: skipping non-key file: {}", name);
             continue;
         }
 
@@ -348,10 +316,7 @@ pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
     }
 
     keys.sort_by(|a, b| a.name.cmp(&b.name));
-    debug!(
-        "ssh_key_candidates: found {} candidate keys",
-        keys.len()
-    );
+    debug!("ssh_key_candidates: found {} candidate keys", keys.len());
     Ok(keys)
 }
 
@@ -378,9 +343,7 @@ pub fn ssh_add_key(path: String) -> Result<SshCommandOutput, String> {
     if result.code == 0 {
         debug!("ssh_add_key: key added successfully");
     } else {
-        warn!(
-            "ssh_add_key: failed to add key: {}", result.stderr
-        );
+        warn!("ssh_add_key: failed to add key: {}", result.stderr);
     }
 
     Ok(result)

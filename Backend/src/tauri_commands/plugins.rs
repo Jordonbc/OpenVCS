@@ -118,18 +118,28 @@ pub fn set_plugin_enabled(
     plugin_id: String,
     enabled: bool,
 ) -> Result<(), String> {
-    trace!("set_plugin_enabled: entering with plugin_id='{}', enabled={}", plugin_id, enabled);
-    
+    trace!(
+        "set_plugin_enabled: entering with plugin_id='{}', enabled={}",
+        plugin_id,
+        enabled
+    );
+
     let plugin_id = plugin_id.trim().to_string();
     debug!("set_plugin_enabled: trimmed plugin_id='{}'", plugin_id);
-    
-    info!("set_plugin_enabled: plugin={}, enabled={}", plugin_id, enabled);
-    
+
+    info!(
+        "set_plugin_enabled: plugin={}, enabled={}",
+        plugin_id, enabled
+    );
+
     state
         .plugin_runtime()
         .set_plugin_enabled(&plugin_id, enabled)
         .map_err(|e| {
-            error!("set_plugin_enabled failed: plugin={}, error={}", plugin_id, e);
+            error!(
+                "set_plugin_enabled failed: plugin={}, error={}",
+                plugin_id, e
+            );
             e
         })
 }
