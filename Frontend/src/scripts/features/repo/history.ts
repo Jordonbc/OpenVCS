@@ -88,7 +88,7 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: C
                 try {
                     await TAURI.invoke('git_undo_to_commit', { id: commit.id });
                     await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
-                } catch { notify('Undo failed'); }
+                } catch (e) { console.error('Undo failed:', e); notify('Undo failed'); }
             },
         });
     }

@@ -81,7 +81,7 @@ export function renderStashList(query: string): boolean {
                     notify('Applied stash');
                     await Promise.allSettled([hydrateStatus(), hydrateStash()]);
                     renderListRef?.();
-                } catch { notify('Failed to apply stash'); }
+                } catch (e) { console.error('Failed to apply stash:', e); notify('Failed to apply stash'); }
             }});
             items.push({ label: 'Delete stash', action: async () => {
                 const ok = window.confirm(`Delete ${target}? This cannot be undone.`);
@@ -93,7 +93,7 @@ export function renderStashList(query: string): boolean {
                     if (state.currentStash === target) state.currentStash = '';
                     await Promise.allSettled([hydrateStash()]);
                     renderListRef?.();
-                } catch { notify('Failed to delete stash'); }
+                } catch (e) { console.error('Failed to delete stash:', e); notify('Failed to delete stash'); }
             }});
             buildCtxMenu(items, x, y);
         });
@@ -197,7 +197,7 @@ function wireStashFooterButtons(container: HTMLElement) {
             notify('Applied stash');
             await Promise.allSettled([hydrateStatus(), hydrateStash()]);
             renderListRef?.();
-        } catch (e) { console.warn('git_stash_apply failed', e); notify('Failed to apply stash'); }
+        } catch (e) { console.error('git_stash_apply failed:', e); notify('Failed to apply stash'); }
     });
 
     const popBtn = container.querySelector<HTMLButtonElement>('#stash-pop-btn');
@@ -210,7 +210,7 @@ function wireStashFooterButtons(container: HTMLElement) {
             notify('Popped stash');
             await Promise.allSettled([hydrateStatus(), hydrateStash()]);
             renderListRef?.();
-        } catch (e) { console.warn('git_stash_pop failed', e); notify('Failed to pop stash'); }
+        } catch (e) { console.error('git_stash_pop failed:', e); notify('Failed to pop stash'); }
     });
 
     const dropBtn = container.querySelector<HTMLButtonElement>('#stash-drop-btn');
@@ -226,6 +226,6 @@ function wireStashFooterButtons(container: HTMLElement) {
             state.currentStash = '';
             await Promise.allSettled([hydrateStash()]);
             renderListRef?.();
-        } catch (e) { console.warn('git_stash_drop failed', e); notify('Failed to drop stash'); }
+        } catch (e) { console.error('git_stash_drop failed:', e); notify('Failed to drop stash'); }
     });
 }

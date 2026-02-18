@@ -9,6 +9,7 @@ const statusEl = qs<HTMLElement>('#status');
  * @param text - Message to display
  */
 export function notify(text: string) {
+    console.log(`[notify] ${text}`);
     if (!statusEl) return;
     setText(statusEl, text);
     setTimeout(() => {

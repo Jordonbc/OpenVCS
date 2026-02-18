@@ -150,7 +150,7 @@ export async function selectFile(file: FileStatus, index: number) {
                         await TAURI.invoke('git_discard_patch', { patch });
                         await Promise.allSettled([hydrateStatus()]);
                     }
-                } catch { notify('Discard failed'); }
+                } catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
             }});
             const selected = (state as any).selectedHunksByFile?.[file.path] as number[] | undefined;
             if (Array.isArray(selected) && selected.length > 0) {
@@ -164,7 +164,7 @@ export async function selectFile(file: FileStatus, index: number) {
                             await TAURI.invoke('git_discard_patch', { patch });
                             await Promise.allSettled([hydrateStatus()]);
                         }
-                    } catch { notify('Discard failed'); }
+                    } catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
                 }});
             }
             const hunksMap: Record<string, number[]> = (state as any).selectedHunksByFile || {};
@@ -186,7 +186,7 @@ export async function selectFile(file: FileStatus, index: number) {
                             await TAURI.invoke('git_discard_patch', { patch });
                             await Promise.allSettled([hydrateStatus()]);
                         }
-                    } catch { notify('Discard failed'); }
+                    } catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
                 }});
             }
             buildCtxMenu(items, x, y);

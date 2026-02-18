@@ -321,14 +321,14 @@ async function boot() {
             notify('Pushed');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
             await runHook('postPush', hookData);
-        } catch { notify('Push failed'); } finally { clearBusy(); }
+        } catch (e) { console.error('Push failed:', e); notify('Push failed'); } finally { clearBusy(); }
     }
 
     async function openDocs() {
         if (TAURI.has) {
             try { await TAURI.invoke('open_docs', {}); return; } catch { /* fall back */ }
         }
-        try { window.open(WIKI_URL, '_blank', 'noopener'); } catch { notify('Unable to open docs'); }
+        try { window.open(WIKI_URL, '_blank', 'noopener'); } catch (e) { console.error('Unable to open docs:', e); notify('Unable to open docs'); }
     }
 
     async function runMenuAction(id?: string | null) {
@@ -344,7 +344,7 @@ async function boot() {
                 console.log('Action: show-output-log');
                 if (!TAURI.has) { notify('Output Log is available in the desktop app'); break; }
                 try { await TAURI.invoke('open_output_log_window', {}); }
-                catch { notify('Failed to open Output Log'); }
+                catch (e) { console.error('Failed to open Output Log:', e); notify('Failed to open Output Log'); }
                 break;
             case 'about': console.log('Action: about'); openAbout(); break;
             case 'settings': console.log('Action: settings'); openSettings(); break;
@@ -355,7 +355,7 @@ async function boot() {
                 if (!TAURI.has) { notify('Open this in the desktop app to edit repository files'); break; }
                 const name = id === 'repo-edit-gitignore' ? '.gitignore' : '.gitattributes';
                 try { await TAURI.invoke('open_repo_dotfile', { name }); }
-                catch { notify(`Could not open ${name}`); }
+                catch (e) { console.error(`Could not open ${name}:`, e); notify(`Could not open ${name}`); }
                 break;
             }
             case 'lfs-settings': openSettings('lfs'); break;
@@ -364,7 +364,7 @@ async function boot() {
                 try {
                     const hasUpdate = await TAURI.invoke<boolean>('check_for_updates', {});
                     if (!hasUpdate) notify('Already up to date');
-                } catch { notify('Update check failed'); }
+                } catch (e) { console.error('Update check failed:', e); notify('Update check failed'); }
                 break;
             case 'exit': if (TAURI.has) { TAURI.invoke('exit_app', {}).catch(() => {}); } break;
             default: {
@@ -406,7 +406,7 @@ async function boot() {
             await TAURI.invoke('git_undo_since_push', {});
             notify('Undid unpushed commits');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
-        } catch { notify('Undo failed'); } finally { clearBusy(); }
+        } catch (e) { console.error('Undo failed:', e); notify('Undo failed'); } finally { clearBusy(); }
     });
 
 

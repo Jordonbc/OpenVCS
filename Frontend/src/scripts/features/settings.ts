@@ -293,7 +293,7 @@ export function wireSettings() {
 
             notify('Settings saved');
             closeModal('settings-modal');
-        } catch { notify('Failed to save settings'); }
+        } catch (e) { console.error('Failed to save settings:', e); notify('Failed to save settings'); }
     });
 
     settingsReset?.addEventListener('click', async () => {
@@ -326,7 +326,7 @@ export function wireSettings() {
             setTheme('system');
             try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
             notify('Defaults restored');
-        } catch { notify('Failed to restore defaults'); }
+        } catch (e) { console.error('Failed to restore defaults:', e); notify('Failed to restore defaults'); }
     });
 
     // Settings are loaded by `openSettings()` on open.

@@ -281,7 +281,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             const ok = window.confirm(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
             if (!ok) return;
             try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
-            catch { notify('Discard failed'); }
+            catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
         }});
     }
     items.push({ label: 'Discard changes', action: async () => {
@@ -289,7 +289,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         const ok = window.confirm(`Discard all changes in \n${f.path}? This cannot be undone.`);
         if (!ok) return;
         try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
-        catch { notify('Discard failed'); }
+        catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
     }});
 
     const pluginTargets = (explicitMultiSelection ? selectedPaths.slice() : [singleTarget]).filter(Boolean);

@@ -99,7 +99,7 @@ export function bindCommit() {
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
             await runHook('postCommit', { summary, description, branch: state.branch, files: fullFiles, partialFiles });
             clearBusy('Ready');
-        } catch { notify('Commit failed'); }
+        } catch (e) { console.error('Commit failed:', e); notify('Commit failed'); }
         finally {
             clearBusy('Ready');
         }
