@@ -24,7 +24,7 @@ impl AboutInfo {
     /// # Returns
     /// - A populated [`AboutInfo`] record.
     pub fn gather() -> Self {
-        trace!("[{}] AboutInfo::gather: collecting application metadata", MODULE);
+        trace!("AboutInfo::gather: collecting application metadata");
         
         // Compile-time package metadata from Cargo
         let name = env!("CARGO_PKG_NAME").to_string();
@@ -44,8 +44,7 @@ impl AboutInfo {
         let arch = std::env::consts::ARCH.to_string();
 
         debug!(
-            "[{}] AboutInfo::gather: {} v{} on {}-{}",
-            MODULE, name, version, os, arch
+            "AboutInfo::gather: {} v{} on {}-{}", name, version, os, arch
         );
 
         Self {
@@ -76,7 +75,7 @@ pub async fn browse_directory_async<R: tauri::Runtime>(
     title: &str,
 ) -> Option<String> {
     let start = std::time::Instant::now();
-    info!("[{}] browse_directory_async: opening folder picker (title='{}')", MODULE, title);
+    info!("browse_directory_async: opening folder picker (title='{}')", title);
     
     let dialog = tauri_plugin_dialog::DialogExt::dialog(&app).clone(); // OWNED Dialog<R>
 
@@ -93,14 +92,12 @@ pub async fn browse_directory_async<R: tauri::Runtime>(
     match &result {
         Some(path) => {
             debug!(
-                "[{}] browse_directory_async: selected '{}' in {:?}",
-                MODULE, path, elapsed
+                "browse_directory_async: selected '{}' in {:?}", path, elapsed
             );
         }
         None => {
             debug!(
-                "[{}] browse_directory_async: canceled in {:?}",
-                MODULE, elapsed
+                "browse_directory_async: canceled in {:?}", elapsed
             );
         }
     }
@@ -125,8 +122,7 @@ pub async fn browse_file_async<R: tauri::Runtime>(
 ) -> Option<String> {
     let start = std::time::Instant::now();
     info!(
-        "[{}] browse_file_async: opening file picker (title='{}', extensions={:?})",
-        MODULE, title, extensions
+        "browse_file_async: opening file picker (title='{}', extensions={:?})", title, extensions
     );
     
     let dialog = tauri_plugin_dialog::DialogExt::dialog(&app).clone();
@@ -146,14 +142,12 @@ pub async fn browse_file_async<R: tauri::Runtime>(
     match &result {
         Some(path) => {
             debug!(
-                "[{}] browse_file_async: selected '{}' in {:?}",
-                MODULE, path, elapsed
+                "browse_file_async: selected '{}' in {:?}", path, elapsed
             );
         }
         None => {
             debug!(
-                "[{}] browse_file_async: canceled in {:?}",
-                MODULE, elapsed
+                "browse_file_async: canceled in {:?}", elapsed
             );
         }
     }

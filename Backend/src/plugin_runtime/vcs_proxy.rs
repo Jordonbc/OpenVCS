@@ -46,12 +46,10 @@ impl PluginVcsProxy {
         let _timer = LogTimer::new(MODULE, "open_with_process");
         let path_str = repo_path.to_string_lossy();
         info!(
-            "[{}] open_with_process: backend={}, path={}",
-            MODULE, backend_id, path_str
+            "open_with_process: backend={}, path={}", backend_id, path_str
         );
         debug!(
-            "[{}] open_with_process: config keys={:?}",
-            MODULE,
+            "open_with_process: config keys={:?}",
             cfg.as_object().map(|o| o.keys().collect::<Vec<_>>())
         );
 
@@ -68,26 +66,24 @@ impl PluginVcsProxy {
         );
         p.runtime.ensure_running().map_err(|e| {
             error!(
-                "[{}] open_with_process: failed to ensure runtime running: {}",
-                MODULE, e
+                "open_with_process: failed to ensure runtime running: {}", e
             );
             VcsError::Backend {
                 backend: p.backend_id.clone(),
                 msg: e,
             }
         })?;
-        debug!("[{}] open_with_process: runtime confirmed running", MODULE);
+        debug!("open_with_process: runtime confirmed running");
 
         let params = json!({ "path": path_to_utf8(repo_path)?, "config": cfg });
-        trace!("[{}] open_with_process: calling open RPC", MODULE);
+        trace!("open_with_process: calling open RPC");
         p.call_unit("open", params.clone()).map_err(|e| {
-            error!("[{}] open_with_process: open RPC failed: {}", MODULE, e);
+            error!("open_with_process: open RPC failed: {}", e);
             e
         })?;
 
         info!(
-            "[{}] open_with_process: opened backend {} for {}",
-            MODULE, backend_id, path_str
+            "open_with_process: opened backend {} for {}", backend_id, path_str
         );
         Ok(Arc::new(p))
     }
@@ -103,15 +99,13 @@ impl PluginVcsProxy {
     /// - `Err(VcsError)` on RPC failure.
     fn call_value(&self, method: &str, params: Value) -> Result<Value, VcsError> {
         trace!(
-            "[{}] call_value: method={}, params_len={}",
-            MODULE,
+            "call_value: method={}, params_len={}",
             method,
             params.to_string().len()
         );
         let result = self.runtime.call(method, params).map_err(|e| {
             error!(
-                "[{}] call_value: RPC call '{}' failed: {}",
-                MODULE, method, e
+                "call_value: RPC call '{}' failed: {}", method, e
             );
             VcsError::Backend {
                 backend: self.backend_id.clone(),
@@ -120,8 +114,7 @@ impl PluginVcsProxy {
         });
         if let Ok(ref v) = result {
             trace!(
-                "[{}] call_value: method={} returned {} bytes",
-                MODULE,
+                "call_value: method={} returned {} bytes",
                 method,
                 v.to_string().len()
             );
@@ -139,12 +132,11 @@ impl PluginVcsProxy {
     /// - `Ok(T)` deserialized result.
     /// - `Err(VcsError)` on RPC or decode failure.
     fn call_json<T: DeserializeOwned>(&self, method: &str, params: Value) -> Result<T, VcsError> {
-        trace!("[{}] call_json: method={}", MODULE, method);
+        trace!("call_json: method={}", method);
         let v = self.call_value(method, params)?;
         serde_json::from_value(v).map_err(|e| {
             error!(
-                "[{}] call_json: failed to deserialize response for '{}': {}",
-                MODULE, method, e
+                "call_json: failed to deserialize response for '{}': {}", method, e
             );
             VcsError::Backend {
                 backend: self.backend_id.clone(),
@@ -163,7 +155,7 @@ impl PluginVcsProxy {
     /// - `Ok(())` on success.
     /// - `Err(VcsError)` on RPC failure.
     fn call_unit(&self, method: &str, params: Value) -> Result<(), VcsError> {
-        trace!("[{}] call_unit: method={}", MODULE, method);
+        trace!("call_unit: method={}", method);
         let _ = self.call_value(method, params)?;
         Ok(())
     }
@@ -182,7 +174,7 @@ impl PluginVcsProxy {
         F: FnOnce() -> Result<R, VcsError>,
     {
         if on.is_some() {
-            debug!("[{}] with_events: installing event callback", MODULE);
+            debug!("with_events: installing event callback");
         }
         let sink: Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>> =
             on.map(|cb| Arc::new(move |evt| cb(evt)) as _);
@@ -190,7 +182,7 @@ impl PluginVcsProxy {
         let res = f();
         self.runtime.set_event_sink(None);
         if res.is_err() {
-            warn!("[{}] with_events: operation failed", MODULE);
+            warn!("with_events: operation failed");
         }
         res
     }
@@ -202,7 +194,7 @@ impl Vcs for PluginVcsProxy {
     /// # Returns
     /// - Backend id value.
     fn id(&self) -> BackendId {
-        trace!("[{}] id: returning backend_id={}", MODULE, self.backend_id);
+        trace!("id: returning backend_id={}", self.backend_id);
         self.backend_id.clone()
     }
 
@@ -211,17 +203,16 @@ impl Vcs for PluginVcsProxy {
     /// # Returns
     /// - Capability set; defaults on decode failure.
     fn caps(&self) -> Capabilities {
-        trace!("[{}] caps: querying plugin capabilities", MODULE);
+        trace!("caps: querying plugin capabilities");
         let result = self.call_json("caps", Value::Null);
         match result {
             Ok(caps) => {
-                debug!("[{}] caps: received capabilities from plugin", MODULE);
+                debug!("caps: received capabilities from plugin");
                 caps
             }
             Err(e) => {
                 warn!(
-                    "[{}] caps: failed to get capabilities, using defaults: {}",
-                    MODULE, e
+                    "caps: failed to get capabilities, using defaults: {}", e
                 );
                 Capabilities::default()
             }
@@ -277,7 +268,7 @@ impl Vcs for PluginVcsProxy {
     /// # Returns
     /// - Workdir path reference.
     fn workdir(&self) -> &Path {
-        trace!("[{}] workdir: returning {}", MODULE, self.workdir.display());
+        trace!("workdir: returning {}", self.workdir.display());
         &self.workdir
     }
 
@@ -289,17 +280,17 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn current_branch(&self) -> VcsResult<Option<String>> {
         let _timer = LogTimer::new(MODULE, "current_branch");
-        trace!("[{}] current_branch: querying current branch", MODULE);
+        trace!("current_branch: querying current branch");
         let result = self.call_json("current_branch", Value::Null);
         match &result {
             Ok(Some(branch)) => {
-                debug!("[{}] current_branch: on branch '{}'", MODULE, branch);
+                debug!("current_branch: on branch '{}'", branch);
             }
             Ok(None) => {
-                debug!("[{}] current_branch: detached HEAD", MODULE);
+                debug!("current_branch: detached HEAD");
             }
             Err(e) => {
-                error!("[{}] current_branch: failed: {}", MODULE, e);
+                error!("current_branch: failed: {}", e);
             }
         }
         result
@@ -312,15 +303,15 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn branches(&self) -> VcsResult<Vec<openvcs_core::models::BranchItem>> {
         let _timer = LogTimer::new(MODULE, "branches");
-        trace!("[{}] branches: querying all branches", MODULE);
+        trace!("branches: querying all branches");
         let result: VcsResult<Vec<openvcs_core::models::BranchItem>> =
             self.call_json("branches", Value::Null);
         match &result {
             Ok(branches) => {
-                debug!("[{}] branches: found {} branches", MODULE, branches.len());
+                debug!("branches: found {} branches", branches.len());
             }
             Err(e) => {
-                error!("[{}] branches: failed: {}", MODULE, e);
+                error!("branches: failed: {}", e);
             }
         }
         result
@@ -333,18 +324,17 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn local_branches(&self) -> VcsResult<Vec<String>> {
         let _timer = LogTimer::new(MODULE, "local_branches");
-        trace!("[{}] local_branches: querying local branches", MODULE);
+        trace!("local_branches: querying local branches");
         let result: VcsResult<Vec<String>> = self.call_json("local_branches", Value::Null);
         match &result {
             Ok(branches) => {
                 debug!(
-                    "[{}] local_branches: found {} local branches",
-                    MODULE,
+                    "local_branches: found {} local branches",
                     branches.len()
                 );
             }
             Err(e) => {
-                error!("[{}] local_branches: failed: {}", MODULE, e);
+                error!("local_branches: failed: {}", e);
             }
         }
         result
@@ -362,8 +352,7 @@ impl Vcs for PluginVcsProxy {
     fn create_branch(&self, name: &str, checkout: bool) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "create_branch");
         info!(
-            "[{}] create_branch: name={}, checkout={}",
-            MODULE, name, checkout
+            "create_branch: name={}, checkout={}", name, checkout
         );
         let result = self.call_unit(
             "create_branch",
@@ -371,12 +360,11 @@ impl Vcs for PluginVcsProxy {
         );
         match &result {
             Ok(()) => {
-                debug!("[{}] create_branch: branch '{}' created", MODULE, name);
+                debug!("create_branch: branch '{}' created", name);
             }
             Err(e) => {
                 error!(
-                    "[{}] create_branch: failed to create '{}': {}",
-                    MODULE, name, e
+                    "create_branch: failed to create '{}': {}", name, e
                 );
             }
         }
@@ -393,16 +381,15 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn checkout_branch(&self, name: &str) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "checkout_branch");
-        info!("[{}] checkout_branch: name={}", MODULE, name);
+        info!("checkout_branch: name={}", name);
         let result = self.call_unit("checkout_branch", json!({ "name": name }));
         match &result {
             Ok(()) => {
-                debug!("[{}] checkout_branch: switched to '{}'", MODULE, name);
+                debug!("checkout_branch: switched to '{}'", name);
             }
             Err(e) => {
                 error!(
-                    "[{}] checkout_branch: failed to switch to '{}': {}",
-                    MODULE, name, e
+                    "checkout_branch: failed to switch to '{}': {}", name, e
                 );
             }
         }
@@ -420,14 +407,14 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn ensure_remote(&self, name: &str, url: &str) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "ensure_remote");
-        info!("[{}] ensure_remote: name={}, url={}", MODULE, name, url);
+        info!("ensure_remote: name={}, url={}", name, url);
         let result = self.call_unit("ensure_remote", json!({ "name": name, "url": url }));
         match &result {
             Ok(()) => {
-                debug!("[{}] ensure_remote: remote '{}' configured", MODULE, name);
+                debug!("ensure_remote: remote '{}' configured", name);
             }
             Err(e) => {
-                error!("[{}] ensure_remote: failed for '{}': {}", MODULE, name, e);
+                error!("ensure_remote: failed for '{}': {}", name, e);
             }
         }
         result
@@ -440,17 +427,17 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn list_remotes(&self) -> VcsResult<Vec<(String, String)>> {
         let _timer = LogTimer::new(MODULE, "list_remotes");
-        trace!("[{}] list_remotes: querying remotes", MODULE);
+        trace!("list_remotes: querying remotes");
         let result: VcsResult<Vec<(String, String)>> = self.call_json("list_remotes", Value::Null);
         match &result {
             Ok(remotes) => {
-                debug!("[{}] list_remotes: found {} remotes", MODULE, remotes.len());
+                debug!("list_remotes: found {} remotes", remotes.len());
                 for (name, url) in remotes {
-                    trace!("[{}] list_remotes: remote '{}' -> '{}'", MODULE, name, url);
+                    trace!("list_remotes: remote '{}' -> '{}'", name, url);
                 }
             }
             Err(e) => {
-                error!("[{}] list_remotes: failed: {}", MODULE, e);
+                error!("list_remotes: failed: {}", e);
             }
         }
         result
@@ -466,16 +453,15 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn remove_remote(&self, name: &str) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "remove_remote");
-        info!("[{}] remove_remote: name={}", MODULE, name);
+        info!("remove_remote: name={}", name);
         let result = self.call_unit("remove_remote", json!({ "name": name }));
         match &result {
             Ok(()) => {
-                debug!("[{}] remove_remote: remote '{}' removed", MODULE, name);
+                debug!("remove_remote: remote '{}' removed", name);
             }
             Err(e) => {
                 error!(
-                    "[{}] remove_remote: failed to remove '{}': {}",
-                    MODULE, name, e
+                    "remove_remote: failed to remove '{}': {}", name, e
                 );
             }
         }
@@ -494,16 +480,16 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn fetch(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "fetch");
-        info!("[{}] fetch: remote={}, refspec={}", MODULE, remote, refspec);
+        info!("fetch: remote={}, refspec={}", remote, refspec);
         let result = self.with_events(on, || {
             self.call_unit("fetch", json!({ "remote": remote, "refspec": refspec }))
         });
         match &result {
             Ok(()) => {
-                debug!("[{}] fetch: completed successfully", MODULE);
+                debug!("fetch: completed successfully");
             }
             Err(e) => {
-                error!("[{}] fetch: failed: {}", MODULE, e);
+                error!("fetch: failed: {}", e);
             }
         }
         result
@@ -529,8 +515,7 @@ impl Vcs for PluginVcsProxy {
     ) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "fetch_with_options");
         info!(
-            "[{}] fetch_with_options: remote={}, refspec={}, opts={:?}",
-            MODULE, remote, refspec, opts
+            "fetch_with_options: remote={}, refspec={}, opts={:?}", remote, refspec, opts
         );
         let result = self.with_events(on, || {
             self.call_unit(
@@ -540,10 +525,10 @@ impl Vcs for PluginVcsProxy {
         });
         match &result {
             Ok(()) => {
-                debug!("[{}] fetch_with_options: completed successfully", MODULE);
+                debug!("fetch_with_options: completed successfully");
             }
             Err(e) => {
-                error!("[{}] fetch_with_options: failed: {}", MODULE, e);
+                error!("fetch_with_options: failed: {}", e);
             }
         }
         result
@@ -561,16 +546,16 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn push(&self, remote: &str, refspec: &str, on: Option<OnEvent>) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "push");
-        info!("[{}] push: remote={}, refspec={}", MODULE, remote, refspec);
+        info!("push: remote={}, refspec={}", remote, refspec);
         let result = self.with_events(on, || {
             self.call_unit("push", json!({ "remote": remote, "refspec": refspec }))
         });
         match &result {
             Ok(()) => {
-                debug!("[{}] push: completed successfully", MODULE);
+                debug!("push: completed successfully");
             }
             Err(e) => {
-                error!("[{}] push: failed: {}", MODULE, e);
+                error!("push: failed: {}", e);
             }
         }
         result
@@ -589,8 +574,7 @@ impl Vcs for PluginVcsProxy {
     fn pull_ff_only(&self, remote: &str, branch: &str, on: Option<OnEvent>) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "pull_ff_only");
         info!(
-            "[{}] pull_ff_only: remote={}, branch={}",
-            MODULE, remote, branch
+            "pull_ff_only: remote={}, branch={}", remote, branch
         );
         let result = self.with_events(on, || {
             self.call_unit(
@@ -600,10 +584,10 @@ impl Vcs for PluginVcsProxy {
         });
         match &result {
             Ok(()) => {
-                debug!("[{}] pull_ff_only: completed successfully", MODULE);
+                debug!("pull_ff_only: completed successfully");
             }
             Err(e) => {
-                error!("[{}] pull_ff_only: failed: {}", MODULE, e);
+                error!("pull_ff_only: failed: {}", e);
             }
         }
         result
@@ -633,29 +617,27 @@ impl Vcs for PluginVcsProxy {
             .map(|p| p.to_string_lossy().to_string())
             .collect();
         info!(
-            "[{}] commit: author={} <{}>, paths={}, message_len={}",
-            MODULE,
+            "commit: author={} <{}>, paths={}, message_len={}",
             name,
             email,
             paths.len(),
             message.len()
         );
         debug!(
-            "[{}] commit: message='{}'",
-            MODULE,
+            "commit: message='{}'",
             message.lines().next().unwrap_or("")
         );
-        trace!("[{}] commit: paths={:?}", MODULE, paths);
+        trace!("commit: paths={:?}", paths);
         let result = self.call_json(
             "commit",
             json!({ "message": message, "name": name, "email": email, "paths": paths }),
         );
         match &result {
             Ok(commit_id) => {
-                debug!("[{}] commit: created commit {}", MODULE, commit_id);
+                debug!("commit: created commit {}", commit_id);
             }
             Err(e) => {
-                error!("[{}] commit: failed: {}", MODULE, e);
+                error!("commit: failed: {}", e);
             }
         }
         result
@@ -674,15 +656,13 @@ impl Vcs for PluginVcsProxy {
     fn commit_index(&self, message: &str, name: &str, email: &str) -> VcsResult<String> {
         let _timer = LogTimer::new(MODULE, "commit_index");
         info!(
-            "[{}] commit_index: author={} <{}>, message_len={}",
-            MODULE,
+            "commit_index: author={} <{}>, message_len={}",
             name,
             email,
             message.len()
         );
         debug!(
-            "[{}] commit_index: message='{}'",
-            MODULE,
+            "commit_index: message='{}'",
             message.lines().next().unwrap_or("")
         );
         let result = self.call_json(
@@ -691,10 +671,10 @@ impl Vcs for PluginVcsProxy {
         );
         match &result {
             Ok(commit_id) => {
-                debug!("[{}] commit_index: created commit {}", MODULE, commit_id);
+                debug!("commit_index: created commit {}", commit_id);
             }
             Err(e) => {
-                error!("[{}] commit_index: failed: {}", MODULE, e);
+                error!("commit_index: failed: {}", e);
             }
         }
         result
@@ -707,17 +687,16 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn status_summary(&self) -> VcsResult<StatusSummary> {
         let _timer = LogTimer::new(MODULE, "status_summary");
-        trace!("[{}] status_summary: querying status summary", MODULE);
+        trace!("status_summary: querying status summary");
         let result: VcsResult<StatusSummary> = self.call_json("status_summary", Value::Null);
         match &result {
             Ok(summary) => {
                 debug!(
-                    "[{}] status_summary: {} staged, {} modified, {} untracked, {} conflicted",
-                    MODULE, summary.staged, summary.modified, summary.untracked, summary.conflicted
+                    "status_summary: {} staged, {} modified, {} untracked, {} conflicted", summary.staged, summary.modified, summary.untracked, summary.conflicted
                 );
             }
             Err(e) => {
-                error!("[{}] status_summary: failed: {}", MODULE, e);
+                error!("status_summary: failed: {}", e);
             }
         }
         result
@@ -730,20 +709,19 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn status_payload(&self) -> VcsResult<StatusPayload> {
         let _timer = LogTimer::new(MODULE, "status_payload");
-        trace!("[{}] status_payload: querying full status", MODULE);
+        trace!("status_payload: querying full status");
         let result: VcsResult<StatusPayload> = self.call_json("status_payload", Value::Null);
         match &result {
             Ok(payload) => {
                 debug!(
-                    "[{}] status_payload: {} files, {} ahead, {} behind",
-                    MODULE,
+                    "status_payload: {} files, {} ahead, {} behind",
                     payload.files.len(),
                     payload.ahead,
                     payload.behind
                 );
             }
             Err(e) => {
-                error!("[{}] status_payload: failed: {}", MODULE, e);
+                error!("status_payload: failed: {}", e);
             }
         }
         result
@@ -760,8 +738,7 @@ impl Vcs for PluginVcsProxy {
     fn log_commits(&self, query: &LogQuery) -> VcsResult<Vec<openvcs_core::models::CommitItem>> {
         let _timer = LogTimer::new(MODULE, "log_commits");
         trace!(
-            "[{}] log_commits: querying commits (limit={:?}, skip={:?})",
-            MODULE,
+            "log_commits: querying commits (limit={:?}, skip={:?})",
             query.limit,
             query.skip
         );
@@ -770,13 +747,12 @@ impl Vcs for PluginVcsProxy {
         match &result {
             Ok(commits) => {
                 debug!(
-                    "[{}] log_commits: {} commits returned",
-                    MODULE,
+                    "log_commits: {} commits returned",
                     commits.len()
                 );
             }
             Err(e) => {
-                error!("[{}] log_commits: failed: {}", MODULE, e);
+                error!("log_commits: failed: {}", e);
             }
         }
         result
@@ -793,20 +769,19 @@ impl Vcs for PluginVcsProxy {
     fn diff_file(&self, path: &Path) -> VcsResult<Vec<String>> {
         let _timer = LogTimer::new(MODULE, "diff_file");
         let path_str = path_to_utf8(path)?;
-        trace!("[{}] diff_file: path={}", MODULE, path_str);
+        trace!("diff_file: path={}", path_str);
         let result: VcsResult<Vec<String>> =
             self.call_json("diff_file", json!({ "path": path_str.clone() }));
         match &result {
             Ok(lines) => {
                 debug!(
-                    "[{}] diff_file: {} lines for {}",
-                    MODULE,
+                    "diff_file: {} lines for {}",
                     lines.len(),
                     path_str
                 );
             }
             Err(e) => {
-                error!("[{}] diff_file: failed for '{}': {}", MODULE, path_str, e);
+                error!("diff_file: failed for '{}': {}", path_str, e);
             }
         }
         result
@@ -822,19 +797,18 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn diff_commit(&self, rev: &str) -> VcsResult<Vec<String>> {
         let _timer = LogTimer::new(MODULE, "diff_commit");
-        trace!("[{}] diff_commit: rev={}", MODULE, rev);
+        trace!("diff_commit: rev={}", rev);
         let result: VcsResult<Vec<String>> = self.call_json("diff_commit", json!({ "rev": rev }));
         match &result {
             Ok(lines) => {
                 debug!(
-                    "[{}] diff_commit: {} lines for {}",
-                    MODULE,
+                    "diff_commit: {} lines for {}",
                     lines.len(),
                     rev
                 );
             }
             Err(e) => {
-                error!("[{}] diff_commit: failed for '{}': {}", MODULE, rev, e);
+                error!("diff_commit: failed for '{}': {}", rev, e);
             }
         }
         result
@@ -851,20 +825,18 @@ impl Vcs for PluginVcsProxy {
     fn conflict_details(&self, path: &Path) -> VcsResult<ConflictDetails> {
         let _timer = LogTimer::new(MODULE, "conflict_details");
         let path_str = path_to_utf8(path)?;
-        info!("[{}] conflict_details: path={}", MODULE, path_str);
+        info!("conflict_details: path={}", path_str);
         let result: VcsResult<ConflictDetails> =
             self.call_json("conflict_details", json!({ "path": path_str.clone() }));
         match &result {
             Ok(details) => {
                 debug!(
-                    "[{}] conflict_details: got details for {} (binary={})",
-                    MODULE, path_str, details.binary
+                    "conflict_details: got details for {} (binary={})", path_str, details.binary
                 );
             }
             Err(e) => {
                 error!(
-                    "[{}] conflict_details: failed for '{}': {}",
-                    MODULE, path_str, e
+                    "conflict_details: failed for '{}': {}", path_str, e
                 );
             }
         }
@@ -884,8 +856,7 @@ impl Vcs for PluginVcsProxy {
         let _timer = LogTimer::new(MODULE, "checkout_conflict_side");
         let path_str = path_to_utf8(path)?;
         info!(
-            "[{}] checkout_conflict_side: path={}, side={:?}",
-            MODULE, path_str, side
+            "checkout_conflict_side: path={}, side={:?}", path_str, side
         );
         let result = self.call_unit(
             "checkout_conflict_side",
@@ -894,14 +865,12 @@ impl Vcs for PluginVcsProxy {
         match &result {
             Ok(()) => {
                 debug!(
-                    "[{}] checkout_conflict_side: resolved {} with {:?}",
-                    MODULE, path_str, side
+                    "checkout_conflict_side: resolved {} with {:?}", path_str, side
                 );
             }
             Err(e) => {
                 error!(
-                    "[{}] checkout_conflict_side: failed for '{}': {}",
-                    MODULE, path_str, e
+                    "checkout_conflict_side: failed for '{}': {}", path_str, e
                 );
             }
         }
@@ -922,8 +891,7 @@ impl Vcs for PluginVcsProxy {
         let path_str = path_to_utf8(path)?;
         let content_str = String::from_utf8_lossy(content).to_string();
         info!(
-            "[{}] write_merge_result: path={}, content_len={}",
-            MODULE,
+            "write_merge_result: path={}, content_len={}",
             path_str,
             content_str.len()
         );
@@ -934,14 +902,12 @@ impl Vcs for PluginVcsProxy {
         match &result {
             Ok(()) => {
                 debug!(
-                    "[{}] write_merge_result: wrote resolved content to {}",
-                    MODULE, path_str
+                    "write_merge_result: wrote resolved content to {}", path_str
                 );
             }
             Err(e) => {
                 error!(
-                    "[{}] write_merge_result: failed for '{}': {}",
-                    MODULE, path_str, e
+                    "write_merge_result: failed for '{}': {}", path_str, e
                 );
             }
         }
@@ -958,14 +924,14 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn stage_patch(&self, patch: &str) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "stage_patch");
-        info!("[{}] stage_patch: patch_len={}", MODULE, patch.len());
+        info!("stage_patch: patch_len={}", patch.len());
         let result = self.call_unit("stage_patch", json!({ "patch": patch }));
         match &result {
             Ok(()) => {
-                debug!("[{}] stage_patch: patch staged successfully", MODULE);
+                debug!("stage_patch: patch staged successfully");
             }
             Err(e) => {
-                error!("[{}] stage_patch: failed: {}", MODULE, e);
+                error!("stage_patch: failed: {}", e);
             }
         }
         result
@@ -985,15 +951,15 @@ impl Vcs for PluginVcsProxy {
             .iter()
             .map(|p| p.to_string_lossy().to_string())
             .collect();
-        info!("[{}] discard_paths: count={}", MODULE, paths.len());
-        trace!("[{}] discard_paths: paths={:?}", MODULE, paths);
+        info!("discard_paths: count={}", paths.len());
+        trace!("discard_paths: paths={:?}", paths);
         let result = self.call_unit("discard_paths", json!({ "paths": paths }));
         match &result {
             Ok(()) => {
-                debug!("[{}] discard_paths: changes discarded", MODULE);
+                debug!("discard_paths: changes discarded");
             }
             Err(e) => {
-                error!("[{}] discard_paths: failed: {}", MODULE, e);
+                error!("discard_paths: failed: {}", e);
             }
         }
         result
@@ -1010,17 +976,16 @@ impl Vcs for PluginVcsProxy {
     fn apply_reverse_patch(&self, patch: &str) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "apply_reverse_patch");
         info!(
-            "[{}] apply_reverse_patch: patch_len={}",
-            MODULE,
+            "apply_reverse_patch: patch_len={}",
             patch.len()
         );
         let result = self.call_unit("apply_reverse_patch", json!({ "patch": patch }));
         match &result {
             Ok(()) => {
-                debug!("[{}] apply_reverse_patch: patch applied in reverse", MODULE);
+                debug!("apply_reverse_patch: patch applied in reverse");
             }
             Err(e) => {
-                error!("[{}] apply_reverse_patch: failed: {}", MODULE, e);
+                error!("apply_reverse_patch: failed: {}", e);
             }
         }
         result
@@ -1037,16 +1002,15 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn delete_branch(&self, name: &str, force: bool) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "delete_branch");
-        info!("[{}] delete_branch: name={}, force={}", MODULE, name, force);
+        info!("delete_branch: name={}, force={}", name, force);
         let result = self.call_unit("delete_branch", json!({ "name": name, "force": force }));
         match &result {
             Ok(()) => {
-                debug!("[{}] delete_branch: branch '{}' deleted", MODULE, name);
+                debug!("delete_branch: branch '{}' deleted", name);
             }
             Err(e) => {
                 error!(
-                    "[{}] delete_branch: failed to delete '{}': {}",
-                    MODULE, name, e
+                    "delete_branch: failed to delete '{}': {}", name, e
                 );
             }
         }
@@ -1064,14 +1028,14 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn rename_branch(&self, old: &str, new: &str) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "rename_branch");
-        info!("[{}] rename_branch: old='{}' -> new='{}'", MODULE, old, new);
+        info!("rename_branch: old='{}' -> new='{}'", old, new);
         let result = self.call_unit("rename_branch", json!({ "old": old, "new": new }));
         match &result {
             Ok(()) => {
-                debug!("[{}] rename_branch: branch renamed", MODULE);
+                debug!("rename_branch: branch renamed");
             }
             Err(e) => {
-                error!("[{}] rename_branch: failed: {}", MODULE, e);
+                error!("rename_branch: failed: {}", e);
             }
         }
         result
@@ -1087,16 +1051,15 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn merge_into_current(&self, name: &str) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "merge_into_current");
-        info!("[{}] merge_into_current: source='{}'", MODULE, name);
+        info!("merge_into_current: source='{}'", name);
         let result = self.call_unit("merge_into_current", json!({ "name": name }));
         match &result {
             Ok(()) => {
-                debug!("[{}] merge_into_current: merge completed", MODULE);
+                debug!("merge_into_current: merge completed");
             }
             Err(e) => {
                 warn!(
-                    "[{}] merge_into_current: merge may have conflicts: {}",
-                    MODULE, e
+                    "merge_into_current: merge may have conflicts: {}", e
                 );
             }
         }
@@ -1110,14 +1073,14 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn merge_abort(&self) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "merge_abort");
-        info!("[{}] merge_abort: aborting merge", MODULE);
+        info!("merge_abort: aborting merge");
         let result = self.call_unit("merge_abort", Value::Null);
         match &result {
             Ok(()) => {
-                debug!("[{}] merge_abort: merge aborted", MODULE);
+                debug!("merge_abort: merge aborted");
             }
             Err(e) => {
-                error!("[{}] merge_abort: failed: {}", MODULE, e);
+                error!("merge_abort: failed: {}", e);
             }
         }
         result
@@ -1130,14 +1093,14 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn merge_continue(&self) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "merge_continue");
-        info!("[{}] merge_continue: continuing merge", MODULE);
+        info!("merge_continue: continuing merge");
         let result = self.call_unit("merge_continue", Value::Null);
         match &result {
             Ok(()) => {
-                debug!("[{}] merge_continue: merge continued", MODULE);
+                debug!("merge_continue: merge continued");
             }
             Err(e) => {
-                error!("[{}] merge_continue: failed: {}", MODULE, e);
+                error!("merge_continue: failed: {}", e);
             }
         }
         result
@@ -1150,17 +1113,17 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn merge_in_progress(&self) -> VcsResult<bool> {
         let _timer = LogTimer::new(MODULE, "merge_in_progress");
-        trace!("[{}] merge_in_progress: checking merge state", MODULE);
+        trace!("merge_in_progress: checking merge state");
         let result = self.call_json("merge_in_progress", Value::Null);
         match &result {
             Ok(true) => {
-                debug!("[{}] merge_in_progress: merge is in progress", MODULE);
+                debug!("merge_in_progress: merge is in progress");
             }
             Ok(false) => {
-                debug!("[{}] merge_in_progress: no merge in progress", MODULE);
+                debug!("merge_in_progress: no merge in progress");
             }
             Err(e) => {
-                error!("[{}] merge_in_progress: failed: {}", MODULE, e);
+                error!("merge_in_progress: failed: {}", e);
             }
         }
         result
@@ -1178,8 +1141,7 @@ impl Vcs for PluginVcsProxy {
     fn set_branch_upstream(&self, branch: &str, upstream: &str) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "set_branch_upstream");
         info!(
-            "[{}] set_branch_upstream: branch='{}' -> upstream='{}'",
-            MODULE, branch, upstream
+            "set_branch_upstream: branch='{}' -> upstream='{}'", branch, upstream
         );
         let result = self.call_unit(
             "set_branch_upstream",
@@ -1187,10 +1149,10 @@ impl Vcs for PluginVcsProxy {
         );
         match &result {
             Ok(()) => {
-                debug!("[{}] set_branch_upstream: upstream set", MODULE);
+                debug!("set_branch_upstream: upstream set");
             }
             Err(e) => {
-                error!("[{}] set_branch_upstream: failed: {}", MODULE, e);
+                error!("set_branch_upstream: failed: {}", e);
             }
         }
         result
@@ -1207,20 +1169,19 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn branch_upstream(&self, branch: &str) -> VcsResult<Option<String>> {
         let _timer = LogTimer::new(MODULE, "branch_upstream");
-        trace!("[{}] branch_upstream: branch='{}'", MODULE, branch);
+        trace!("branch_upstream: branch='{}'", branch);
         let result = self.call_json("branch_upstream", json!({ "branch": branch }));
         match &result {
             Ok(Some(upstream)) => {
                 debug!(
-                    "[{}] branch_upstream: '{}' tracks '{}'",
-                    MODULE, branch, upstream
+                    "branch_upstream: '{}' tracks '{}'", branch, upstream
                 );
             }
             Ok(None) => {
-                debug!("[{}] branch_upstream: '{}' has no upstream", MODULE, branch);
+                debug!("branch_upstream: '{}' has no upstream", branch);
             }
             Err(e) => {
-                error!("[{}] branch_upstream: failed: {}", MODULE, e);
+                error!("branch_upstream: failed: {}", e);
             }
         }
         result
@@ -1233,14 +1194,14 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn hard_reset_head(&self) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "hard_reset_head");
-        warn!("[{}] hard_reset_head: performing hard reset", MODULE);
+        warn!("hard_reset_head: performing hard reset");
         let result = self.call_unit("hard_reset_head", Value::Null);
         match &result {
             Ok(()) => {
-                debug!("[{}] hard_reset_head: reset completed", MODULE);
+                debug!("hard_reset_head: reset completed");
             }
             Err(e) => {
-                error!("[{}] hard_reset_head: failed: {}", MODULE, e);
+                error!("hard_reset_head: failed: {}", e);
             }
         }
         result
@@ -1256,14 +1217,14 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn reset_soft_to(&self, rev: &str) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "reset_soft_to");
-        info!("[{}] reset_soft_to: rev={}", MODULE, rev);
+        info!("reset_soft_to: rev={}", rev);
         let result = self.call_unit("reset_soft_to", json!({ "rev": rev }));
         match &result {
             Ok(()) => {
-                debug!("[{}] reset_soft_to: reset to '{}'", MODULE, rev);
+                debug!("reset_soft_to: reset to '{}'", rev);
             }
             Err(e) => {
-                error!("[{}] reset_soft_to: failed: {}", MODULE, e);
+                error!("reset_soft_to: failed: {}", e);
             }
         }
         result
@@ -1277,17 +1238,17 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn get_identity(&self) -> VcsResult<Option<(String, String)>> {
         let _timer = LogTimer::new(MODULE, "get_identity");
-        trace!("[{}] get_identity: querying repository identity", MODULE);
+        trace!("get_identity: querying repository identity");
         let result = self.call_json("get_identity", Value::Null);
         match &result {
             Ok(Some((name, email))) => {
-                debug!("[{}] get_identity: {} <{}>", MODULE, name, email);
+                debug!("get_identity: {} <{}>", name, email);
             }
             Ok(None) => {
-                debug!("[{}] get_identity: no identity configured", MODULE);
+                debug!("get_identity: no identity configured");
             }
             Err(e) => {
-                error!("[{}] get_identity: failed: {}", MODULE, e);
+                error!("get_identity: failed: {}", e);
             }
         }
         result
@@ -1304,17 +1265,17 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn set_identity_local(&self, name: &str, email: &str) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "set_identity_local");
-        info!("[{}] set_identity_local: {} <{}>", MODULE, name, email);
+        info!("set_identity_local: {} <{}>", name, email);
         let result = self.call_unit(
             "set_identity_local",
             json!({ "name": name, "email": email }),
         );
         match &result {
             Ok(()) => {
-                debug!("[{}] set_identity_local: identity set", MODULE);
+                debug!("set_identity_local: identity set");
             }
             Err(e) => {
-                error!("[{}] set_identity_local: failed: {}", MODULE, e);
+                error!("set_identity_local: failed: {}", e);
             }
         }
         result
@@ -1327,14 +1288,14 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn stash_list(&self) -> VcsResult<Vec<StashItem>> {
         let _timer = LogTimer::new(MODULE, "stash_list");
-        trace!("[{}] stash_list: querying stash entries", MODULE);
+        trace!("stash_list: querying stash entries");
         let result: VcsResult<Vec<StashItem>> = self.call_json("stash_list", Value::Null);
         match &result {
             Ok(stashes) => {
-                debug!("[{}] stash_list: {} stash entries", MODULE, stashes.len());
+                debug!("stash_list: {} stash entries", stashes.len());
             }
             Err(e) => {
-                error!("[{}] stash_list: failed: {}", MODULE, e);
+                error!("stash_list: failed: {}", e);
             }
         }
         result
@@ -1362,8 +1323,7 @@ impl Vcs for PluginVcsProxy {
             .map(|p| p.to_string_lossy().to_string())
             .collect();
         info!(
-            "[{}] stash_push: message='{}', include_untracked={}, paths={}",
-            MODULE,
+            "stash_push: message='{}', include_untracked={}, paths={}",
             message.lines().next().unwrap_or(""),
             include_untracked,
             paths.len()
@@ -1374,10 +1334,10 @@ impl Vcs for PluginVcsProxy {
         );
         match &result {
             Ok(()) => {
-                debug!("[{}] stash_push: stash created", MODULE);
+                debug!("stash_push: stash created");
             }
             Err(e) => {
-                error!("[{}] stash_push: failed: {}", MODULE, e);
+                error!("stash_push: failed: {}", e);
             }
         }
         result
@@ -1393,14 +1353,14 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn stash_apply(&self, selector: &str) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "stash_apply");
-        info!("[{}] stash_apply: selector={}", MODULE, selector);
+        info!("stash_apply: selector={}", selector);
         let result = self.call_unit("stash_apply", json!({ "selector": selector }));
         match &result {
             Ok(()) => {
-                debug!("[{}] stash_apply: stash applied", MODULE);
+                debug!("stash_apply: stash applied");
             }
             Err(e) => {
-                error!("[{}] stash_apply: failed: {}", MODULE, e);
+                error!("stash_apply: failed: {}", e);
             }
         }
         result
@@ -1416,14 +1376,14 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn stash_pop(&self, selector: &str) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "stash_pop");
-        info!("[{}] stash_pop: selector={}", MODULE, selector);
+        info!("stash_pop: selector={}", selector);
         let result = self.call_unit("stash_pop", json!({ "selector": selector }));
         match &result {
             Ok(()) => {
-                debug!("[{}] stash_pop: stash popped", MODULE);
+                debug!("stash_pop: stash popped");
             }
             Err(e) => {
-                error!("[{}] stash_pop: failed: {}", MODULE, e);
+                error!("stash_pop: failed: {}", e);
             }
         }
         result
@@ -1439,14 +1399,14 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn stash_drop(&self, selector: &str) -> VcsResult<()> {
         let _timer = LogTimer::new(MODULE, "stash_drop");
-        info!("[{}] stash_drop: selector={}", MODULE, selector);
+        info!("stash_drop: selector={}", selector);
         let result = self.call_unit("stash_drop", json!({ "selector": selector }));
         match &result {
             Ok(()) => {
-                debug!("[{}] stash_drop: stash dropped", MODULE);
+                debug!("stash_drop: stash dropped");
             }
             Err(e) => {
-                error!("[{}] stash_drop: failed: {}", MODULE, e);
+                error!("stash_drop: failed: {}", e);
             }
         }
         result
@@ -1462,20 +1422,19 @@ impl Vcs for PluginVcsProxy {
     /// - `Err(VcsError)` on backend failure.
     fn stash_show(&self, selector: &str) -> VcsResult<Vec<String>> {
         let _timer = LogTimer::new(MODULE, "stash_show");
-        trace!("[{}] stash_show: selector={}", MODULE, selector);
+        trace!("stash_show: selector={}", selector);
         let result: VcsResult<Vec<String>> =
             self.call_json("stash_show", json!({ "selector": selector }));
         match &result {
             Ok(lines) => {
                 debug!(
-                    "[{}] stash_show: {} lines for {}",
-                    MODULE,
+                    "stash_show: {} lines for {}",
                     lines.len(),
                     selector
                 );
             }
             Err(e) => {
-                error!("[{}] stash_show: failed: {}", MODULE, e);
+                error!("stash_show: failed: {}", e);
             }
         }
         result
@@ -1493,8 +1452,7 @@ impl Vcs for PluginVcsProxy {
 fn path_to_utf8(path: &Path) -> Result<String, VcsError> {
     path.to_str().map(|s| s.to_string()).ok_or_else(|| {
         warn!(
-            "[{}] path_to_utf8: non-UTF8 path: {}",
-            MODULE,
+            "path_to_utf8: non-UTF8 path: {}",
             path.display()
         );
         VcsError::Backend {

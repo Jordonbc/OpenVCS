@@ -18,17 +18,17 @@ const MODULE: &str = "updater";
 /// - `Err(String)` when updater operations fail.
 pub async fn updater_install_now<R: Runtime>(window: Window<R>) -> Result<(), String> {
     let start = std::time::Instant::now();
-    info!("[{}] updater_install_now: starting update check", MODULE);
+    info!("updater_install_now: starting update check");
     
     let app = window.app_handle();
     let updater = app.updater().map_err(|e| {
-        error!("[{}] updater_install_now: failed to get updater: {}", MODULE, e);
+        error!("updater_install_now: failed to get updater: {}", e);
         e.to_string()
     })?;
     
-    debug!("[{}] updater_install_now: checking for updates", MODULE);
+    debug!("updater_install_now: checking for updates");
     let check_result = updater.check().await.map_err(|e| {
-        error!("[{}] updater_install_now: update check failed: {}", MODULE, e);
+        error!("updater_install_now: update check failed: {}", e);
         e.to_string()
     })?;
     
@@ -37,12 +37,10 @@ pub async fn updater_install_now<R: Runtime>(window: Window<R>) -> Result<(), St
             let version = &update.version;
             let current_version = &update.current_version;
             info!(
-                "[{}] updater_install_now: update available: {} -> {}",
-                MODULE, current_version, version
+                "updater_install_now: update available: {} -> {}", current_version, version
             );
             debug!(
-                "[{}] updater_install_now: update date={:?}, body_len={}",
-                MODULE,
+                "updater_install_now: update date={:?}, body_len={}",
                 update.date,
                 update.body.as_ref().map(|b| b.len()).unwrap_or(0)
             );
@@ -60,8 +58,7 @@ pub async fn updater_install_now<R: Runtime>(window: Window<R>) -> Result<(), St
                             0
                         };
                         trace!(
-                            "[{}] updater_install_now: download progress {}/{} bytes ({}%)",
-                            MODULE, received, total_val, percent
+                            "updater_install_now: download progress {}/{} bytes ({}%)", received, total_val, percent
                         );
                         let payload = serde_json::json!({
                             "kind": "progress",
@@ -73,8 +70,7 @@ pub async fn updater_install_now<R: Runtime>(window: Window<R>) -> Result<(), St
                     || {
                         let download_elapsed = download_start.elapsed();
                         info!(
-                            "[{}] updater_install_now: download completed in {:?}",
-                            MODULE, download_elapsed
+                            "updater_install_now: download completed in {:?}", download_elapsed
                         );
                         let _ = app2.emit(
                             "update:progress",
@@ -84,22 +80,20 @@ pub async fn updater_install_now<R: Runtime>(window: Window<R>) -> Result<(), St
                 )
                 .await
                 .map_err(|e| {
-                    error!("[{}] updater_install_now: download/install failed: {}", MODULE, e);
+                    error!("updater_install_now: download/install failed: {}", e);
                     e.to_string()
                 })?;
             
             let elapsed = start.elapsed();
             info!(
-                "[{}] updater_install_now: update installed successfully in {:?}",
-                MODULE, elapsed
+                "updater_install_now: update installed successfully in {:?}", elapsed
             );
             Ok(())
         }
         None => {
             let elapsed = start.elapsed();
             debug!(
-                "[{}] updater_install_now: no update available (checked in {:?})",
-                MODULE, elapsed
+                "updater_install_now: no update available (checked in {:?})", elapsed
             );
             Ok(())
         }
