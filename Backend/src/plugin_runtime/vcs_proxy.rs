@@ -61,8 +61,7 @@ impl PluginVcsProxy {
         };
 
         trace!(
-            "[{}] open_with_process: ensuring runtime is running",
-            MODULE
+            "open_with_process: ensuring runtime is running",
         );
         p.runtime.ensure_running().map_err(|e| {
             error!(
@@ -231,8 +230,7 @@ impl Vcs for PluginVcsProxy {
         Self: Sized,
     {
         warn!(
-            "[{}] open: direct constructor not supported, use host runtime",
-            MODULE
+            "open: direct constructor not supported, use host runtime",
         );
         Err(VcsError::Backend {
             backend: BackendId::from("plugin"),
@@ -254,8 +252,7 @@ impl Vcs for PluginVcsProxy {
         Self: Sized,
     {
         warn!(
-            "[{}] clone: direct constructor not supported, use host runtime",
-            MODULE
+            "clone: direct constructor not supported, use host runtime",
         );
         Err(VcsError::Backend {
             backend: BackendId::from("plugin"),

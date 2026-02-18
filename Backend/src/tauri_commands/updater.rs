@@ -5,7 +5,6 @@ use tauri::{Emitter, Manager, Runtime, Window};
 
 use tauri_plugin_updater::UpdaterExt;
 
-const MODULE: &str = "updater";
 
 #[tauri::command]
 /// Downloads and installs an available application update.

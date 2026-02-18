@@ -83,8 +83,7 @@ fn load_manifest_from_dir(plugin_dir: &Path) -> Option<PluginManifest> {
 fn builtin_plugin_manifests() -> Vec<(PathBuf, PluginManifest)> {
     let _timer = LogTimer::new(MODULE, "builtin_plugin_manifests");
     trace!(
-        "[{}] builtin_plugin_manifests: scanning built-in plugin dirs",
-        MODULE
+        "builtin_plugin_manifests: scanning built-in plugin dirs",
     );
 
     let mut out = Vec::new();
@@ -139,8 +138,7 @@ fn builtin_plugin_manifests() -> Vec<(PathBuf, PluginManifest)> {
 pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
     let _timer = LogTimer::new(MODULE, "list_plugin_vcs_backends");
     info!(
-        "[{}] list_plugin_vcs_backends: discovering VCS backends",
-        MODULE
+        "list_plugin_vcs_backends: discovering VCS backends",
     );
 
     let store = PluginBundleStore::new_default();
@@ -393,8 +391,7 @@ pub fn open_repo_via_plugin_vcs_backend(
         })?;
 
     debug!(
-        "[{}] open_repo_via_plugin_vcs_backend: opening via plugin proxy",
-        MODULE
+        "open_repo_via_plugin_vcs_backend: opening via plugin proxy",
     );
 
     let result = PluginVcsProxy::open_with_process(backend_id.clone(), runtime, path, cfg_value);

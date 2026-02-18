@@ -106,14 +106,12 @@ fn resolve_under_root(root: &Path, path: &str) -> Result<PathBuf, String> {
             .map_err(|e| format!("canonicalize path {}: {e}", p.display()))?;
         if p.starts_with(&root) {
             trace!(
-                "[{}] resolve_under_root: resolved absolute path within root",
-                MODULE
+                "resolve_under_root: resolved absolute path within root",
             );
             return Ok(p);
         }
         warn!(
-            "[{}] resolve_under_root: path escapes workspace root",
-            MODULE
+            "resolve_under_root: path escapes workspace root",
         );
         return Err("path escapes workspace root".to_string());
     }

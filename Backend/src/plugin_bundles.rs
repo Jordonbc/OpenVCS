@@ -333,8 +333,7 @@ impl PluginBundleStore {
         let plugin_id = manifest.id.trim().to_string();
         if plugin_id.is_empty() {
             error!(
-                "[{}] install_ovcsp_with_limits: manifest id is empty",
-                MODULE
+                "install_ovcsp_with_limits: manifest id is empty",
             );
             return Err("manifest id is empty".to_string());
         }
@@ -564,8 +563,7 @@ impl PluginBundleStore {
 
         if manifest.functions.is_some() {
             error!(
-                "[{}] install_ovcsp_with_limits: manifest uses deprecated 'functions' field",
-                MODULE
+                "install_ovcsp_with_limits: manifest uses deprecated 'functions' field",
             );
             return Err(
                 "manifest uses unsupported field 'functions'; use module.exec only".to_string(),
@@ -674,8 +672,7 @@ impl PluginBundleStore {
 
         if errors.is_empty() {
             debug!(
-                "[{}] sync_built_in_plugins: all bundles synced successfully",
-                MODULE
+                "sync_built_in_plugins: all bundles synced successfully",
             );
             Ok(())
         } else {
@@ -706,8 +703,7 @@ impl PluginBundleStore {
         let plugin_id = manifest.id.trim();
         if plugin_id.is_empty() {
             error!(
-                "[{}] ensure_built_in_bundle: bundle manifest id is empty",
-                MODULE
+                "ensure_built_in_bundle: bundle manifest id is empty",
             );
             return Err("bundle manifest id is empty".to_string());
         }

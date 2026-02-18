@@ -13,7 +13,6 @@ use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};
 
-const MODULE: &str = "conflicts";
 
 #[tauri::command]
 /// Returns conflict details for a repository file.

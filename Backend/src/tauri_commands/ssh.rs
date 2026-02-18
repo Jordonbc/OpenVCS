@@ -6,7 +6,6 @@ use log::{debug, error, info, trace, warn};
 use serde::Serialize;
 use tauri::command;
 
-const MODULE: &str = "ssh";
 
 /// Returns `~/.ssh/known_hosts` path.
 ///
@@ -16,8 +15,7 @@ const MODULE: &str = "ssh";
 fn known_hosts_path() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| {
         error!(
-            "[{}] known_hosts_path: could not determine home directory",
-            MODULE
+            "known_hosts_path: could not determine home directory",
         );
         "Could not determine home directory".to_string()
     })?;
@@ -34,8 +32,7 @@ fn known_hosts_path() -> Result<PathBuf, String> {
 fn ssh_dir_path() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| {
         error!(
-            "[{}] ssh_dir_path: could not determine home directory",
-            MODULE
+            "ssh_dir_path: could not determine home directory",
         );
         "Could not determine home directory".to_string()
     })?;
@@ -52,8 +49,7 @@ fn ssh_dir_path() -> Result<PathBuf, String> {
 fn ensure_ssh_dir() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| {
         error!(
-            "[{}] ensure_ssh_dir: could not determine home directory",
-            MODULE
+            "ensure_ssh_dir: could not determine home directory",
         );
         "Could not determine home directory".to_string()
     })?;
@@ -298,15 +294,13 @@ pub struct SshKeyCandidate {
 /// - `Err(String)` when home/ssh directory resolution fails.
 pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
     info!(
-        "[{}] ssh_key_candidates: scanning for SSH key candidates",
-        MODULE
+        "ssh_key_candidates: scanning for SSH key candidates",
     );
     let dir = ssh_dir_path()?;
 
     let Ok(read_dir) = fs::read_dir(&dir) else {
         debug!(
-            "[{}] ssh_key_candidates: ssh directory does not exist or is not readable",
-            MODULE
+            "ssh_key_candidates: ssh directory does not exist or is not readable",
         );
         return Ok(vec![]);
     };

@@ -3,7 +3,6 @@
 use log::{debug, info, trace, warn};
 use serde::Serialize;
 
-const MODULE: &str = "utilities";
 
 #[derive(Serialize)]
 pub struct AboutInfo {
