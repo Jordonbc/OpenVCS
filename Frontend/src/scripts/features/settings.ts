@@ -1288,7 +1288,8 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     };
 
     const persistSinglePluginToggle = async (pluginId: string, enabled: boolean) => {
-        if (!TAURI.has) return;
+        console.log(`[persistSinglePluginToggle] ${pluginId} -> ${enabled}`);
+        if (!TAURI.has) { console.warn('[persistSinglePluginToggle] TAURI not available'); return; }
         try {
             await TAURI.invoke('set_plugin_enabled', { pluginId, enabled });
             console.log(`Plugin '${pluginId}' ${enabled ? 'enabled' : 'disabled'}`);
