@@ -56,7 +56,13 @@ Notes:
 
 ## Building bundles
 
-The SDK provides two entrypoints:
+Install the SDK from crates.io:
+
+```bash
+cargo install openvcs-sdk
+```
+
+Then build plugin bundles with:
 
 ```bash
 # From a plugin directory
