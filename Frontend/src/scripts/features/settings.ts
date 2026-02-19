@@ -3,6 +3,7 @@
 import { TAURI } from '../lib/tauri';
 import { openModal, closeModal } from '../ui/modals';
 import { toKebab } from '../lib/dom';
+import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
 import { setTheme } from '../ui/layout';
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
@@ -762,7 +763,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
                 const caps = Array.isArray(installed?.requested_capabilities) ? installed.requested_capabilities : [];
                 if (caps.length) {
-                    const ok = window.confirm(
+                    const ok = await confirmBool(
                         `Plugin requests capabilities:\n\n- ${caps.join('\n- ')}\n\nApprove and allow it to run?`
                     );
                     await TAURI.invoke('approve_plugin_capabilities', {
@@ -1387,7 +1388,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             const plugin = state.list.find((p) => String(p?.id || '').trim() === id) || null;
             if (!plugin) return;
             const label = String(plugin.name || plugin.id || 'plugin');
-            if (!window.confirm(`Remove ${label}? This will delete the plugin bundle.`)) return;
+            if (!(await confirmBool(`Remove ${label}? This will delete the plugin bundle.`))) return;
             if (!TAURI.has) {
                 notify('Plugin removal is only available in the desktop app.');
                 return;

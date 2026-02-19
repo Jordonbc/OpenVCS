@@ -3,6 +3,7 @@
 import { qsa, escapeHtml } from '../../lib/dom';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
+import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
 import { state, prefs, disableDefaultSelectAll, DiffMeta, HunkNodeRefs } from '../../state/state';
 import type { FileStatus, ConflictDetails } from '../../types';
@@ -142,7 +143,7 @@ export async function selectFile(file: FileStatus, index: number) {
             const items: CtxItem[] = [];
             items.push({ label: 'Discard hunk', action: async () => {
                 if (!TAURI.has) return;
-                const ok = window.confirm('Discard this hunk? This cannot be undone.');
+                const ok = await confirmBool('Discard this hunk? This cannot be undone.');
                 if (!ok) return;
                 try {
                     const patch = buildPatchForSelectedHunks(file.path, state.currentDiff, [hi]);
@@ -156,7 +157,7 @@ export async function selectFile(file: FileStatus, index: number) {
             if (Array.isArray(selected) && selected.length > 0) {
                 items.push({ label: 'Discard selected hunks (this file)', action: async () => {
                     if (!TAURI.has) return;
-                    const ok = window.confirm(`Discard ${selected.length} selected hunk(s) in this file? This cannot be undone.`);
+                    const ok = await confirmBool(`Discard ${selected.length} selected hunk(s) in this file? This cannot be undone.`);
                     if (!ok) return;
                     try {
                         const patch = buildPatchForSelectedHunks(file.path, state.currentDiff, selected);
@@ -172,7 +173,7 @@ export async function selectFile(file: FileStatus, index: number) {
             if (filesWithSel.length > 0) {
                 items.push({ label: 'Discard selected hunks (all files)', action: async () => {
                     if (!TAURI.has) return;
-                    const ok = window.confirm(`Discard selected hunks across ${filesWithSel.length} file(s)? This cannot be undone.`);
+                    const ok = await confirmBool(`Discard selected hunks across ${filesWithSel.length} file(s)? This cannot be undone.`);
                     if (!ok) return;
                     try {
                         let patch = '';

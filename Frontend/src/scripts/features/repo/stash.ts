@@ -3,6 +3,7 @@
 import { escapeHtml } from '../../lib/dom';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
+import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
 import { state } from '../../state/state';
 import { openStashConfirm } from '../stashConfirm';
@@ -84,7 +85,7 @@ export function renderStashList(query: string): boolean {
                 } catch (e) { console.error('Failed to apply stash:', e); notify('Failed to apply stash'); }
             }});
             items.push({ label: 'Delete stash', action: async () => {
-                const ok = window.confirm(`Delete ${target}? This cannot be undone.`);
+                const ok = await confirmBool(`Delete ${target}? This cannot be undone.`);
                 if (!ok) return;
                 try {
                     if (!TAURI.has) return;
@@ -217,7 +218,7 @@ function wireStashFooterButtons(container: HTMLElement) {
     dropBtn?.addEventListener('click', async () => {
         const selector = getActiveStashSelector();
         if (!selector) return;
-        const ok = window.confirm(`Drop ${selector}? This cannot be undone.`);
+        const ok = await confirmBool(`Drop ${selector}? This cannot be undone.`);
         if (!ok) return;
         try {
             if (!TAURI.has) return;

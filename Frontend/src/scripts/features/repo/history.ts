@@ -3,6 +3,7 @@
 import { escapeHtml } from '../../lib/dom';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
+import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
 import { getPluginContextMenuItems, runPluginAction } from '../../plugins';
 import { prefs, state, statusClass, statusLabel } from '../../state/state';
@@ -66,7 +67,7 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: C
         items.push({
             label: 'Revert (reverse) commit…', action: async () => {
                 const short = String(commit.id || '').slice(0, 7);
-                const ok = window.confirm(`Revert commit ${short}? This will create a new commit that undoes its changes.`);
+                const ok = await confirmBool(`Revert commit ${short}? This will create a new commit that undoes its changes.`);
                 if (!ok) return;
                 try {
                     await TAURI.invoke('git_revert_commit', { id: commit.id });
@@ -302,7 +303,7 @@ export async function selectHistory(commit: any, index: number) {
                             }
 
                             const short = String(commit?.id || '').slice(0, 7) || '(unknown)';
-                            const ok = window.confirm(`Revert changes from commit ${short} for:\n${file?.path || '(unknown file)'}\n\nThis applies a reverse patch to your working tree and index.`);
+                            const ok = await confirmBool(`Revert changes from commit ${short} for:\n${file?.path || '(unknown file)'}\n\nThis applies a reverse patch to your working tree and index.`);
                             if (!ok) return;
 
                             let patch = block.join('\n');

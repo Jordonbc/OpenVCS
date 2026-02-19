@@ -1,6 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
+import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
 import { TAURI } from '../../lib/tauri';
 import { getPluginContextMenuItems, runPluginAction } from '../../plugins';
@@ -262,7 +263,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         const targets = (explicitMultiSelection ? selectedPaths.slice() : [f.path]).filter(Boolean);
         if (!targets.length) return;
         const label = targets.length > 1 ? `${targets.length} files` : targets[0];
-        const ok = window.confirm(`Add ${label} to .gitignore?`);
+        const ok = await confirmBool(`Add ${label} to .gitignore?`);
         if (!ok) return;
         try {
             await TAURI.invoke('git_add_to_gitignore_paths', { paths: targets });
@@ -278,7 +279,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         items.push({ label: 'Discard all selected', action: async () => {
             if (!TAURI.has) return;
             const paths = selectedPaths.slice();
-            const ok = window.confirm(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
+            const ok = await confirmBool(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
             if (!ok) return;
             try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
             catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
@@ -286,7 +287,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     }
     items.push({ label: 'Discard changes', action: async () => {
         if (!TAURI.has) return;
-        const ok = window.confirm(`Discard all changes in \n${f.path}? This cannot be undone.`);
+        const ok = await confirmBool(`Discard all changes in \n${f.path}? This cannot be undone.`);
         if (!ok) return;
         try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
         catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
