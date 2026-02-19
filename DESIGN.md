@@ -77,7 +77,6 @@ Current repo/backend validity checks and progress forwarding are centralized in 
 ## Plugin Lifecycle
 
 - Plugin discovery, load, installation, uninstall, capability approval, and function invocation are handled in `Backend/src/tauri_commands/plugins.rs` plus plugin store/runtime modules.
-- UI plugin loading is coordinated in `Frontend/src/scripts/plugins.ts`.
 
 ## State Model
 
@@ -139,6 +138,5 @@ When adding or changing behavior:
 - `Backend/src/plugin_vcs_backends.rs`
 - `Frontend/src/scripts/lib/tauri.ts`
 - `Frontend/src/scripts/main.ts`
-- `Frontend/src/scripts/plugins.ts`
 - `docs/plugin architecture.md`
 - `docs/plugins.md`

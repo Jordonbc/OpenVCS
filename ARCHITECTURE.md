@@ -22,7 +22,6 @@ Primary flow:
 Frontend:
 - `Frontend/src/scripts/main.ts`: UI bootstrap and feature wiring.
 - `Frontend/src/scripts/lib/tauri.ts`: minimal bridge wrapper for `invoke`/`listen`.
-- `Frontend/src/scripts/plugins.ts`: UI plugin runtime and plugin-contributed UI hooks.
 - `Frontend/src/scripts/features/`: feature modules grouped by domain.
 - `Frontend/src/styles/`: tokens, layout, modal, and component styles.
 
@@ -44,7 +43,7 @@ Backend:
 - Command boundary:
   Feature-facing backend API lives under `Backend/src/tauri_commands/`.
 - Backend/plugin boundary:
-  Backend communicates with plugin components over the component-model ABI defined in `Core/wit/openvcs-core.wit`, not in-process APIs.
+  Backend communicates with plugin components over the component-model ABI defined under `Core/wit/`.
 - Settings boundary:
   Backend persists/loads app configuration and mediates environment application.
 
@@ -52,7 +51,6 @@ Backend:
 
 - Active repo backend is treated as dynamic availability; stale handles are rejected when backend disappears.
 - Plugin components that request capabilities require approval before execution.
-- Frontend plugin scripts can extend UI, but repository operations still route through backend commands.
 - Output/log/progress signaling is centralized through backend event emission.
 
 ## Cross-Cutting Concerns

@@ -38,7 +38,7 @@
 
 ### Linting and formatting
 
-- `just fix`: formatter/lint quick fixes (runs `cargo fmt`, `cargo clippy --fix`, frontend type-check, and bundle verification).
+- `just fix`: formatter/lint quick fixes (runs `cargo fmt`, `cargo clippy --fix`, and frontend type-check).
 - `cargo fmt --all`: format Rust code
 - `cargo clippy --all-targets -- -D warnings`: check Rust for issues
 - `cargo clippy --fix --all-targets --allow-dirty`: auto-fix clippy issues
@@ -52,9 +52,9 @@
 ## Plugin runtime & host expectations
 
 - Plugin components live under `Backend/built-in-plugins/` and follow the manifest format in `openvcs.plugin.json`. Built-in bundles ship with the AppImage/Flatpak and are also built by the SDK (`cargo openvcs dist`).
-- The backend loads plugin modules as Wasmtime component-model `*.wasm` files via `Backend/src/plugin_runtime/component_instance.rs`. The canonical host/plugin contract is defined in `Core/wit/openvcs-core.wit` (see `openvcs_core::app_api`).
-- When changing host APIs, capability strings, or runtime behavior, update `Core/wit/openvcs-core.wit`, the generated bindings, and the runtime logic in `Backend/src/plugin_runtime`.
-- JavaScript-based plugin UI contributions (e.g., `entry.js`) are deprecated: route new UI work through the host/app APIs rather than embedding JS so bundles remain Wasm-only.
+- The backend loads plugin modules as Wasmtime component-model `*.wasm` files via `Backend/src/plugin_runtime/component_instance.rs`.
+- The canonical host/plugin contract is defined under `Core/wit/` (`host.wit`, `plugin.wit`, `vcs.wit`).
+- When changing host APIs, capabilities, or runtime behavior, update `Core/wit/` and the runtime logic in `Backend/src/plugin_runtime`.
 
 ## Coding style & conventions
 

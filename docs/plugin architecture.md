@@ -1,242 +1,79 @@
 # OpenVCS Plugin Architecture
 
-This document describes OpenVCS's plugin system.
+This document describes the current plugin system used by the OpenVCS desktop client.
 
 ## Architecture
 
+```text
+Client (Frontend) -> Client (Backend host) <-> Plugin (Wasm component)
 ```
-Client <---> Core <---> Plugin
-```
 
-No translation layers. Just **WIT and Rust**.
+- The frontend talks to the backend via Tauri commands/events.
+- The backend loads plugins as component-model WebAssembly modules and calls them via typed ABI bindings.
 
-- **Core** is the glue - provides WIT bindings, host implementation, plugin runtime
-- **Plugins** are pure WASM components with no boilerplate
-- **Client** loads and communicates with plugins via WIT
+## Contracts (WIT)
 
-## Plugin Types
+The authoritative host/plugin contract lives under `Core/wit/`:
 
-| Type           | Code | Required Functions                   |
-| -------------- | ---- | ------------------------------------ |
-| **Theme**      | No   | None                                 |
-| **Code**       | Yes  | `init`, `deinit`                     |
-| **Code + VCS** | Yes  | `init`, `deinit` + all VCS functions |
+- `Core/wit/host.wit`: host imports plugins can call (workspace IO, git process exec, notifications, logging, events)
+- `Core/wit/plugin.wit`: base plugin lifecycle world (`plugin`)
+- `Core/wit/vcs.wit`: VCS backend world (`vcs`)
 
-VCS is optional - plugins can implement it if they provide a VCS backend.
+The backend generates host bindings from these contracts and links them into a Wasmtime component runtime.
 
-## Plugin Structure
+## Plugin types
 
-### Theme Plugin
+- Theme pack plugin
+  - Ships `themes/` assets.
+  - A plugin may ship themes alone or alongside a module.
 
-```
-<pluginId>/
+- Module plugin (lifecycle only)
+  - Exports the `plugin` world from `Core/wit/plugin.wit`.
+  - Must implement `plugin-api.init` and `plugin-api.deinit`.
+
+- VCS backend plugin
+  - Exports the `vcs` world from `Core/wit/vcs.wit`.
+  - Must export both `plugin-api` (lifecycle) and `vcs-api` (backend operations).
+
+## Runtime implementation
+
+Key host code locations:
+
+- `Client/Backend/src/plugin_runtime/runtime_select.rs`: enforces component-only runtime (non-component modules are rejected).
+- `Client/Backend/src/plugin_runtime/component_instance.rs`: Wasmtime component instantiation + typed calls.
+- `Client/Backend/src/plugin_bundles.rs`: `.ovcsp` installation, indexing, capability approvals, module discovery.
+
+## Bundle format (`.ovcsp`)
+
+Plugins are installed from `.ovcsp` tar.xz archives. Layout:
+
+```text
+<plugin-id>/
   openvcs.plugin.json
-  themes/
-    <themeName>/
-      theme.json
-      theme.css
-      ...
-```
-
-No Rust code. Theme plugins ship UI assets only.
-
-### Code Plugin
-
-```
-<pluginId>/
-  openvcs.plugin.json
-  src/
-    lib.rs      # Rust library
-  Cargo.toml
-```
-
-Plugin author writes:
-
-```rust
-// src/lib.rs
-use openvcs_core::plugin_api::*;
-
-// Internal helpers - NOT ABI
-fn helper() -> ... { ... }
-
-// Plugin ABI - functions in mod plugin are exported
-#[openvcs_plugin]
-mod plugin {
-    use super::*;
-    
-    pub fn init() -> Result<(), PluginError> { Ok(()) }
-    pub fn deinit() -> Result<(), PluginError> { Ok(()) }
-}
-
-// Generate WIT Guest impl
-openvcs_core::export_plugin!(plugin);
-```
-
-### VCS Plugin
-
-Same as Code Plugin, but implements VCS functions:
-
-```rust
-// src/lib.rs
-use openvcs_core::vcs_api::*;
-
-// Internal helpers - NOT ABI
-fn helper() -> ... { ... }
-
-// Plugin ABI - functions in mod plugin are exported
-#[openvcs_plugin]
-mod plugin {
-    use super::*;
-    
-    pub fn init() -> Result<(), PluginError> { Ok(()) }
-    pub fn deinit() -> Result<(), PluginError> { Ok(()) }
-    pub fn get_caps() -> Result<Capabilities, PluginError> { ... }
-    pub fn list_branches() -> Result<Vec<BranchItem>, PluginError> { ... }
-    // ... all VCS functions required
-}
-
-// Generate WIT Guest impl
-openvcs_core::export_plugin!(plugin);
-```
-
-## Why This Structure?
-
-The `mod plugin` approach provides clear separation:
-
-- **Outside `mod plugin`** - Internal helpers, not exported to WIT
-- **Inside `mod plugin`** - ABI functions, exported to WIT
-
-This is more explicit than marking every function, while keeping the plugin code organized.
-
-## WIT Interfaces
-
-### plugin.wit (Required)
-
-Required for all code plugins:
-
-```wit
-interface plugin-api {
-  init: func() -> result<_, plugin-error>
-  deinit: func() -> result<_, plugin-error>
-}
-
-world plugin {
-  import host-api;
-  export plugin-api;
-}
-```
-
-### vcs.wit (Optional)
-
-For VCS backend plugins:
-
-```wit
-interface vcs-api {
-  get-caps: func() -> result<capabilities, plugin-error>
-  open: func(path: string, config: list<u8>) -> result<_, plugin-error>
-  list-branches: func() -> result list<branch-item>
-  commit: func(message: string, name: string, email: string, paths: list<string>) -> result<string>
-  // ... all VCS functions
-}
-
-world vcs {
-  import host-api;
-  export vcs-api;
-}
-```
-
-### Custom WIT (Optional)
-
-Plugins can define their own WIT interfaces for **plugin-to-plugin** communication.
-
-Example: A GitHub plugin exports a `github-api` interface that other plugins can call.
-
-## Plugin Dependencies
-
-Plugins can declare dependencies on other plugins:
-
-```json
-{
-  "id": "my-plugin",
-  "dependencies": {
-    "openvcs.github": {
-      "required": false
-    },
-    "openvcs.ai": {
-      "required": true
-    }
-  }
-}
-```
-
-- Required dependencies: plugin fails to load if missing
-- Optional dependencies: plugin loads without them (can check at runtime)
-
-## The Macros
-
-### `#[openvcs_plugin]`
-
-Marks a module as containing plugin ABI functions:
-
-```rust
-#[openvcs_plugin]
-mod plugin {
-    pub fn init() -> ... { }
-    pub fn deinit() -> ... { }
-}
-```
-
-### `export_plugin!`
-
-Generates the WIT Guest impl:
-
-```rust
-openvcs_core::export_plugin!(plugin);
-```
-
-This must be called after the `#[openvcs_plugin]` mod is defined.
-
-## Building Plugins
-
-SDK builds plugins with:
-
-```bash
-cargo build --lib --target wasm32-wasip1
-```
-
-No shim generation. No code generation. Just compile the library to WASM.
-
-## Bundle Format (.ovcsp)
-
-An `.ovcsp` is a tar.xz archive:
-
-```
-<pluginId>/
-  openvcs.plugin.json
+  icon.<ext>            (optional)
+  themes/               (optional; may coexist with a module)
   bin/
-    <plugin>.wasm
-  assets/...      (optional)
-  themes/...      (optional, theme plugins only)
+    <module>.wasm       (optional; must be a component)
 ```
 
 ## Manifest (`openvcs.plugin.json`)
 
-```json
-{
-  "id": "openvcs.git",
-  "name": "Git",
-  "version": "0.1.0",
-  "author": "OpenVCS Team",
-  "description": "Git VCS backend",
-  "default_enabled": true,
-  "dependencies": {}
-}
-```
+The host cares about:
 
-## Security
+- `id` (required)
+- `name`, `version` (optional but recommended)
+- `default_enabled` (optional)
+- `capabilities` (optional list of strings)
+- `module.exec` (optional `.wasm` filename under `bin/`)
+- `module.vcs_backends` (optional VCS backend ids the module provides)
 
-- Plugins run **out-of-process** in WebAssembly
-- Client never loads third-party dynamic libraries
-- No native code execution from plugins
-- Capabilities declared in manifest, approved by user
-- Process isolation + resource limits
+## Capabilities
+
+Plugins request capabilities through the manifest `capabilities` array.
+The host enforces capability approval before allowing privileged host API calls.
+
+## Security model
+
+- Plugins run out-of-process in a Wasmtime component runtime.
+- Host APIs are explicit via WIT imports.
+- Workspace file access is mediated by the host and can be confined to a selected workspace root.
