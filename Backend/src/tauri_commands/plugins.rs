@@ -100,10 +100,11 @@ pub fn uninstall_plugin(state: State<'_, AppState>, plugin_id: String) -> Result
 }
 
 #[tauri::command]
-/// Enables or disables a plugin without triggering a full runtime sync.
+/// Enables or disables a plugin and persists the override.
 ///
-/// This is more efficient than set_global_settings when only toggling
-/// a single plugin's enabled state.
+/// This updates runtime state immediately and writes the corresponding
+/// `plugins.enabled`/`plugins.disabled` override in global settings so the
+/// toggle remains stable across settings reloads and app restarts.
 ///
 /// # Parameters
 /// - `state`: Application state.
@@ -141,7 +142,32 @@ pub fn set_plugin_enabled(
                 plugin_id, e
             );
             e
-        })
+        })?;
+
+    let mut cfg = state.config();
+    let plugin_key = plugin_id.trim().to_ascii_lowercase();
+    cfg.plugins
+        .enabled
+        .retain(|id| !id.trim().eq_ignore_ascii_case(&plugin_key));
+    cfg.plugins
+        .disabled
+        .retain(|id| !id.trim().eq_ignore_ascii_case(&plugin_key));
+
+    if enabled {
+        cfg.plugins.enabled.push(plugin_key.clone());
+    } else {
+        cfg.plugins.disabled.push(plugin_key.clone());
+    }
+
+    state.set_config(cfg).map_err(|e| {
+        error!(
+            "set_plugin_enabled: failed to persist plugin override for {}: {}",
+            plugin_id, e
+        );
+        e
+    })?;
+
+    Ok(())
 }
 
 #[tauri::command]
