@@ -94,6 +94,7 @@
 - **ALL code must be documented**, not just public APIs. This includes:
   - Rust: Use doc comments (`///` for items, `//!` for modules) for all functions, structs, enums, traits, and fields.
   - TypeScript: Use JSDoc comments (`/** ... */`) for all functions, classes, interfaces, and types.
+- When you change behavior, workflows, commands, paths, config, or plugin/runtime expectations, ALWAYS update the relevant documentation in the same change, even if the user does not explicitly ask.
 - Include usage examples for complex functions.
 - Keep README files in sync with code changes.
 - Document configuration options and environment variables.
