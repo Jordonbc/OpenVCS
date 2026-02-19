@@ -15,7 +15,7 @@ Client (Frontend) -> Client (Backend host) <-> Plugin (Wasm component)
 
 The authoritative host/plugin contract lives under `Core/wit/`:
 
-- `Core/wit/host.wit`: host imports plugins can call (workspace IO, git process exec, notifications, logging, events)
+- `Core/wit/host.wit`: host imports plugins can call (workspace IO, status set/get, git process exec, notifications, logging, events)
 - `Core/wit/plugin.wit`: base plugin lifecycle world (`plugin`)
 - `Core/wit/vcs.wit`: VCS backend world (`vcs`)
 
@@ -71,6 +71,12 @@ The host cares about:
 
 Plugins request capabilities through the manifest `capabilities` array.
 The host enforces capability approval before allowing privileged host API calls.
+
+Status APIs use dedicated capabilities:
+
+- `status.set`: allows plugins to call `set-status`.
+- `status.get`: allows plugins to call `get-status`.
+- `status.set` also implies `status.get`.
 
 ## Security model
 

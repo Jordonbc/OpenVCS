@@ -4,6 +4,7 @@ use crate::logging::LogTimer;
 use crate::plugin_runtime::spawn::SpawnConfig;
 use log::{debug, error, info, trace, warn};
 use openvcs_core::app_api::PluginError;
+use parking_lot::RwLock;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::ffi::OsString;
@@ -11,8 +12,19 @@ use std::fs;
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, OnceLock};
 
 const MODULE: &str = "host_api";
+const DEFAULT_STATUS_TEXT: &str = "Ready";
+
+/// Callback type used to forward plugin status updates to the UI layer.
+type StatusEventEmitter = dyn Fn(&str) + Send + Sync + 'static;
+
+/// Optional process-wide UI status event emitter set during backend startup.
+static STATUS_EVENT_EMITTER: OnceLock<Arc<StatusEventEmitter>> = OnceLock::new();
+
+/// Shared process-wide status text used by plugin status setter/getter calls.
+static STATUS_TEXT: OnceLock<RwLock<String>> = OnceLock::new();
 
 // Whitelisted environment variables that are forwarded to child Git processes.
 const SANITIZED_ENV_KEYS: &[&str] = &[
@@ -59,6 +71,65 @@ fn approved_caps_and_workspace(spawn: &SpawnConfig) -> (HashSet<String>, Option<
         _ => HashSet::new(),
     };
     (approved_caps, spawn.allowed_workspace_root.clone())
+}
+
+/// Returns the shared status text store singleton.
+///
+/// # Returns
+/// - Global [`RwLock<String>`] containing the current status text.
+fn status_text_store() -> &'static RwLock<String> {
+    STATUS_TEXT.get_or_init(|| RwLock::new(DEFAULT_STATUS_TEXT.to_string()))
+}
+
+/// Returns whether status-set capability is approved for this plugin.
+///
+/// # Parameters
+/// - `caps`: Approved capability identifiers.
+///
+/// # Returns
+/// - `true` when `status.set` is approved.
+fn has_status_set_cap(caps: &HashSet<String>) -> bool {
+    caps.contains("status.set")
+}
+
+/// Returns whether status-get capability is approved for this plugin.
+///
+/// `status.set` implies `status.get`.
+///
+/// # Parameters
+/// - `caps`: Approved capability identifiers.
+///
+/// # Returns
+/// - `true` when `status.get` or `status.set` is approved.
+fn has_status_get_cap(caps: &HashSet<String>) -> bool {
+    caps.contains("status.get") || has_status_set_cap(caps)
+}
+
+/// Registers a callback used to forward status updates to the frontend.
+///
+/// # Parameters
+/// - `emitter`: Callback invoked with each status text update.
+///
+/// # Returns
+/// - `()`.
+pub fn set_status_event_emitter<F>(emitter: F)
+where
+    F: Fn(&str) + Send + Sync + 'static,
+{
+    let _ = STATUS_EVENT_EMITTER.set(Arc::new(emitter));
+}
+
+/// Emits a status update through the configured frontend event callback.
+///
+/// # Parameters
+/// - `message`: Status text to emit.
+///
+/// # Returns
+/// - `()`.
+fn emit_status_event(message: &str) {
+    if let Some(emitter) = STATUS_EVENT_EMITTER.get() {
+        emitter(message);
+    }
 }
 
 /// Host API result type alias for plugin-facing operations.
@@ -279,34 +350,80 @@ pub fn host_emit_event(spawn: &SpawnConfig, event_name: &str, payload: &[u8]) ->
     Ok(())
 }
 
-/// Handles plugin notification requests gated by `ui.notifications` capability.
+/// Handles legacy plugin notification requests through status setter semantics.
 pub fn host_ui_notify(spawn: &SpawnConfig, message: &str) -> HostResult<()> {
+    host_set_status(spawn, message)
+}
+
+/// Sets the client footer status text for a plugin.
+///
+/// Requires `status.set` capability approval.
+///
+/// # Parameters
+/// - `spawn`: Plugin spawn/capability context.
+/// - `message`: Status text to set.
+///
+/// # Returns
+/// - `Ok(())` when status is stored and emitted.
+/// - `Err(PluginError)` when capability is denied.
+pub fn host_set_status(spawn: &SpawnConfig, message: &str) -> HostResult<()> {
     let (caps, _) = approved_caps_and_workspace(spawn);
     trace!(
-        "host_ui_notify: plugin={}, message_len={}",
+        "host_set_status: plugin={}, message_len={}",
         spawn.plugin_id,
         message.len()
     );
 
-    if !caps.contains("ui.notifications") {
+    if !has_status_set_cap(&caps) {
         warn!(
-            "host_ui_notify: capability denied for plugin {} (missing ui.notifications)",
+            "host_set_status: capability denied for plugin {} (missing status.set)",
             spawn.plugin_id
         );
         return Err(host_error(
             "capability.denied",
-            "missing capability: ui.notifications",
+            "missing capability: status.set",
         ));
     }
 
-    let message = message.trim();
-    if !message.is_empty() {
-        info!(
-            "host_ui_notify: plugin[{}] notify: {}",
-            spawn.plugin_id, message
-        );
+    {
+        let mut status = status_text_store().write();
+        *status = message.to_string();
     }
+
+    info!(
+        "host_set_status: plugin[{}] status: {}",
+        spawn.plugin_id, message
+    );
+    emit_status_event(message);
     Ok(())
+}
+
+/// Gets the current client footer status text for a plugin.
+///
+/// Requires either `status.get` or `status.set` capability approval.
+///
+/// # Parameters
+/// - `spawn`: Plugin spawn/capability context.
+///
+/// # Returns
+/// - `Ok(String)` with current status text.
+/// - `Err(PluginError)` when capability is denied.
+pub fn host_get_status(spawn: &SpawnConfig) -> HostResult<String> {
+    let (caps, _) = approved_caps_and_workspace(spawn);
+    trace!("host_get_status: plugin={}", spawn.plugin_id);
+
+    if !has_status_get_cap(&caps) {
+        warn!(
+            "host_get_status: capability denied for plugin {} (missing status.get)",
+            spawn.plugin_id
+        );
+        return Err(host_error(
+            "capability.denied",
+            "missing capability: status.get",
+        ));
+    }
+
+    Ok(status_text_store().read().clone())
 }
 
 /// Reads a workspace file when the plugin has workspace read access.

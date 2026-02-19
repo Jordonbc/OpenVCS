@@ -4,6 +4,7 @@ import './lib/logger';
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
+import { setStatus } from './lib/status';
 import { destroyOverlayScrollbarsFor, initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from './lib/scrollbars';
 import { prefs, state, hasRepo } from './state/state';
 import {
@@ -493,9 +494,9 @@ async function boot() {
       .catch(() => {});
   }
 
-  // generic notifications from backend
-  TAURI.listen?.('ui:notify', ({ payload }) => {
-      try { notify(String((payload as any) ?? '')); } catch {}
+  // backend status updates (footer)
+  TAURI.listen?.('status:set', ({ payload }) => {
+      try { setStatus(String((payload as any) ?? '')); } catch {}
   });
 
     // update available payload from backend -> open modal with notes

@@ -123,6 +123,15 @@ pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::new_with_config())
         .setup(|app| {
+            crate::plugin_runtime::host_api::set_status_event_emitter({
+                let app_handle = app.handle().clone();
+                move |message| {
+                    if let Err(error) = app_handle.emit("status:set", message.to_string()) {
+                        log::warn!("status:set emit failed: {}", error);
+                    }
+                }
+            });
+
             let store = crate::plugin_bundles::PluginBundleStore::new_default();
             if let Err(err) = store.sync_built_in_plugins() {
                 warn!("plugins: failed to sync built-in bundles: {}", err);

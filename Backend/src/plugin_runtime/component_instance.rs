@@ -3,8 +3,8 @@
 use std::sync::OnceLock;
 
 use crate::plugin_runtime::host_api::{
-    host_emit_event, host_process_exec_git, host_runtime_info, host_subscribe_event,
-    host_ui_notify, host_workspace_read_file, host_workspace_write_file,
+    host_emit_event, host_get_status, host_process_exec_git, host_runtime_info, host_set_status,
+    host_subscribe_event, host_ui_notify, host_workspace_read_file, host_workspace_write_file,
 };
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::spawn::SpawnConfig;
@@ -181,6 +181,19 @@ impl bindings_vcs::openvcs::plugin::host_api::Host for ComponentHostState {
         host_ui_notify(&self.spawn, &message).map_err(ComponentHostState::map_host_error_vcs)
     }
 
+    /// Sets footer status text through the host status API.
+    fn set_status(
+        &mut self,
+        message: String,
+    ) -> Result<(), bindings_vcs::openvcs::plugin::host_api::HostError> {
+        host_set_status(&self.spawn, &message).map_err(ComponentHostState::map_host_error_vcs)
+    }
+
+    /// Reads current footer status text through the host status API.
+    fn get_status(&mut self) -> Result<String, bindings_vcs::openvcs::plugin::host_api::HostError> {
+        host_get_status(&self.spawn).map_err(ComponentHostState::map_host_error_vcs)
+    }
+
     /// Reads a workspace file under capability and path constraints.
     fn workspace_read_file(
         &mut self,
@@ -299,6 +312,21 @@ impl bindings_plugin::openvcs::plugin::host_api::Host for ComponentHostState {
         message: String,
     ) -> Result<(), bindings_plugin::openvcs::plugin::host_api::HostError> {
         host_ui_notify(&self.spawn, &message).map_err(ComponentHostState::map_host_error_plugin)
+    }
+
+    /// Sets footer status text through the host status API.
+    fn set_status(
+        &mut self,
+        message: String,
+    ) -> Result<(), bindings_plugin::openvcs::plugin::host_api::HostError> {
+        host_set_status(&self.spawn, &message).map_err(ComponentHostState::map_host_error_plugin)
+    }
+
+    /// Reads current footer status text through the host status API.
+    fn get_status(
+        &mut self,
+    ) -> Result<String, bindings_plugin::openvcs::plugin::host_api::HostError> {
+        host_get_status(&self.spawn).map_err(ComponentHostState::map_host_error_plugin)
     }
 
     /// Reads a workspace file under capability and path constraints.
