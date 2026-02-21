@@ -58,6 +58,29 @@
     box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent);
 }
 
+#settings-modal nav [data-plugin-menus-wrap="true"]{
+    margin-top: 0;
+    padding-top: 0;
+}
+
+#settings-modal nav .settings-plugin-subhead{
+    margin: 4rem 0 .35rem;
+    font-size: .74rem;
+    line-height: 1.2;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+#settings-modal nav .settings-plugin-sublist{
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: .5rem;
+}
+
 /* Make the right-side content a flex column so the footer can hug the content
    when there's extra vertical space, but still stick while scrolling */
 #settings-panels{

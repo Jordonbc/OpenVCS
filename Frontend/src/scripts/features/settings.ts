@@ -71,34 +71,82 @@ async function renderPluginMenus(modal: HTMLElement): Promise<void> {
     if (!nav || !panelsScroll) return;
 
     nav.querySelectorAll<HTMLElement>('[data-plugin-menu="true"]').forEach((node) => node.remove());
+    nav.querySelectorAll<HTMLElement>('[data-plugin-menus-wrap="true"]').forEach((node) => node.remove());
     panelsScroll
         .querySelectorAll<HTMLElement>('.panel-form[data-plugin-menu="true"]')
         .forEach((node) => node.remove());
 
     if (!TAURI.has) return;
     let menus: PluginMenuPayload[] = [];
+    let pluginSummaries: PluginSummary[] = [];
     try {
         menus = await TAURI.invoke<PluginMenuPayload[]>('list_plugin_menus');
     } catch {
         return;
     }
+    try {
+        pluginSummaries = await TAURI.invoke<PluginSummary[]>('list_plugins');
+    } catch {
+        pluginSummaries = [];
+    }
+
+    const pluginSources = new Map<string, string>();
+    for (const summary of Array.isArray(pluginSummaries) ? pluginSummaries : []) {
+        const id = String(summary?.id || '').trim().toLowerCase();
+        if (!id) continue;
+        pluginSources.set(id, String(summary?.source || '').trim().toLowerCase());
+    }
 
     const pluginsNavBtn = nav.querySelector<HTMLElement>('[data-section="plugins"]');
     const pluginsNavLi = pluginsNavBtn?.closest('li') || null;
+
+    let thirdPartySublist: HTMLElement | null = null;
+    const ensureThirdPartySublist = (): HTMLElement => {
+        if (thirdPartySublist) return thirdPartySublist;
+
+        const wrap = document.createElement('div');
+        wrap.setAttribute('data-plugin-menus-wrap', 'true');
+
+        const heading = document.createElement('div');
+        heading.className = 'settings-plugin-subhead';
+        heading.textContent = 'Plugin Settings';
+        wrap.appendChild(heading);
+
+        const list = document.createElement('ul');
+        list.className = 'settings-plugin-sublist';
+        list.setAttribute('data-plugin-menus', 'true');
+        wrap.appendChild(list);
+
+        if (pluginsNavLi) {
+            pluginsNavLi.appendChild(wrap);
+        } else {
+            nav.appendChild(wrap);
+        }
+
+        thirdPartySublist = list;
+        return list;
+    };
 
     for (const menu of menus) {
         const section = pluginSectionId(menu.plugin_id, menu.id);
         const navLi = document.createElement('li');
         navLi.dataset.pluginMenu = 'true';
         const navBtn = document.createElement('button');
+        const source = pluginSources.get(String(menu.plugin_id || '').trim().toLowerCase()) || '';
+        const isBuiltIn = source === 'built-in';
         navBtn.className = 'seg-btn';
         navBtn.setAttribute('data-section', section);
         navBtn.textContent = menu.label || menu.id;
         navLi.appendChild(navBtn);
-        if (pluginsNavLi?.parentElement) {
-            pluginsNavLi.parentElement.insertBefore(navLi, pluginsNavLi);
+
+        if (isBuiltIn) {
+            if (pluginsNavLi?.parentElement) {
+                pluginsNavLi.parentElement.insertBefore(navLi, pluginsNavLi);
+            } else {
+                nav.appendChild(navLi);
+            }
         } else {
-            nav.appendChild(navLi);
+            ensureThirdPartySublist().appendChild(navLi);
         }
 
         const panel = document.createElement('form');
@@ -219,7 +267,11 @@ function activateSection(modal: HTMLElement, section: string) {
 
     // Plugins are applied immediately (no Save/Cancel).
     const actions = modal.querySelector<HTMLElement>('.sheet-actions');
-    if (actions) actions.classList.toggle('hidden', safeSection === 'plugins');
+    const activePanel = panels.querySelector<HTMLElement>(
+        `.panel-form[data-panel="${CSS.escape(safeSection)}"]`,
+    );
+    const isPluginMenuPanel = activePanel?.getAttribute('data-plugin-menu') === 'true';
+    if (actions) actions.classList.toggle('hidden', safeSection === 'plugins' || isPluginMenuPanel);
 }
 
 export function wireSettings() {

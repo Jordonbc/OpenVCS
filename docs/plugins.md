@@ -61,6 +61,7 @@ Notes:
 - Plugins can contribute typed menus/elements (text and buttons today) that the client renders.
 - Enabling/disabling a plugin from the Settings > Plugins pane refreshes plugin-contributed menus in the same open modal.
 - For `plugin-v1-1` menus, plugins can provide an optional `menu.order` (`u32`) hint; lower values render earlier, and menus without an order are sorted after ordered menus by label.
+- Built-in plugin menus are shown as normal top-level Settings sections; third-party plugin menus are grouped under Settings > Plugins in the `Plugin Settings` subsection.
 - Action buttons invoke plugin `handle-action` callbacks.
 - Plugin settings persistence is automatic in the host under:
   - `plugin-data/<plugin-id>/settings.json`
