@@ -176,9 +176,11 @@ pub async fn set_plugin_enabled(
         plugin_id, enabled
     );
 
+    let plugin_key = plugin_id.trim().to_ascii_lowercase();
+
     let runtime = state.plugin_runtime();
     let plugin_id_for_runtime = plugin_id.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let runtime_result = tauri::async_runtime::spawn_blocking(move || {
         runtime
             .set_plugin_enabled(&plugin_id_for_runtime, enabled)
             .map_err(|e| {
@@ -190,10 +192,32 @@ pub async fn set_plugin_enabled(
             })
     })
     .await
-    .map_err(|e| format!("set_plugin_enabled task join failed: {e}"))??;
+    .map_err(|e| format!("set_plugin_enabled task join failed: {e}"))?;
+
+    if let Err(err) = runtime_result {
+        if enabled {
+            let mut fallback_cfg = state.config();
+            fallback_cfg
+                .plugins
+                .enabled
+                .retain(|id| !id.trim().eq_ignore_ascii_case(&plugin_key));
+            fallback_cfg
+                .plugins
+                .disabled
+                .retain(|id| !id.trim().eq_ignore_ascii_case(&plugin_key));
+            fallback_cfg.plugins.disabled.push(plugin_key.clone());
+            if let Err(persist_error) = state.set_config(fallback_cfg) {
+                warn!(
+                    "set_plugin_enabled: failed to persist disable fallback for {}: {}",
+                    plugin_id, persist_error
+                );
+            }
+            let _ = state.plugin_runtime().stop_plugin(&plugin_id);
+        }
+        return Err(err);
+    }
 
     let mut cfg = state.config();
-    let plugin_key = plugin_id.trim().to_ascii_lowercase();
     cfg.plugins
         .enabled
         .retain(|id| !id.trim().eq_ignore_ascii_case(&plugin_key));
