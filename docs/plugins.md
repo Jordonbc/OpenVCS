@@ -61,6 +61,7 @@ Notes:
 
 - Plugins can contribute typed menus/elements (text and buttons today) that the client renders.
 - Enabling/disabling a plugin from the Settings > Plugins pane refreshes plugin-contributed menus in the same open modal.
+- Plugin list checkboxes are tri-state in the UI: disabled, enabled (green check), and enabling (animated pending indicator).
 - Plugin menus are fetched only from plugins with a currently running module runtime; enabled plugins that are not running (for example after a crash) do not contribute menus until runtime is restored.
 - If enabling a plugin fails during runtime startup, the host keeps that plugin disabled and returns an error to the UI.
 - For `plugin-v1-1` menus, plugins can provide an optional `menu.order` (`u32`) hint; lower values render earlier, and menus without an order are sorted after ordered menus by label.

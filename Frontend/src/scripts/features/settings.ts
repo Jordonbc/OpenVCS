@@ -1276,15 +1276,31 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             main.appendChild(icon);
             main.appendChild(text);
 
+            const checkboxWrap = document.createElement('label');
+            checkboxWrap.className = 'plugin-check';
+            checkboxWrap.dataset.state = pendingToggle === true
+                ? 'enabling'
+                : isEnabledNow
+                    ? 'enabled'
+                    : 'disabled';
+
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
+            checkbox.className = 'plugin-check-input';
             checkbox.checked = isEnabledNow;
             checkbox.disabled = typeof pendingToggle === 'boolean';
             checkbox.dataset.pluginId = id;
             checkbox.setAttribute('aria-label', `Enable ${String(plugin.name || '').trim() || 'plugin'}`);
 
+            const checkboxUi = document.createElement('span');
+            checkboxUi.className = 'plugin-check-ui';
+            checkboxUi.setAttribute('aria-hidden', 'true');
+
+            checkboxWrap.appendChild(checkbox);
+            checkboxWrap.appendChild(checkboxUi);
+
             li.appendChild(main);
-            li.appendChild(checkbox);
+            li.appendChild(checkboxWrap);
             listEl.appendChild(li);
         }
 
@@ -1595,7 +1611,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             const id = String(row.dataset.plugin || '').trim();
             if (!id) return;
 
-            const isCheckbox = !!target?.closest('input[type="checkbox"]');
+            const isCheckbox = !!target?.closest('.plugin-check');
             if (!isCheckbox) {
                 const now = Date.now();
                 const idKey = id.toLowerCase();
