@@ -298,6 +298,10 @@
     gap: .5rem;
     align-items: center;
 }
+.plugin-toggle-btn{
+    min-width: 7.6rem;
+    text-align: center;
+}
 .plugin-toggle-btn.plugin-toggle-btn-enable{
     border-color: color-mix(in oklab, #2aa84a 55%, var(--border));
     background: color-mix(in oklab, #2aa84a 20%, transparent);

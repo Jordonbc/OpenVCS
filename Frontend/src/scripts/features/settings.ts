@@ -1025,6 +1025,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         list: PluginSummary[];
         disabled: Set<string>;
         enabled: Set<string>;
+        pendingToggleById: Map<string, boolean>;
         query: string;
         selectedId: string | null;
     };
@@ -1032,6 +1033,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         list: [],
         disabled: new Set<string>(),
         enabled: new Set<string>(),
+        pendingToggleById: new Map<string, boolean>(),
         query: '',
         selectedId: null,
     };
@@ -1091,7 +1093,10 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         detailEl.classList.remove('empty');
 
         const id = String(plugin.id).trim();
+        const idLower = id.toLowerCase();
         const isEnabledNow = pluginIsEnabled(plugin);
+        const pendingToggle = state.pendingToggleById.get(idLower);
+        const pendingDesiredEnabled = typeof pendingToggle === 'boolean' ? pendingToggle : isEnabledNow;
         const version = String(plugin.version || '').trim();
         const author = String(plugin.author || '').trim();
         const category = String(plugin.category || '').trim();
@@ -1121,9 +1126,16 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         actions.className = 'plugin-detail-actions';
         const toggle = document.createElement('button');
         toggle.type = 'button';
-        toggle.className = `tbtn plugin-toggle-btn ${isEnabledNow ? 'plugin-toggle-btn-disable' : 'plugin-toggle-btn-enable'}`;
+        toggle.className = `tbtn plugin-toggle-btn ${pendingDesiredEnabled ? 'plugin-toggle-btn-disable' : 'plugin-toggle-btn-enable'}`;
         toggle.id = 'plugins-toggle-selected';
-        toggle.textContent = isEnabledNow ? 'Disable' : 'Enable';
+        toggle.disabled = typeof pendingToggle === 'boolean';
+        toggle.textContent = pendingToggle === true
+            ? 'Enabling...'
+            : pendingToggle === false
+                ? 'Disabling...'
+                : isEnabledNow
+                    ? 'Disable'
+                    : 'Enable';
         toggle.dataset.pluginToggle = id;
         actions.appendChild(toggle);
 
@@ -1351,7 +1363,29 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             try {
                 await refreshAvailableThemes();
             } catch (e) { console.warn('refreshAvailableThemes failed:', e); }
-        } catch (e) { console.error('Failed to toggle plugin:', e); notify('Failed to toggle plugin'); }
+        } catch (e) {
+            console.error('Failed to toggle plugin:', e);
+            notify('Failed to toggle plugin');
+        } finally {
+            state.pendingToggleById.delete(pluginId.trim().toLowerCase());
+            renderDetails(getFiltered());
+        }
+    };
+
+    const queuePluginToggle = (pluginIdRaw: string, enabled: boolean) => {
+        const id = String(pluginIdRaw || '').trim().toLowerCase();
+        if (!id) return;
+        if (enabled) {
+            state.disabled.delete(id);
+            state.enabled.add(id);
+        } else {
+            state.enabled.delete(id);
+            state.disabled.add(id);
+        }
+        state.pendingToggleById.set(id, enabled);
+        updateCounts();
+        renderDetails(getFiltered());
+        persistSinglePluginToggle(id, enabled).catch(() => {});
     };
 
     if (!(pane as any).__wired) {
@@ -1510,11 +1544,16 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             const toggleBtn = target?.closest<HTMLButtonElement>('[data-plugin-toggle]') || null;
             if (toggleBtn) {
                 const id = String(toggleBtn.dataset.pluginToggle || '').trim();
-                const checkbox = pane.querySelector<HTMLInputElement>(`input[type="checkbox"][data-plugin-id="${CSS.escape(id)}"]`);
-                if (checkbox) {
-                    checkbox.checked = !checkbox.checked;
-                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-                }
+                if (!id) return;
+                const plugin = state.list.find(
+                    (p) => String(p?.id || '').trim().toLowerCase() === id.toLowerCase(),
+                );
+                const desiredEnabled = plugin ? !pluginIsEnabled(plugin) : false;
+                const checkbox = pane.querySelector<HTMLInputElement>(
+                    `input[type="checkbox"][data-plugin-id="${CSS.escape(id)}"]`,
+                );
+                if (checkbox) checkbox.checked = desiredEnabled;
+                queuePluginToggle(id, desiredEnabled);
                 return;
             }
 
@@ -1556,17 +1595,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             if (!el || el.type !== 'checkbox' || !el.dataset.pluginId) return;
             const id = String(el.dataset.pluginId).trim().toLowerCase();
             if (!id) return;
-            const wasEnabled = state.enabled.has(id);
-            if (el.checked) {
-                state.disabled.delete(id);
-                state.enabled.add(id);
-            } else {
-                state.enabled.delete(id);
-                state.disabled.add(id);
-            }
-            updateCounts();
-            renderDetails(getFiltered());
-            persistSinglePluginToggle(id, el.checked).catch(() => {});
+            queuePluginToggle(id, el.checked);
         });
 
         searchEl.addEventListener('input', () => {
