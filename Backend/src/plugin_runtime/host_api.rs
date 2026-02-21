@@ -26,7 +26,7 @@ static STATUS_EVENT_EMITTER: OnceLock<Arc<StatusEventEmitter>> = OnceLock::new()
 /// Shared process-wide status text used by plugin status setter/getter calls.
 static STATUS_TEXT: OnceLock<RwLock<String>> = OnceLock::new();
 
-// Whitelisted environment variables that are forwarded to child Git processes.
+// Whitelisted environment variables that are forwarded to child processes.
 const SANITIZED_ENV_KEYS: &[&str] = &[
     "HOME",
     "USER",
@@ -135,7 +135,7 @@ fn emit_status_event(message: &str) {
 /// Host API result type alias for plugin-facing operations.
 pub(crate) type HostResult<T> = Result<T, PluginError>;
 
-/// Host-side result for `process-exec-git` mapped into WIT bindings by runtime glue.
+/// Host-side result for `process-exec` mapped into WIT bindings by runtime glue.
 pub(crate) struct HostProcessExecOutput {
     /// Whether the process exited successfully.
     pub success: bool,
@@ -237,7 +237,7 @@ fn read_file_under_root(root: &Path, rel: &str) -> Result<Vec<u8>, String> {
     Ok(result)
 }
 
-/// Builds a sanitized child-process environment for Git execution.
+/// Builds a sanitized child-process environment for command execution.
 fn sanitized_env() -> Vec<(OsString, OsString)> {
     let mut out: Vec<(OsString, OsString)> = Vec::new();
 
@@ -519,27 +519,32 @@ pub fn host_workspace_write_file(
     Ok(())
 }
 
-/// Executes `git` with sanitized environment and capability checks.
-pub fn host_process_exec_git(
+/// Executes a program with sanitized environment and capability checks.
+pub fn host_process_exec(
     spawn: &SpawnConfig,
     cwd: Option<&str>,
+    program: &str,
     args: &[String],
     env: &[(String, String)],
     stdin: Option<&str>,
 ) -> HostResult<HostProcessExecOutput> {
-    let _timer = LogTimer::new(MODULE, "host_process_exec_git");
+    let _timer = LogTimer::new(MODULE, "host_process_exec");
+    let program = program.trim();
+    if program.is_empty() {
+        return Err(host_error("process.error", "program is empty"));
+    }
     info!(
-        "host_process_exec_git: plugin={}, args={:?}",
-        spawn.plugin_id, args
+        "host_process_exec: plugin={}, program='{}', args={:?}",
+        spawn.plugin_id, program, args
     );
     debug!(
-        "host_process_exec_git: cwd={:?}, env_count={}, has_stdin={}",
+        "host_process_exec: cwd={:?}, env_count={}, has_stdin={}",
         cwd,
         env.len(),
         stdin.is_some()
     );
     trace!(
-        "host_process_exec_git: env={:?}, stdin_len={}",
+        "host_process_exec: env={:?}, stdin_len={}",
         env,
         stdin.map(|s| s.len()).unwrap_or(0)
     );
@@ -548,7 +553,7 @@ pub fn host_process_exec_git(
 
     if !caps.contains("process.exec") {
         warn!(
-            "host_process_exec_git: capability denied for plugin {} (missing process.exec)",
+            "host_process_exec: capability denied for plugin {} (missing process.exec)",
             spawn.plugin_id
         );
         return Err(host_error(
@@ -563,14 +568,14 @@ pub fn host_process_exec_git(
         Some(raw) => {
             let Some(root) = spawn.allowed_workspace_root.as_ref() else {
                 warn!(
-                    "host_process_exec_git: no workspace context for plugin {}",
+                    "host_process_exec: no workspace context for plugin {}",
                     spawn.plugin_id
                 );
                 return Err(host_error("workspace.denied", "no workspace context"));
             };
             Some(resolve_under_root(root, raw).map_err(|e| {
                 warn!(
-                    "host_process_exec_git: invalid cwd for plugin {}: {}",
+                    "host_process_exec: invalid cwd for plugin {}: {}",
                     spawn.plugin_id, e
                 );
                 host_error("workspace.denied", e)
@@ -579,13 +584,14 @@ pub fn host_process_exec_git(
     };
 
     debug!(
-        "host_process_exec_git: executing git with cwd={:?}",
+        "host_process_exec: executing '{}' with cwd={:?}",
+        program,
         cwd.as_ref().map(|p| p.display())
     );
 
     let start = std::time::Instant::now();
 
-    let mut cmd = Command::new("git");
+    let mut cmd = Command::new(program);
     if let Some(cwd) = cwd.as_ref() {
         cmd.current_dir(cwd);
     }
@@ -603,24 +609,24 @@ pub fn host_process_exec_git(
     let stdin_text = stdin.unwrap_or_default();
     let out = if stdin_text.is_empty() {
         cmd.output().map_err(|e| {
-            error!("host_process_exec_git: failed to spawn git: {}", e);
-            host_error("process.error", format!("spawn git: {e}"))
+            error!("host_process_exec: failed to spawn '{}': {}", program, e);
+            host_error("process.error", format!("spawn {program}: {e}"))
         })?
     } else {
         cmd.stdin(Stdio::piped());
         let mut child = cmd.spawn().map_err(|e| {
-            error!("host_process_exec_git: failed to spawn git: {}", e);
-            host_error("process.error", format!("spawn git: {e}"))
+            error!("host_process_exec: failed to spawn '{}': {}", program, e);
+            host_error("process.error", format!("spawn {program}: {e}"))
         })?;
         if let Some(mut child_stdin) = child.stdin.take() {
             if let Err(e) = child_stdin.write_all(stdin_text.as_bytes()) {
                 let _ = child.kill();
-                error!("host_process_exec_git: failed to write stdin: {}", e);
+                error!("host_process_exec: failed to write stdin: {}", e);
                 return Err(host_error("process.error", format!("write stdin: {e}")));
             }
         }
         child.wait_with_output().map_err(|e| {
-            error!("host_process_exec_git: failed to wait for process: {}", e);
+            error!("host_process_exec: failed to wait for process: {}", e);
             host_error("process.error", format!("wait: {e}"))
         })?
     };
@@ -635,19 +641,21 @@ pub fn host_process_exec_git(
 
     if result.success {
         debug!(
-            "host_process_exec_git: git {:?} succeeded in {:?} (code={})",
+            "host_process_exec: '{}' {:?} succeeded in {:?} (code={})",
+            program,
             args.first(),
             elapsed,
             result.status
         );
         trace!(
-            "host_process_exec_git: stdout_len={}, stderr_len={}",
+            "host_process_exec: stdout_len={}, stderr_len={}",
             result.stdout.len(),
             result.stderr.len()
         );
     } else {
         warn!(
-            "host_process_exec_git: git {:?} failed in {:?} (code={}): {}",
+            "host_process_exec: '{}' {:?} failed in {:?} (code={}): {}",
+            program,
             args.first(),
             elapsed,
             result.status,

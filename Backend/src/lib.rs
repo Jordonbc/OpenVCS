@@ -276,6 +276,7 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::list_themes,
         tauri_commands::load_theme,
         tauri_commands::list_plugins,
+        tauri_commands::list_plugin_start_failures,
         tauri_commands::load_plugin,
         tauri_commands::install_ovcsp,
         tauri_commands::list_installed_bundles,

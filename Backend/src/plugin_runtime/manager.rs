@@ -31,6 +31,8 @@ pub struct PluginRuntimeManager {
     store: PluginBundleStore,
     /// Running plugin runtime instances keyed by normalized plugin id.
     processes: Mutex<HashMap<String, RunningPlugin>>,
+    /// Last known runtime startup failures keyed by normalized plugin id.
+    start_failures: Mutex<HashMap<String, String>>,
 }
 
 /// Runtime handle tracked for a running plugin.
@@ -63,7 +65,50 @@ impl PluginRuntimeManager {
         Self {
             store,
             processes: Mutex::new(HashMap::new()),
+            start_failures: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Records the latest startup failure for a plugin id.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier.
+    /// - `error`: Startup error message.
+    fn record_start_failure(&self, plugin_id: &str, error: &str) {
+        let key = plugin_id.trim().to_ascii_lowercase();
+        if key.is_empty() {
+            return;
+        }
+        self.start_failures
+            .lock()
+            .insert(key, error.trim().to_string());
+    }
+
+    /// Clears any tracked startup failure for a plugin id.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier.
+    fn clear_start_failure(&self, plugin_id: &str) {
+        let key = plugin_id.trim().to_ascii_lowercase();
+        if key.is_empty() {
+            return;
+        }
+        self.start_failures.lock().remove(&key);
+    }
+
+    /// Returns plugin ids whose last startup attempt failed.
+    ///
+    /// # Returns
+    /// - Sorted plugin id list for startup failures.
+    pub fn failed_plugin_starts(&self) -> Vec<String> {
+        let mut out = self
+            .start_failures
+            .lock()
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        out.sort();
+        out
     }
 
     /// Starts a plugin module process if needed.
@@ -84,7 +129,16 @@ impl PluginRuntimeManager {
 
         if let Some(existing) = self.processes.lock().get(&key) {
             debug!("start_plugin: found existing runtime for key='{}'", key);
-            return existing.runtime.ensure_running();
+            match existing.runtime.ensure_running() {
+                Ok(()) => {
+                    self.clear_start_failure(plugin_id);
+                    return Ok(());
+                }
+                Err(err) => {
+                    self.record_start_failure(plugin_id, &err);
+                    return Err(err);
+                }
+            }
         }
 
         trace!("start_plugin: resolving module runtime spec");
@@ -95,7 +149,11 @@ impl PluginRuntimeManager {
         );
 
         trace!("start_plugin: starting plugin spec");
-        self.start_plugin_spec(spec)?;
+        if let Err(err) = self.start_plugin_spec(spec) {
+            self.record_start_failure(plugin_id, &err);
+            return Err(err);
+        }
+        self.clear_start_failure(plugin_id);
         trace!("start_plugin: completed successfully");
         info!("plugin: started '{}'", plugin_id);
         Ok(())
@@ -127,6 +185,7 @@ impl PluginRuntimeManager {
         } else {
             trace!("stop_plugin: no running process found");
         }
+        self.clear_start_failure(plugin_id);
         Ok(())
     }
 

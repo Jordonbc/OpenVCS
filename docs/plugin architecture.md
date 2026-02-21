@@ -15,7 +15,7 @@ Client (Frontend) -> Client (Backend host) <-> Plugin (Wasm component)
 
 The authoritative host/plugin contract lives under `Core/wit/`:
 
-- `Core/wit/host.wit`: host imports plugins can call (workspace IO, status set/get, git process exec, notifications, logging, events)
+- `Core/wit/host.wit`: host imports plugins can call (workspace IO, status set/get, process exec, notifications, logging, events)
 - `Core/wit/plugin.wit`: base plugin lifecycle world (`plugin`) plus v1.1 plugin UI/settings world (`plugin-v1-1`)
 - `Core/wit/vcs.wit`: VCS backend world (`vcs`)
 

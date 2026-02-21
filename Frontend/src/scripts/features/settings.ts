@@ -1027,6 +1027,8 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         enabled: Set<string>;
         pendingToggleById: Map<string, boolean>;
         errorToggleById: Set<string>;
+        buttonErrorToggleById: Set<string>;
+        buttonErrorTimerById: Map<string, number>;
         query: string;
         selectedId: string | null;
     };
@@ -1036,6 +1038,8 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         enabled: new Set<string>(),
         pendingToggleById: new Map<string, boolean>(),
         errorToggleById: new Set<string>(),
+        buttonErrorToggleById: new Set<string>(),
+        buttonErrorTimerById: new Map<string, number>(),
         query: '',
         selectedId: null,
     };
@@ -1043,6 +1047,23 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     state.disabled = disabled;
     state.enabled = enabled;
     state.query = String(searchEl.value || '').trim();
+
+    const syncStartFailures = async (): Promise<void> => {
+        if (!TAURI.has) {
+            state.errorToggleById.clear();
+            return;
+        }
+        try {
+            const failed = await TAURI.invoke<string[]>('list_plugin_start_failures');
+            state.errorToggleById = new Set(
+                (Array.isArray(failed) ? failed : [])
+                    .map((id) => String(id || '').trim().toLowerCase())
+                    .filter(Boolean),
+            );
+        } catch (err) {
+            console.warn('list_plugin_start_failures failed', err);
+        }
+    };
 
     const pluginIsEnabled = (p: PluginSummary): boolean => {
         const id = String(p?.id || '').trim().toLowerCase();
@@ -1098,7 +1119,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         const idLower = id.toLowerCase();
         const isEnabledNow = pluginIsEnabled(plugin);
         const pendingToggle = state.pendingToggleById.get(idLower);
-        const hasToggleError = state.errorToggleById.has(idLower);
+        const hasButtonError = state.buttonErrorToggleById.has(idLower);
         const isDisablingAction = typeof pendingToggle === 'boolean' ? pendingToggle === false : isEnabledNow;
         const version = String(plugin.version || '').trim();
         const author = String(plugin.author || '').trim();
@@ -1129,10 +1150,10 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         actions.className = 'plugin-detail-actions';
         const toggle = document.createElement('button');
         toggle.type = 'button';
-        toggle.className = `tbtn plugin-toggle-btn ${hasToggleError ? 'plugin-toggle-btn-disable' : (isDisablingAction ? 'plugin-toggle-btn-disable' : 'plugin-toggle-btn-enable')}`;
+        toggle.className = `tbtn plugin-toggle-btn ${(hasButtonError || isDisablingAction) ? 'plugin-toggle-btn-disable' : 'plugin-toggle-btn-enable'}`;
         toggle.id = 'plugins-toggle-selected';
-        toggle.disabled = typeof pendingToggle === 'boolean';
-        toggle.textContent = hasToggleError
+        toggle.disabled = typeof pendingToggle === 'boolean' || hasButtonError;
+        toggle.textContent = hasButtonError
             ? 'Error'
             : pendingToggle === true
                 ? 'Enabling...'
@@ -1324,11 +1345,13 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         }
 
         state.list = Array.isArray(list) ? list : [];
+        await syncStartFailures();
         ensureSelection(getFiltered());
         renderList();
         updateCounts();
     }
 
+    await syncStartFailures();
     ensureSelection(getFiltered());
     (modal as any)[stateKey] = state;
     renderList();
@@ -1400,6 +1423,17 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             } catch (e) { console.warn('refreshAvailableThemes failed:', e); }
         } catch (e) {
             state.errorToggleById.add(idLower);
+            const existingTimer = state.buttonErrorTimerById.get(idLower);
+            if (typeof existingTimer === 'number') {
+                window.clearTimeout(existingTimer);
+            }
+            state.buttonErrorToggleById.add(idLower);
+            const timer = window.setTimeout(() => {
+                state.buttonErrorToggleById.delete(idLower);
+                state.buttonErrorTimerById.delete(idLower);
+                renderDetails(getFiltered());
+            }, 2000);
+            state.buttonErrorTimerById.set(idLower, timer);
             console.error('Failed to toggle plugin:', e);
             notify('Failed to toggle plugin');
         } finally {
@@ -1413,6 +1447,12 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         const id = String(pluginIdRaw || '').trim().toLowerCase();
         if (!id) return;
         if (state.pendingToggleById.has(id)) return;
+        const existingTimer = state.buttonErrorTimerById.get(id);
+        if (typeof existingTimer === 'number') {
+            window.clearTimeout(existingTimer);
+            state.buttonErrorTimerById.delete(id);
+        }
+        state.buttonErrorToggleById.delete(id);
         state.errorToggleById.delete(id);
         state.pendingToggleById.set(id, enabled);
         renderList();

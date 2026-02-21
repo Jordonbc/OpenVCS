@@ -145,7 +145,7 @@ function buildPermissionRows(requestedCapabilities: string[]): PermissionRow[] {
     rows.push({
       key: 'execution',
       label: 'Execution',
-      detail: 'Lets the plugin run Git commands through the host in your workspace context.',
+      detail: 'Lets the plugin run host-allowed commands in your workspace context.',
       choices: [
         { id: 'deny', label: 'Deny', approvedCapabilities: [] },
         { id: 'allow', label: 'Allow', approvedCapabilities: execution },

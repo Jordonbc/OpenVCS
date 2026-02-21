@@ -3,7 +3,7 @@
 use std::sync::OnceLock;
 
 use crate::plugin_runtime::host_api::{
-    host_emit_event, host_get_status, host_process_exec_git, host_runtime_info, host_set_status,
+    host_emit_event, host_get_status, host_process_exec, host_runtime_info, host_set_status,
     host_subscribe_event, host_ui_notify, host_workspace_read_file, host_workspace_write_file,
 };
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
@@ -390,10 +390,11 @@ impl bindings_vcs::openvcs::plugin::host_api::Host for ComponentHostState {
             .map_err(ComponentHostState::map_host_error_vcs)
     }
 
-    /// Executes `git` in a constrained host environment.
-    fn process_exec_git(
+    /// Executes a command in a constrained host environment.
+    fn process_exec(
         &mut self,
         cwd: Option<String>,
+        program: String,
         args: Vec<String>,
         env: Vec<bindings_vcs::openvcs::plugin::host_api::EnvVar>,
         stdin: Option<String>,
@@ -405,9 +406,15 @@ impl bindings_vcs::openvcs::plugin::host_api::Host for ComponentHostState {
             .into_iter()
             .map(|var| (var.key, var.value))
             .collect::<Vec<_>>();
-        let value =
-            host_process_exec_git(&self.spawn, cwd.as_deref(), &args, &env, stdin.as_deref())
-                .map_err(ComponentHostState::map_host_error_vcs)?;
+        let value = host_process_exec(
+            &self.spawn,
+            cwd.as_deref(),
+            &program,
+            &args,
+            &env,
+            stdin.as_deref(),
+        )
+        .map_err(ComponentHostState::map_host_error_vcs)?;
         Ok(bindings_vcs::openvcs::plugin::host_api::ProcessExecOutput {
             success: value.success,
             status: value.status,
@@ -526,10 +533,11 @@ impl bindings_plugin::openvcs::plugin::host_api::Host for ComponentHostState {
             .map_err(ComponentHostState::map_host_error_plugin)
     }
 
-    /// Executes `git` in a constrained host environment.
-    fn process_exec_git(
+    /// Executes a command in a constrained host environment.
+    fn process_exec(
         &mut self,
         cwd: Option<String>,
+        program: String,
         args: Vec<String>,
         env: Vec<bindings_plugin::openvcs::plugin::host_api::EnvVar>,
         stdin: Option<String>,
@@ -541,9 +549,15 @@ impl bindings_plugin::openvcs::plugin::host_api::Host for ComponentHostState {
             .into_iter()
             .map(|var| (var.key, var.value))
             .collect::<Vec<_>>();
-        let value =
-            host_process_exec_git(&self.spawn, cwd.as_deref(), &args, &env, stdin.as_deref())
-                .map_err(ComponentHostState::map_host_error_plugin)?;
+        let value = host_process_exec(
+            &self.spawn,
+            cwd.as_deref(),
+            &program,
+            &args,
+            &env,
+            stdin.as_deref(),
+        )
+        .map_err(ComponentHostState::map_host_error_plugin)?;
         Ok(
             bindings_plugin::openvcs::plugin::host_api::ProcessExecOutput {
                 success: value.success,
@@ -697,10 +711,11 @@ impl bindings_plugin_v1_1::openvcs::plugin::host_api::Host for ComponentHostStat
         })
     }
 
-    /// Executes `git` in a constrained host environment.
-    fn process_exec_git(
+    /// Executes a command in a constrained host environment.
+    fn process_exec(
         &mut self,
         cwd: Option<String>,
+        program: String,
         args: Vec<String>,
         env: Vec<bindings_plugin_v1_1::openvcs::plugin::host_api::EnvVar>,
         stdin: Option<String>,
@@ -712,14 +727,20 @@ impl bindings_plugin_v1_1::openvcs::plugin::host_api::Host for ComponentHostStat
             .into_iter()
             .map(|var| (var.key, var.value))
             .collect::<Vec<_>>();
-        let value =
-            host_process_exec_git(&self.spawn, cwd.as_deref(), &args, &env, stdin.as_deref())
-                .map_err(
-                    |err| bindings_plugin_v1_1::openvcs::plugin::host_api::HostError {
-                        code: err.code,
-                        message: err.message,
-                    },
-                )?;
+        let value = host_process_exec(
+            &self.spawn,
+            cwd.as_deref(),
+            &program,
+            &args,
+            &env,
+            stdin.as_deref(),
+        )
+        .map_err(
+            |err| bindings_plugin_v1_1::openvcs::plugin::host_api::HostError {
+                code: err.code,
+                message: err.message,
+            },
+        )?;
         Ok(
             bindings_plugin_v1_1::openvcs::plugin::host_api::ProcessExecOutput {
                 success: value.success,
@@ -1493,7 +1514,8 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
                     }
                     let p: Params = parse_method_params(method, params)?;
                     let out = invoke!("stash_show", call_stash_show, &p.selector)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
+                    let normalized = out.lines().map(str::to_string).collect::<Vec<_>>();
+                    encode_method_result(&self.spawn.plugin_id, method, normalized)
                 }
                 "cherry_pick" => {
                     #[derive(serde::Deserialize)]

@@ -1,6 +1,8 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-use crate::plugin_bundles::{ApprovalState, InstalledPlugin, InstalledPluginIndex, PluginBundleStore};
+use crate::plugin_bundles::{
+    ApprovalState, InstalledPlugin, InstalledPluginIndex, PluginBundleStore,
+};
 use crate::plugin_runtime::settings_store;
 use crate::plugins;
 use crate::state::AppState;
@@ -59,6 +61,18 @@ pub struct PluginPermissionsPayload {
 /// - Plugin summaries for built-in and user plugins.
 pub fn list_plugins() -> Vec<plugins::PluginSummary> {
     plugins::list_plugins()
+}
+
+#[tauri::command]
+/// Lists plugin ids whose most recent runtime startup attempt failed.
+///
+/// # Parameters
+/// - `state`: Application state.
+///
+/// # Returns
+/// - Sorted plugin id list.
+pub fn list_plugin_start_failures(state: State<'_, AppState>) -> Vec<String> {
+    state.plugin_runtime().failed_plugin_starts()
 }
 
 #[tauri::command]
@@ -345,10 +359,8 @@ pub fn set_plugin_permissions(
         return Err("plugin id is empty".to_string());
     }
 
-    PluginBundleStore::new_default().set_current_approved_capabilities(
-        &plugin_id,
-        approved_capabilities,
-    )?;
+    PluginBundleStore::new_default()
+        .set_current_approved_capabilities(&plugin_id, approved_capabilities)?;
 
     if let Err(err) = state.plugin_runtime().stop_plugin(&plugin_id) {
         warn!(
@@ -473,7 +485,10 @@ pub fn list_plugin_menus(state: State<'_, AppState>) -> Result<Vec<PluginMenuPay
             }
         }
 
-        let runtime = match state.plugin_runtime().running_runtime_for_plugin(&plugin_id) {
+        let runtime = match state
+            .plugin_runtime()
+            .running_runtime_for_plugin(&plugin_id)
+        {
             Ok(Some(runtime)) => runtime,
             Ok(None) => {
                 debug!(
@@ -511,7 +526,11 @@ pub fn list_plugin_menus(state: State<'_, AppState>) -> Result<Vec<PluginMenuPay
         a_order
             .is_none()
             .cmp(&b_order.is_none())
-            .then_with(|| a_order.unwrap_or(u32::MAX).cmp(&b_order.unwrap_or(u32::MAX)))
+            .then_with(|| {
+                a_order
+                    .unwrap_or(u32::MAX)
+                    .cmp(&b_order.unwrap_or(u32::MAX))
+            })
             .then_with(|| {
                 a.1.label
                     .to_ascii_lowercase()
