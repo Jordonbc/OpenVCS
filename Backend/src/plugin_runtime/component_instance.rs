@@ -904,6 +904,7 @@ fn map_menu_from_wit(menu: plugin_api_v1_1::Menu) -> Menu {
     Menu {
         id: menu.id,
         label: menu.label,
+        order: menu.order,
         elements,
     }
 }

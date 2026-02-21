@@ -325,7 +325,7 @@ pub fn call_plugin_module_method(
 #[tauri::command]
 pub fn list_plugin_menus(state: State<'_, AppState>) -> Result<Vec<PluginMenuPayload>, String> {
     let cfg = state.config();
-    let mut out: Vec<PluginMenuPayload> = Vec::new();
+    let mut collected: Vec<(String, Menu)> = Vec::new();
 
     for summary in plugins::list_plugins() {
         let plugin_id = summary.id.trim().to_string();
@@ -359,18 +359,60 @@ pub fn list_plugin_menus(state: State<'_, AppState>) -> Result<Vec<PluginMenuPay
         };
 
         for menu in menus {
-            out.push(menu_to_payload(&plugin_id, menu));
+            collected.push((plugin_id.clone(), menu));
         }
     }
 
-    out.sort_by(|a, b| {
-        a.label
-            .to_ascii_lowercase()
-            .cmp(&b.label.to_ascii_lowercase())
-            .then_with(|| a.plugin_id.cmp(&b.plugin_id))
+    collected.sort_by(|a, b| {
+        let a_order = a.1.order;
+        let b_order = b.1.order;
+
+        a_order
+            .is_none()
+            .cmp(&b_order.is_none())
+            .then_with(|| a_order.unwrap_or(u32::MAX).cmp(&b_order.unwrap_or(u32::MAX)))
+            .then_with(|| {
+                a.1.label
+                    .to_ascii_lowercase()
+                    .cmp(&b.1.label.to_ascii_lowercase())
+            })
+            .then_with(|| a.0.cmp(&b.0))
+            .then_with(|| a.1.id.cmp(&b.1.id))
     });
 
+    let out = collected
+        .into_iter()
+        .map(|(plugin_id, menu)| menu_to_payload(&plugin_id, menu))
+        .collect::<Vec<_>>();
+
     Ok(out)
+}
+
+/// Converts a plugin menu model to frontend payload.
+fn menu_to_payload(plugin_id: &str, menu: Menu) -> PluginMenuPayload {
+    let elements = menu
+        .elements
+        .into_iter()
+        .map(|element| match element {
+            UiElement::Text(text) => serde_json::json!({
+                "type": "text",
+                "id": text.id,
+                "content": text.content,
+            }),
+            UiElement::Button(button) => serde_json::json!({
+                "type": "button",
+                "id": button.id,
+                "label": button.label,
+            }),
+        })
+        .collect::<Vec<_>>();
+
+    PluginMenuPayload {
+        plugin_id: plugin_id.to_string(),
+        id: menu.id,
+        label: menu.label,
+        elements,
+    }
 }
 
 /// Invokes a plugin-provided action by id.
@@ -453,33 +495,6 @@ pub fn reset_plugin_settings(state: State<'_, AppState>, plugin_id: String) -> R
     settings_store::reset_settings(&plugin_id)?;
     let defaults = runtime.settings_defaults()?;
     runtime.settings_on_apply(defaults)
-}
-
-/// Converts a plugin menu model to frontend payload.
-fn menu_to_payload(plugin_id: &str, menu: Menu) -> PluginMenuPayload {
-    let elements = menu
-        .elements
-        .into_iter()
-        .map(|element| match element {
-            UiElement::Text(text) => serde_json::json!({
-                "type": "text",
-                "id": text.id,
-                "content": text.content,
-            }),
-            UiElement::Button(button) => serde_json::json!({
-                "type": "button",
-                "id": button.id,
-                "label": button.label,
-            }),
-        })
-        .collect::<Vec<_>>();
-
-    PluginMenuPayload {
-        plugin_id: plugin_id.to_string(),
-        id: menu.id,
-        label: menu.label,
-        elements,
-    }
 }
 
 /// Merges incoming frontend values into typed defaults.

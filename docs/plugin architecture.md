@@ -34,6 +34,7 @@ The backend generates host bindings from these contracts and links them into a W
 - Module plugin (UI + settings lifecycle)
   - Exports the `plugin-v1-1` world from `Core/wit/plugin.wit`.
   - Supports typed menu contributions (`get-menus` + `handle-action`) and settings hooks (`settings-defaults`, `settings-on-load`, `settings-on-apply`, `settings-on-save`, `settings-on-reset`).
+  - Menu records include an optional `order` hint (`option<u32>`); host menu rendering sorts by `order` (ascending) then label.
   - Plugins can implement only the hooks they care about when using `#[openvcs_plugin]`; defaults are injected for omitted hooks.
 
 - VCS backend plugin
