@@ -298,6 +298,26 @@
     gap: .5rem;
     align-items: center;
 }
+.plugin-toggle-btn.plugin-toggle-btn-enable{
+    border-color: color-mix(in oklab, #2aa84a 55%, var(--border));
+    background: color-mix(in oklab, #2aa84a 20%, transparent);
+    color: color-mix(in oklab, #2aa84a 82%, white 18%);
+}
+.plugin-toggle-btn.plugin-toggle-btn-enable:hover{
+    border-color: #2aa84a;
+    background: color-mix(in oklab, #2aa84a 28%, transparent);
+    color: #eaf9ef;
+}
+.plugin-toggle-btn.plugin-toggle-btn-disable{
+    border-color: color-mix(in oklab, #d64545 55%, var(--border));
+    background: color-mix(in oklab, #d64545 18%, transparent);
+    color: color-mix(in oklab, #d64545 80%, white 20%);
+}
+.plugin-toggle-btn.plugin-toggle-btn-disable:hover{
+    border-color: #d64545;
+    background: color-mix(in oklab, #d64545 26%, transparent);
+    color: #fdeeee;
+}
 .plugin-detail-body{
     margin-top: .85rem;
     display: grid;

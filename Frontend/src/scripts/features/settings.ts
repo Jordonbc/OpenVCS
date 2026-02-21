@@ -1121,7 +1121,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         actions.className = 'plugin-detail-actions';
         const toggle = document.createElement('button');
         toggle.type = 'button';
-        toggle.className = 'tbtn';
+        toggle.className = `tbtn plugin-toggle-btn ${isEnabledNow ? 'plugin-toggle-btn-disable' : 'plugin-toggle-btn-enable'}`;
         toggle.id = 'plugins-toggle-selected';
         toggle.textContent = isEnabledNow ? 'Disable' : 'Enable';
         toggle.dataset.pluginToggle = id;
