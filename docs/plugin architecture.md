@@ -16,7 +16,7 @@ Client (Frontend) -> Client (Backend host) <-> Plugin (Wasm component)
 The authoritative host/plugin contract lives under `Core/wit/`:
 
 - `Core/wit/host.wit`: host imports plugins can call (workspace IO, status set/get, git process exec, notifications, logging, events)
-- `Core/wit/plugin.wit`: base plugin lifecycle world (`plugin`)
+- `Core/wit/plugin.wit`: base plugin lifecycle world (`plugin`) plus v1.1 plugin UI/settings world (`plugin-v1-1`)
 - `Core/wit/vcs.wit`: VCS backend world (`vcs`)
 
 The backend generates host bindings from these contracts and links them into a Wasmtime component runtime.
@@ -30,6 +30,11 @@ The backend generates host bindings from these contracts and links them into a W
 - Module plugin (lifecycle only)
   - Exports the `plugin` world from `Core/wit/plugin.wit`.
   - Must implement `plugin-api.init` and `plugin-api.deinit`.
+
+- Module plugin (UI + settings lifecycle)
+  - Exports the `plugin-v1-1` world from `Core/wit/plugin.wit`.
+  - Supports typed menu contributions (`get-menus` + `handle-action`) and settings hooks (`settings-defaults`, `settings-on-load`, `settings-on-apply`, `settings-on-save`, `settings-on-reset`).
+  - Plugins can implement only the hooks they care about when using `#[openvcs_plugin]`; defaults are injected for omitted hooks.
 
 - VCS backend plugin
   - Exports the `vcs` world from `Core/wit/vcs.wit`.
@@ -83,3 +88,9 @@ Status APIs use dedicated capabilities:
 - Plugins run out-of-process in a Wasmtime component runtime.
 - Host APIs are explicit via WIT imports.
 - Workspace file access is mediated by the host and can be confined to a selected workspace root.
+
+## Plugin settings persistence
+
+- Plugin settings are persisted by the host (not by plugin code) in the user config directory under:
+  - `plugin-data/<plugin-id>/settings.json`
+- This keeps settings stable across plugin updates because installed plugin directories are replaced during installation.

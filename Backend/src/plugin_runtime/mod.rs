@@ -17,6 +17,8 @@ pub mod instance;
 pub mod manager;
 /// Runtime transport selection and factory helpers.
 pub mod runtime_select;
+/// Plugin settings persistence helpers.
+pub mod settings_store;
 /// Runtime spawn configuration types.
 pub mod spawn;
 /// `Vcs` trait adapter backed by plugin runtime RPC.

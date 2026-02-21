@@ -4,6 +4,8 @@ OpenVCS plugins are local extensions installed as `.ovcsp` bundles.
 
 Plugins may include themes, a Wasm module, or both.
 
+Module plugins may optionally export UI menus and settings lifecycle hooks via the v1.1 plugin world (`plugin-v1-1`) in `Core/wit/plugin.wit`.
+
 ## Where plugins live
 
 OpenVCS discovers plugins from two places:
@@ -53,6 +55,19 @@ Notes:
 - `module.exec` must end with `.wasm`.
 - The plugin runtime only loads component-model modules.
 - If `themes/` exists, it is packaged and discovered automatically.
+
+## Plugin UI menus and settings
+
+- Plugins can contribute typed menus/elements (text and buttons today) that the client renders.
+- Action buttons invoke plugin `handle-action` callbacks.
+- Plugin settings persistence is automatic in the host under:
+  - `plugin-data/<plugin-id>/settings.json`
+- Settings save/load/reset/apply flow is driven by plugin hooks:
+  - `settings-defaults`
+  - `settings-on-load`
+  - `settings-on-apply`
+  - `settings-on-save`
+  - `settings-on-reset`
 
 ## Building bundles
 

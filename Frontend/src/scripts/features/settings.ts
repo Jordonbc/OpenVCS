@@ -15,6 +15,22 @@ import type { GlobalSettings, ThemeSummary } from '../types';
 const THEME_PACK_HINT = 'Install a theme ZIP into the themes folder, or install a plugin that provides themes.';
 const SYSTEM_DARK_MQ = matchMedia('(prefers-color-scheme: dark)');
 
+interface PluginMenuPayload {
+    plugin_id: string;
+    id: string;
+    label: string;
+    elements: Array<{
+        type: 'text' | 'button' | string;
+        id?: string;
+        content?: string;
+        label?: string;
+    }>;
+}
+
+function pluginSectionId(pluginId: string, menuId: string): string {
+    return `plugin-${toKebab(`${pluginId}-${menuId}`)}`;
+}
+
 export function applyAnimationPreference(enabled: boolean | undefined | null) {
     document.documentElement.dataset.animations = enabled === false ? 'off' : 'on';
 }
@@ -47,6 +63,71 @@ function themeTooltip(id: string): string {
     const meta = [theme.author, theme.version].filter(Boolean).join(' • ');
     if (meta) details.push(meta);
     return details.join('\n') || THEME_PACK_HINT;
+}
+
+async function renderPluginMenus(modal: HTMLElement): Promise<void> {
+    const nav = modal.querySelector('#settings-nav');
+    const panelsScroll = modal.querySelector('#settings-panels-scroll');
+    if (!nav || !panelsScroll) return;
+
+    nav.querySelectorAll<HTMLElement>('[data-plugin-menu="true"]').forEach((node) => node.remove());
+    panelsScroll
+        .querySelectorAll<HTMLElement>('.panel-form[data-plugin-menu="true"]')
+        .forEach((node) => node.remove());
+
+    if (!TAURI.has) return;
+    let menus: PluginMenuPayload[] = [];
+    try {
+        menus = await TAURI.invoke<PluginMenuPayload[]>('list_plugin_menus');
+    } catch {
+        return;
+    }
+
+    const pluginsNavBtn = nav.querySelector<HTMLElement>('[data-section="plugins"]');
+    const pluginsNavLi = pluginsNavBtn?.closest('li') || null;
+
+    for (const menu of menus) {
+        const section = pluginSectionId(menu.plugin_id, menu.id);
+        const navLi = document.createElement('li');
+        navLi.dataset.pluginMenu = 'true';
+        const navBtn = document.createElement('button');
+        navBtn.className = 'seg-btn';
+        navBtn.setAttribute('data-section', section);
+        navBtn.textContent = menu.label || menu.id;
+        navLi.appendChild(navBtn);
+        if (pluginsNavLi?.parentElement) {
+            pluginsNavLi.parentElement.insertBefore(navLi, pluginsNavLi);
+        } else {
+            nav.appendChild(navLi);
+        }
+
+        const panel = document.createElement('form');
+        panel.className = 'panel-form hidden';
+        panel.setAttribute('data-panel', section);
+        panel.setAttribute('data-plugin-menu', 'true');
+        panel.dataset.pluginId = menu.plugin_id;
+        panel.dataset.menuId = menu.id;
+
+        for (const element of menu.elements || []) {
+            const group = document.createElement('div');
+            group.className = 'group';
+            if (element.type === 'text') {
+                const text = document.createElement('div');
+                text.textContent = String(element.content || '');
+                group.appendChild(text);
+            } else if (element.type === 'button') {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'tbtn';
+                button.textContent = String(element.label || 'Action');
+                button.dataset.pluginAction = String(element.id || '');
+                button.dataset.pluginId = menu.plugin_id;
+                group.appendChild(button);
+            }
+            panel.appendChild(group);
+        }
+        panelsScroll.appendChild(panel);
+    }
 }
 
 async function rebuildThemePackOptions(
@@ -85,7 +166,11 @@ export function openSettings(section?: string){
     const modal = document.getElementById('settings-modal') as HTMLElement | null;
     if (!modal) return;
     applyPluginSettingsSections(modal);
-    if (section) activateSection(modal, section);
+    renderPluginMenus(modal)
+        .catch(() => {})
+        .finally(() => {
+            if (section) activateSection(modal, section);
+        });
 
     // Prevent a "double-click to refresh" feel where the user opens the Theme dropdown
     // before the async settings/theme list has finished loading.
@@ -162,6 +247,20 @@ export function wireSettings() {
             const target = btn.getAttribute('data-section') || undefined;
             if (!target) return;
             activateSection(modal, target);
+        });
+
+        panels.addEventListener('click', async (e) => {
+            const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-plugin-action][data-plugin-id]');
+            if (!btn || !TAURI.has) return;
+            const pluginId = btn.dataset.pluginId || '';
+            const actionId = btn.dataset.pluginAction || '';
+            if (!pluginId || !actionId) return;
+            try {
+                await TAURI.invoke('invoke_plugin_action', { pluginId, actionId });
+            } catch (err) {
+                console.error('Failed to invoke plugin action', err);
+                notify('Plugin action failed');
+            }
         });
     }
 

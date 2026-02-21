@@ -4,7 +4,7 @@
   "identifier": "dev.jordon.openvcs",
   "build": {
     "beforeDevCommand": "node ../Backend/scripts/run-tauri-before-command.js dev || node Backend/scripts/run-tauri-before-command.js dev || node scripts/run-tauri-before-command.js dev",
-    "beforeBuildCommand": "node Backend/scripts/run-tauri-before-command.js build || node ../Backend/scripts/run-tauri-before-command.js build || node scripts/run-tauri-before-command.js build",
+    "beforeBuildCommand": "node ../Backend/scripts/run-tauri-before-command.js build || node Backend/scripts/run-tauri-before-command.js build || node scripts/run-tauri-before-command.js build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../Frontend/dist"
   },
