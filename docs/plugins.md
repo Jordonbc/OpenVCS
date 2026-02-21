@@ -59,6 +59,7 @@ Notes:
 ## Plugin UI menus and settings
 
 - Plugins can contribute typed menus/elements (text and buttons today) that the client renders.
+- Enabling/disabling a plugin from the Settings > Plugins pane refreshes plugin-contributed menus in the same open modal.
 - Action buttons invoke plugin `handle-action` callbacks.
 - Plugin settings persistence is automatic in the host under:
   - `plugin-data/<plugin-id>/settings.json`

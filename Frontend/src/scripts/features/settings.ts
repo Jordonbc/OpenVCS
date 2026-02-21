@@ -1390,9 +1390,16 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     const persistSinglePluginToggle = async (pluginId: string, enabled: boolean) => {
         if (!TAURI.has) return;
         try {
+            const activeSection = String(
+                modal
+                    .querySelector<HTMLElement>('#settings-nav .seg-btn.active')
+                    ?.getAttribute('data-section') || '',
+            ).trim();
             await TAURI.invoke('set_plugin_enabled', { pluginId, enabled });
             console.log(`Plugin '${pluginId}' ${enabled ? 'enabled' : 'disabled'}`);
             await reloadPlugins();
+            await renderPluginMenus(modal);
+            if (activeSection) activateSection(modal, activeSection);
             await refreshGitBackendOptions(modal, await TAURI.invoke<GlobalSettings>('get_global_settings'));
             try {
                 await refreshAvailableThemes();
