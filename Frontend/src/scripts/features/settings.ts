@@ -1027,7 +1027,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         enabled: Set<string>;
         pendingToggleById: Map<string, boolean>;
         errorToggleById: Set<string>;
-        errorTimerById: Map<string, number>;
         query: string;
         selectedId: string | null;
     };
@@ -1037,7 +1036,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         enabled: new Set<string>(),
         pendingToggleById: new Map<string, boolean>(),
         errorToggleById: new Set<string>(),
-        errorTimerById: new Map<string, number>(),
         query: '',
         selectedId: null,
     };
@@ -1133,7 +1131,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         toggle.type = 'button';
         toggle.className = `tbtn plugin-toggle-btn ${hasToggleError ? 'plugin-toggle-btn-disable' : (isDisablingAction ? 'plugin-toggle-btn-disable' : 'plugin-toggle-btn-enable')}`;
         toggle.id = 'plugins-toggle-selected';
-        toggle.disabled = typeof pendingToggle === 'boolean' || hasToggleError;
+        toggle.disabled = typeof pendingToggle === 'boolean';
         toggle.textContent = hasToggleError
             ? 'Error'
             : pendingToggle === true
@@ -1225,6 +1223,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             const idLower = id.toLowerCase();
             const isEnabledNow = pluginIsEnabled(plugin);
             const pendingToggle = state.pendingToggleById.get(idLower);
+            const hasToggleError = state.errorToggleById.has(idLower);
 
             const li = document.createElement('li');
             li.className = 'plugin-row';
@@ -1278,11 +1277,13 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
             const checkboxWrap = document.createElement('label');
             checkboxWrap.className = 'plugin-check';
-            checkboxWrap.dataset.state = pendingToggle === true
-                ? 'enabling'
-                : isEnabledNow
-                    ? 'enabled'
-                    : 'disabled';
+            checkboxWrap.dataset.state = hasToggleError
+                ? 'error'
+                : pendingToggle === true
+                    ? 'enabling'
+                    : isEnabledNow
+                        ? 'enabled'
+                        : 'disabled';
 
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -1398,18 +1399,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
                 await refreshAvailableThemes();
             } catch (e) { console.warn('refreshAvailableThemes failed:', e); }
         } catch (e) {
-            const existingTimer = state.errorTimerById.get(idLower);
-            if (typeof existingTimer === 'number') {
-                window.clearTimeout(existingTimer);
-            }
             state.errorToggleById.add(idLower);
-            const timer = window.setTimeout(() => {
-                state.errorToggleById.delete(idLower);
-                state.errorTimerById.delete(idLower);
-                updateCounts();
-                renderList();
-            }, 2000);
-            state.errorTimerById.set(idLower, timer);
             console.error('Failed to toggle plugin:', e);
             notify('Failed to toggle plugin');
         } finally {
@@ -1423,11 +1413,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         const id = String(pluginIdRaw || '').trim().toLowerCase();
         if (!id) return;
         if (state.pendingToggleById.has(id)) return;
-        const existingTimer = state.errorTimerById.get(id);
-        if (typeof existingTimer === 'number') {
-            window.clearTimeout(existingTimer);
-            state.errorTimerById.delete(id);
-        }
         state.errorToggleById.delete(id);
         state.pendingToggleById.set(id, enabled);
         renderList();

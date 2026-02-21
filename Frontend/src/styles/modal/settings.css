@@ -279,6 +279,18 @@
     cursor: progress;
 }
 
+.plugin-check[data-state="error"] .plugin-check-ui::after{
+    content: "!";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: #e35353;
+    font-size: .95rem;
+    font-weight: 800;
+    line-height: 1;
+}
+
 .plugin-check-input:disabled{
     cursor: not-allowed;
 }
