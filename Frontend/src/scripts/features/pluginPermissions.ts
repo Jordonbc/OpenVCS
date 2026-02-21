@@ -80,7 +80,7 @@ function buildPermissionRows(requestedCapabilities: string[]): PermissionRow[] {
       rows.push({
         key: 'status',
         label: 'Status',
-        detail: status.join(', '),
+        detail: 'Lets the plugin read and update the footer status text.',
         choices: [
           { id: 'deny', label: 'Deny', approvedCapabilities: [] },
           { id: 'read', label: 'Read only', approvedCapabilities: ['status.get'] },
@@ -88,10 +88,13 @@ function buildPermissionRows(requestedCapabilities: string[]): PermissionRow[] {
         ],
       });
     } else {
+      const statusDetail = hasGet
+        ? 'Lets the plugin read the footer status text.'
+        : 'Lets the plugin update the footer status text.';
       rows.push({
         key: 'status',
         label: 'Status',
-        detail: status.join(', '),
+        detail: statusDetail,
         choices: [
           { id: 'deny', label: 'Deny', approvedCapabilities: [] },
           { id: 'allow', label: 'Allow', approvedCapabilities: status },
@@ -109,7 +112,7 @@ function buildPermissionRows(requestedCapabilities: string[]): PermissionRow[] {
       rows.push({
         key: 'workspace',
         label: 'Workspace',
-        detail: workspace.join(', '),
+        detail: 'Lets the plugin read and write files inside the active workspace.',
         choices: [
           { id: 'deny', label: 'Deny', approvedCapabilities: [] },
           { id: 'read', label: 'Read only', approvedCapabilities: ['workspace.read'] },
@@ -121,10 +124,13 @@ function buildPermissionRows(requestedCapabilities: string[]): PermissionRow[] {
         ],
       });
     } else {
+      const workspaceDetail = hasRead
+        ? 'Lets the plugin read files inside the active workspace.'
+        : 'Lets the plugin write files inside the active workspace.';
       rows.push({
         key: 'workspace',
         label: 'Workspace',
-        detail: workspace.join(', '),
+        detail: workspaceDetail,
         choices: [
           { id: 'deny', label: 'Deny', approvedCapabilities: [] },
           { id: 'allow', label: 'Allow', approvedCapabilities: workspace },
@@ -139,7 +145,7 @@ function buildPermissionRows(requestedCapabilities: string[]): PermissionRow[] {
     rows.push({
       key: 'execution',
       label: 'Execution',
-      detail: execution.join(', '),
+      detail: 'Lets the plugin run Git commands through the host in your workspace context.',
       choices: [
         { id: 'deny', label: 'Deny', approvedCapabilities: [] },
         { id: 'allow', label: 'Allow', approvedCapabilities: execution },
@@ -153,7 +159,7 @@ function buildPermissionRows(requestedCapabilities: string[]): PermissionRow[] {
     rows.push({
       key: 'ui',
       label: 'UI',
-      detail: ui.join(', '),
+      detail: 'Lets the plugin trigger user-facing interface actions such as notifications.',
       choices: [
         { id: 'deny', label: 'Deny', approvedCapabilities: [] },
         { id: 'allow', label: 'Allow', approvedCapabilities: ui },
@@ -166,7 +172,7 @@ function buildPermissionRows(requestedCapabilities: string[]): PermissionRow[] {
     rows.push({
       key: 'other',
       label: 'Something else',
-      detail: other.join(', '),
+      detail: `Lets the plugin use additional host features requested by its manifest (${other.join(', ')}).`,
       choices: [
         { id: 'deny', label: 'Deny', approvedCapabilities: [] },
         { id: 'allow', label: 'Allow', approvedCapabilities: other },

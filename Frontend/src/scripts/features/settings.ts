@@ -780,125 +780,8 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     const installBundleBtn = modal.querySelector<HTMLButtonElement>('#plugins-install-bundle');
     const enableAllBtn = modal.querySelector<HTMLButtonElement>('#plugins-enable-all');
     const disableAllBtn = modal.querySelector<HTMLButtonElement>('#plugins-disable-all');
-    const bundleListEl = modal.querySelector<HTMLElement>('#plugin-bundles-list');
 
-    if (!pane || !listEl || !detailEl || !groupLabelEl || !searchEl || !installBundleBtn || !enableAllBtn || !disableAllBtn || !bundleListEl) return;
-
-    const renderBundles = async () => {
-        bundleListEl.innerHTML = '';
-        if (!TAURI.has) {
-            bundleListEl.textContent = 'Bundles are only available in the desktop app.';
-            return;
-        }
-
-        let bundles: any[] = [];
-        try {
-            bundles = await TAURI.invoke<any[]>('list_installed_bundles');
-        } catch (err) {
-            bundleListEl.textContent = 'Failed to load installed bundles.';
-            return;
-        }
-
-        if (!Array.isArray(bundles) || bundles.length === 0) {
-            bundleListEl.textContent = 'No bundles installed.';
-            return;
-        }
-
-        const wrap = document.createElement('div');
-        wrap.style.display = 'grid';
-        wrap.style.gap = '.5rem';
-
-        for (const b of bundles) {
-            const pluginId = String(b?.plugin_id || '').trim();
-            const current = String(b?.current || '').trim();
-            const versions = b?.versions && typeof b.versions === 'object' ? b.versions : {};
-            const cur = current && versions[current] ? versions[current] : null;
-            const approval = cur?.approval?.Pending ? 'Pending' : (cur?.approval?.Denied ? 'Denied' : (cur?.approval?.Approved ? 'Approved' : 'Pending'));
-            const requestedCaps: string[] = Array.isArray(cur?.requested_capabilities) ? cur.requested_capabilities : [];
-
-            const row = document.createElement('div');
-            row.className = 'card';
-            (row.style as any).padding = '.6rem .7rem';
-            (row.style as any).display = 'flex';
-            (row.style as any).gap = '.75rem';
-            (row.style as any).alignItems = 'center';
-
-            const left = document.createElement('div');
-            left.style.flex = '1';
-            const title = document.createElement('div');
-            title.textContent = pluginId || '(unknown plugin)';
-            const sub = document.createElement('div');
-            sub.className = 'muted';
-            sub.style.fontSize = '.85rem';
-            sub.textContent = current ? `version ${current} • ${approval}` : `no current version • ${approval}`;
-            left.appendChild(title);
-            left.appendChild(sub);
-
-            const actions = document.createElement('div');
-            actions.style.display = 'flex';
-            actions.style.gap = '.4rem';
-
-            const approveBtn = document.createElement('button');
-            approveBtn.type = 'button';
-            approveBtn.className = 'tbtn';
-            approveBtn.textContent = 'Approve';
-            approveBtn.disabled = !pluginId || !current;
-            approveBtn.addEventListener('click', async () => {
-                try {
-                    await TAURI.invoke('approve_plugin_capabilities', {
-                        pluginId,
-                        version: current,
-                        approved: true,
-                    });
-                    notify('Capabilities approved');
-                    await renderBundles();
-                } catch (err) {
-                    const msg = String(err || '').trim();
-                    notify(msg ? `Approve failed: ${msg}` : 'Approve failed');
-                }
-            });
-
-            const denyBtn = document.createElement('button');
-            denyBtn.type = 'button';
-            denyBtn.className = 'tbtn';
-            denyBtn.textContent = 'Deny';
-            denyBtn.disabled = !pluginId || !current;
-            denyBtn.addEventListener('click', async () => {
-                try {
-                    await TAURI.invoke('approve_plugin_capabilities', {
-                        pluginId,
-                        version: current,
-                        approved: false,
-                    });
-                    notify('Capabilities denied');
-                    await renderBundles();
-                } catch (err) {
-                    const msg = String(err || '').trim();
-                    notify(msg ? `Deny failed: ${msg}` : 'Deny failed');
-                }
-            });
-
-            actions.appendChild(approveBtn);
-            actions.appendChild(denyBtn);
-
-            if (requestedCaps.length) {
-                const caps = document.createElement('div');
-                caps.className = 'muted';
-                caps.style.fontSize = '.8rem';
-                caps.style.marginTop = '.2rem';
-                caps.textContent = `requested: ${requestedCaps.join(', ')}`;
-                left.appendChild(caps);
-            }
-
-            row.appendChild(left);
-            row.appendChild(actions);
-            wrap.appendChild(row);
-        }
-
-        bundleListEl.appendChild(wrap);
-    };
-
-    await renderBundles();
+    if (!pane || !listEl || !detailEl || !groupLabelEl || !searchEl || !installBundleBtn || !enableAllBtn || !disableAllBtn) return;
 
     // This settings pane can be initialized multiple times during navigation/rerender.
     // Avoid stacking duplicate click handlers which would open many dialogs.
@@ -926,7 +809,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
                     notify(ok ? 'Capabilities approved' : 'Capabilities denied');
                 }
 
-                await renderBundles();
                 await reloadPluginSummaries();
             } catch (err) {
                 const msg = String(err || '').trim();
