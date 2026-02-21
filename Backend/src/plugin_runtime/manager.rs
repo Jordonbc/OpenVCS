@@ -130,6 +130,27 @@ impl PluginRuntimeManager {
         Ok(())
     }
 
+    /// Returns a running runtime instance for a plugin, without starting it.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier.
+    ///
+    /// # Returns
+    /// - `Ok(Some(runtime))` when currently running.
+    /// - `Ok(None)` when not running.
+    /// - `Err(String)` if the identifier is invalid.
+    pub fn running_runtime_for_plugin(
+        &self,
+        plugin_id: &str,
+    ) -> Result<Option<Arc<dyn PluginRuntimeInstance>>, String> {
+        let key = normalize_plugin_key(plugin_id)?;
+        Ok(self
+            .processes
+            .lock()
+            .get(&key)
+            .map(|process| Arc::clone(&process.runtime)))
+    }
+
     /// Stops all running plugins.
     pub fn stop_all_plugins(&self) {
         let running: Vec<String> = {
@@ -343,7 +364,8 @@ impl PluginRuntimeManager {
     ///
     /// # Returns
     /// - `Ok(Value)` plugin RPC response payload.
-    /// - `Err(String)` when plugin state validation or RPC dispatch fails.
+    /// - `Err(String)` when plugin state validation fails, plugin is not running,
+    ///   or RPC dispatch fails.
     pub fn call_module_method_for_workspace_with_config(
         &self,
         cfg: &AppConfig,
@@ -356,14 +378,17 @@ impl PluginRuntimeManager {
         if !cfg.is_plugin_enabled(&spec.plugin_id, spec.default_enabled) {
             return Err(format!("plugin `{}` is disabled", spec.plugin_id));
         }
-
-        self.start_plugin_spec(spec.clone())?;
         let rpc = self
             .processes
             .lock()
             .get(&spec.key)
             .map(|p| Arc::clone(&p.runtime))
-            .ok_or_else(|| format!("plugin `{}` is not running", spec.plugin_id))?;
+            .ok_or_else(|| {
+                format!(
+                    "plugin `{}` is not running; enable the plugin to start its runtime",
+                    spec.plugin_id
+                )
+            })?;
         rpc.call(method, params)
     }
 
@@ -376,7 +401,7 @@ impl PluginRuntimeManager {
     ///
     /// # Returns
     /// - `Ok(Arc<dyn PluginRuntimeInstance>)` running runtime instance.
-    /// - `Err(String)` when plugin state validation or startup fails.
+    /// - `Err(String)` when plugin state validation fails or runtime is not running.
     pub fn runtime_for_workspace_with_config(
         &self,
         cfg: &AppConfig,
@@ -387,13 +412,16 @@ impl PluginRuntimeManager {
         if !cfg.is_plugin_enabled(&spec.plugin_id, spec.default_enabled) {
             return Err(format!("plugin `{}` is disabled", spec.plugin_id));
         }
-
-        self.start_plugin_spec(spec.clone())?;
         self.processes
             .lock()
             .get(&spec.key)
             .map(|p| Arc::clone(&p.runtime))
-            .ok_or_else(|| format!("plugin `{}` is not running", spec.plugin_id))
+            .ok_or_else(|| {
+                format!(
+                    "plugin `{}` is not running; enable the plugin to start its runtime",
+                    spec.plugin_id
+                )
+            })
     }
 
     /// Starts or reuses a runtime for a resolved plugin runtime spec.

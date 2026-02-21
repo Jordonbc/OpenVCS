@@ -435,12 +435,24 @@ pub fn list_plugin_menus(state: State<'_, AppState>) -> Result<Vec<PluginMenuPay
         if !cfg.is_plugin_enabled(&plugin_id, summary.default_enabled) {
             continue;
         }
+        match state.plugin_runtime().has_module(&plugin_id) {
+            Ok(Some(true)) => {}
+            Ok(Some(false)) | Ok(None) => continue,
+            Err(err) => {
+                warn!("list_plugin_menus: skip plugin {}: {}", plugin_id, err);
+                continue;
+            }
+        }
 
-        let runtime = match state
-            .plugin_runtime()
-            .runtime_for_workspace_with_config(&cfg, &plugin_id, None)
-        {
-            Ok(runtime) => runtime,
+        let runtime = match state.plugin_runtime().running_runtime_for_plugin(&plugin_id) {
+            Ok(Some(runtime)) => runtime,
+            Ok(None) => {
+                debug!(
+                    "list_plugin_menus: skip plugin {} because runtime is not running",
+                    plugin_id
+                );
+                continue;
+            }
             Err(err) => {
                 warn!("list_plugin_menus: skip plugin {}: {}", plugin_id, err);
                 continue;

@@ -98,6 +98,12 @@ startup.
 - Host APIs are explicit via WIT imports.
 - Workspace file access is mediated by the host and can be confined to a selected workspace root.
 
+## Runtime lifecycle
+
+- Module runtimes are started/stopped by lifecycle operations (startup sync and plugin enable/disable toggles).
+- Backend plugin command calls do not implicitly start stopped plugin runtimes.
+- If a plugin is enabled but not currently running, module RPC/menu calls return a `not running` error until runtime is restored.
+
 ## Plugin settings persistence
 
 - Plugin settings are persisted by the host (not by plugin code) in the user config directory under:
