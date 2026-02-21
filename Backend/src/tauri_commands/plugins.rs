@@ -157,7 +157,7 @@ pub fn uninstall_plugin(state: State<'_, AppState>, plugin_id: String) -> Result
 /// # Returns
 /// - `Ok(())` when the operation succeeds.
 /// - `Err(String)` when the operation fails.
-pub fn set_plugin_enabled(
+pub async fn set_plugin_enabled(
     state: State<'_, AppState>,
     plugin_id: String,
     enabled: bool,
@@ -176,16 +176,21 @@ pub fn set_plugin_enabled(
         plugin_id, enabled
     );
 
-    state
-        .plugin_runtime()
-        .set_plugin_enabled(&plugin_id, enabled)
-        .map_err(|e| {
-            error!(
-                "set_plugin_enabled failed: plugin={}, error={}",
-                plugin_id, e
-            );
-            e
-        })?;
+    let runtime = state.plugin_runtime();
+    let plugin_id_for_runtime = plugin_id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        runtime
+            .set_plugin_enabled(&plugin_id_for_runtime, enabled)
+            .map_err(|e| {
+                error!(
+                    "set_plugin_enabled failed: plugin={}, error={}",
+                    plugin_id_for_runtime, e
+                );
+                e
+            })
+    })
+    .await
+    .map_err(|e| format!("set_plugin_enabled task join failed: {e}"))??;
 
     let mut cfg = state.config();
     let plugin_key = plugin_id.trim().to_ascii_lowercase();
