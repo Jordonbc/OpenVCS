@@ -1222,7 +1222,9 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
         for (const plugin of filtered) {
             const id = String(plugin.id).trim();
+            const idLower = id.toLowerCase();
             const isEnabledNow = pluginIsEnabled(plugin);
+            const pendingToggle = state.pendingToggleById.get(idLower);
 
             const li = document.createElement('li');
             li.className = 'plugin-row';
@@ -1277,6 +1279,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.checked = isEnabledNow;
+            checkbox.disabled = typeof pendingToggle === 'boolean';
             checkbox.dataset.pluginId = id;
             checkbox.setAttribute('aria-label', `Enable ${String(plugin.name || '').trim() || 'plugin'}`);
 
@@ -1363,6 +1366,13 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
                     ?.getAttribute('data-section') || '',
             ).trim();
             await TAURI.invoke('set_plugin_enabled', { pluginId, enabled });
+            if (enabled) {
+                state.disabled.delete(idLower);
+                state.enabled.add(idLower);
+            } else {
+                state.enabled.delete(idLower);
+                state.disabled.add(idLower);
+            }
             console.log(`Plugin '${pluginId}' ${enabled ? 'enabled' : 'disabled'}`);
             await reloadPlugins();
             await renderPluginMenus(modal);
@@ -1372,13 +1382,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
                 await refreshAvailableThemes();
             } catch (e) { console.warn('refreshAvailableThemes failed:', e); }
         } catch (e) {
-            if (enabled) {
-                state.enabled.delete(idLower);
-                state.disabled.add(idLower);
-            } else {
-                state.disabled.delete(idLower);
-                state.enabled.add(idLower);
-            }
             const existingTimer = state.errorTimerById.get(idLower);
             if (typeof existingTimer === 'number') {
                 window.clearTimeout(existingTimer);
@@ -1387,37 +1390,35 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             const timer = window.setTimeout(() => {
                 state.errorToggleById.delete(idLower);
                 state.errorTimerById.delete(idLower);
-                renderDetails(getFiltered());
+                updateCounts();
+                renderList();
             }, 2000);
             state.errorTimerById.set(idLower, timer);
             console.error('Failed to toggle plugin:', e);
             notify('Failed to toggle plugin');
         } finally {
             state.pendingToggleById.delete(idLower);
-            renderDetails(getFiltered());
+            updateCounts();
+            renderList();
         }
     };
 
     const queuePluginToggle = (pluginIdRaw: string, enabled: boolean) => {
         const id = String(pluginIdRaw || '').trim().toLowerCase();
         if (!id) return;
+        if (state.pendingToggleById.has(id)) return;
         const existingTimer = state.errorTimerById.get(id);
         if (typeof existingTimer === 'number') {
             window.clearTimeout(existingTimer);
             state.errorTimerById.delete(id);
         }
         state.errorToggleById.delete(id);
-        if (enabled) {
-            state.disabled.delete(id);
-            state.enabled.add(id);
-        } else {
-            state.enabled.delete(id);
-            state.disabled.add(id);
-        }
         state.pendingToggleById.set(id, enabled);
-        updateCounts();
-        renderDetails(getFiltered());
-        persistSinglePluginToggle(id, enabled).catch(() => {});
+        renderList();
+        void (async () => {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            await persistSinglePluginToggle(id, enabled);
+        })();
     };
 
     if (!(pane as any).__wired) {
@@ -1584,7 +1585,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
                 const checkbox = pane.querySelector<HTMLInputElement>(
                     `input[type="checkbox"][data-plugin-id="${CSS.escape(id)}"]`,
                 );
-                if (checkbox) checkbox.checked = desiredEnabled;
+                if (checkbox) checkbox.checked = plugin ? pluginIsEnabled(plugin) : false;
                 queuePluginToggle(id, desiredEnabled);
                 return;
             }
@@ -1627,7 +1628,13 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             if (!el || el.type !== 'checkbox' || !el.dataset.pluginId) return;
             const id = String(el.dataset.pluginId).trim().toLowerCase();
             if (!id) return;
-            queuePluginToggle(id, el.checked);
+            const plugin = state.list.find(
+                (p) => String(p?.id || '').trim().toLowerCase() === id,
+            );
+            const currentEnabled = plugin ? pluginIsEnabled(plugin) : false;
+            const desiredEnabled = !currentEnabled;
+            el.checked = currentEnabled;
+            queuePluginToggle(id, desiredEnabled);
         });
 
         searchEl.addEventListener('input', () => {
