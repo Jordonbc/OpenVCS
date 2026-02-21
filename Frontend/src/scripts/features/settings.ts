@@ -1281,6 +1281,16 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
         detailEl.appendChild(head);
         detailEl.appendChild(body);
+
+        const footer = document.createElement('div');
+        footer.className = 'plugin-detail-footer';
+        const permissions = document.createElement('button');
+        permissions.type = 'button';
+        permissions.className = 'tbtn';
+        permissions.id = 'plugins-permissions-selected';
+        permissions.textContent = 'Permissions';
+        footer.appendChild(permissions);
+        detailEl.appendChild(footer);
     };
 
     const renderList = () => {
