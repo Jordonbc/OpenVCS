@@ -6,6 +6,7 @@ import { toKebab } from '../lib/dom';
 import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
 import { setTheme } from '../ui/layout';
+import { openPluginPermissionsModal } from './pluginPermissions';
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
 import { reloadPlugins } from '../plugins';
 import type { PluginSummary } from '../plugins';
@@ -1288,6 +1289,8 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         permissions.type = 'button';
         permissions.className = 'tbtn';
         permissions.id = 'plugins-permissions-selected';
+        permissions.dataset.pluginPermissions = id;
+        permissions.dataset.pluginName = String(plugin.name || '').trim() || id;
         permissions.textContent = 'Permissions';
         footer.appendChild(permissions);
         detailEl.appendChild(footer);
@@ -1608,6 +1611,20 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
         pane.addEventListener('click', (e) => {
             const target = e.target as HTMLElement | null;
+            const permissionsBtn =
+                target?.closest<HTMLButtonElement>('[data-plugin-permissions]') || null;
+            if (permissionsBtn) {
+                const pluginId = String(permissionsBtn.dataset.pluginPermissions || '').trim();
+                const pluginName = String(permissionsBtn.dataset.pluginName || '').trim() || pluginId;
+                if (pluginId) {
+                    openPluginPermissionsModal(pluginId, pluginName).catch((err) => {
+                        const msg = String(err || '').trim();
+                        notify(msg ? `Failed to open permissions: ${msg}` : 'Failed to open permissions');
+                    });
+                }
+                return;
+            }
+
             const toggleBtn = target?.closest<HTMLButtonElement>('[data-plugin-toggle]') || null;
             if (toggleBtn) {
                 const id = String(toggleBtn.dataset.pluginToggle || '').trim();

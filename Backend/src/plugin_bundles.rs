@@ -914,6 +914,65 @@ impl PluginBundleStore {
         Ok(())
     }
 
+    /// Applies an explicit approved-capability set to the current plugin version.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier to update.
+    /// - `approved_capabilities`: Capability ids selected by the user.
+    ///
+    /// # Returns
+    /// - `Ok(())` when approval state is updated for the current version.
+    /// - `Err(String)` if the plugin/current version is missing or index write fails.
+    pub fn set_current_approved_capabilities(
+        &self,
+        plugin_id: &str,
+        approved_capabilities: Vec<String>,
+    ) -> Result<(), String> {
+        let id = plugin_id.trim();
+        if id.is_empty() {
+            return Err("plugin id is empty".to_string());
+        }
+
+        let mut index = self
+            .read_index(id)
+            .ok_or_else(|| "plugin is not installed".to_string())?;
+        let current = index
+            .current
+            .clone()
+            .ok_or_else(|| "plugin has no current version".to_string())?;
+
+        let Some(version) = index.versions.get_mut(current.trim()) else {
+            return Err("current version is not installed".to_string());
+        };
+
+        let requested = version
+            .requested_capabilities
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let mut approved = normalize_capabilities(approved_capabilities)
+            .into_iter()
+            .filter(|capability| requested.contains(capability))
+            .collect::<Vec<_>>();
+        approved.sort();
+        approved.dedup();
+
+        version.approval = if !version.requested_capabilities.is_empty() && approved.is_empty() {
+            ApprovalState::Denied {
+                denied_at_unix_ms: now_unix_ms(),
+                reason: None,
+            }
+        } else {
+            ApprovalState::Approved {
+                capabilities: approved,
+                approved_at_unix_ms: now_unix_ms(),
+            }
+        };
+
+        self.write_index(id, &index)?;
+        Ok(())
+    }
+
     /// Loads resolved components for the current plugin version.
     ///
     /// # Parameters

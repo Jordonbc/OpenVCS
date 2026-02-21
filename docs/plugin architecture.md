@@ -78,11 +78,19 @@ The host cares about:
 Plugins request capabilities through the manifest `capabilities` array.
 The host enforces capability approval before allowing privileged host API calls.
 
+The Settings > Plugins details pane exposes a `Permissions` modal where users can
+adjust approval choices for the currently installed plugin version and apply
+changes immediately.
+
 Status APIs use dedicated capabilities:
 
 - `status.set`: allows plugins to call `set-status`.
 - `status.get`: allows plugins to call `get-status`.
 - `status.set` also implies `status.get`.
+
+When a plugin calls status APIs without approved status capability, the host logs
+a warning and ignores the status mutation/read request instead of failing plugin
+startup.
 
 ## Security model
 

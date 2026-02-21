@@ -1,6 +1,6 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-use crate::plugin_bundles::{InstalledPlugin, InstalledPluginIndex, PluginBundleStore};
+use crate::plugin_bundles::{ApprovalState, InstalledPlugin, InstalledPluginIndex, PluginBundleStore};
 use crate::plugin_runtime::settings_store;
 use crate::plugins;
 use crate::state::AppState;
@@ -32,6 +32,24 @@ pub struct PluginMenuPayload {
     pub label: String,
     /// Renderable menu elements.
     pub elements: Vec<Value>,
+}
+
+/// Permission metadata returned for a plugin's current installed version.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PluginPermissionsPayload {
+    /// Plugin id these permissions belong to.
+    pub plugin_id: String,
+    /// Current installed version, when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Current approval state (`pending`, `approved`, `denied`).
+    pub approval_state: String,
+    /// Capability ids requested by the plugin.
+    #[serde(default)]
+    pub requested_capabilities: Vec<String>,
+    /// Capability ids currently approved for the plugin.
+    #[serde(default)]
+    pub approved_capabilities: Vec<String>,
 }
 
 #[tauri::command]
@@ -232,6 +250,88 @@ pub fn approve_plugin_capabilities(
         let _ = state.plugin_runtime().stop_plugin(&plugin_id);
     } else if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {
         warn!("plugins: runtime sync after approval failed: {}", err);
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+/// Returns permission metadata for a plugin's current installed version.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin id.
+///
+/// # Returns
+/// - `Ok(PluginPermissionsPayload)` on success.
+/// - `Err(String)` when lookup fails.
+pub fn get_plugin_permissions(plugin_id: String) -> Result<PluginPermissionsPayload, String> {
+    let plugin_id = plugin_id.trim().to_string();
+    if plugin_id.is_empty() {
+        return Err("plugin id is empty".to_string());
+    }
+
+    let Some(current) = PluginBundleStore::new_default().get_current_installed(&plugin_id)? else {
+        return Ok(PluginPermissionsPayload {
+            plugin_id,
+            version: None,
+            approval_state: "pending".to_string(),
+            requested_capabilities: Vec::new(),
+            approved_capabilities: Vec::new(),
+        });
+    };
+
+    let (approval_state, approved_capabilities) = match current.approval {
+        ApprovalState::Pending => ("pending".to_string(), Vec::new()),
+        ApprovalState::Denied { .. } => ("denied".to_string(), Vec::new()),
+        ApprovalState::Approved { capabilities, .. } => ("approved".to_string(), capabilities),
+    };
+
+    Ok(PluginPermissionsPayload {
+        plugin_id,
+        version: Some(current.version),
+        approval_state,
+        requested_capabilities: current.requested_capabilities,
+        approved_capabilities,
+    })
+}
+
+#[tauri::command]
+/// Applies a selected approved-capabilities set for the current plugin version.
+///
+/// # Parameters
+/// - `state`: Application state.
+/// - `plugin_id`: Plugin id.
+/// - `approved_capabilities`: Selected capability ids to approve.
+///
+/// # Returns
+/// - `Ok(())` when permissions are saved.
+/// - `Err(String)` when update fails.
+pub fn set_plugin_permissions(
+    state: State<'_, AppState>,
+    plugin_id: String,
+    approved_capabilities: Vec<String>,
+) -> Result<(), String> {
+    let plugin_id = plugin_id.trim().to_string();
+    if plugin_id.is_empty() {
+        return Err("plugin id is empty".to_string());
+    }
+
+    PluginBundleStore::new_default().set_current_approved_capabilities(
+        &plugin_id,
+        approved_capabilities,
+    )?;
+
+    if let Err(err) = state.plugin_runtime().stop_plugin(&plugin_id) {
+        warn!(
+            "plugins: stop runtime after permissions update failed for {}: {}",
+            plugin_id, err
+        );
+    }
+    if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {
+        warn!(
+            "plugins: runtime sync after permissions update failed for {}: {}",
+            plugin_id, err
+        );
     }
 
     Ok(())

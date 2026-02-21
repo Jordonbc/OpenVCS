@@ -1,0 +1,20 @@
+<!-- Plugin permissions modal -->
+<div class="modal" id="plugin-permissions-modal" aria-hidden="true">
+  <div class="backdrop" data-close></div>
+  <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="plugin-permissions-title">
+    <div class="sheet-head">
+      <h3 id="plugin-permissions-title" style="margin:0">Permissions</h3>
+      <button class="icon close" data-close aria-label="Close">✕</button>
+    </div>
+
+    <section class="sheet-body plugin-permissions-body">
+      <div id="plugin-permissions-empty" class="muted">The plugin does not request permissions</div>
+      <div id="plugin-permissions-rows" class="plugin-permissions-rows"></div>
+    </section>
+
+    <div class="sheet-actions">
+      <div style="flex:1"></div>
+      <button class="tbtn primary big" id="plugin-permissions-apply" type="button">Apply changes</button>
+    </div>
+  </div>
+</div>

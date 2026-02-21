@@ -6,6 +6,7 @@ import { initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from "../lib/sc
 import settingsHtml from "@modals/settings.html?raw";
 import cmdHtml from "@modals/commandSheet.html?raw";
 import aboutHtml from "@modals/about.html?raw";
+import pluginPermissionsHtml from "@modals/plugin-permissions.html?raw";
 import { wireSettings } from "../features/settings";
 import repoSettingsHtml from "@modals/repo-settings.html?raw";
 import { wireRepoSettings } from "../features/repoSettings";
@@ -35,6 +36,7 @@ import repoSwitchDrawerHtml from "@modals/repoSwitchDrawer.html?raw";
 const FRAGMENTS: Record<string, string> = {
     "settings-modal": settingsHtml,
     "about-modal": aboutHtml,
+    "plugin-permissions-modal": pluginPermissionsHtml,
     "command-modal": cmdHtml,
     "repo-switch-drawer": repoSwitchDrawerHtml,
     "repo-settings-modal": repoSettingsHtml,

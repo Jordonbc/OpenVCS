@@ -282,6 +282,8 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::uninstall_plugin,
         tauri_commands::set_plugin_enabled,
         tauri_commands::approve_plugin_capabilities,
+        tauri_commands::get_plugin_permissions,
+        tauri_commands::set_plugin_permissions,
         tauri_commands::list_plugin_functions,
         tauri_commands::invoke_plugin_function,
         tauri_commands::call_plugin_module_method,

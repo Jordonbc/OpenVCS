@@ -365,7 +365,7 @@ pub fn host_ui_notify(spawn: &SpawnConfig, message: &str) -> HostResult<()> {
 ///
 /// # Returns
 /// - `Ok(())` when status is stored and emitted.
-/// - `Err(PluginError)` when capability is denied.
+/// - `Ok(())` with a no-op when capability is denied.
 pub fn host_set_status(spawn: &SpawnConfig, message: &str) -> HostResult<()> {
     let (caps, _) = approved_caps_and_workspace(spawn);
     trace!(
@@ -379,10 +379,7 @@ pub fn host_set_status(spawn: &SpawnConfig, message: &str) -> HostResult<()> {
             "host_set_status: capability denied for plugin {} (missing status.set)",
             spawn.plugin_id
         );
-        return Err(host_error(
-            "capability.denied",
-            "missing capability: status.set",
-        ));
+        return Ok(());
     }
 
     {
@@ -407,7 +404,7 @@ pub fn host_set_status(spawn: &SpawnConfig, message: &str) -> HostResult<()> {
 ///
 /// # Returns
 /// - `Ok(String)` with current status text.
-/// - `Err(PluginError)` when capability is denied.
+/// - `Ok(String)` with current status text when capability is denied.
 pub fn host_get_status(spawn: &SpawnConfig) -> HostResult<String> {
     let (caps, _) = approved_caps_and_workspace(spawn);
     trace!("host_get_status: plugin={}", spawn.plugin_id);
@@ -417,10 +414,7 @@ pub fn host_get_status(spawn: &SpawnConfig) -> HostResult<String> {
             "host_get_status: capability denied for plugin {} (missing status.get)",
             spawn.plugin_id
         );
-        return Err(host_error(
-            "capability.denied",
-            "missing capability: status.get",
-        ));
+        return Ok(status_text_store().read().clone());
     }
 
     Ok(status_text_store().read().clone())
