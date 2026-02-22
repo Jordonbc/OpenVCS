@@ -55,8 +55,7 @@ pub fn create_runtime_instance(
     }
 
     trace!("create_runtime_instance: creating ComponentPluginRuntimeInstance");
-    let runtime: Arc<dyn PluginRuntimeInstance> =
-        Arc::new(ComponentPluginRuntimeInstance::new(spawn.clone()));
+    let runtime: Arc<dyn PluginRuntimeInstance> = create_component_runtime_instance(spawn.clone())?;
     debug!(
         "create_runtime_instance: instance created, plugin_id='{}'",
         spawn.plugin_id
@@ -68,6 +67,19 @@ pub fn create_runtime_instance(
         spawn.exec_path.display()
     );
     Ok(runtime)
+}
+
+/// Creates a component runtime instance with the provided spawn context.
+pub fn create_component_runtime_instance(
+    spawn: SpawnConfig,
+) -> Result<Arc<ComponentPluginRuntimeInstance>, String> {
+    if !is_component_module(&spawn.exec_path) {
+        return Err(format!(
+            "plugin runtime: `{}` is not a component-model plugin (stdio runtime removed)",
+            spawn.exec_path.display()
+        ));
+    }
+    Ok(Arc::new(ComponentPluginRuntimeInstance::new(spawn)))
 }
 
 #[cfg(test)]

@@ -132,10 +132,6 @@ pub fn run() {
                 }
             });
 
-            let store = crate::plugin_bundles::PluginBundleStore::new_default();
-            if let Err(err) = store.sync_built_in_plugins() {
-                warn!("plugins: failed to sync built-in bundles: {}", err);
-            }
             // If the application bundle includes a `built-in-plugins` resource
             // directory, resolve its location via Tauri and register the
             // containing resource directory so runtime discovery can include
@@ -157,6 +153,10 @@ pub fn run() {
                         resolved.display()
                     );
                 }
+            }
+            let store = crate::plugin_bundles::PluginBundleStore::new_default();
+            if let Err(err) = store.sync_built_in_plugins() {
+                warn!("plugins: failed to sync built-in bundles: {}", err);
             }
             let state = app.state::<state::AppState>();
             if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {
@@ -220,7 +220,6 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::list_vcs_backends_cmd,
         tauri_commands::set_vcs_backend_cmd,
         tauri_commands::reopen_current_repo_cmd,
-        tauri_commands::call_vcs_backend_method,
         tauri_commands::validate_git_url,
         tauri_commands::validate_add_path,
         tauri_commands::validate_clone_input,
@@ -285,9 +284,6 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::approve_plugin_capabilities,
         tauri_commands::get_plugin_permissions,
         tauri_commands::set_plugin_permissions,
-        tauri_commands::list_plugin_functions,
-        tauri_commands::invoke_plugin_function,
-        tauri_commands::call_plugin_module_method,
         tauri_commands::list_plugin_menus,
         tauri_commands::invoke_plugin_action,
         tauri_commands::save_plugin_settings,

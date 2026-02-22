@@ -71,8 +71,8 @@ export const state = {
     // repoPath: '' as string,
 };
 
-/** True iff a repo is selected AND we know the current branch. Always boolean. */
-export const hasRepo = (): boolean => Boolean(state.hasRepo && state.branch);
+/** True iff a repository is selected. Always boolean. */
+export const hasRepo = (): boolean => Boolean(state.hasRepo);
 
 /** True iff there are staged/unstaged changes. Always boolean. */
 export const hasChanges = (): boolean =>

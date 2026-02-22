@@ -9,12 +9,13 @@ use crate::plugin_runtime::host_api::{
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::settings_store;
 use crate::plugin_runtime::spawn::SpawnConfig;
+use openvcs_core::models::{
+    BranchItem, BranchKind, Capabilities, CommitItem, ConflictDetails, ConflictSide, FetchOptions,
+    LogQuery, StashItem, StatusPayload, StatusSummary,
+};
 use openvcs_core::settings::{SettingKv, SettingValue};
 use openvcs_core::ui::{Menu, UiButton, UiElement, UiText};
 use parking_lot::Mutex;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-use serde_json::Value;
 use wasmtime::component::{Component, Linker, ResourceTable};
 use wasmtime::{Cache, CacheConfig, Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
@@ -904,6 +905,710 @@ impl ComponentPluginRuntimeInstance {
         })?;
         f(runtime)
     }
+
+    /// Ensures the runtime exports the VCS world and runs a typed call.
+    fn with_vcs_bindings<T>(
+        &self,
+        method: &str,
+        f: impl FnOnce(&bindings_vcs::Vcs, &mut Store<ComponentHostState>) -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.with_runtime(|runtime| {
+            let bindings = match &runtime.bindings {
+                ComponentBindings::Vcs(bindings) => bindings,
+                _ => {
+                    return Err(format!(
+                        "component method `{method}` requires VCS backend exports for plugin `{}`",
+                        self.spawn.plugin_id
+                    ));
+                }
+            };
+            f(bindings, &mut runtime.store)
+        })
+    }
+
+    /// Converts nested trap/plugin results into backend error strings.
+    fn map_vcs_result<T, E: std::fmt::Display>(
+        &self,
+        method: &str,
+        out: Result<Result<T, vcs_api::PluginError>, E>,
+    ) -> Result<T, String> {
+        out.map_err(|e| {
+            format!(
+                "component call trap for {}.{}: {e}",
+                self.spawn.plugin_id, method
+            )
+        })?
+        .map_err(|e| {
+            format!(
+                "component call failed for {}.{}: {}: {}",
+                self.spawn.plugin_id, method, e.code, e.message
+            )
+        })
+    }
+
+    /// Calls typed `get-caps`.
+    pub fn vcs_get_caps(&self) -> Result<Capabilities, String> {
+        self.with_vcs_bindings("caps", |bindings, store| {
+            let out = self.map_vcs_result(
+                "caps",
+                bindings.openvcs_plugin_vcs_api().call_get_caps(store),
+            )?;
+            Ok(Capabilities {
+                commits: out.commits,
+                branches: out.branches,
+                tags: out.tags,
+                staging: out.staging,
+                push_pull: out.push_pull,
+                fast_forward: out.fast_forward,
+            })
+        })
+    }
+
+    /// Calls typed `open`.
+    pub fn vcs_open(&self, path: &str, config: &[u8]) -> Result<(), String> {
+        self.with_vcs_bindings("open", |bindings, store| {
+            self.map_vcs_result(
+                "open",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_open(store, path, config),
+            )
+        })
+    }
+
+    /// Calls typed `get-current-branch`.
+    pub fn vcs_get_current_branch(&self) -> Result<Option<String>, String> {
+        self.with_vcs_bindings("current_branch", |bindings, store| {
+            self.map_vcs_result(
+                "current_branch",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_get_current_branch(store),
+            )
+        })
+    }
+
+    /// Calls typed `list-branches`.
+    pub fn vcs_list_branches(&self) -> Result<Vec<BranchItem>, String> {
+        self.with_vcs_bindings("branches", |bindings, store| {
+            let out = self.map_vcs_result(
+                "branches",
+                bindings.openvcs_plugin_vcs_api().call_list_branches(store),
+            )?;
+            Ok(out
+                .into_iter()
+                .map(|item| BranchItem {
+                    name: item.name,
+                    full_ref: item.full_ref,
+                    kind: match item.kind {
+                        vcs_api::BranchKind::Local => BranchKind::Local,
+                        vcs_api::BranchKind::Remote(remote) => BranchKind::Remote { remote },
+                        vcs_api::BranchKind::Unknown => BranchKind::Unknown,
+                    },
+                    current: item.current,
+                })
+                .collect())
+        })
+    }
+
+    /// Calls typed `list-local-branches`.
+    pub fn vcs_list_local_branches(&self) -> Result<Vec<String>, String> {
+        self.with_vcs_bindings("local_branches", |bindings, store| {
+            self.map_vcs_result(
+                "local_branches",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_list_local_branches(store),
+            )
+        })
+    }
+
+    /// Calls typed `create-branch`.
+    pub fn vcs_create_branch(&self, name: &str, checkout: bool) -> Result<(), String> {
+        self.with_vcs_bindings("create_branch", |bindings, store| {
+            self.map_vcs_result(
+                "create_branch",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_create_branch(store, name, checkout),
+            )
+        })
+    }
+
+    /// Calls typed `checkout-branch`.
+    pub fn vcs_checkout_branch(&self, name: &str) -> Result<(), String> {
+        self.with_vcs_bindings("checkout_branch", |bindings, store| {
+            self.map_vcs_result(
+                "checkout_branch",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_checkout_branch(store, name),
+            )
+        })
+    }
+
+    /// Calls typed `ensure-remote`.
+    pub fn vcs_ensure_remote(&self, name: &str, url: &str) -> Result<(), String> {
+        self.with_vcs_bindings("ensure_remote", |bindings, store| {
+            self.map_vcs_result(
+                "ensure_remote",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_ensure_remote(store, name, url),
+            )
+        })
+    }
+
+    /// Calls typed `list-remotes`.
+    pub fn vcs_list_remotes(&self) -> Result<Vec<(String, String)>, String> {
+        self.with_vcs_bindings("list_remotes", |bindings, store| {
+            let out = self.map_vcs_result(
+                "list_remotes",
+                bindings.openvcs_plugin_vcs_api().call_list_remotes(store),
+            )?;
+            Ok(out
+                .into_iter()
+                .map(|entry| (entry.name, entry.url))
+                .collect())
+        })
+    }
+
+    /// Calls typed `remove-remote`.
+    pub fn vcs_remove_remote(&self, name: &str) -> Result<(), String> {
+        self.with_vcs_bindings("remove_remote", |bindings, store| {
+            self.map_vcs_result(
+                "remove_remote",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_remove_remote(store, name),
+            )
+        })
+    }
+
+    /// Calls typed `fetch`.
+    pub fn vcs_fetch(&self, remote: &str, refspec: &str) -> Result<(), String> {
+        self.with_vcs_bindings("fetch", |bindings, store| {
+            self.map_vcs_result(
+                "fetch",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_fetch(store, remote, refspec),
+            )
+        })
+    }
+
+    /// Calls typed `fetch-with-options`.
+    pub fn vcs_fetch_with_options(
+        &self,
+        remote: &str,
+        refspec: &str,
+        opts: FetchOptions,
+    ) -> Result<(), String> {
+        self.with_vcs_bindings("fetch_with_options", |bindings, store| {
+            self.map_vcs_result(
+                "fetch_with_options",
+                bindings.openvcs_plugin_vcs_api().call_fetch_with_options(
+                    store,
+                    remote,
+                    refspec,
+                    vcs_api::FetchOptions { prune: opts.prune },
+                ),
+            )
+        })
+    }
+
+    /// Calls typed `push`.
+    pub fn vcs_push(&self, remote: &str, refspec: &str) -> Result<(), String> {
+        self.with_vcs_bindings("push", |bindings, store| {
+            self.map_vcs_result(
+                "push",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_push(store, remote, refspec),
+            )
+        })
+    }
+
+    /// Calls typed `pull-ff-only`.
+    pub fn vcs_pull_ff_only(&self, remote: &str, branch: &str) -> Result<(), String> {
+        self.with_vcs_bindings("pull_ff_only", |bindings, store| {
+            self.map_vcs_result(
+                "pull_ff_only",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_pull_ff_only(store, remote, branch),
+            )
+        })
+    }
+
+    /// Calls typed `commit`.
+    pub fn vcs_commit(
+        &self,
+        message: &str,
+        name: &str,
+        email: &str,
+        paths: &[String],
+    ) -> Result<String, String> {
+        self.with_vcs_bindings("commit", |bindings, store| {
+            self.map_vcs_result(
+                "commit",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_commit(store, message, name, email, paths),
+            )
+        })
+    }
+
+    /// Calls typed `commit-index`.
+    pub fn vcs_commit_index(
+        &self,
+        message: &str,
+        name: &str,
+        email: &str,
+    ) -> Result<String, String> {
+        self.with_vcs_bindings("commit_index", |bindings, store| {
+            self.map_vcs_result(
+                "commit_index",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_commit_index(store, message, name, email),
+            )
+        })
+    }
+
+    /// Calls typed `get-status-summary`.
+    pub fn vcs_get_status_summary(&self) -> Result<StatusSummary, String> {
+        self.with_vcs_bindings("status_summary", |bindings, store| {
+            let out = self.map_vcs_result(
+                "status_summary",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_get_status_summary(store),
+            )?;
+            Ok(StatusSummary {
+                untracked: out.untracked as usize,
+                modified: out.modified as usize,
+                staged: out.staged as usize,
+                conflicted: out.conflicted as usize,
+            })
+        })
+    }
+
+    /// Calls typed `get-status-payload`.
+    pub fn vcs_get_status_payload(&self) -> Result<StatusPayload, String> {
+        self.with_vcs_bindings("status_payload", |bindings, store| {
+            let out = self.map_vcs_result(
+                "status_payload",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_get_status_payload(store),
+            )?;
+            Ok(StatusPayload {
+                files: out
+                    .files
+                    .into_iter()
+                    .map(|file| openvcs_core::models::FileEntry {
+                        path: file.path,
+                        old_path: file.old_path,
+                        status: file.status,
+                        staged: file.staged,
+                        resolved_conflict: file.resolved_conflict,
+                        hunks: file.hunks,
+                    })
+                    .collect(),
+                ahead: out.ahead,
+                behind: out.behind,
+            })
+        })
+    }
+
+    /// Calls typed `list-commits`.
+    pub fn vcs_list_commits(&self, query: &LogQuery) -> Result<Vec<CommitItem>, String> {
+        self.with_vcs_bindings("log_commits", |bindings, store| {
+            let query = vcs_api::LogQuery {
+                rev: query.rev.clone(),
+                path: query.path.clone(),
+                since_utc: query.since_utc.clone(),
+                until_utc: query.until_utc.clone(),
+                author_contains: query.author_contains.clone(),
+                skip: query.skip,
+                limit: query.limit,
+                topo_order: query.topo_order,
+                include_merges: query.include_merges,
+            };
+            let out = self.map_vcs_result(
+                "log_commits",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_list_commits(store, &query),
+            )?;
+            Ok(out
+                .into_iter()
+                .map(|commit| CommitItem {
+                    id: commit.id,
+                    msg: commit.msg,
+                    meta: commit.meta,
+                    author: commit.author,
+                })
+                .collect())
+        })
+    }
+
+    /// Calls typed `diff-file`.
+    pub fn vcs_diff_file(&self, path: &str) -> Result<Vec<String>, String> {
+        self.with_vcs_bindings("diff_file", |bindings, store| {
+            self.map_vcs_result(
+                "diff_file",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_diff_file(store, path),
+            )
+        })
+    }
+
+    /// Calls typed `diff-commit`.
+    pub fn vcs_diff_commit(&self, rev: &str) -> Result<Vec<String>, String> {
+        self.with_vcs_bindings("diff_commit", |bindings, store| {
+            self.map_vcs_result(
+                "diff_commit",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_diff_commit(store, rev),
+            )
+        })
+    }
+
+    /// Calls typed `get-conflict-details`.
+    pub fn vcs_get_conflict_details(&self, path: &str) -> Result<ConflictDetails, String> {
+        self.with_vcs_bindings("conflict_details", |bindings, store| {
+            let out = self.map_vcs_result(
+                "conflict_details",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_get_conflict_details(store, path),
+            )?;
+            Ok(ConflictDetails {
+                path: out.path,
+                ours: out.ours,
+                theirs: out.theirs,
+                base: out.base,
+                binary: out.binary,
+                lfs_pointer: out.lfs_pointer,
+            })
+        })
+    }
+
+    /// Calls typed `checkout-conflict-side`.
+    pub fn vcs_checkout_conflict_side(&self, path: &str, side: ConflictSide) -> Result<(), String> {
+        self.with_vcs_bindings("checkout_conflict_side", |bindings, store| {
+            let side = match side {
+                ConflictSide::Ours => vcs_api::ConflictSide::Ours,
+                ConflictSide::Theirs => vcs_api::ConflictSide::Theirs,
+            };
+            self.map_vcs_result(
+                "checkout_conflict_side",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_checkout_conflict_side(store, path, side),
+            )
+        })
+    }
+
+    /// Calls typed `write-merge-result`.
+    pub fn vcs_write_merge_result(&self, path: &str, content: &[u8]) -> Result<(), String> {
+        self.with_vcs_bindings("write_merge_result", |bindings, store| {
+            self.map_vcs_result(
+                "write_merge_result",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_write_merge_result(store, path, content),
+            )
+        })
+    }
+
+    /// Calls typed `stage-patch`.
+    pub fn vcs_stage_patch(&self, patch: &str) -> Result<(), String> {
+        self.with_vcs_bindings("stage_patch", |bindings, store| {
+            self.map_vcs_result(
+                "stage_patch",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_stage_patch(store, patch),
+            )
+        })
+    }
+
+    /// Calls typed `discard-paths`.
+    pub fn vcs_discard_paths(&self, paths: &[String]) -> Result<(), String> {
+        self.with_vcs_bindings("discard_paths", |bindings, store| {
+            self.map_vcs_result(
+                "discard_paths",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_discard_paths(store, paths),
+            )
+        })
+    }
+
+    /// Calls typed `apply-reverse-patch`.
+    pub fn vcs_apply_reverse_patch(&self, patch: &str) -> Result<(), String> {
+        self.with_vcs_bindings("apply_reverse_patch", |bindings, store| {
+            self.map_vcs_result(
+                "apply_reverse_patch",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_apply_reverse_patch(store, patch),
+            )
+        })
+    }
+
+    /// Calls typed `delete-branch`.
+    pub fn vcs_delete_branch(&self, name: &str, force: bool) -> Result<(), String> {
+        self.with_vcs_bindings("delete_branch", |bindings, store| {
+            self.map_vcs_result(
+                "delete_branch",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_delete_branch(store, name, force),
+            )
+        })
+    }
+
+    /// Calls typed `rename-branch`.
+    pub fn vcs_rename_branch(&self, old: &str, new: &str) -> Result<(), String> {
+        self.with_vcs_bindings("rename_branch", |bindings, store| {
+            self.map_vcs_result(
+                "rename_branch",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_rename_branch(store, old, new),
+            )
+        })
+    }
+
+    /// Calls typed `merge-into-current`.
+    pub fn vcs_merge_into_current(&self, name: &str, message: Option<&str>) -> Result<(), String> {
+        self.with_vcs_bindings("merge_into_current", |bindings, store| {
+            self.map_vcs_result(
+                "merge_into_current",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_merge_into_current(store, name, message),
+            )
+        })
+    }
+
+    /// Calls typed `merge-abort`.
+    pub fn vcs_merge_abort(&self) -> Result<(), String> {
+        self.with_vcs_bindings("merge_abort", |bindings, store| {
+            self.map_vcs_result(
+                "merge_abort",
+                bindings.openvcs_plugin_vcs_api().call_merge_abort(store),
+            )
+        })
+    }
+
+    /// Calls typed `merge-continue`.
+    pub fn vcs_merge_continue(&self) -> Result<(), String> {
+        self.with_vcs_bindings("merge_continue", |bindings, store| {
+            self.map_vcs_result(
+                "merge_continue",
+                bindings.openvcs_plugin_vcs_api().call_merge_continue(store),
+            )
+        })
+    }
+
+    /// Calls typed `is-merge-in-progress`.
+    pub fn vcs_is_merge_in_progress(&self) -> Result<bool, String> {
+        self.with_vcs_bindings("merge_in_progress", |bindings, store| {
+            self.map_vcs_result(
+                "merge_in_progress",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_is_merge_in_progress(store),
+            )
+        })
+    }
+
+    /// Calls typed `set-branch-upstream`.
+    pub fn vcs_set_branch_upstream(&self, branch: &str, upstream: &str) -> Result<(), String> {
+        self.with_vcs_bindings("set_branch_upstream", |bindings, store| {
+            self.map_vcs_result(
+                "set_branch_upstream",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_set_branch_upstream(store, branch, upstream),
+            )
+        })
+    }
+
+    /// Calls typed `get-branch-upstream`.
+    pub fn vcs_get_branch_upstream(&self, branch: &str) -> Result<Option<String>, String> {
+        self.with_vcs_bindings("branch_upstream", |bindings, store| {
+            self.map_vcs_result(
+                "branch_upstream",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_get_branch_upstream(store, branch),
+            )
+        })
+    }
+
+    /// Calls typed `hard-reset-head`.
+    pub fn vcs_hard_reset_head(&self) -> Result<(), String> {
+        self.with_vcs_bindings("hard_reset_head", |bindings, store| {
+            self.map_vcs_result(
+                "hard_reset_head",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_hard_reset_head(store),
+            )
+        })
+    }
+
+    /// Calls typed `reset-soft-to`.
+    pub fn vcs_reset_soft_to(&self, rev: &str) -> Result<(), String> {
+        self.with_vcs_bindings("reset_soft_to", |bindings, store| {
+            self.map_vcs_result(
+                "reset_soft_to",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_reset_soft_to(store, rev),
+            )
+        })
+    }
+
+    /// Calls typed `get-identity`.
+    pub fn vcs_get_identity(&self) -> Result<Option<(String, String)>, String> {
+        self.with_vcs_bindings("get_identity", |bindings, store| {
+            let out = self.map_vcs_result(
+                "get_identity",
+                bindings.openvcs_plugin_vcs_api().call_get_identity(store),
+            )?;
+            Ok(out.map(|id| (id.name, id.email)))
+        })
+    }
+
+    /// Calls typed `set-identity-local`.
+    pub fn vcs_set_identity_local(&self, name: &str, email: &str) -> Result<(), String> {
+        self.with_vcs_bindings("set_identity_local", |bindings, store| {
+            self.map_vcs_result(
+                "set_identity_local",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_set_identity_local(store, name, email),
+            )
+        })
+    }
+
+    /// Calls typed `list-stashes`.
+    pub fn vcs_list_stashes(&self) -> Result<Vec<StashItem>, String> {
+        self.with_vcs_bindings("stash_list", |bindings, store| {
+            let out = self.map_vcs_result(
+                "stash_list",
+                bindings.openvcs_plugin_vcs_api().call_list_stashes(store),
+            )?;
+            Ok(out
+                .into_iter()
+                .map(|stash| StashItem {
+                    selector: stash.selector,
+                    msg: stash.msg,
+                    meta: stash.meta,
+                })
+                .collect())
+        })
+    }
+
+    /// Calls typed `stash-push`.
+    pub fn vcs_stash_push(
+        &self,
+        message: Option<&str>,
+        include_untracked: bool,
+    ) -> Result<String, String> {
+        self.with_vcs_bindings("stash_push", |bindings, store| {
+            self.map_vcs_result(
+                "stash_push",
+                bindings.openvcs_plugin_vcs_api().call_stash_push(
+                    store,
+                    message,
+                    include_untracked,
+                ),
+            )
+        })
+    }
+
+    /// Calls typed `stash-apply`.
+    pub fn vcs_stash_apply(&self, selector: &str) -> Result<(), String> {
+        self.with_vcs_bindings("stash_apply", |bindings, store| {
+            self.map_vcs_result(
+                "stash_apply",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_stash_apply(store, selector),
+            )
+        })
+    }
+
+    /// Calls typed `stash-pop`.
+    pub fn vcs_stash_pop(&self, selector: &str) -> Result<(), String> {
+        self.with_vcs_bindings("stash_pop", |bindings, store| {
+            self.map_vcs_result(
+                "stash_pop",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_stash_pop(store, selector),
+            )
+        })
+    }
+
+    /// Calls typed `stash-drop`.
+    pub fn vcs_stash_drop(&self, selector: &str) -> Result<(), String> {
+        self.with_vcs_bindings("stash_drop", |bindings, store| {
+            self.map_vcs_result(
+                "stash_drop",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_stash_drop(store, selector),
+            )
+        })
+    }
+
+    /// Calls typed `stash-show`.
+    pub fn vcs_stash_show(&self, selector: &str) -> Result<Vec<String>, String> {
+        self.with_vcs_bindings("stash_show", |bindings, store| {
+            let out = self.map_vcs_result(
+                "stash_show",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_stash_show(store, selector),
+            )?;
+            Ok(out.lines().map(str::to_string).collect())
+        })
+    }
+
+    /// Calls typed `cherry-pick`.
+    pub fn vcs_cherry_pick(&self, commit: &str) -> Result<(), String> {
+        self.with_vcs_bindings("cherry_pick", |bindings, store| {
+            self.map_vcs_result(
+                "cherry_pick",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_cherry_pick(store, commit),
+            )
+        })
+    }
+
+    /// Calls typed `revert-commit`.
+    pub fn vcs_revert_commit(&self, commit: &str, no_edit: bool) -> Result<(), String> {
+        self.with_vcs_bindings("revert_commit", |bindings, store| {
+            self.map_vcs_result(
+                "revert_commit",
+                bindings
+                    .openvcs_plugin_vcs_api()
+                    .call_revert_commit(store, commit, no_edit),
+            )
+        })
+    }
 }
 
 /// Converts a v1.1 WIT menu into the shared core menu model.
@@ -999,25 +1704,6 @@ fn setting_from_json_value(
     }
 }
 
-/// Deserializes JSON RPC parameters for a named method.
-fn parse_method_params<T: DeserializeOwned>(method: &str, params: Value) -> Result<T, String> {
-    serde_json::from_value(params).map_err(|e| format!("invalid params for `{method}`: {e}"))
-}
-
-/// Serializes a method result to JSON with contextual error reporting.
-fn encode_method_result<T: Serialize>(
-    plugin_id: &str,
-    method: &str,
-    value: T,
-) -> Result<Value, String> {
-    serde_json::to_value(value).map_err(|e| {
-        format!(
-            "serialize component result for `{}` method `{}`: {e}",
-            plugin_id, method
-        )
-    })
-}
-
 impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
     /// Starts the component runtime when not already running.
     fn ensure_running(&self) -> Result<(), String> {
@@ -1028,535 +1714,6 @@ impl PluginRuntimeInstance for ComponentPluginRuntimeInstance {
         let runtime = self.instantiate_runtime()?;
         *lock = Some(runtime);
         Ok(())
-    }
-
-    #[allow(clippy::let_unit_value)]
-    /// Invokes a v1 VCS ABI method exported by the plugin component.
-    ///
-    /// Non-VCS plugins only expose lifecycle hooks (`init`/`deinit`) and return
-    /// an error for VCS RPC method calls.
-    fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        self.with_runtime(|runtime| {
-            let bindings = match &runtime.bindings {
-                ComponentBindings::Vcs(bindings) => bindings,
-                ComponentBindings::Plugin(_) => {
-                    return Err(format!(
-                        "component method `{method}` requires VCS backend exports for plugin `{}`",
-                        self.spawn.plugin_id
-                    ));
-                }
-                ComponentBindings::PluginV11(_) => {
-                    return Err(format!(
-                        "component method `{method}` requires VCS backend exports for plugin `{}`",
-                        self.spawn.plugin_id
-                    ));
-                }
-            };
-
-            macro_rules! invoke {
-                ($method_name:literal, $call:ident $(, $arg:expr )* ) => {
-                    bindings
-                        .openvcs_plugin_vcs_api()
-                        .$call(&mut runtime.store $(, $arg )* )
-                        .map_err(|e| {
-                            format!(
-                                "component call trap for {}.{}: {e}",
-                                self.spawn.plugin_id, $method_name
-                            )
-                        })?
-                        .map_err(|e| {
-                            format!(
-                                "component call failed for {}.{}: {}: {}",
-                                self.spawn.plugin_id, $method_name, e.code, e.message
-                            )
-                        })
-                };
-            }
-
-            match method {
-                "caps" => {
-                    let out = invoke!("caps", call_get_caps)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "open" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        path: String,
-                        #[serde(default)]
-                        config: Value,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let config = serde_json::to_vec(&p.config)
-                        .map_err(|e| format!("serialize `open` config: {e}"))?;
-                    let out = invoke!("open", call_open, &p.path, &config)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "clone" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        url: String,
-                        dest: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("clone", call_clone_repo, &p.url, &p.dest)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "workdir" => {
-                    let out = invoke!("workdir", call_get_workdir)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "current_branch" => {
-                    let out = invoke!("current_branch", call_get_current_branch)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "branches" => {
-                    let out = invoke!("branches", call_list_branches)?;
-                    let normalized = out
-                        .into_iter()
-                        .map(|item| {
-                            let kind = match item.kind {
-                                vcs_api::BranchKind::Local => {
-                                    serde_json::json!({ "type": "Local" })
-                                }
-                                vcs_api::BranchKind::Remote(remote) => {
-                                    serde_json::json!({ "type": "Remote", "remote": remote })
-                                }
-                                vcs_api::BranchKind::Unknown => {
-                                    serde_json::json!({ "type": "Unknown" })
-                                }
-                            };
-                            serde_json::json!({
-                                "name": item.name,
-                                "full_ref": item.full_ref,
-                                "kind": kind,
-                                "current": item.current,
-                            })
-                        })
-                        .collect::<Vec<_>>();
-                    encode_method_result(&self.spawn.plugin_id, method, normalized)
-                }
-                "local_branches" => {
-                    let out = invoke!("local_branches", call_list_local_branches)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "create_branch" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        name: String,
-                        checkout: bool,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("create_branch", call_create_branch, &p.name, p.checkout)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "checkout_branch" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        name: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("checkout_branch", call_checkout_branch, &p.name)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "ensure_remote" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        name: String,
-                        url: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("ensure_remote", call_ensure_remote, &p.name, &p.url)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "list_remotes" => {
-                    let out = invoke!("list_remotes", call_list_remotes)?;
-                    let remotes = out
-                        .into_iter()
-                        .map(|entry| (entry.name, entry.url))
-                        .collect::<Vec<(String, String)>>();
-                    encode_method_result(&self.spawn.plugin_id, method, remotes)
-                }
-                "remove_remote" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        name: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("remove_remote", call_remove_remote, &p.name)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "fetch" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        remote: String,
-                        refspec: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("fetch", call_fetch, &p.remote, &p.refspec)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "fetch_with_options" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        remote: String,
-                        refspec: String,
-                        opts: vcs_api::FetchOptions,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!(
-                        "fetch_with_options",
-                        call_fetch_with_options,
-                        &p.remote,
-                        &p.refspec,
-                        p.opts
-                    )?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "push" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        remote: String,
-                        refspec: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("push", call_push, &p.remote, &p.refspec)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "pull_ff_only" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        remote: String,
-                        branch: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("pull_ff_only", call_pull_ff_only, &p.remote, &p.branch)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "commit" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        message: String,
-                        name: String,
-                        email: String,
-                        paths: Vec<String>,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out =
-                        invoke!("commit", call_commit, &p.message, &p.name, &p.email, &p.paths)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "commit_index" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        message: String,
-                        name: String,
-                        email: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out =
-                        invoke!("commit_index", call_commit_index, &p.message, &p.name, &p.email)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "status_summary" => {
-                    let out = invoke!("status_summary", call_get_status_summary)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "status_payload" => {
-                    let out = invoke!("status_payload", call_get_status_payload)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "log_commits" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        query: vcs_api::LogQuery,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("log_commits", call_list_commits, &p.query)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "diff_file" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        path: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("diff_file", call_diff_file, &p.path)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "diff_commit" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        rev: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("diff_commit", call_diff_commit, &p.rev)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "conflict_details" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        path: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("conflict_details", call_get_conflict_details, &p.path)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "checkout_conflict_side" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        path: String,
-                        side: vcs_api::ConflictSide,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!(
-                        "checkout_conflict_side",
-                        call_checkout_conflict_side,
-                        &p.path,
-                        p.side
-                    )?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "write_merge_result" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        path: String,
-                        content: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!(
-                        "write_merge_result",
-                        call_write_merge_result,
-                        &p.path,
-                        p.content.as_bytes()
-                    )?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "stage_patch" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        patch: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("stage_patch", call_stage_patch, &p.patch)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "discard_paths" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        paths: Vec<String>,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("discard_paths", call_discard_paths, &p.paths)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "apply_reverse_patch" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        patch: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("apply_reverse_patch", call_apply_reverse_patch, &p.patch)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "delete_branch" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        name: String,
-                        force: bool,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("delete_branch", call_delete_branch, &p.name, p.force)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "rename_branch" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        old: String,
-                        new: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("rename_branch", call_rename_branch, &p.old, &p.new)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "merge_into_current" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        name: String,
-                        #[serde(default)]
-                        message: Option<String>,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!(
-                        "merge_into_current",
-                        call_merge_into_current,
-                        &p.name,
-                        p.message.as_deref()
-                    )?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "merge_abort" => {
-                    let out = invoke!("merge_abort", call_merge_abort)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "merge_continue" => {
-                    let out = invoke!("merge_continue", call_merge_continue)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "merge_in_progress" => {
-                    let out = invoke!("merge_in_progress", call_is_merge_in_progress)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "set_branch_upstream" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        branch: String,
-                        upstream: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!(
-                        "set_branch_upstream",
-                        call_set_branch_upstream,
-                        &p.branch,
-                        &p.upstream
-                    )?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "branch_upstream" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        branch: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("branch_upstream", call_get_branch_upstream, &p.branch)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "hard_reset_head" => {
-                    let out = invoke!("hard_reset_head", call_hard_reset_head)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "reset_soft_to" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        rev: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("reset_soft_to", call_reset_soft_to, &p.rev)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "get_identity" => {
-                    let out = invoke!("get_identity", call_get_identity)?;
-                    let mapped = out.map(|identity| (identity.name, identity.email));
-                    encode_method_result(&self.spawn.plugin_id, method, mapped)
-                }
-                "set_identity_local" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        name: String,
-                        email: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out =
-                        invoke!("set_identity_local", call_set_identity_local, &p.name, &p.email)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "stash_list" => {
-                    let out = invoke!("stash_list", call_list_stashes)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "stash_push" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        #[serde(default)]
-                        message: Option<String>,
-                        #[serde(default)]
-                        include_untracked: bool,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!(
-                        "stash_push",
-                        call_stash_push,
-                        p.message.as_deref(),
-                        p.include_untracked
-                    )?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "stash_apply" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        selector: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("stash_apply", call_stash_apply, &p.selector)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "stash_pop" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        selector: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("stash_pop", call_stash_pop, &p.selector)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "stash_drop" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        selector: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("stash_drop", call_stash_drop, &p.selector)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "stash_show" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        selector: String,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let out = invoke!("stash_show", call_stash_show, &p.selector)?;
-                    let normalized = out.lines().map(str::to_string).collect::<Vec<_>>();
-                    encode_method_result(&self.spawn.plugin_id, method, normalized)
-                }
-                "cherry_pick" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        #[serde(default)]
-                        commit: Option<String>,
-                        #[serde(default)]
-                        rev: Option<String>,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let commit = p
-                        .commit
-                        .or(p.rev)
-                        .ok_or_else(|| "missing `commit`/`rev`".to_string())?;
-                    let out = invoke!("cherry_pick", call_cherry_pick, &commit)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                "revert_commit" => {
-                    #[derive(serde::Deserialize)]
-                    struct Params {
-                        #[serde(default)]
-                        commit: Option<String>,
-                        #[serde(default)]
-                        rev: Option<String>,
-                        #[serde(default)]
-                        no_edit: bool,
-                    }
-                    let p: Params = parse_method_params(method, params)?;
-                    let commit = p
-                        .commit
-                        .or(p.rev)
-                        .ok_or_else(|| "missing `commit`/`rev`".to_string())?;
-                    let out = invoke!("revert_commit", call_revert_commit, &commit, p.no_edit)?;
-                    encode_method_result(&self.spawn.plugin_id, method, out)
-                }
-                _ => Err(format!(
-                    "component method `{method}` is not part of the v1 ABI contract for plugin `{}`",
-                    self.spawn.plugin_id
-                )),
-            }
-        })
     }
 
     /// Returns plugin-contributed UI menus.

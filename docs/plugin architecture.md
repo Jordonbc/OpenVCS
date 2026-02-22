@@ -101,6 +101,7 @@ startup.
 ## Runtime lifecycle
 
 - Module runtimes are started/stopped by lifecycle operations (startup sync and plugin enable/disable toggles).
+- VCS backend plugin runtimes are repo-scoped and started only when opening a repository through that backend.
 - Backend plugin command calls do not implicitly start stopped plugin runtimes.
 - If a plugin is enabled but not currently running, module RPC/menu calls return a `not running` error until runtime is restored.
 

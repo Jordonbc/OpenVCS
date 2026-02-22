@@ -7,7 +7,6 @@ use crate::plugin_runtime::spawn::SpawnConfig;
 use crate::settings::AppConfig;
 use log::{debug, info, trace, warn};
 use parking_lot::Mutex;
-use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -277,21 +276,25 @@ impl PluginRuntimeManager {
         );
 
         if enabled && !is_running {
-            let has_module = self.has_module(plugin_id)?;
-            match has_module {
-                Some(true) => {
-                    trace!("set_plugin_enabled: calling start_plugin");
-                    self.start_plugin(plugin_id)?;
-                    info!("plugin: enabled '{}'", plugin_id);
+            let components = self.find_components(plugin_id)?;
+            match components.module {
+                Some(module) => {
+                    if !module.vcs_backends.is_empty() {
+                        info!(
+                            "plugin '{}' is a VCS backend; runtime starts when opening a repository",
+                            plugin_id
+                        );
+                    } else {
+                        trace!("set_plugin_enabled: calling start_plugin");
+                        self.start_plugin(plugin_id)?;
+                        info!("plugin: enabled '{}'", plugin_id);
+                    }
                 }
-                Some(false) => {
+                None => {
                     info!(
                         "plugin '{}' has no runtime module, marked as enabled",
                         plugin_id
                     );
-                }
-                None => {
-                    return Err(format!("plugin '{}' not found", plugin_id));
                 }
             }
         } else if !enabled && is_running {
@@ -332,6 +335,14 @@ impl PluginRuntimeManager {
         for component in components {
             let plugin_id = component.plugin_id.trim();
             if plugin_id.is_empty() || component.module.is_none() {
+                continue;
+            }
+
+            let is_vcs_backend = component
+                .module
+                .as_ref()
+                .is_some_and(|module| !module.vcs_backends.is_empty());
+            if is_vcs_backend {
                 continue;
             }
 
@@ -390,67 +401,6 @@ impl PluginRuntimeManager {
         }
     }
 
-    /// Calls a module RPC method through the persistent plugin process.
-    ///
-    /// # Parameters
-    /// - `cfg`: App config snapshot used to enforce enabled-state checks.
-    /// - `plugin_id`: Plugin identifier.
-    /// - `method`: RPC method name.
-    /// - `params`: JSON method params.
-    ///
-    /// # Returns
-    /// - `Ok(Value)` plugin RPC result.
-    /// - `Err(String)` when plugin is disabled/not available or RPC fails.
-    pub fn call_module_method_with_config(
-        &self,
-        cfg: &AppConfig,
-        plugin_id: &str,
-        method: &str,
-        params: Value,
-    ) -> Result<Value, String> {
-        self.call_module_method_for_workspace_with_config(cfg, plugin_id, method, params, None)
-    }
-
-    /// Calls a module RPC method through the persistent plugin process with an
-    /// optional workspace-root confinement.
-    ///
-    /// # Parameters
-    /// - `cfg`: App config snapshot used for enabled-state checks.
-    /// - `plugin_id`: Plugin identifier.
-    /// - `method`: RPC method name.
-    /// - `params`: JSON RPC parameters.
-    /// - `allowed_workspace_root`: Optional workspace root for host capability confinement.
-    ///
-    /// # Returns
-    /// - `Ok(Value)` plugin RPC response payload.
-    /// - `Err(String)` when plugin state validation fails, plugin is not running,
-    ///   or RPC dispatch fails.
-    pub fn call_module_method_for_workspace_with_config(
-        &self,
-        cfg: &AppConfig,
-        plugin_id: &str,
-        method: &str,
-        params: Value,
-        allowed_workspace_root: Option<PathBuf>,
-    ) -> Result<Value, String> {
-        let spec = self.resolve_module_runtime_spec(plugin_id, allowed_workspace_root)?;
-        if !cfg.is_plugin_enabled(&spec.plugin_id, spec.default_enabled) {
-            return Err(format!("plugin `{}` is disabled", spec.plugin_id));
-        }
-        let rpc = self
-            .processes
-            .lock()
-            .get(&spec.key)
-            .map(|p| Arc::clone(&p.runtime))
-            .ok_or_else(|| {
-                format!(
-                    "plugin `{}` is not running; enable the plugin to start its runtime",
-                    spec.plugin_id
-                )
-            })?;
-        rpc.call(method, params)
-    }
-
     /// Returns the persistent runtime instance for a plugin workspace.
     ///
     /// # Parameters
@@ -481,6 +431,32 @@ impl PluginRuntimeManager {
                     spec.plugin_id
                 )
             })
+    }
+
+    /// Resolves spawn configuration for a VCS backend plugin within a workspace root.
+    ///
+    /// # Parameters
+    /// - `cfg`: App config snapshot used for enabled-state checks.
+    /// - `plugin_id`: Plugin identifier.
+    /// - `workspace_root`: Canonical workspace root for host capability confinement.
+    ///
+    /// # Returns
+    /// - `Ok(SpawnConfig)` resolved spawn settings for a VCS backend runtime.
+    /// - `Err(String)` when plugin is disabled, missing runtime module, or is not a VCS backend.
+    pub fn vcs_spawn_for_workspace_with_config(
+        &self,
+        cfg: &AppConfig,
+        plugin_id: &str,
+        workspace_root: PathBuf,
+    ) -> Result<SpawnConfig, String> {
+        let spec = self.resolve_module_runtime_spec(plugin_id, Some(workspace_root))?;
+        if !cfg.is_plugin_enabled(&spec.plugin_id, spec.default_enabled) {
+            return Err(format!("plugin `{}` is disabled", spec.plugin_id));
+        }
+        if !spec.spawn.is_vcs_backend {
+            return Err(format!("plugin `{}` is not a VCS backend", spec.plugin_id));
+        }
+        Ok(spec.spawn)
     }
 
     /// Starts or reuses a runtime for a resolved plugin runtime spec.
@@ -764,6 +740,44 @@ mod tests {
         let running = manager.processes.lock();
         assert!(running.contains_key("runtime.plugin"));
         assert!(!running.contains_key("themes.plugin"));
+    }
+
+    #[test]
+    /// Verifies startup sync does not eagerly start VCS backend runtimes.
+    fn sync_does_not_autostart_vcs_backend_plugins() {
+        let temp = tempdir().expect("tempdir");
+        write_vcs_plugin(temp.path(), "git.plugin", true);
+        let manager = PluginRuntimeManager::new(PluginBundleStore::new_at(temp.path().into()));
+
+        let cfg = AppConfig::default();
+        manager
+            .sync_plugin_runtime_with_config(&cfg)
+            .expect("sync succeeds");
+
+        let running = manager.processes.lock();
+        assert!(!running.contains_key("git.plugin"));
+    }
+
+    #[test]
+    /// Verifies VCS spawn resolution includes workspace confinement.
+    fn vcs_spawn_resolution_sets_workspace_root() {
+        let temp = tempdir().expect("tempdir");
+        write_vcs_plugin(temp.path(), "git.plugin", true);
+        let manager = PluginRuntimeManager::new(PluginBundleStore::new_at(temp.path().into()));
+
+        let cfg = AppConfig::default();
+        let workspace_root = temp.path().join("repo");
+        std::fs::create_dir_all(&workspace_root).expect("create repo root");
+
+        let spawn = manager
+            .vcs_spawn_for_workspace_with_config(&cfg, "git.plugin", workspace_root.clone())
+            .expect("resolve vcs spawn");
+
+        assert!(spawn.is_vcs_backend);
+        assert_eq!(
+            spawn.allowed_workspace_root.as_deref(),
+            Some(workspace_root.as_path())
+        );
     }
 
     #[test]

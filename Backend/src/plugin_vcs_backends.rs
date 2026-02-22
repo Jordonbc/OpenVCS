@@ -5,6 +5,8 @@
 use crate::logging::LogTimer;
 use crate::plugin_bundles::{PluginBundleStore, PluginManifest, VcsBackendProvide};
 use crate::plugin_paths::{built_in_plugin_dirs, PLUGIN_MANIFEST_NAME};
+use crate::plugin_runtime::instance::PluginRuntimeInstance;
+use crate::plugin_runtime::runtime_select::create_component_runtime_instance;
 use crate::plugin_runtime::{vcs_proxy::PluginVcsProxy, PluginRuntimeManager};
 use crate::settings::AppConfig;
 use log::{debug, error, info, trace, warn};
@@ -367,16 +369,21 @@ pub fn open_repo_via_plugin_vcs_backend(
         }
     })?;
 
+    let workspace_root = std::fs::canonicalize(path).map_err(|e| VcsError::Backend {
+        backend: backend_id.clone(),
+        msg: format!("canonicalize repo root: {e}"),
+    })?;
+
     trace!(
-        "open_repo_via_plugin_vcs_backend: getting runtime for plugin {}",
+        "open_repo_via_plugin_vcs_backend: resolving spawn for plugin {}",
         desc.plugin_id
     );
 
-    let runtime = runtime_manager
-        .runtime_for_workspace_with_config(cfg, &desc.plugin_id, Some(path.to_path_buf()))
+    let spawn = runtime_manager
+        .vcs_spawn_for_workspace_with_config(cfg, &desc.plugin_id, workspace_root)
         .map_err(|e| {
             error!(
-                "open_repo_via_plugin_vcs_backend: failed to get runtime for plugin {}: {}",
+                "open_repo_via_plugin_vcs_backend: failed to resolve spawn for plugin {}: {}",
                 desc.plugin_id, e
             );
             VcsError::Backend {
@@ -384,6 +391,22 @@ pub fn open_repo_via_plugin_vcs_backend(
                 msg: e,
             }
         })?;
+
+    let runtime = create_component_runtime_instance(spawn).map_err(|e| {
+        error!(
+            "open_repo_via_plugin_vcs_backend: failed to create runtime for plugin {}: {}",
+            desc.plugin_id, e
+        );
+        VcsError::Backend {
+            backend: backend_id.clone(),
+            msg: e,
+        }
+    })?;
+
+    runtime.ensure_running().map_err(|e| VcsError::Backend {
+        backend: backend_id.clone(),
+        msg: e,
+    })?;
 
     debug!("open_repo_via_plugin_vcs_backend: opening via plugin proxy",);
 

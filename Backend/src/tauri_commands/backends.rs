@@ -1,11 +1,10 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use log::{error, info, warn};
-use serde_json::Value;
-use tauri::{async_runtime, Runtime, State, Window};
+use tauri::{async_runtime, State};
 
 use openvcs_core::BackendId;
 use std::collections::BTreeMap;
@@ -177,100 +176,4 @@ pub async fn reopen_current_repo_cmd(state: State<'_, AppState>) -> Result<(), S
     let new_repo = Arc::new(Repo::new(handle));
     state.set_current_repo(new_repo);
     Ok(())
-}
-
-/// Call an arbitrary RPC method on a VCS backend module.
-///
-/// This is intentionally backend-agnostic so plugin UI can access backend-specific helpers
-/// (e.g. Git LFS) without hardcoding them into the host's generic VCS trait.
-///
-/// # Parameters
-/// - `window`: Calling Tauri window handle.
-/// - `state`: Shared application state.
-/// - `backend_id`: Backend id to invoke.
-/// - `method`: RPC method name.
-/// - `params`: JSON payload passed to the backend method.
-///
-/// # Returns
-/// - `Ok(Value)` containing the backend method result.
-/// - `Err(String)` when validation, backend resolution, or RPC execution fails.
-#[tauri::command]
-pub async fn call_vcs_backend_method<R: Runtime>(
-    _window: Window<R>,
-    state: State<'_, AppState>,
-    backend_id: BackendId,
-    method: String,
-    params: Value,
-) -> Result<Value, String> {
-    let backend_id_str = backend_id.as_ref().to_string();
-    let method = method.trim().to_string();
-    if method.is_empty() {
-        return Err("method is empty".to_string());
-    }
-
-    let desc = plugin_vcs_backends::plugin_vcs_backend_descriptor(&backend_id)
-        .map_err(|_| format!("Unknown VCS backend: {backend_id_str}"))?;
-
-    let repo_root = state
-        .current_repo()
-        .map(|repo| repo.inner().workdir().to_path_buf())
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let allowed_workspace_root = resolve_allowed_workspace_root(&repo_root, &params)?;
-
-    let cfg = state.config();
-    state
-        .plugin_runtime()
-        .call_module_method_for_workspace_with_config(
-            &cfg,
-            &desc.plugin_id,
-            &method,
-            params,
-            allowed_workspace_root,
-        )
-}
-
-/// Resolves optional backend workspace path and enforces repo-root confinement.
-///
-/// # Parameters
-/// - `repo_root`: Repository root path.
-/// - `params`: Backend method params.
-///
-/// # Returns
-/// - `Ok(Some(PathBuf))` resolved workspace path.
-/// - `Ok(None)` when no path restriction should be applied.
-/// - `Err(String)` when requested path escapes repo root.
-fn resolve_allowed_workspace_root(
-    repo_root: &Path,
-    params: &Value,
-) -> Result<Option<PathBuf>, String> {
-    let repo_root = std::fs::canonicalize(repo_root)
-        .map_err(|e| format!("Failed to resolve repository root: {e}"))?;
-
-    let requested = params
-        .get("path")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from);
-
-    let Some(requested) = requested else {
-        return Ok(Some(repo_root));
-    };
-
-    let requested_abs = if requested.is_absolute() {
-        requested
-    } else {
-        repo_root.join(requested)
-    };
-    let requested_abs = std::fs::canonicalize(&requested_abs)
-        .map_err(|e| format!("Invalid backend workspace path: {e}"))?;
-
-    if requested_abs == repo_root || requested_abs.starts_with(&repo_root) {
-        Ok(Some(requested_abs))
-    } else {
-        Err(format!(
-            "Backend workspace path escapes repository root: {}",
-            requested_abs.display()
-        ))
-    }
 }

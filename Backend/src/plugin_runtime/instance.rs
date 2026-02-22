@@ -3,16 +3,12 @@
 use openvcs_core::models::VcsEvent;
 use openvcs_core::settings::SettingKv;
 use openvcs_core::ui::Menu;
-use serde_json::Value;
 use std::sync::Arc;
 
 /// Runtime instance abstraction used by the plugin runtime manager.
 pub trait PluginRuntimeInstance: Send + Sync {
     /// Ensures the underlying runtime instance is started.
     fn ensure_running(&self) -> Result<(), String>;
-
-    /// Calls a plugin method and returns JSON payload.
-    fn call(&self, method: &str, params: Value) -> Result<Value, String>;
 
     /// Returns plugin-contributed UI menus.
     fn get_menus(&self) -> Result<Vec<Menu>, String> {

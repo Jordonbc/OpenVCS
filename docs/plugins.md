@@ -68,6 +68,7 @@ Notes:
 - For `plugin-v1-1` menus, plugins can provide an optional `menu.order` (`u32`) hint; lower values render earlier, and menus without an order are sorted after ordered menus by label.
 - Built-in plugin menus are shown as normal top-level Settings sections; third-party plugin menus are grouped under Settings > Plugins in the `Plugin Settings` subsection.
 - Action buttons invoke plugin `handle-action` callbacks.
+- Plugin IPC is contract-driven: backend calls map to typed WIT exports rather than arbitrary string-named module methods.
 - The Plugins details pane includes a bottom-right `Permissions` button that opens a stacked modal titled `Permissions for <plugin name>`.
 - The permissions modal lists only permissions requested by that plugin, shows segmented button choices (for example `Allow` / `Deny`, with richer choices for some permission groups), and includes an `Apply changes` button.
 - When a plugin requests no capabilities, the modal shows: `The plugin does not request permissions`.
