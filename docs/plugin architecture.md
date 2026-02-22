@@ -16,7 +16,7 @@ Client (Frontend) -> Client (Backend host) <-> Plugin (Wasm component)
 The authoritative host/plugin contract lives under `Core/wit/`:
 
 - `Core/wit/host.wit`: host imports plugins can call (workspace IO, status set/get, process exec, notifications, logging, events)
-- `Core/wit/plugin.wit`: base plugin lifecycle world (`plugin`) plus v1.1 plugin UI/settings world (`plugin-v1-1`)
+- `Core/wit/plugin.wit`: plugin world with lifecycle, UI, and settings support
 - `Core/wit/vcs.wit`: VCS backend world (`vcs`)
 
 The backend generates host bindings from these contracts and links them into a Wasmtime component runtime.
@@ -32,7 +32,7 @@ The backend generates host bindings from these contracts and links them into a W
   - Must implement `plugin-api.init` and `plugin-api.deinit`.
 
 - Module plugin (UI + settings lifecycle)
-  - Exports the `plugin-v1-1` world from `Core/wit/plugin.wit`.
+  - Exports the `plugin` world from `Core/wit/plugin.wit`.
   - Supports typed menu contributions (`get-menus` + `handle-action`) and settings hooks (`settings-defaults`, `settings-on-load`, `settings-on-apply`, `settings-on-save`, `settings-on-reset`).
   - Menu records include an optional `order` hint (`option<u32>`); host menu rendering sorts by `order` (ascending) then label.
   - Plugins can implement only the hooks they care about when using `#[openvcs_plugin]`; defaults are injected for omitted hooks.
