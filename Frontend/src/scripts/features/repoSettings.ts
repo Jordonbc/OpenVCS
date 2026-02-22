@@ -20,6 +20,12 @@ export async function wireRepoSettings() {
     const addRemoteBtn = modal.querySelector('#git-remote-add') as HTMLButtonElement | null;
     const saveBtn = modal.querySelector('#repo-settings-save') as HTMLButtonElement | null;
 
+    if (saveBtn) {
+        saveBtn.style.width = '5rem';
+        saveBtn.style.textAlign = 'center';
+        saveBtn.style.boxSizing = 'border-box';
+    }
+
     const rows: RemoteRow[] = [];
     let initialRemotesKey = '';
 
@@ -122,7 +128,12 @@ export async function wireRepoSettings() {
                 // Remote-tracking branches only exist after a fetch; do it once after remotes are modified.
                 try { await TAURI.invoke('git_fetch_all', {}); } catch { /* ignore */ }
             }
-            closeModal('repo-settings-modal');
+            saveBtn.classList.add('saved-state');
+            saveBtn.textContent = 'Saved!';
+            setTimeout(() => {
+                saveBtn.textContent = 'Save';
+                saveBtn.classList.remove('saved-state');
+            }, 2000);
         } catch {
             notify('Failed to save repository settings');
         }

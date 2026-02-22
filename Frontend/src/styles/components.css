@@ -54,6 +54,12 @@ button:disabled,.btn:disabled,.btn.primary:disabled,.tbtn:disabled,.pick:disable
     background:var(--surface-2); border-color:var(--border); color:var(--muted);
 }
 
+/* Saved state - keep same dimensions as normal button */
+button.saved-state,.btn.saved-state,.tbtn.saved-state{
+    opacity:1; cursor:default; pointer-events:auto; transform:none!important;
+    background:var(--accent); border-color:var(--accent); color:#fff;
+}
+
 /* Split button (main action + caret) */
 .split-btn{
     display:inline-flex;

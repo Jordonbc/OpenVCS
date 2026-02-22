@@ -580,7 +580,15 @@ export function wireSettings() {
     const settingsSave  = modal.querySelector('#settings-save')  as HTMLButtonElement | null;
     const settingsReset = modal.querySelector('#settings-reset') as HTMLButtonElement | null;
 
+    if (settingsSave) {
+        settingsSave.style.width = '5rem';
+        settingsSave.style.textAlign = 'center';
+    }
+
     settingsSave?.addEventListener('click', async () => {
+        if (!settingsSave || settingsSave.classList.contains('saved-state')) return;
+        settingsSave.classList.add('saved-state');
+        settingsSave.textContent = 'Saved!';
         try {
             const activePanel = modal.querySelector<HTMLElement>('#settings-panels .panel-form:not(.hidden)');
             if (activePanel?.getAttribute('data-plugin-settings') === 'true') {
@@ -595,7 +603,12 @@ export function wireSettings() {
                     values: collectPluginSettingsFromPanel(activePanel),
                 });
                 notify('Plugin settings saved');
-                closeModal('settings-modal');
+                settingsSave.classList.add('saved-state');
+                settingsSave.textContent = 'Saved!';
+                setTimeout(() => {
+                    settingsSave.textContent = 'Save';
+                    settingsSave.classList.remove('saved-state');
+                }, 2000);
                 return;
             }
 
@@ -625,7 +638,12 @@ export function wireSettings() {
             } catch {}
 
             notify('Settings saved');
-            closeModal('settings-modal');
+            settingsSave.classList.add('saved-state');
+            settingsSave.textContent = 'Saved!';
+            setTimeout(() => {
+                settingsSave.textContent = 'Save';
+                settingsSave.classList.remove('saved-state');
+            }, 2000);
         } catch (e) { console.error('Failed to save settings:', e); notify('Failed to save settings'); }
     });
 
