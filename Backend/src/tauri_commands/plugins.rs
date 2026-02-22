@@ -576,7 +576,6 @@ pub fn get_plugin_settings(
     }
 
     let cfg = state.config();
-    migrate_legacy_git_settings_if_needed(&plugin_id, &cfg)?;
     let (defaults, _runtime) = resolve_plugin_settings_defaults(&state, &cfg, &plugin_id)?;
     let persisted = settings_store::load_settings(&plugin_id)?;
 
@@ -705,72 +704,6 @@ fn resolve_plugin_settings_defaults(
     }
 
     Ok((Vec::new(), runtime))
-}
-
-/// Seeds plugin-scoped settings from legacy host Git settings once.
-fn migrate_legacy_git_settings_if_needed(
-    plugin_id: &str,
-    cfg: &crate::settings::AppConfig,
-) -> Result<(), String> {
-    if !plugin_id.eq_ignore_ascii_case("openvcs.git") {
-        return Ok(());
-    }
-
-    let current = settings_store::load_settings(plugin_id)?;
-    if !current.is_empty() {
-        return Ok(());
-    }
-
-    let mut seeded = serde_json::Map::new();
-    seeded.insert(
-        "prune_on_fetch".to_string(),
-        serde_json::Value::Bool(cfg.git.prune_on_fetch),
-    );
-    seeded.insert(
-        "fetch_on_focus".to_string(),
-        serde_json::Value::Bool(cfg.git.fetch_on_focus),
-    );
-    seeded.insert(
-        "allow_hooks".to_string(),
-        serde_json::Value::String(
-            match cfg.git.allow_hooks {
-                crate::settings::HookPolicy::Allow => "allow",
-                crate::settings::HookPolicy::Ask => "ask",
-                crate::settings::HookPolicy::Deny => "deny",
-            }
-            .to_string(),
-        ),
-    );
-    seeded.insert(
-        "ssh_binary".to_string(),
-        serde_json::Value::String(
-            match cfg.git.ssh_binary {
-                crate::settings::GitSshBinary::Auto => "auto",
-                crate::settings::GitSshBinary::Host => "host",
-                crate::settings::GitSshBinary::Bundled => "bundled",
-                crate::settings::GitSshBinary::Custom => "custom",
-            }
-            .to_string(),
-        ),
-    );
-    seeded.insert(
-        "ssh_path".to_string(),
-        serde_json::Value::String(cfg.git.ssh_path.clone()),
-    );
-    seeded.insert(
-        "respect_core_autocrlf".to_string(),
-        serde_json::Value::Bool(cfg.git.respect_core_autocrlf),
-    );
-    seeded.insert(
-        "merge_commit_message_template".to_string(),
-        serde_json::Value::String(if cfg.git.merge_commit_message_template.trim().is_empty() {
-            "Merged branch '{branch:source}' into '{branch:target}'".to_string()
-        } else {
-            cfg.git.merge_commit_message_template.clone()
-        }),
-    );
-
-    settings_store::save_settings(plugin_id, &seeded)
 }
 
 /// Returns a stable string kind name for a typed setting.

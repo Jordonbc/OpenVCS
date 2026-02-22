@@ -21,67 +21,9 @@ use std::{
 
 const MODULE: &str = "plugin_vcs_backends";
 
-/// Default merge message template used for legacy migration.
-const DEFAULT_MERGE_TEMPLATE: &str = "Merged branch '{branch:source}' into '{branch:target}'";
-
 /// Returns plugin-scoped open config for a VCS backend plugin.
-fn plugin_open_config(cfg: &AppConfig, plugin_id: &str) -> serde_json::Value {
-    let mut settings = settings_store::load_settings(plugin_id).unwrap_or_default();
-
-    // Back-compat migration: if legacy host git settings exist but plugin settings are
-    // empty, seed the plugin settings once so VCS backends are plugin-scoped.
-    if settings.is_empty() && plugin_id.eq_ignore_ascii_case("openvcs.git") {
-        settings.insert(
-            "prune_on_fetch".to_string(),
-            serde_json::Value::Bool(cfg.git.prune_on_fetch),
-        );
-        settings.insert(
-            "fetch_on_focus".to_string(),
-            serde_json::Value::Bool(cfg.git.fetch_on_focus),
-        );
-        settings.insert(
-            "allow_hooks".to_string(),
-            serde_json::Value::String(
-                match cfg.git.allow_hooks {
-                    crate::settings::HookPolicy::Allow => "allow",
-                    crate::settings::HookPolicy::Ask => "ask",
-                    crate::settings::HookPolicy::Deny => "deny",
-                }
-                .to_string(),
-            ),
-        );
-        settings.insert(
-            "ssh_binary".to_string(),
-            serde_json::Value::String(
-                match cfg.git.ssh_binary {
-                    crate::settings::GitSshBinary::Auto => "auto",
-                    crate::settings::GitSshBinary::Host => "host",
-                    crate::settings::GitSshBinary::Bundled => "bundled",
-                    crate::settings::GitSshBinary::Custom => "custom",
-                }
-                .to_string(),
-            ),
-        );
-        settings.insert(
-            "ssh_path".to_string(),
-            serde_json::Value::String(cfg.git.ssh_path.clone()),
-        );
-        settings.insert(
-            "respect_core_autocrlf".to_string(),
-            serde_json::Value::Bool(cfg.git.respect_core_autocrlf),
-        );
-        settings.insert(
-            "merge_commit_message_template".to_string(),
-            serde_json::Value::String(if cfg.git.merge_commit_message_template.trim().is_empty() {
-                DEFAULT_MERGE_TEMPLATE.to_string()
-            } else {
-                cfg.git.merge_commit_message_template.clone()
-            }),
-        );
-        let _ = settings_store::save_settings(plugin_id, &settings);
-    }
-
-    serde_json::Value::Object(settings)
+fn plugin_open_config(plugin_id: &str) -> serde_json::Value {
+    serde_json::Value::Object(settings_store::load_settings(plugin_id).unwrap_or_default())
 }
 
 /// Determines whether a plugin is enabled considering config overrides.
@@ -422,7 +364,7 @@ pub fn open_repo_via_plugin_vcs_backend(
         desc.plugin_id
     );
 
-    let cfg_value = plugin_open_config(cfg, &desc.plugin_id);
+    let cfg_value = plugin_open_config(&desc.plugin_id);
 
     let workspace_root = std::fs::canonicalize(path).map_err(|e| VcsError::Backend {
         backend: backend_id.clone(),

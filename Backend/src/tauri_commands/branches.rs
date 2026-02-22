@@ -6,7 +6,9 @@ use log::{debug, error, info, warn};
 use tauri::State;
 
 use openvcs_core::models::{BranchItem, BranchKind};
+use openvcs_core::BackendId;
 
+use crate::plugin_vcs_backends;
 use crate::plugin_runtime::settings_store;
 use crate::state::AppState;
 
@@ -107,14 +109,14 @@ fn apply_merge_template(
         .replace("{repo:username}", repo_username)
 }
 
-/// Returns the merge commit message template from Git plugin settings.
-fn git_merge_message_template(state: &AppState) -> String {
-    let legacy = state.with_config(|cfg| cfg.git.merge_commit_message_template.clone());
-    let value = settings_store::load_settings("openvcs.git")
+/// Returns the merge message template from the active backend plugin settings.
+fn backend_merge_message_template(backend_id: &BackendId) -> String {
+    let value = plugin_vcs_backends::plugin_vcs_backend_descriptor(backend_id)
         .ok()
+        .and_then(|descriptor| settings_store::load_settings(&descriptor.plugin_id).ok())
         .and_then(|settings| settings.get("merge_commit_message_template").cloned())
         .and_then(|value| value.as_str().map(str::to_string))
-        .unwrap_or(legacy);
+        .unwrap_or_default();
 
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -392,7 +394,7 @@ pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Resul
     }
     let repo = current_repo_or_err(&state)?;
     let branch = name.to_string();
-    let template = git_merge_message_template(&state);
+    let template = backend_merge_message_template(&repo.id());
     run_repo_task("git_merge_branch", repo, move |repo| {
         let vcs = repo.inner();
         let target_branch = vcs

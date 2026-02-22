@@ -114,21 +114,6 @@ impl AppState {
         self.config.read().clone()
     }
 
-    /// Read-only closure access (avoid cloning if you’re just reading).
-    ///
-    /// # Parameters
-    /// - `f`: Closure invoked with a shared reference to the current config.
-    ///
-    /// # Returns
-    /// - Whatever value the closure returns.
-    pub fn with_config<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&AppConfig) -> R,
-    {
-        let cfg = self.config.read();
-        f(&cfg)
-    }
-
     /// Replace whole config: validate → save → swap (readers never see an unsaved state).
     ///
     /// # Parameters
