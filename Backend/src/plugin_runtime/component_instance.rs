@@ -1727,6 +1727,7 @@ fn map_menu_from_wit(menu: plugin_api_v1_1::Menu) -> Menu {
 fn map_setting_from_wit(setting: plugin_api_v1_1::SettingKv) -> SettingKv {
     SettingKv {
         id: setting.id,
+        label: setting.label,
         value: match setting.value {
             plugin_api_v1_1::SettingValue::Boolean(v) => SettingValue::Bool(v),
             plugin_api_v1_1::SettingValue::Signed32(v) => SettingValue::S32(v),
@@ -1741,6 +1742,7 @@ fn map_setting_from_wit(setting: plugin_api_v1_1::SettingKv) -> SettingKv {
 fn map_setting_from_vcs_wit(setting: vcs_settings_api::SettingKv) -> SettingKv {
     SettingKv {
         id: setting.id,
+        label: setting.label,
         value: match setting.value {
             vcs_settings_api::SettingValue::Boolean(v) => SettingValue::Bool(v),
             vcs_settings_api::SettingValue::Signed32(v) => SettingValue::S32(v),
@@ -1762,6 +1764,7 @@ fn map_setting_to_wit(setting: SettingKv) -> plugin_api_v1_1::SettingKv {
     };
     plugin_api_v1_1::SettingKv {
         id: setting.id,
+        label: setting.label,
         value,
     }
 }
@@ -1777,6 +1780,7 @@ fn map_setting_to_vcs_wit(setting: SettingKv) -> vcs_settings_api::SettingKv {
     };
     vcs_settings_api::SettingKv {
         id: setting.id,
+        label: setting.label,
         value,
     }
 }

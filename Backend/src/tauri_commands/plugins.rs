@@ -589,9 +589,9 @@ pub fn get_plugin_settings(
                 .unwrap_or_else(|| default.value.clone());
 
             PluginSettingFieldPayload {
-                id,
+                id: id.clone(),
                 kind: setting_kind_name(&default.value).to_string(),
-                label: default.id,
+                label: default.label.unwrap_or(id),
                 description: None,
                 default_value: setting_value_to_json(&default.value),
                 value: setting_value_to_json(&effective_value),
