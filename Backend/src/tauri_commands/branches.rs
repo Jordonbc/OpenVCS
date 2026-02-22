@@ -8,8 +8,8 @@ use tauri::State;
 use openvcs_core::models::{BranchItem, BranchKind};
 use openvcs_core::BackendId;
 
-use crate::plugin_vcs_backends;
 use crate::plugin_runtime::settings_store;
+use crate::plugin_vcs_backends;
 use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};
