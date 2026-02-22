@@ -59,7 +59,7 @@ Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 
 ## Features (Current)
 
-- 🔗 **Git support** with a selectable backend (**system Git** by default; **libgit2** optional).
+- 🔗 **Git support** via the built-in `openvcs.git` plugin (System Git execution).
 - 📁 **Repo workflows:** clone, open existing repos, recent repos list, optional reopen of last repo on launch.
 - ✅ **Status & diffs:** working tree status, per-file diff, commit diff, discard changes.
 - 🧩 **Staging & commits:** stage files, partial staging/commits via patch, commit from index.
@@ -127,7 +127,7 @@ A Flatpak manifest exists under `packaging/flatpak/`, but Flatpak support is cur
 
 Known issues/limitations:
 
-- The sandbox does not provide `git`, but OpenVCS currently defaults to the **system Git** backend; in Flatpak you may need to switch to the **libgit2** backend in settings.
+- The sandbox does not provide `git`, and OpenVCS currently relies on **system Git** via plugin execution.
 - If the frontend assets are not included correctly, the app can show a blank window / “could not connect to localhost” (dev server) instead of loading `Frontend/dist`.
 
 For local build notes see `packaging/flatpak/README.md`.

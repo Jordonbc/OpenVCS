@@ -286,6 +286,7 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::set_plugin_permissions,
         tauri_commands::list_plugin_menus,
         tauri_commands::invoke_plugin_action,
+        tauri_commands::get_plugin_settings,
         tauri_commands::save_plugin_settings,
         tauri_commands::reset_plugin_settings,
         tauri_commands::get_global_settings,

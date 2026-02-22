@@ -509,11 +509,16 @@ async function boot() {
     async function onFocus() {
         if (focusInFlight) return focusInFlight;
         focusInFlight = (async () => {
-        let doFetch = false;
+        let doFetch = true;
         if (TAURI.has) {
             try {
-                const cfg = await TAURI.invoke<any>('get_global_settings');
-                doFetch = cfg?.git?.fetch_on_focus !== false; // default true when unset
+                const fields = await TAURI.invoke<Array<{ id: string; value: unknown }>>('get_plugin_settings', {
+                    pluginId: 'openvcs.git',
+                });
+                const fetchSetting = (Array.isArray(fields) ? fields : []).find((field) => String(field?.id || '').trim() === 'fetch_on_focus');
+                if (fetchSetting && typeof fetchSetting.value === 'boolean') {
+                    doFetch = fetchSetting.value;
+                }
             } catch {}
         }
         if (doFetch) {

@@ -57,6 +57,7 @@ mod bindings_plugin_v1_1 {
 }
 
 use bindings_plugin_v1_1::exports::openvcs::plugin::plugin_api_v1_1;
+use bindings_vcs::exports::openvcs::plugin::plugin_api_v1_1 as vcs_settings_api;
 use bindings_vcs::exports::openvcs::plugin::vcs_api;
 
 /// Typed bindings handle selected for the running plugin world.
@@ -82,7 +83,7 @@ impl ComponentRuntime {
     fn call_init(&mut self, plugin_id: &str) -> Result<(), String> {
         match &self.bindings {
             ComponentBindings::Vcs(bindings) => bindings
-                .openvcs_plugin_plugin_api()
+                .openvcs_plugin_plugin_api_v1_1()
                 .call_init(&mut self.store)
                 .map_err(|e| format!("component init trap for {}: {e}", plugin_id))?
                 .map_err(|e| format!("component init failed for {}: {}", plugin_id, e.message)),
@@ -104,7 +105,7 @@ impl ComponentRuntime {
         match &self.bindings {
             ComponentBindings::Vcs(bindings) => {
                 let _ = bindings
-                    .openvcs_plugin_plugin_api()
+                    .openvcs_plugin_plugin_api_v1_1()
                     .call_deinit(&mut self.store);
             }
             ComponentBindings::Plugin(bindings) => {
@@ -159,21 +160,39 @@ impl ComponentRuntime {
 
     /// Returns plugin settings defaults for v1.1 plugins.
     fn call_settings_defaults(&mut self, plugin_id: &str) -> Result<Vec<SettingKv>, String> {
-        let bindings = match &self.bindings {
-            ComponentBindings::PluginV11(bindings) => bindings,
-            _ => return Ok(Vec::new()),
-        };
-        let values = bindings
-            .openvcs_plugin_plugin_api_v1_1()
-            .call_settings_defaults(&mut self.store)
-            .map_err(|e| format!("component settings-defaults trap for {}: {e}", plugin_id))?
-            .map_err(|e| {
-                format!(
-                    "component settings-defaults failed for {}: {}",
-                    plugin_id, e.message
-                )
-            })?;
-        Ok(values.into_iter().map(map_setting_from_wit).collect())
+        match &self.bindings {
+            ComponentBindings::PluginV11(bindings) => {
+                let values = bindings
+                    .openvcs_plugin_plugin_api_v1_1()
+                    .call_settings_defaults(&mut self.store)
+                    .map_err(|e| {
+                        format!("component settings-defaults trap for {}: {e}", plugin_id)
+                    })?
+                    .map_err(|e| {
+                        format!(
+                            "component settings-defaults failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })?;
+                Ok(values.into_iter().map(map_setting_from_wit).collect())
+            }
+            ComponentBindings::Vcs(bindings) => {
+                let values = bindings
+                    .openvcs_plugin_plugin_api_v1_1()
+                    .call_settings_defaults(&mut self.store)
+                    .map_err(|e| {
+                        format!("component settings-defaults trap for {}: {e}", plugin_id)
+                    })?
+                    .map_err(|e| {
+                        format!(
+                            "component settings-defaults failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })?;
+                Ok(values.into_iter().map(map_setting_from_vcs_wit).collect())
+            }
+            _ => Ok(Vec::new()),
+        }
     }
 
     /// Calls plugin settings-on-load hook for v1.1 plugins.
@@ -182,25 +201,43 @@ impl ComponentRuntime {
         plugin_id: &str,
         values: Vec<SettingKv>,
     ) -> Result<Vec<SettingKv>, String> {
-        let bindings = match &self.bindings {
-            ComponentBindings::PluginV11(bindings) => bindings,
-            _ => return Ok(values),
-        };
-        let values = values
-            .into_iter()
-            .map(map_setting_to_wit)
-            .collect::<Vec<_>>();
-        let out = bindings
-            .openvcs_plugin_plugin_api_v1_1()
-            .call_settings_on_load(&mut self.store, &values)
-            .map_err(|e| format!("component settings-on-load trap for {}: {e}", plugin_id))?
-            .map_err(|e| {
-                format!(
-                    "component settings-on-load failed for {}: {}",
-                    plugin_id, e.message
-                )
-            })?;
-        Ok(out.into_iter().map(map_setting_from_wit).collect())
+        match &self.bindings {
+            ComponentBindings::PluginV11(bindings) => {
+                let values = values
+                    .into_iter()
+                    .map(map_setting_to_wit)
+                    .collect::<Vec<_>>();
+                let out = bindings
+                    .openvcs_plugin_plugin_api_v1_1()
+                    .call_settings_on_load(&mut self.store, &values)
+                    .map_err(|e| format!("component settings-on-load trap for {}: {e}", plugin_id))?
+                    .map_err(|e| {
+                        format!(
+                            "component settings-on-load failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })?;
+                Ok(out.into_iter().map(map_setting_from_wit).collect())
+            }
+            ComponentBindings::Vcs(bindings) => {
+                let values = values
+                    .into_iter()
+                    .map(map_setting_to_vcs_wit)
+                    .collect::<Vec<_>>();
+                let out = bindings
+                    .openvcs_plugin_plugin_api_v1_1()
+                    .call_settings_on_load(&mut self.store, &values)
+                    .map_err(|e| format!("component settings-on-load trap for {}: {e}", plugin_id))?
+                    .map_err(|e| {
+                        format!(
+                            "component settings-on-load failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })?;
+                Ok(out.into_iter().map(map_setting_from_vcs_wit).collect())
+            }
+            _ => Ok(values),
+        }
     }
 
     /// Calls plugin settings-on-apply hook for v1.1 plugins.
@@ -209,24 +246,45 @@ impl ComponentRuntime {
         plugin_id: &str,
         values: Vec<SettingKv>,
     ) -> Result<(), String> {
-        let bindings = match &self.bindings {
-            ComponentBindings::PluginV11(bindings) => bindings,
-            _ => return Ok(()),
-        };
-        let values = values
-            .into_iter()
-            .map(map_setting_to_wit)
-            .collect::<Vec<_>>();
-        bindings
-            .openvcs_plugin_plugin_api_v1_1()
-            .call_settings_on_apply(&mut self.store, &values)
-            .map_err(|e| format!("component settings-on-apply trap for {}: {e}", plugin_id))?
-            .map_err(|e| {
-                format!(
-                    "component settings-on-apply failed for {}: {}",
-                    plugin_id, e.message
-                )
-            })
+        match &self.bindings {
+            ComponentBindings::PluginV11(bindings) => {
+                let values = values
+                    .into_iter()
+                    .map(map_setting_to_wit)
+                    .collect::<Vec<_>>();
+                bindings
+                    .openvcs_plugin_plugin_api_v1_1()
+                    .call_settings_on_apply(&mut self.store, &values)
+                    .map_err(|e| {
+                        format!("component settings-on-apply trap for {}: {e}", plugin_id)
+                    })?
+                    .map_err(|e| {
+                        format!(
+                            "component settings-on-apply failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })
+            }
+            ComponentBindings::Vcs(bindings) => {
+                let values = values
+                    .into_iter()
+                    .map(map_setting_to_vcs_wit)
+                    .collect::<Vec<_>>();
+                bindings
+                    .openvcs_plugin_plugin_api_v1_1()
+                    .call_settings_on_apply(&mut self.store, &values)
+                    .map_err(|e| {
+                        format!("component settings-on-apply trap for {}: {e}", plugin_id)
+                    })?
+                    .map_err(|e| {
+                        format!(
+                            "component settings-on-apply failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })
+            }
+            _ => Ok(()),
+        }
     }
 
     /// Calls plugin settings-on-save hook for v1.1 plugins.
@@ -235,43 +293,70 @@ impl ComponentRuntime {
         plugin_id: &str,
         values: Vec<SettingKv>,
     ) -> Result<Vec<SettingKv>, String> {
-        let bindings = match &self.bindings {
-            ComponentBindings::PluginV11(bindings) => bindings,
-            _ => return Ok(values),
-        };
-        let values = values
-            .into_iter()
-            .map(map_setting_to_wit)
-            .collect::<Vec<_>>();
-        let out = bindings
-            .openvcs_plugin_plugin_api_v1_1()
-            .call_settings_on_save(&mut self.store, &values)
-            .map_err(|e| format!("component settings-on-save trap for {}: {e}", plugin_id))?
-            .map_err(|e| {
-                format!(
-                    "component settings-on-save failed for {}: {}",
-                    plugin_id, e.message
-                )
-            })?;
-        Ok(out.into_iter().map(map_setting_from_wit).collect())
+        match &self.bindings {
+            ComponentBindings::PluginV11(bindings) => {
+                let values = values
+                    .into_iter()
+                    .map(map_setting_to_wit)
+                    .collect::<Vec<_>>();
+                let out = bindings
+                    .openvcs_plugin_plugin_api_v1_1()
+                    .call_settings_on_save(&mut self.store, &values)
+                    .map_err(|e| format!("component settings-on-save trap for {}: {e}", plugin_id))?
+                    .map_err(|e| {
+                        format!(
+                            "component settings-on-save failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })?;
+                Ok(out.into_iter().map(map_setting_from_wit).collect())
+            }
+            ComponentBindings::Vcs(bindings) => {
+                let values = values
+                    .into_iter()
+                    .map(map_setting_to_vcs_wit)
+                    .collect::<Vec<_>>();
+                let out = bindings
+                    .openvcs_plugin_plugin_api_v1_1()
+                    .call_settings_on_save(&mut self.store, &values)
+                    .map_err(|e| format!("component settings-on-save trap for {}: {e}", plugin_id))?
+                    .map_err(|e| {
+                        format!(
+                            "component settings-on-save failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })?;
+                Ok(out.into_iter().map(map_setting_from_vcs_wit).collect())
+            }
+            _ => Ok(values),
+        }
     }
 
     /// Calls plugin settings-on-reset hook for v1.1 plugins.
     fn call_settings_on_reset(&mut self, plugin_id: &str) -> Result<(), String> {
-        let bindings = match &self.bindings {
-            ComponentBindings::PluginV11(bindings) => bindings,
-            _ => return Ok(()),
-        };
-        bindings
-            .openvcs_plugin_plugin_api_v1_1()
-            .call_settings_on_reset(&mut self.store)
-            .map_err(|e| format!("component settings-on-reset trap for {}: {e}", plugin_id))?
-            .map_err(|e| {
-                format!(
-                    "component settings-on-reset failed for {}: {}",
-                    plugin_id, e.message
-                )
-            })
+        match &self.bindings {
+            ComponentBindings::PluginV11(bindings) => bindings
+                .openvcs_plugin_plugin_api_v1_1()
+                .call_settings_on_reset(&mut self.store)
+                .map_err(|e| format!("component settings-on-reset trap for {}: {e}", plugin_id))?
+                .map_err(|e| {
+                    format!(
+                        "component settings-on-reset failed for {}: {}",
+                        plugin_id, e.message
+                    )
+                }),
+            ComponentBindings::Vcs(bindings) => bindings
+                .openvcs_plugin_plugin_api_v1_1()
+                .call_settings_on_reset(&mut self.store)
+                .map_err(|e| format!("component settings-on-reset trap for {}: {e}", plugin_id))?
+                .map_err(|e| {
+                    format!(
+                        "component settings-on-reset failed for {}: {}",
+                        plugin_id, e.message
+                    )
+                }),
+            _ => Ok(()),
+        }
     }
 }
 
@@ -869,7 +954,10 @@ impl ComponentPluginRuntimeInstance {
 
     /// Loads and applies persisted plugin settings for v1.1 plugins.
     fn apply_persisted_settings(&self, runtime: &mut ComponentRuntime) -> Result<(), String> {
-        if !matches!(runtime.bindings, ComponentBindings::PluginV11(_)) {
+        if !matches!(
+            runtime.bindings,
+            ComponentBindings::PluginV11(_) | ComponentBindings::Vcs(_)
+        ) {
             return Ok(());
         }
 
@@ -1649,6 +1737,20 @@ fn map_setting_from_wit(setting: plugin_api_v1_1::SettingKv) -> SettingKv {
     }
 }
 
+/// Maps settings value from VCS settings interface into core settings model.
+fn map_setting_from_vcs_wit(setting: vcs_settings_api::SettingKv) -> SettingKv {
+    SettingKv {
+        id: setting.id,
+        value: match setting.value {
+            vcs_settings_api::SettingValue::Boolean(v) => SettingValue::Bool(v),
+            vcs_settings_api::SettingValue::Signed32(v) => SettingValue::S32(v),
+            vcs_settings_api::SettingValue::Unsigned32(v) => SettingValue::U32(v),
+            vcs_settings_api::SettingValue::Float64(v) => SettingValue::F64(v),
+            vcs_settings_api::SettingValue::Text(v) => SettingValue::String(v),
+        },
+    }
+}
+
 /// Converts a shared core setting entry into a v1.1 WIT setting model.
 fn map_setting_to_wit(setting: SettingKv) -> plugin_api_v1_1::SettingKv {
     let value = match setting.value {
@@ -1659,6 +1761,21 @@ fn map_setting_to_wit(setting: SettingKv) -> plugin_api_v1_1::SettingKv {
         SettingValue::String(v) => plugin_api_v1_1::SettingValue::Text(v),
     };
     plugin_api_v1_1::SettingKv {
+        id: setting.id,
+        value,
+    }
+}
+
+/// Maps core settings model into VCS settings interface values.
+fn map_setting_to_vcs_wit(setting: SettingKv) -> vcs_settings_api::SettingKv {
+    let value = match setting.value {
+        SettingValue::Bool(v) => vcs_settings_api::SettingValue::Boolean(v),
+        SettingValue::S32(v) => vcs_settings_api::SettingValue::Signed32(v),
+        SettingValue::U32(v) => vcs_settings_api::SettingValue::Unsigned32(v),
+        SettingValue::F64(v) => vcs_settings_api::SettingValue::Float64(v),
+        SettingValue::String(v) => vcs_settings_api::SettingValue::Text(v),
+    };
+    vcs_settings_api::SettingKv {
         id: setting.id,
         value,
     }

@@ -601,7 +601,10 @@ pub fn host_process_exec(
         cmd.env(k, v);
     }
     for (k, v) in env {
-        if matches!(k.as_str(), "GIT_SSH_COMMAND" | "GIT_TERMINAL_PROMPT") {
+        if matches!(
+            k.as_str(),
+            "GIT_SSH_COMMAND" | "GIT_TERMINAL_PROMPT" | "OPENVCS_SSH_MODE" | "OPENVCS_SSH"
+        ) {
             cmd.env(k, v);
         }
     }

@@ -3,6 +3,7 @@
 use crate::plugin_bundles::{
     ApprovalState, InstalledPlugin, InstalledPluginIndex, PluginBundleStore,
 };
+use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::settings_store;
 use crate::plugins;
 use crate::state::AppState;
@@ -10,6 +11,7 @@ use log::{debug, error, info, trace, warn};
 use openvcs_core::settings::{SettingKv, SettingValue};
 use openvcs_core::ui::{Menu, UiElement};
 use serde_json::Value;
+use std::sync::Arc;
 use tauri::Emitter;
 use tauri::Manager;
 use tauri::{Runtime, State, Window};
@@ -21,6 +23,38 @@ pub struct PluginSettingEntry {
     pub id: String,
     /// JSON value persisted by the host.
     pub value: Value,
+}
+
+/// Choice item for settings rendered as a select input.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PluginSettingOptionPayload {
+    /// Persisted value for the option.
+    pub value: String,
+    /// User-visible option label.
+    pub label: String,
+}
+
+/// Plugin setting metadata and current value payload.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PluginSettingFieldPayload {
+    /// Stable setting id.
+    pub id: String,
+    /// Setting value kind (`bool`, `s32`, `u32`, `f64`, `text`).
+    pub kind: String,
+    /// User-visible label.
+    pub label: String,
+    /// Optional help text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Default setting value.
+    pub default_value: Value,
+    /// Effective current value (persisted override or default).
+    pub value: Value,
+    /// Optional options for text-select style inputs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<PluginSettingOptionPayload>,
+    /// Origin of this schema (`runtime`).
+    pub source: String,
 }
 
 /// JSON-friendly plugin menu payload returned to frontend.
@@ -522,6 +556,53 @@ pub fn invoke_plugin_action(
     runtime.handle_action(action_id.trim())
 }
 
+/// Returns plugin settings schema with effective values.
+///
+/// # Parameters
+/// - `state`: Application state.
+/// - `plugin_id`: Plugin id.
+///
+/// # Returns
+/// - `Ok(Vec<PluginSettingFieldPayload>)` schema and values.
+/// - `Err(String)` when plugin/settings resolution fails.
+#[tauri::command]
+pub fn get_plugin_settings(
+    state: State<'_, AppState>,
+    plugin_id: String,
+) -> Result<Vec<PluginSettingFieldPayload>, String> {
+    let plugin_id = plugin_id.trim().to_string();
+    if plugin_id.is_empty() {
+        return Err("plugin id is empty".to_string());
+    }
+
+    let cfg = state.config();
+    migrate_legacy_git_settings_if_needed(&plugin_id, &cfg)?;
+    let (defaults, _runtime) = resolve_plugin_settings_defaults(&state, &cfg, &plugin_id)?;
+    let persisted = settings_store::load_settings(&plugin_id)?;
+
+    Ok(defaults
+        .into_iter()
+        .map(|default| {
+            let id = default.id.trim().to_string();
+            let effective_value = persisted
+                .get(&id)
+                .and_then(|raw| setting_from_json(&id, raw, &default.value).ok())
+                .unwrap_or_else(|| default.value.clone());
+
+            PluginSettingFieldPayload {
+                id,
+                kind: setting_kind_name(&default.value).to_string(),
+                label: default.id,
+                description: None,
+                default_value: setting_value_to_json(&default.value),
+                value: setting_value_to_json(&effective_value),
+                options: Vec::new(),
+                source: "runtime".to_string(),
+            }
+        })
+        .collect::<Vec<_>>())
+}
+
 /// Saves plugin settings and applies them immediately.
 ///
 /// # Parameters
@@ -544,14 +625,24 @@ pub fn save_plugin_settings(
     }
 
     let cfg = state.config();
-    let runtime = state
-        .plugin_runtime()
-        .runtime_for_workspace_with_config(&cfg, &plugin_id, None)?;
-    let defaults = runtime.settings_defaults()?;
+    let (defaults, runtime) = resolve_plugin_settings_defaults(&state, &cfg, &plugin_id)?;
+    if defaults.is_empty() {
+        return Err(format!("plugin `{plugin_id}` does not declare settings"));
+    }
     let incoming = merge_settings_with_defaults(defaults, values)?;
-    let normalized = runtime.settings_on_save(incoming)?;
+
+    let normalized = if let Some(runtime) = runtime.as_ref() {
+        runtime.settings_on_save(incoming)?
+    } else {
+        incoming
+    };
+
     settings_store::save_settings(&plugin_id, &settings_to_json_map(&normalized))?;
-    runtime.settings_on_apply(normalized)
+
+    if let Some(runtime) = runtime {
+        runtime.settings_on_apply(normalized)?;
+    }
+    Ok(())
 }
 
 /// Resets plugin settings to defaults and applies them immediately.
@@ -571,13 +662,126 @@ pub fn reset_plugin_settings(state: State<'_, AppState>, plugin_id: String) -> R
     }
 
     let cfg = state.config();
-    let runtime = state
-        .plugin_runtime()
-        .runtime_for_workspace_with_config(&cfg, &plugin_id, None)?;
-    runtime.settings_on_reset()?;
+    let (_defaults, runtime) = resolve_plugin_settings_defaults(&state, &cfg, &plugin_id)?;
+
+    if let Some(runtime) = runtime.as_ref() {
+        runtime.settings_on_reset()?;
+    }
+
     settings_store::reset_settings(&plugin_id)?;
-    let defaults = runtime.settings_defaults()?;
-    runtime.settings_on_apply(defaults)
+
+    if let Some(runtime) = runtime {
+        let defaults = runtime.settings_defaults()?;
+        runtime.settings_on_apply(defaults)?;
+    }
+
+    Ok(())
+}
+
+/// Resolves plugin settings defaults from runtime hooks.
+fn resolve_plugin_settings_defaults(
+    state: &AppState,
+    cfg: &crate::settings::AppConfig,
+    plugin_id: &str,
+) -> Result<(Vec<SettingKv>, Option<Arc<dyn PluginRuntimeInstance>>), String> {
+    let mut runtime = state
+        .plugin_runtime()
+        .runtime_for_workspace_with_config(cfg, plugin_id, None)
+        .ok();
+
+    if runtime.is_none() {
+        let _ = state.plugin_runtime().start_plugin(plugin_id);
+        runtime = state
+            .plugin_runtime()
+            .runtime_for_workspace_with_config(cfg, plugin_id, None)
+            .ok();
+    }
+
+    if let Some(runtime_ref) = runtime.as_ref() {
+        let runtime_defaults = runtime_ref.settings_defaults()?;
+        if !runtime_defaults.is_empty() {
+            return Ok((runtime_defaults, runtime));
+        }
+    }
+
+    Ok((Vec::new(), runtime))
+}
+
+/// Seeds plugin-scoped settings from legacy host Git settings once.
+fn migrate_legacy_git_settings_if_needed(
+    plugin_id: &str,
+    cfg: &crate::settings::AppConfig,
+) -> Result<(), String> {
+    if !plugin_id.eq_ignore_ascii_case("openvcs.git") {
+        return Ok(());
+    }
+
+    let current = settings_store::load_settings(plugin_id)?;
+    if !current.is_empty() {
+        return Ok(());
+    }
+
+    let mut seeded = serde_json::Map::new();
+    seeded.insert(
+        "prune_on_fetch".to_string(),
+        serde_json::Value::Bool(cfg.git.prune_on_fetch),
+    );
+    seeded.insert(
+        "fetch_on_focus".to_string(),
+        serde_json::Value::Bool(cfg.git.fetch_on_focus),
+    );
+    seeded.insert(
+        "allow_hooks".to_string(),
+        serde_json::Value::String(
+            match cfg.git.allow_hooks {
+                crate::settings::HookPolicy::Allow => "allow",
+                crate::settings::HookPolicy::Ask => "ask",
+                crate::settings::HookPolicy::Deny => "deny",
+            }
+            .to_string(),
+        ),
+    );
+    seeded.insert(
+        "ssh_binary".to_string(),
+        serde_json::Value::String(
+            match cfg.git.ssh_binary {
+                crate::settings::GitSshBinary::Auto => "auto",
+                crate::settings::GitSshBinary::Host => "host",
+                crate::settings::GitSshBinary::Bundled => "bundled",
+                crate::settings::GitSshBinary::Custom => "custom",
+            }
+            .to_string(),
+        ),
+    );
+    seeded.insert(
+        "ssh_path".to_string(),
+        serde_json::Value::String(cfg.git.ssh_path.clone()),
+    );
+    seeded.insert(
+        "respect_core_autocrlf".to_string(),
+        serde_json::Value::Bool(cfg.git.respect_core_autocrlf),
+    );
+    seeded.insert(
+        "merge_commit_message_template".to_string(),
+        serde_json::Value::String(if cfg.git.merge_commit_message_template.trim().is_empty() {
+            "Merged branch '{branch:source}' into '{branch:target}'".to_string()
+        } else {
+            cfg.git.merge_commit_message_template.clone()
+        }),
+    );
+
+    settings_store::save_settings(plugin_id, &seeded)
+}
+
+/// Returns a stable string kind name for a typed setting.
+fn setting_kind_name(value: &SettingValue) -> &'static str {
+    match value {
+        SettingValue::Bool(_) => "bool",
+        SettingValue::S32(_) => "s32",
+        SettingValue::U32(_) => "u32",
+        SettingValue::F64(_) => "f64",
+        SettingValue::String(_) => "text",
+    }
 }
 
 /// Merges incoming frontend values into typed defaults.

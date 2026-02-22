@@ -28,6 +28,21 @@ interface PluginMenuPayload {
     }>;
 }
 
+interface PluginSettingOptionPayload {
+    value: string;
+    label: string;
+}
+
+interface PluginSettingFieldPayload {
+    id: string;
+    kind: 'bool' | 's32' | 'u32' | 'f64' | 'text' | string;
+    label: string;
+    description?: string | null;
+    default_value: unknown;
+    value: unknown;
+    options?: PluginSettingOptionPayload[];
+}
+
 function pluginSectionId(pluginId: string, menuId: string): string {
     return `plugin-${toKebab(`${pluginId}-${menuId}`)}`;
 }
@@ -92,10 +107,12 @@ async function renderPluginMenus(modal: HTMLElement): Promise<void> {
     }
 
     const pluginSources = new Map<string, string>();
+    const pluginNames = new Map<string, string>();
     for (const summary of Array.isArray(pluginSummaries) ? pluginSummaries : []) {
         const id = String(summary?.id || '').trim().toLowerCase();
         if (!id) continue;
         pluginSources.set(id, String(summary?.source || '').trim().toLowerCase());
+        pluginNames.set(id, String(summary?.name || summary?.id || '').trim() || id);
     }
 
     const pluginsNavBtn = nav.querySelector<HTMLElement>('[data-section="plugins"]');
@@ -175,6 +192,119 @@ async function renderPluginMenus(modal: HTMLElement): Promise<void> {
             }
             panel.appendChild(group);
         }
+        panelsScroll.appendChild(panel);
+    }
+
+    for (const summary of Array.isArray(pluginSummaries) ? pluginSummaries : []) {
+        const pluginId = String(summary?.id || '').trim();
+        const pluginKey = pluginId.toLowerCase();
+        if (!pluginId) continue;
+
+        let fields: PluginSettingFieldPayload[] = [];
+        try {
+            fields = await TAURI.invoke<PluginSettingFieldPayload[]>('get_plugin_settings', { pluginId });
+        } catch {
+            continue;
+        }
+        if (!Array.isArray(fields) || fields.length === 0) continue;
+
+        const section = `plugin-settings-${toKebab(pluginId)}`;
+        const navLi = document.createElement('li');
+        navLi.dataset.pluginMenu = 'true';
+        const navBtn = document.createElement('button');
+        navBtn.className = 'seg-btn';
+        navBtn.setAttribute('data-section', section);
+        navBtn.textContent = pluginNames.get(pluginKey) || pluginId;
+        navLi.appendChild(navBtn);
+        ensureThirdPartySublist().appendChild(navLi);
+
+        const panel = document.createElement('form');
+        panel.className = 'panel-form hidden';
+        panel.setAttribute('data-panel', section);
+        panel.setAttribute('data-plugin-menu', 'true');
+        panel.dataset.pluginId = pluginId;
+        panel.dataset.pluginSettings = 'true';
+
+        const settingsWrap = document.createElement('div');
+        settingsWrap.className = 'group';
+        const heading = document.createElement('h4');
+        heading.className = 'settings-section-title';
+        heading.textContent = 'Settings';
+        settingsWrap.appendChild(heading);
+
+        const controls = new Map<string, HTMLInputElement | HTMLSelectElement>();
+        for (const field of fields) {
+            const settingId = String(field?.id || '').trim();
+            if (!settingId) continue;
+            const kind = String(field?.kind || '').trim().toLowerCase();
+
+            const row = document.createElement('div');
+            row.className = 'group';
+
+            const hasOptions = Array.isArray(field.options) && field.options.length > 0;
+            let control: HTMLInputElement | HTMLSelectElement;
+
+            if (kind === 'bool') {
+                const labelEl = document.createElement('label');
+                labelEl.className = 'checkbox';
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.checked = Boolean(field.value);
+                labelEl.appendChild(input);
+                labelEl.append(` ${String(field?.label || settingId).trim() || settingId}`);
+                control = input;
+                row.appendChild(labelEl);
+            } else if (kind === 'text' && hasOptions) {
+                const labelEl = document.createElement('label');
+                labelEl.textContent = String(field?.label || settingId).trim() || settingId;
+                row.appendChild(labelEl);
+                const select = document.createElement('select');
+                for (const option of field.options || []) {
+                    const opt = document.createElement('option');
+                    opt.value = String(option?.value || '');
+                    opt.textContent = String(option?.label || option?.value || '').trim() || opt.value;
+                    select.appendChild(opt);
+                }
+                const value = String(field?.value ?? '');
+                if (value && Array.from(select.options).some((opt) => opt.value === value)) {
+                    select.value = value;
+                }
+                control = select;
+                row.appendChild(control);
+            } else {
+                const labelEl = document.createElement('label');
+                labelEl.textContent = String(field?.label || settingId).trim() || settingId;
+                row.appendChild(labelEl);
+                const input = document.createElement('input');
+                if (kind === 's32' || kind === 'u32' || kind === 'f64') {
+                    input.type = 'number';
+                    input.step = kind === 'f64' ? 'any' : '1';
+                    if (kind === 'u32') input.min = '0';
+                    const n = Number(field?.value ?? field?.default_value ?? 0);
+                    input.value = Number.isFinite(n) ? String(n) : '0';
+                } else {
+                    input.type = 'text';
+                    input.value = String(field?.value ?? field?.default_value ?? '');
+                }
+                control = input;
+                row.appendChild(control);
+            }
+
+            control.setAttribute('data-setting-id', settingId);
+            control.setAttribute('data-setting-kind', kind);
+            controls.set(settingId, control);
+
+            const description = String(field?.description || '').trim();
+            if (description) {
+                const hint = document.createElement('small');
+                hint.textContent = description;
+                row.appendChild(hint);
+            }
+
+            settingsWrap.appendChild(row);
+        }
+
+        panel.appendChild(settingsWrap);
         panelsScroll.appendChild(panel);
     }
 }
@@ -266,13 +396,55 @@ function activateSection(modal: HTMLElement, section: string) {
         p.classList.toggle('hidden', p.getAttribute('data-panel') !== safeSection);
     });
 
-    // Plugins are applied immediately (no Save/Cancel).
+    // Keep footer actions hidden for action-only plugin menu panels.
     const actions = modal.querySelector<HTMLElement>('.sheet-actions');
     const activePanel = panels.querySelector<HTMLElement>(
         `.panel-form[data-panel="${CSS.escape(safeSection)}"]`,
     );
     const isPluginMenuPanel = activePanel?.getAttribute('data-plugin-menu') === 'true';
-    if (actions) actions.classList.toggle('hidden', safeSection === 'plugins' || isPluginMenuPanel);
+    const isPluginSettingsPanel = activePanel?.getAttribute('data-plugin-settings') === 'true';
+    const hideActions = safeSection === 'plugins' || (isPluginMenuPanel && !isPluginSettingsPanel);
+    if (actions) actions.classList.toggle('hidden', hideActions);
+}
+
+/** Collects typed plugin setting values from a plugin-settings panel. */
+function collectPluginSettingsFromPanel(
+    panel: HTMLElement,
+): Array<{ id: string; value: unknown }> {
+    const entries: Array<{ id: string; value: unknown }> = [];
+    const controls = panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+        '[data-setting-id][data-setting-kind]',
+    );
+
+    for (const control of controls) {
+        const settingId = String(control.getAttribute('data-setting-id') || '').trim();
+        const kind = String(control.getAttribute('data-setting-kind') || '')
+            .trim()
+            .toLowerCase();
+        if (!settingId || !kind) continue;
+
+        let value: unknown;
+        if (kind === 'bool' && control instanceof HTMLInputElement) {
+            value = control.checked;
+        } else if (kind === 's32' || kind === 'u32' || kind === 'f64') {
+            const n = Number(control.value);
+            if (!Number.isFinite(n)) {
+                value = 0;
+            } else if (kind === 's32') {
+                value = Math.trunc(n);
+            } else if (kind === 'u32') {
+                value = Math.max(0, Math.trunc(n));
+            } else {
+                value = n;
+            }
+        } else {
+            value = control.value ?? '';
+        }
+
+        entries.push({ id: settingId, value });
+    }
+
+    return entries;
 }
 
 export function wireSettings() {
@@ -410,19 +582,27 @@ export function wireSettings() {
 
     settingsSave?.addEventListener('click', async () => {
         try {
-            const baseRaw = (modal as HTMLElement).dataset.currentCfg || '{}';
-            const base = JSON.parse(baseRaw || '{}');
-            const prevBackend: string = String(base?.git?.backend || 'system');
+            const activePanel = modal.querySelector<HTMLElement>('#settings-panels .panel-form:not(.hidden)');
+            if (activePanel?.getAttribute('data-plugin-settings') === 'true') {
+                if (!TAURI.has) return;
+                const pluginId = String(activePanel.dataset.pluginId || '').trim();
+                if (!pluginId) {
+                    notify('Failed to save plugin settings');
+                    return;
+                }
+                await TAURI.invoke('save_plugin_settings', {
+                    pluginId,
+                    values: collectPluginSettingsFromPanel(activePanel),
+                });
+                notify('Plugin settings saved');
+                closeModal('settings-modal');
+                return;
+            }
+
             const next = collectSettingsFromForm(modal);
 
             if (TAURI.has) {
                 await TAURI.invoke('set_global_settings', { cfg: next });
-
-                // If Git engine changed, reopen the current repo so the plugin can reconfigure.
-                const newBackend: string = String(next?.git?.backend || 'system');
-                if (newBackend && newBackend !== prevBackend) {
-                    try { await TAURI.invoke('reopen_current_repo_cmd'); } catch {}
-                }
             }
 
             modal.dataset.currentCfg = JSON.stringify(next);
@@ -451,6 +631,22 @@ export function wireSettings() {
 
     settingsReset?.addEventListener('click', async () => {
         try {
+            const activePanel = modal.querySelector<HTMLElement>('#settings-panels .panel-form:not(.hidden)');
+            if (activePanel?.getAttribute('data-plugin-settings') === 'true') {
+                if (!TAURI.has) return;
+                const pluginId = String(activePanel.dataset.pluginId || '').trim();
+                const section = String(activePanel.getAttribute('data-panel') || '').trim();
+                if (!pluginId) {
+                    notify('Failed to reset plugin settings');
+                    return;
+                }
+                await TAURI.invoke('reset_plugin_settings', { pluginId });
+                notify('Plugin settings reset');
+                await renderPluginMenus(modal);
+                if (section) activateSection(modal, section);
+                return;
+            }
+
             if (!TAURI.has) return;
             const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
 
@@ -465,7 +661,6 @@ export function wireSettings() {
                 telemetry: false,
                 crash_reports: false,
             };
-            cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, fetch_on_focus: true, allow_hooks: 'ask', respect_core_autocrlf: true, merge_commit_message_template: "Merged branch '{branch:source}' into '{branch:target}'" };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
             cur.performance = { progressive_render: true, gpu_accel: true, animations: true };
@@ -506,20 +701,6 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         reopen_last_repos: !!get<HTMLInputElement>('#set-reopen-last')?.checked,
         checks_on_launch: !!get<HTMLInputElement>('#set-checks-on-launch')?.checked,
     };
-
-    if (get('#set-git-backend') || get('#set-merge-message-template') || get('#set-git-ssh-binary')) {
-        o.git = {
-            ...o.git,
-            backend: get<HTMLSelectElement>('#set-git-backend')?.value as any,
-            merge_commit_message_template: get<HTMLInputElement>('#set-merge-message-template')?.value ?? '',
-            ssh_binary: (get<HTMLSelectElement>('#set-git-ssh-binary')?.value || 'auto') as any,
-            ssh_path: (get<HTMLInputElement>('#set-git-ssh-path')?.value || '').trim(),
-            prune_on_fetch: !!get<HTMLInputElement>('#set-prune-on-fetch')?.checked,
-            fetch_on_focus: !!get<HTMLInputElement>('#set-fetch-on-focus')?.checked,
-            allow_hooks: get<HTMLSelectElement>('#set-hook-policy')?.value,
-            respect_core_autocrlf: !!get<HTMLInputElement>('#set-respect-autocrlf')?.checked,
-        };
-    }
 
     o.diff = {
         ...o.diff,
@@ -660,24 +841,6 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elChk   = get<HTMLInputElement>('#set-checks-on-launch'); if (elChk) elChk.checked = !!cfg.general?.checks_on_launch;
     const elRl    = get<HTMLInputElement>('#set-recents-limit'); if (elRl) elRl.value = String(cfg.ux?.recents_limit ?? 10);
 
-    await refreshGitBackendOptions(m, cfg);
-    const elMmt = get<HTMLInputElement>('#set-merge-message-template');
-    if (elMmt) elMmt.value = cfg.git?.merge_commit_message_template ?? '';
-    const elSshBin = get<HTMLSelectElement>('#set-git-ssh-binary');
-    if (elSshBin) elSshBin.value = toKebab(cfg.git?.ssh_binary) || 'auto';
-    const elSshPath = get<HTMLInputElement>('#set-git-ssh-path');
-    if (elSshPath) elSshPath.value = cfg.git?.ssh_path ?? '';
-    if (elSshPath) {
-        const enabled = (elSshBin?.value || 'auto') === 'custom';
-        elSshPath.disabled = !enabled;
-        if (!enabled) elSshPath.value = '';
-    }
-    const elPr = get<HTMLInputElement>('#set-prune-on-fetch'); if (elPr) elPr.checked = !!cfg.git?.prune_on_fetch;
-    const elFoF = get<HTMLInputElement>('#set-fetch-on-focus'); if (elFoF) elFoF.checked = !!cfg.git?.fetch_on_focus;
-    
-    const elHp = get<HTMLSelectElement>('#set-hook-policy'); if (elHp) elHp.value = toKebab(cfg.git?.allow_hooks);
-    const elRc = get<HTMLInputElement>('#set-respect-autocrlf'); if (elRc) elRc.checked = !!cfg.git?.respect_core_autocrlf;
-
     const elTw = get<HTMLInputElement>('#set-tab-width'); if (elTw) elTw.value = String(cfg.diff?.tab_width ?? 0);
     const elIw = get<HTMLSelectElement>('#set-ignore-whitespace'); if (elIw) elIw.value = toKebab(cfg.diff?.ignore_whitespace);
     const elMx = get<HTMLInputElement>('#set-max-file-size-mb'); if (elMx) elMx.value = String(cfg.diff?.max_file_size_mb ?? 0);
@@ -713,28 +876,6 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     // Logging
     const elLvl = get<HTMLSelectElement>('#set-log-level'); if (elLvl) elLvl.value = toKebab(cfg.logging?.level || 'info');
     const elKeep= get<HTMLInputElement>('#set-log-keep'); if (elKeep) elKeep.value = String(cfg.logging?.retain_archives ?? 10);
-}
-
-async function refreshGitBackendOptions(modal: HTMLElement, cfg: GlobalSettings) {
-    const elGb = modal.querySelector<HTMLSelectElement>('#set-git-backend');
-    if (!elGb) return;
-
-    const backend = String(cfg.git?.backend || '').trim();
-    const options: Array<[string, string]> = [
-        ['system', 'System'],
-        ['libgit2', 'Libgit2'],
-    ];
-
-    elGb.innerHTML = '';
-    for (const [id, label] of options) {
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = label;
-        elGb.appendChild(opt);
-    }
-
-    elGb.disabled = false;
-    elGb.value = (backend === 'libgit2') ? 'libgit2' : 'system';
 }
 
 async function refreshDefaultBackendOptions(modal: HTMLElement, cfg: GlobalSettings) {
@@ -1367,7 +1508,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             await TAURI.invoke('set_global_settings', { cfg: next });
             modal.dataset.currentCfg = JSON.stringify(next);
             await reloadPlugins();
-            await refreshGitBackendOptions(modal, next);
             try {
                 await refreshAvailableThemes();
                 const themeSel = modal.querySelector<HTMLSelectElement>('#set-theme');
@@ -1417,7 +1557,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             await reloadPlugins();
             await renderPluginMenus(modal);
             if (activeSection) activateSection(modal, activeSection);
-            await refreshGitBackendOptions(modal, await TAURI.invoke<GlobalSettings>('get_global_settings'));
             try {
                 await refreshAvailableThemes();
             } catch (e) { console.warn('refreshAvailableThemes failed:', e); }

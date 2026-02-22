@@ -4,7 +4,6 @@ use log::{error, info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window};
 
 use openvcs_core::models::{CommitItem, LogQuery, VcsEvent};
-use openvcs_core::FetchOptions;
 use openvcs_core::Vcs;
 use openvcs_core::VcsError;
 
@@ -234,9 +233,6 @@ pub async fn git_fetch<R: Runtime>(
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let fetch_opts = FetchOptions {
-        prune: state.with_config(|c| c.git.prune_on_fetch),
-    };
     let current = run_repo_task("git_fetch", repo, move |repo| {
         info!("git_fetch called");
         let on = Some(progress_bridge(app.clone()));
@@ -268,10 +264,7 @@ pub async fn git_fetch<R: Runtime>(
         }
 
         info!("Fetching '{refspec}' from remote '{remote}' (current branch '{current}')");
-        if let Err(e) = repo
-            .inner()
-            .fetch_with_options(&remote, &refspec, fetch_opts, on)
-        {
+        if let Err(e) = repo.inner().fetch(&remote, &refspec, on) {
             let msg = e.to_string();
             let url = remote_url_for(repo.inner(), &remote).unwrap_or_default();
             emit_ssh_prompt(&app, &remote, &url, &msg);
@@ -309,9 +302,6 @@ pub async fn git_fetch_all<R: Runtime>(
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let fetch_opts = FetchOptions {
-        prune: state.with_config(|c| c.git.prune_on_fetch),
-    };
     run_repo_task("git_fetch_all", repo, move |repo| {
         info!("git_fetch_all called");
         let on = Some(progress_bridge(app.clone()));
@@ -332,15 +322,9 @@ pub async fn git_fetch_all<R: Runtime>(
 
             // Some backends/environments can be picky about force-refspec syntax; fall back to a
             // non-force refspec so we still populate `refs/remotes/<remote>/*` for the UI.
-            if let Err(e) =
-                repo.inner()
-                    .fetch_with_options(&r, &refspec_force, fetch_opts, on.clone())
-            {
+            if let Err(e) = repo.inner().fetch(&r, &refspec_force, on.clone()) {
                 warn!("Fetch (force refspec) failed for remote '{r}': {e}; retrying without '+'");
-                if let Err(e2) =
-                    repo.inner()
-                        .fetch_with_options(&r, &refspec, fetch_opts, on.clone())
-                {
+                if let Err(e2) = repo.inner().fetch(&r, &refspec, on.clone()) {
                     let msg = e2.to_string();
                     emit_ssh_prompt(&app, &r, &url, &msg);
                     error!("Fetch failed for remote '{r}': {msg}");
@@ -513,9 +497,6 @@ pub async fn git_push<R: Runtime>(
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let fetch_opts = FetchOptions {
-        prune: state.with_config(|c| c.git.prune_on_fetch),
-    };
     let current = run_repo_task("git_push", repo, move |repo| {
         info!("git_push called");
         let on = Some(progress_bridge(app.clone()));
@@ -543,10 +524,7 @@ pub async fn git_push<R: Runtime>(
         // Pushing does not update local remote-tracking refs (refs/remotes/origin/*),
         // which the UI uses for ahead/behind; refresh them best-effort.
         let on_fetch = Some(progress_bridge(app));
-        if let Err(e) = repo
-            .inner()
-            .fetch_with_options("origin", &current, fetch_opts, on_fetch)
-        {
+        if let Err(e) = repo.inner().fetch("origin", &current, on_fetch) {
             warn!("Post-push fetch failed for branch '{current}': {e}");
         }
 

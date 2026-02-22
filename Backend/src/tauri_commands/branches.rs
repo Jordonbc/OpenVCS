@@ -7,9 +7,12 @@ use tauri::State;
 
 use openvcs_core::models::{BranchItem, BranchKind};
 
+use crate::plugin_runtime::settings_store;
 use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};
+
+const DEFAULT_MERGE_TEMPLATE: &str = "Merged branch '{branch:source}' into '{branch:target}'";
 
 /// Extracts repository owner/user segment from remote URL.
 ///
@@ -102,6 +105,23 @@ fn apply_merge_template(
         .replace("{branch:target}", target_branch)
         .replace("{repo:name}", repo_name)
         .replace("{repo:username}", repo_username)
+}
+
+/// Returns the merge commit message template from Git plugin settings.
+fn git_merge_message_template(state: &AppState) -> String {
+    let legacy = state.with_config(|cfg| cfg.git.merge_commit_message_template.clone());
+    let value = settings_store::load_settings("openvcs.git")
+        .ok()
+        .and_then(|settings| settings.get("merge_commit_message_template").cloned())
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or(legacy);
+
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        DEFAULT_MERGE_TEMPLATE.to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 #[tauri::command]
@@ -372,7 +392,7 @@ pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Resul
     }
     let repo = current_repo_or_err(&state)?;
     let branch = name.to_string();
-    let template = state.with_config(|cfg| cfg.git.merge_commit_message_template.clone());
+    let template = git_merge_message_template(&state);
     run_repo_task("git_merge_branch", repo, move |repo| {
         let vcs = repo.inner();
         let target_branch = vcs
