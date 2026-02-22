@@ -4,7 +4,7 @@ OpenVCS plugins are local extensions installed as `.ovcsp` bundles.
 
 Plugins may include themes, a Wasm module, or both.
 
-Module plugins may optionally export UI menus and settings lifecycle hooks via the v1.1 plugin world (`plugin-v1-1`) in `Core/wit/plugin.wit`.
+Module plugins may optionally export UI menus and settings lifecycle hooks via the plugin world in `Core/wit/plugin.wit`.
 
 ## Where plugins live
 
@@ -65,7 +65,7 @@ Notes:
 - If plugin runtime startup fails (including startup sync on app launch), the plugin list shows a persistent red `!` marker for that plugin until the next retry.
 - Plugin menus are fetched only from plugins with a currently running module runtime; enabled plugins that are not running (for example after a crash) do not contribute menus until runtime is restored.
 - If enabling a plugin fails during runtime startup, the host keeps that plugin disabled and returns an error to the UI.
-- For `plugin-v1-1` menus, plugins can provide an optional `menu.order` (`u32`) hint; lower values render earlier, and menus without an order are sorted after ordered menus by label.
+- For plugin menus, plugins can provide an optional `menu.order` (`u32`) hint; lower values render earlier, and menus without an order are sorted after ordered menus by label.
 - Built-in plugin menus are shown as normal top-level Settings sections; third-party plugin menus are grouped under Settings > Plugins in the `Plugin Settings` subsection.
 - Action buttons invoke plugin `handle-action` callbacks.
 - Plugin IPC is contract-driven: backend calls map to typed WIT exports rather than arbitrary string-named module methods.
