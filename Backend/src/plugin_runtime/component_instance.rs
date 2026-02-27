@@ -49,13 +49,15 @@ mod bindings_plugin {
 }
 
 use bindings_plugin::exports::openvcs::plugin::plugin_api;
-use bindings_plugin::exports::openvcs::plugin::plugin_api as vcs_settings_api;
+use bindings_vcs::exports::openvcs::plugin::plugin_api_vcs as vcs_settings_api;
 use bindings_vcs::exports::openvcs::plugin::vcs_api;
 
 /// Typed bindings handle selected for the running plugin world.
 enum ComponentBindings {
     /// Bindings for plugins exporting the `plugin` world.
     Plugin(bindings_plugin::Plugin),
+    /// Bindings for plugins exporting the `vcs` world.
+    Vcs(bindings_vcs::Vcs),
 }
 
 /// Live component instance plus generated bindings handle.
@@ -75,6 +77,11 @@ impl ComponentRuntime {
                 .call_init(&mut self.store)
                 .map_err(|e| format!("component init trap for {}: {e}", plugin_id))?
                 .map_err(|e| format!("component init failed for {}: {}", plugin_id, e.message)),
+            ComponentBindings::Vcs(bindings) => bindings
+                .openvcs_plugin_vcs_plugin_api_vcs()
+                .call_init(&mut self.store)
+                .map_err(|e| format!("component init trap for {}: {e}", plugin_id))?
+                .map_err(|e| format!("component init failed for {}: {}", plugin_id, e.message)),
         }
     }
 
@@ -86,44 +93,70 @@ impl ComponentRuntime {
                     .openvcs_plugin_plugin_api()
                     .call_deinit(&mut self.store);
             }
+            ComponentBindings::Vcs(bindings) => {
+                let _ = bindings
+                    .openvcs_plugin_vcs_plugin_api_vcs()
+                    .call_deinit(&mut self.store);
+            }
         }
     }
 
     /// Returns plugin-contributed menus for v1.1 plugins.
     fn call_get_menus(&mut self, plugin_id: &str) -> Result<Vec<Menu>, String> {
-        let bindings = match &self.bindings {
-            ComponentBindings::Plugin(bindings) => bindings,
-            _ => return Ok(Vec::new()),
-        };
-        let menus = bindings
-            .openvcs_plugin_plugin_api()
-            .call_get_menus(&mut self.store)
-            .map_err(|e| format!("component get-menus trap for {}: {e}", plugin_id))?
-            .map_err(|e| {
-                format!(
-                    "component get-menus failed for {}: {}",
-                    plugin_id, e.message
-                )
-            })?;
-        Ok(menus.into_iter().map(map_menu_from_wit).collect())
+        match &self.bindings {
+            ComponentBindings::Plugin(bindings) => {
+                let menus = bindings
+                    .openvcs_plugin_plugin_api()
+                    .call_get_menus(&mut self.store)
+                    .map_err(|e| format!("component get-menus trap for {}: {e}", plugin_id))?
+                    .map_err(|e| {
+                        format!(
+                            "component get-menus failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })?;
+                Ok(menus.into_iter().map(map_menu_from_wit).collect())
+            }
+            ComponentBindings::Vcs(bindings) => {
+                let menus = bindings
+                    .openvcs_plugin_vcs_plugin_api_vcs()
+                    .call_get_menus(&mut self.store)
+                    .map_err(|e| format!("component get-menus trap for {}: {e}", plugin_id))?
+                    .map_err(|e| {
+                        format!(
+                            "component get-menus failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })?;
+                Ok(menus.into_iter().map(map_menu_from_vcs_wit).collect())
+            }
+        }
     }
 
     /// Invokes a plugin action for v1.1 plugins.
     fn call_handle_action(&mut self, plugin_id: &str, id: &str) -> Result<(), String> {
-        let bindings = match &self.bindings {
-            ComponentBindings::Plugin(bindings) => bindings,
-            _ => return Ok(()),
-        };
-        bindings
-            .openvcs_plugin_plugin_api()
-            .call_handle_action(&mut self.store, id)
-            .map_err(|e| format!("component handle-action trap for {}: {e}", plugin_id))?
-            .map_err(|e| {
-                format!(
-                    "component handle-action failed for {}: {}",
-                    plugin_id, e.message
-                )
-            })
+        match &self.bindings {
+            ComponentBindings::Plugin(bindings) => bindings
+                .openvcs_plugin_plugin_api()
+                .call_handle_action(&mut self.store, id)
+                .map_err(|e| format!("component handle-action trap for {}: {e}", plugin_id))?
+                .map_err(|e| {
+                    format!(
+                        "component handle-action failed for {}: {}",
+                        plugin_id, e.message
+                    )
+                }),
+            ComponentBindings::Vcs(bindings) => bindings
+                .openvcs_plugin_vcs_plugin_api_vcs()
+                .call_handle_action(&mut self.store, id)
+                .map_err(|e| format!("component handle-action trap for {}: {e}", plugin_id))?
+                .map_err(|e| {
+                    format!(
+                        "component handle-action failed for {}: {}",
+                        plugin_id, e.message
+                    )
+                }),
+        }
     }
 
     /// Returns plugin settings defaults for v1.1 plugins.
@@ -143,6 +176,21 @@ impl ComponentRuntime {
                         )
                     })?;
                 Ok(values.into_iter().map(map_setting_from_wit).collect())
+            }
+            ComponentBindings::Vcs(bindings) => {
+                let values = bindings
+                    .openvcs_plugin_vcs_plugin_api_vcs()
+                    .call_settings_defaults(&mut self.store)
+                    .map_err(|e| {
+                        format!("component settings-defaults trap for {}: {e}", plugin_id)
+                    })?
+                    .map_err(|e| {
+                        format!(
+                            "component settings-defaults failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })?;
+                Ok(values.into_iter().map(map_setting_from_vcs_wit).collect())
             }
         }
     }
@@ -171,6 +219,23 @@ impl ComponentRuntime {
                     })?;
                 Ok(out.into_iter().map(map_setting_from_wit).collect())
             }
+            ComponentBindings::Vcs(bindings) => {
+                let values = values
+                    .into_iter()
+                    .map(map_setting_to_vcs_wit)
+                    .collect::<Vec<_>>();
+                let out = bindings
+                    .openvcs_plugin_vcs_plugin_api_vcs()
+                    .call_settings_on_load(&mut self.store, &values)
+                    .map_err(|e| format!("component settings-on-load trap for {}: {e}", plugin_id))?
+                    .map_err(|e| {
+                        format!(
+                            "component settings-on-load failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })?;
+                Ok(out.into_iter().map(map_setting_from_vcs_wit).collect())
+            }
         }
     }
 
@@ -188,6 +253,24 @@ impl ComponentRuntime {
                     .collect::<Vec<_>>();
                 bindings
                     .openvcs_plugin_plugin_api()
+                    .call_settings_on_apply(&mut self.store, &values)
+                    .map_err(|e| {
+                        format!("component settings-on-apply trap for {}: {e}", plugin_id)
+                    })?
+                    .map_err(|e| {
+                        format!(
+                            "component settings-on-apply failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })
+            }
+            ComponentBindings::Vcs(bindings) => {
+                let values = values
+                    .into_iter()
+                    .map(map_setting_to_vcs_wit)
+                    .collect::<Vec<_>>();
+                bindings
+                    .openvcs_plugin_vcs_plugin_api_vcs()
                     .call_settings_on_apply(&mut self.store, &values)
                     .map_err(|e| {
                         format!("component settings-on-apply trap for {}: {e}", plugin_id)
@@ -226,6 +309,23 @@ impl ComponentRuntime {
                     })?;
                 Ok(out.into_iter().map(map_setting_from_wit).collect())
             }
+            ComponentBindings::Vcs(bindings) => {
+                let values = values
+                    .into_iter()
+                    .map(map_setting_to_vcs_wit)
+                    .collect::<Vec<_>>();
+                let out = bindings
+                    .openvcs_plugin_vcs_plugin_api_vcs()
+                    .call_settings_on_save(&mut self.store, &values)
+                    .map_err(|e| format!("component settings-on-save trap for {}: {e}", plugin_id))?
+                    .map_err(|e| {
+                        format!(
+                            "component settings-on-save failed for {}: {}",
+                            plugin_id, e.message
+                        )
+                    })?;
+                Ok(out.into_iter().map(map_setting_from_vcs_wit).collect())
+            }
         }
     }
 
@@ -234,6 +334,16 @@ impl ComponentRuntime {
         match &self.bindings {
             ComponentBindings::Plugin(bindings) => bindings
                 .openvcs_plugin_plugin_api()
+                .call_settings_on_reset(&mut self.store)
+                .map_err(|e| format!("component settings-on-reset trap for {}: {e}", plugin_id))?
+                .map_err(|e| {
+                    format!(
+                        "component settings-on-reset failed for {}: {}",
+                        plugin_id, e.message
+                    )
+                }),
+            ComponentBindings::Vcs(bindings) => bindings
+                .openvcs_plugin_vcs_plugin_api_vcs()
                 .call_settings_on_reset(&mut self.store)
                 .map_err(|e| format!("component settings-on-reset trap for {}: {e}", plugin_id))?
                 .map_err(|e| {
@@ -586,36 +696,28 @@ impl ComponentPluginRuntimeInstance {
                 wasi: WasiCtx::builder().build(),
             },
         );
-        let bindings = {
+        let bindings = if self.spawn.is_vcs_backend {
+            bindings_vcs::Vcs::add_to_linker::<
+                ComponentHostState,
+                wasmtime::component::HasSelf<ComponentHostState>,
+            >(&mut linker, |state| state)
+            .map_err(|e| format!("link host imports: {e}"))?;
+
+            ComponentBindings::Vcs(
+                bindings_vcs::Vcs::instantiate(&mut store, &component, &linker)
+                    .map_err(|e| format!("instantiate component {}: {e}", self.spawn.plugin_id))?,
+            )
+        } else {
             bindings_plugin::Plugin::add_to_linker::<
                 ComponentHostState,
                 wasmtime::component::HasSelf<ComponentHostState>,
             >(&mut linker, |state| state)
             .map_err(|e| format!("link host imports: {e}"))?;
 
-            match bindings_plugin::Plugin::instantiate(&mut store, &component, &linker) {
-                Ok(v11) => ComponentBindings::Plugin(v11),
-                Err(_) => {
-                    let mut fallback_linker = Linker::new(engine);
-                    wasmtime_wasi::p2::add_to_linker_sync(&mut fallback_linker)
-                        .map_err(|e| format!("link wasi imports: {e}"))?;
-                    bindings_plugin::Plugin::add_to_linker::<
-                        ComponentHostState,
-                        wasmtime::component::HasSelf<ComponentHostState>,
-                    >(&mut fallback_linker, |state| state)
-                    .map_err(|e| format!("link host imports: {e}"))?;
-                    ComponentBindings::Plugin(
-                        bindings_plugin::Plugin::instantiate(
-                            &mut store,
-                            &component,
-                            &fallback_linker,
-                        )
-                        .map_err(|e| {
-                            format!("instantiate component {}: {e}", self.spawn.plugin_id)
-                        })?,
-                    )
-                }
-            }
+            ComponentBindings::Plugin(
+                bindings_plugin::Plugin::instantiate(&mut store, &component, &linker)
+                    .map_err(|e| format!("instantiate component {}: {e}", self.spawn.plugin_id))?,
+            )
         };
 
         let mut runtime = ComponentRuntime { store, bindings };
@@ -626,7 +728,10 @@ impl ComponentPluginRuntimeInstance {
 
     /// Loads and applies persisted plugin settings for v1.1 plugins.
     fn apply_persisted_settings(&self, runtime: &mut ComponentRuntime) -> Result<(), String> {
-        if !matches!(runtime.bindings, ComponentBindings::Plugin(_)) {
+        if !matches!(
+            runtime.bindings,
+            ComponentBindings::Plugin(_) | ComponentBindings::Vcs(_)
+        ) {
             return Ok(());
         }
 
@@ -664,16 +769,23 @@ impl ComponentPluginRuntimeInstance {
     }
 
     /// Runs a closure with VCS bindings for VCS backend plugins.
-    /// NOTE: Currently VCS backends use plugin world, so this needs architectural changes.
     fn with_vcs_bindings<T>(
         &self,
         method: &str,
-        _f: impl FnOnce(&bindings_vcs::Vcs, &mut Store<ComponentHostState>) -> Result<T, String>,
+        f: impl FnOnce(&bindings_vcs::Vcs, &mut Store<ComponentHostState>) -> Result<T, String>,
     ) -> Result<T, String> {
-        Err(format!(
-            "VCS operations not yet supported for plugin world-based VCS backends: {}",
-            method
-        ))
+        self.with_runtime(|runtime| {
+            let bindings = match &runtime.bindings {
+                ComponentBindings::Vcs(bindings) => bindings,
+                _ => {
+                    return Err(format!(
+                        "component method `{method}` requires VCS backend exports for plugin `{}`",
+                        self.spawn.plugin_id
+                    ));
+                }
+            };
+            f(bindings, &mut runtime.store)
+        })
     }
 
     /// Converts nested trap/plugin results into backend error strings.
@@ -1372,6 +1484,30 @@ fn map_menu_from_wit(menu: plugin_api::Menu) -> Menu {
                 content: text.content,
             }),
             plugin_api::UiElement::Button(button) => UiElement::Button(UiButton {
+                id: button.id,
+                label: button.label,
+            }),
+        })
+        .collect::<Vec<_>>();
+    Menu {
+        id: menu.id,
+        label: menu.label,
+        order: menu.order,
+        elements,
+    }
+}
+
+/// Converts a VCS-plugin WIT menu into the shared core menu model.
+fn map_menu_from_vcs_wit(menu: vcs_settings_api::Menu) -> Menu {
+    let elements = menu
+        .elements
+        .into_iter()
+        .map(|element| match element {
+            vcs_settings_api::UiElement::Text(text) => UiElement::Text(UiText {
+                id: text.id,
+                content: text.content,
+            }),
+            vcs_settings_api::UiElement::Button(button) => UiElement::Button(UiButton {
                 id: button.id,
                 label: button.label,
             }),
