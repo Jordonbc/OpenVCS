@@ -22,6 +22,7 @@ pub const BUILT_IN_PLUGINS_DIR_NAME: &str = "built-in-plugins";
 // it here so plugin discovery can include resources embedded in the
 // application bundle.
 static RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
+static NODE_EXECUTABLE: OnceLock<PathBuf> = OnceLock::new();
 static LOGGED_BUILTIN_DIRS: AtomicBool = AtomicBool::new(false);
 
 /// Returns the user-writable plugin installation directory.
@@ -139,4 +140,24 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
 pub fn set_resource_dir(path: PathBuf) {
     // it's fine if this fails to set more than once; first set wins.
     let _ = RESOURCE_DIR.set(path);
+}
+
+/// Sets the resolved bundled Node executable path used by plugin runtime.
+///
+/// # Parameters
+/// - `path`: Absolute path to the bundled Node binary.
+///
+/// # Returns
+/// - `()`.
+pub fn set_node_executable_path(path: PathBuf) {
+    let _ = NODE_EXECUTABLE.set(path);
+}
+
+/// Returns the bundled Node executable path when configured.
+///
+/// # Returns
+/// - `Some(PathBuf)` when a bundled runtime was resolved.
+/// - `None` when host should fall back to `node` on PATH.
+pub fn node_executable_path() -> Option<PathBuf> {
+    NODE_EXECUTABLE.get().cloned()
 }

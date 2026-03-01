@@ -70,7 +70,7 @@ Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 - 🗃 **Git LFS helpers:** fetch/pull/prune, track/untrack, inspect tracked paths.
 - 🔐 **SSH helpers:** trust host keys, list/add SSH agent keys, key discovery.
 - 🎨 **Themes:** built-in light/dark themes, plus plugin-provided themes (standalone theme `.zip` packs are not supported).
-- 🧩 **Plugins (early):** installable `.ovcsp` bundles (theme packs and/or Wasm modules).
+- 🧩 **Plugins (early):** installable `.ovcsp` bundles (theme packs and/or Node.js modules).
 - 🔄 **Updater & logs:** update check/install, VCS output log window, app log tail/clear.
 
 ## Planned / Exploratory

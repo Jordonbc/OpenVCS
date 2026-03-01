@@ -675,17 +675,7 @@ export async function initPlugins(): Promise<void> {
     for (const summary of Array.isArray(list) ? list : []) {
         const pluginId = String(summary?.id || '').trim();
         if (!pluginId) continue;
-        if (!summary.entry) continue;
         if (!isPluginEnabled(summary)) continue;
-
-        try {
-            const payload = await TAURI.invoke<PluginPayload>('load_plugin', { id: pluginId });
-            const code = typeof payload?.entry === 'string' ? payload.entry : '';
-            if (!code.trim()) continue;
-            injectPluginModule(code, pluginId);
-        } catch (err) {
-            console.warn(`load_plugin failed (${pluginId})`, err);
-        }
     }
 
     ensurePluginsMenuPlaceholder();

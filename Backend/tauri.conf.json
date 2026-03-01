@@ -41,7 +41,8 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "../target/openvcs/built-in-plugins"
+      "../target/openvcs/built-in-plugins",
+      "../target/openvcs/node-runtime"
     ],
     "licenseFile": "../LICENSE",
     "publisher": "Jordon Brooks",

@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Plugin runtime subsystem modules.
 //!
-//! These modules provide plugin process/component lifecycle management,
+//! These modules provide plugin process lifecycle management,
 //! host API bridging, and backend proxy adapters.
-
-/// Component-model runtime implementation and ABI dispatch.
-pub mod component_instance;
 /// In-memory plugin event subscription registry.
 pub mod events;
 /// Host functions exposed to plugin modules.
@@ -15,6 +12,10 @@ pub mod host_api;
 pub mod instance;
 /// Long-lived plugin runtime lifecycle manager.
 pub mod manager;
+/// Node.js runtime implementation and JSON-RPC client.
+pub mod node_instance;
+/// JSON-RPC protocol constants and framing helpers.
+pub mod protocol;
 /// Runtime transport selection and factory helpers.
 pub mod runtime_select;
 /// Plugin settings persistence helpers.

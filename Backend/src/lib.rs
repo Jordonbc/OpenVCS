@@ -154,6 +154,22 @@ pub fn run() {
                     );
                 }
             }
+            if let Ok(node_runtime_dir) = app.path().resolve("node-runtime", BaseDirectory::Resource) {
+                let node_name = if cfg!(windows) { "node.exe" } else { "node" };
+                let bundled_node = node_runtime_dir.join(node_name);
+                if bundled_node.is_file() {
+                    crate::plugin_paths::set_node_executable_path(bundled_node.clone());
+                    log::info!(
+                        "plugins: using bundled node runtime: {}",
+                        bundled_node.display()
+                    );
+                } else {
+                    log::warn!(
+                        "plugins: bundled node runtime missing at {}; plugin modules will not start",
+                        bundled_node.display()
+                    );
+                }
+            }
             let store = crate::plugin_bundles::PluginBundleStore::new_default();
             if let Err(err) = store.sync_built_in_plugins() {
                 warn!("plugins: failed to sync built-in bundles: {}", err);
@@ -281,9 +297,7 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::list_installed_bundles,
         tauri_commands::uninstall_plugin,
         tauri_commands::set_plugin_enabled,
-        tauri_commands::approve_plugin_capabilities,
-        tauri_commands::get_plugin_permissions,
-        tauri_commands::set_plugin_permissions,
+        tauri_commands::set_plugin_approval,
         tauri_commands::list_plugin_menus,
         tauri_commands::invoke_plugin_action,
         tauri_commands::get_plugin_settings,

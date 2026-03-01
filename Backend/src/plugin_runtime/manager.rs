@@ -583,6 +583,16 @@ impl PluginRuntimeManager {
             installed.approval
         );
 
+        if !matches!(
+            installed.approval,
+            crate::plugin_bundles::ApprovalState::Approved { .. }
+        ) {
+            return Err(format!(
+                "plugin '{}' is not approved to run",
+                components.plugin_id
+            ));
+        }
+
         let key = components.plugin_id.to_ascii_lowercase();
         debug!("resolve_module_runtime_spec: resolved key='{}'", key);
 
@@ -596,7 +606,6 @@ impl PluginRuntimeManager {
             spawn: SpawnConfig {
                 plugin_id: components.plugin_id,
                 exec_path,
-                approval: installed.approval,
                 allowed_workspace_root,
                 is_vcs_backend,
             },
@@ -660,11 +669,7 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
-    const MINIMAL_WASM: &[u8] = &[
-        0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x04, 0x01, 0x60, 0x00, 0x00, 0x03,
-        0x02, 0x01, 0x00, 0x07, 0x0b, 0x01, 0x06, 0x5f, 0x73, 0x74, 0x61, 0x72, 0x74, 0x00, 0x00,
-        0x0a, 0x04, 0x01, 0x02, 0x00, 0x0b,
-    ];
+    const MINIMAL_NODE_MODULE: &str = "export {};\n";
 
     #[test]
     /// Verifies repeated start/stop calls keep runtime state stable.
@@ -819,7 +824,11 @@ mod tests {
     ) {
         let plugin_dir = root.join(plugin_id);
         fs::create_dir_all(plugin_dir.join("bin")).expect("create plugin dir");
-        fs::write(plugin_dir.join("bin").join("plugin.wasm"), MINIMAL_WASM).expect("write wasm");
+        fs::write(
+            plugin_dir.join("bin").join("plugin.mjs"),
+            MINIMAL_NODE_MODULE,
+        )
+        .expect("write node module");
 
         let vcs_backends = if include_vcs_backends {
             vec![serde_json::json!({ "id": "git", "name": "Git" })]
@@ -833,7 +842,7 @@ mod tests {
             "version": "1.0.0",
             "default_enabled": default_enabled,
             "module": {
-                "exec": "plugin.wasm",
+                "exec": "plugin.mjs",
                 "vcs_backends": vcs_backends
             }
         });

@@ -319,12 +319,10 @@ pub fn init() {
         writeln!(buf, "[{}] [{}] {:5} [{}]: {}", date, time, ts, source, msg)
     });
 
-    // Wasmtime/Cranelift can be extremely verbose at TRACE/DEBUG and drown out OpenVCS logs.
+    // Cranelift can be extremely verbose at TRACE/DEBUG and drown out OpenVCS logs.
     // Keep these at WARN+ even if the user enables a global TRACE filter.
-    builder.filter_module("wasmtime", log::LevelFilter::Warn);
     builder.filter_module("cranelift", log::LevelFilter::Warn);
     builder.filter_module("cranelift_codegen", log::LevelFilter::Warn);
-    builder.filter_module("cranelift_wasm", log::LevelFilter::Warn);
     builder.filter_module("cranelift_native", log::LevelFilter::Warn);
 
     // If RUST_LOG is unset, apply level from settings

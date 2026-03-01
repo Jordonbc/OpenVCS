@@ -6,7 +6,6 @@ import { toKebab } from '../lib/dom';
 import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
 import { setTheme } from '../ui/layout';
-import { openPluginPermissionsModal } from './pluginPermissions';
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
 import { reloadPlugins } from '../plugins';
 import type { PluginSummary } from '../plugins';
@@ -955,17 +954,23 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
                 const installed = await TAURI.invoke<any>('install_ovcsp', { bundlePath });
                 notify(`Installed ${installed?.plugin_id || 'plugin'} ${installed?.version || ''}`.trim());
 
-                const caps = Array.isArray(installed?.requested_capabilities) ? installed.requested_capabilities : [];
-                if (caps.length) {
-                    const ok = await confirmBool(
-                        `Plugin requests capabilities:\n\n- ${caps.join('\n- ')}\n\nApprove and allow it to run?`
+                const pluginId = String(installed?.plugin_id || '').trim();
+                const version = String(installed?.version || '').trim();
+                if (pluginId && version) {
+                    const trusted = await confirmBool(
+                        'Trust this plugin and allow it to run?\n\n'
+                        + 'Only approve plugins from sources you trust.'
                     );
-                    await TAURI.invoke('approve_plugin_capabilities', {
-                        pluginId: String(installed?.plugin_id || '').trim(),
-                        version: String(installed?.version || '').trim(),
-                        approved: ok,
+                    await TAURI.invoke('set_plugin_approval', {
+                        pluginId,
+                        version,
+                        approved: trusted,
                     });
-                    notify(ok ? 'Capabilities approved' : 'Capabilities denied');
+                    if (trusted) {
+                        notify('Plugin approved');
+                    } else {
+                        notify('Plugin installed but not approved to run');
+                    }
                 }
 
                 await reloadPluginSummaries();
@@ -1362,17 +1367,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         detailEl.appendChild(head);
         detailEl.appendChild(body);
 
-        const footer = document.createElement('div');
-        footer.className = 'plugin-detail-footer';
-        const permissions = document.createElement('button');
-        permissions.type = 'button';
-        permissions.className = 'tbtn';
-        permissions.id = 'plugins-permissions-selected';
-        permissions.dataset.pluginPermissions = id;
-        permissions.dataset.pluginName = String(plugin.name || '').trim() || id;
-        permissions.textContent = 'Permissions';
-        footer.appendChild(permissions);
-        detailEl.appendChild(footer);
     };
 
     const renderList = () => {
@@ -1758,20 +1752,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
         pane.addEventListener('click', (e) => {
             const target = e.target as HTMLElement | null;
-            const permissionsBtn =
-                target?.closest<HTMLButtonElement>('[data-plugin-permissions]') || null;
-            if (permissionsBtn) {
-                const pluginId = String(permissionsBtn.dataset.pluginPermissions || '').trim();
-                const pluginName = String(permissionsBtn.dataset.pluginName || '').trim() || pluginId;
-                if (pluginId) {
-                    openPluginPermissionsModal(pluginId, pluginName).catch((err) => {
-                        const msg = String(err || '').trim();
-                        notify(msg ? `Failed to open permissions: ${msg}` : 'Failed to open permissions');
-                    });
-                }
-                return;
-            }
-
             const toggleBtn = target?.closest<HTMLButtonElement>('[data-plugin-toggle]') || null;
             if (toggleBtn) {
                 const id = String(toggleBtn.dataset.pluginToggle || '').trim();

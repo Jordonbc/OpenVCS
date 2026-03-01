@@ -52,9 +52,9 @@
 ## Plugin runtime & host expectations
 
 - Plugin components live under `Backend/built-in-plugins/` and follow the manifest format in `openvcs.plugin.json`. Built-in bundles ship with the AppImage/Flatpak and are also built by the SDK (`cargo openvcs dist`).
-- The backend loads plugin modules as Wasmtime component-model `*.wasm` files via `Backend/src/plugin_runtime/component_instance.rs`.
-- The canonical host/plugin contract is defined under `Core/wit/` (`host.wit`, `plugin.wit`, `vcs.wit`).
-- When changing host APIs, capabilities, or runtime behavior, update `Core/wit/` and the runtime logic in `Backend/src/plugin_runtime`.
+- The backend loads plugin modules as Node.js runtime scripts (`*.mjs|*.js|*.cjs`) via `Backend/src/plugin_runtime/node_instance.rs`.
+- The canonical host/plugin contract is JSON-RPC over stdio with method names in `Backend/src/plugin_runtime/protocol.rs`.
+- When changing host APIs or runtime behavior, update protocol constants and runtime logic in `Backend/src/plugin_runtime`.
 
 ## Coding style & conventions
 
@@ -169,7 +169,7 @@
 ## Commit & PR guidelines
 
 - Use short, imperative commit subjects (optionally scoped, e.g., `backend: refresh plugin runtime config`). Keep changelist focused; avoid mixing UI and backend refactors unless necessary.
-- PRs should target the `Dev` branch, include a summary, issue links, commands/tests run, and highlight architecture implications (host API changes, plugin capability updates, security decisions).
+- PRs should target the `Dev` branch, include a summary, issue links, commands/tests run, and highlight architecture implications (host API/protocol changes and security decisions).
 - Do not modify plugin code inside submodules unless explicitly asked; treat submodule updates as pointer bumps after upstream changes.
 - Keep this AGENTS (and other module-level copies you rely on) current whenever workflows, tooling, or responsibilities change so future contributors can find accurate guidance.
 

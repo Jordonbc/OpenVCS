@@ -44,7 +44,9 @@ impl Default for InstallerLimits {
     }
 }
 
-/// Capability approval status for an installed plugin version.
+/// Legacy approval status for an installed plugin version.
+///
+/// Node runtime currently operates in trust mode and auto-approves installs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ApprovalState {
@@ -914,65 +916,6 @@ impl PluginBundleStore {
         Ok(())
     }
 
-    /// Applies an explicit approved-capability set to the current plugin version.
-    ///
-    /// # Parameters
-    /// - `plugin_id`: Plugin identifier to update.
-    /// - `approved_capabilities`: Capability ids selected by the user.
-    ///
-    /// # Returns
-    /// - `Ok(())` when approval state is updated for the current version.
-    /// - `Err(String)` if the plugin/current version is missing or index write fails.
-    pub fn set_current_approved_capabilities(
-        &self,
-        plugin_id: &str,
-        approved_capabilities: Vec<String>,
-    ) -> Result<(), String> {
-        let id = plugin_id.trim();
-        if id.is_empty() {
-            return Err("plugin id is empty".to_string());
-        }
-
-        let mut index = self
-            .read_index(id)
-            .ok_or_else(|| "plugin is not installed".to_string())?;
-        let current = index
-            .current
-            .clone()
-            .ok_or_else(|| "plugin has no current version".to_string())?;
-
-        let Some(version) = index.versions.get_mut(current.trim()) else {
-            return Err("current version is not installed".to_string());
-        };
-
-        let requested = version
-            .requested_capabilities
-            .iter()
-            .cloned()
-            .collect::<HashSet<_>>();
-        let mut approved = normalize_capabilities(approved_capabilities)
-            .into_iter()
-            .filter(|capability| requested.contains(capability))
-            .collect::<Vec<_>>();
-        approved.sort();
-        approved.dedup();
-
-        version.approval = if !version.requested_capabilities.is_empty() && approved.is_empty() {
-            ApprovalState::Denied {
-                denied_at_unix_ms: now_unix_ms(),
-                reason: None,
-            }
-        } else {
-            ApprovalState::Approved {
-                capabilities: approved,
-                approved_at_unix_ms: now_unix_ms(),
-            }
-        };
-
-        self.write_index(id, &index)?;
-        Ok(())
-    }
-
     /// Loads resolved components for the current plugin version.
     ///
     /// # Parameters
@@ -1374,7 +1317,7 @@ fn platform_exec_name(base: &str) -> String {
     base.to_string()
 }
 
-/// Validates that a declared entrypoint exists and is a wasm module.
+/// Validates that a declared entrypoint exists and is a Node module.
 ///
 /// # Parameters
 /// - `version_dir`: Installed version directory.
@@ -1393,9 +1336,11 @@ fn validate_entrypoint(version_dir: &Path, exec: Option<&str>, label: &str) -> R
         return Ok(());
     }
 
-    if !trimmed.ends_with(".wasm") {
+    let lower = trimmed.to_ascii_lowercase();
+    let is_supported = lower.ends_with(".js") || lower.ends_with(".mjs") || lower.ends_with(".cjs");
+    if !is_supported {
         return Err(format!(
-            "{} entrypoint must be a .wasm module, got: {}",
+            "{} entrypoint must be a .js/.mjs/.cjs Node module, got: {}",
             label, trimmed
         ));
     }
@@ -1657,7 +1602,7 @@ mod tests {
             name: "test.plugin/openvcs.plugin.json".into(),
             data: basic_manifest(
                 "test.plugin",
-                ",\"module\":{\"exec\":\"missing.wasm\",\"vcs_backends\":[\"x\"]}",
+                ",\"module\":{\"exec\":\"missing.mjs\",\"vcs_backends\":[\"x\"]}",
             ),
             unix_mode: None,
             kind: TarEntryKind::File,
@@ -1679,7 +1624,7 @@ mod tests {
     fn install_rejects_functions_component() {
         let bundle = make_tar_xz_bundle(vec![TarEntry {
             name: "test.plugin/openvcs.plugin.json".into(),
-            data: basic_manifest("test.plugin", ",\"functions\":{\"exec\":\"legacy.wasm\"}"),
+            data: basic_manifest("test.plugin", ",\"functions\":{\"exec\":\"legacy.mjs\"}"),
             unix_mode: None,
             kind: TarEntryKind::File,
         }]);
@@ -1706,14 +1651,14 @@ mod tests {
                 name: "test.plugin/openvcs.plugin.json".into(),
                 data: basic_manifest(
                     "test.plugin",
-                    ",\"module\":{\"exec\":\"mod.wasm\",\"vcs_backends\":[]}",
+                    ",\"module\":{\"exec\":\"mod.mjs\",\"vcs_backends\":[]}",
                 ),
                 unix_mode: None,
                 kind: TarEntryKind::File,
             },
             TarEntry {
-                name: "test.plugin/bin/mod.wasm".into(),
-                data: b"\0asm".to_vec(),
+                name: "test.plugin/bin/mod.mjs".into(),
+                data: b"export {};\n".to_vec(),
                 unix_mode: Some(0o100644),
                 kind: TarEntryKind::File,
             },

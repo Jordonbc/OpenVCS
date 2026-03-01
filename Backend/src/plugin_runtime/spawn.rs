@@ -1,6 +1,5 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-use crate::plugin_bundles::ApprovalState;
 use std::path::PathBuf;
 
 /// Runtime launch configuration for a plugin module instance.
@@ -8,11 +7,9 @@ use std::path::PathBuf;
 pub struct SpawnConfig {
     /// Canonical plugin identifier used for logging and routing.
     pub plugin_id: String,
-    /// Path to the plugin component/module executable.
+    /// Path to the plugin Node.js module executable.
     pub exec_path: PathBuf,
-    /// Persisted capability approval state for this plugin install.
-    pub approval: ApprovalState,
-    /// Optional workspace root constraining file/process host operations.
+    /// Optional workspace root captured for backward-compatible APIs.
     pub allowed_workspace_root: Option<PathBuf>,
     /// Whether this plugin exports a VCS backend interface.
     pub is_vcs_backend: bool,

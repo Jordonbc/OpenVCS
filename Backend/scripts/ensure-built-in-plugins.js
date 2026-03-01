@@ -9,6 +9,7 @@ const backendDir = path.resolve(scriptDir, '..');
 const repoRoot = path.resolve(backendDir, '..');
 const pluginSources = path.join(backendDir, 'built-in-plugins');
 const pluginBundles = path.join(repoRoot, 'target', 'openvcs', 'built-in-plugins');
+const nodeRuntimeDir = path.join(repoRoot, 'target', 'openvcs', 'node-runtime');
 
 const skipDirs = new Set(['target', '.git', 'node_modules', 'dist']);
 
@@ -71,6 +72,39 @@ function ensureBundlesDir() {
   fs.mkdirSync(pluginBundles, { recursive: true });
 }
 
+function ensureNodeRuntimeDir() {
+  fs.mkdirSync(nodeRuntimeDir, { recursive: true });
+}
+
+function ensureBundledNodeRuntime() {
+  const src = process.execPath;
+  const outName = process.platform === 'win32' ? 'node.exe' : 'node';
+  const dest = path.join(nodeRuntimeDir, outName);
+
+  let shouldCopy = true;
+  if (fs.existsSync(dest)) {
+    try {
+      const srcStat = fs.statSync(src);
+      const destStat = fs.statSync(dest);
+      shouldCopy = srcStat.size !== destStat.size || srcStat.mtimeMs > destStat.mtimeMs;
+    } catch {
+      shouldCopy = true;
+    }
+  }
+
+  if (!shouldCopy) return;
+
+  fs.copyFileSync(src, dest);
+  if (process.platform !== 'win32') {
+    try {
+      fs.chmodSync(dest, 0o755);
+    } catch {
+      // Ignore chmod errors on restricted filesystems.
+    }
+  }
+  console.log(`Bundled node runtime -> ${dest}`);
+}
+
 function runDistCommand() {
   console.log('Built-in plugin bundles need rebuilding; running cargo openvcs dist …');
   const pluginDirArg = 'built-in-plugins';
@@ -90,6 +124,8 @@ function runDistCommand() {
 }
 
 ensureBundlesDir();
+ensureNodeRuntimeDir();
+ensureBundledNodeRuntime();
 
 const outdated = findOutdatedPlugin();
 if (outdated) {

@@ -2,9 +2,7 @@
 
 OpenVCS plugins are local extensions installed as `.ovcsp` bundles.
 
-Plugins may include themes, a Wasm module, or both.
-
-Module plugins may optionally export UI menus and settings lifecycle hooks via the plugin world in `Core/wit/plugin.wit`.
+Plugins may include themes, a Node.js module, or both.
 
 ## Where plugins live
 
@@ -23,7 +21,7 @@ An `.ovcsp` is a tar.xz archive with this layout:
   icon.<ext>            (optional)
   themes/               (optional)
   bin/
-    <module>.wasm       (optional; must be a component)
+    <module>.mjs|.js|.cjs
 ```
 
 ## Manifest (`openvcs.plugin.json`)
@@ -45,41 +43,39 @@ Minimal module plugin:
   "id": "example.plugin",
   "name": "Example Plugin",
   "version": "0.1.0",
-  "capabilities": [],
-  "module": { "exec": "example-plugin.wasm" }
+  "module": { "exec": "example-plugin.mjs" }
 }
 ```
 
 Notes:
 
-- `module.exec` must end with `.wasm`.
-- The plugin runtime only loads component-model modules.
+- `module.exec` must end with `.js`, `.mjs`, or `.cjs`.
+- The runtime loads only Node entry files from `bin/`.
 - If `themes/` exists, it is packaged and discovered automatically.
-- If a plugin calls status APIs without approved status capability, the host logs a warning and ignores the action (the plugin still loads).
 
 ## Plugin UI menus and settings
 
 - Plugins can contribute typed menus/elements (text and buttons today) that the client renders.
-- Enabling/disabling a plugin from the Settings > Plugins pane refreshes plugin-contributed menus in the same open modal.
+- Enabling/disabling a plugin from the Settings > Plugins pane refreshes plugin-contributed menus.
 - Plugin list checkboxes are tri-state in the UI: disabled, enabled (green check), and enabling (animated pending indicator).
-- If plugin runtime startup fails (including startup sync on app launch), the plugin list shows a persistent red `!` marker for that plugin until the next retry.
-- Plugin menus are fetched only from plugins with a currently running module runtime; enabled plugins that are not running (for example after a crash) do not contribute menus until runtime is restored.
+- If plugin runtime startup fails, the plugin list shows a persistent red `!` marker for that plugin until retry.
+- Plugin menus are fetched only from plugins with a currently running module runtime.
 - If enabling a plugin fails during runtime startup, the host keeps that plugin disabled and returns an error to the UI.
-- For plugin menus, plugins can provide an optional `menu.order` (`u32`) hint; lower values render earlier, and menus without an order are sorted after ordered menus by label.
-- Built-in plugin menus are shown as normal top-level Settings sections; third-party plugin menus are grouped under Settings > Plugins in the `Plugin Settings` subsection.
-- Action buttons invoke plugin `handle-action` callbacks.
-- Plugin IPC is contract-driven: backend calls map to typed WIT exports rather than arbitrary string-named module methods.
-- The Plugins details pane includes a bottom-right `Permissions` button that opens a stacked modal titled `Permissions for <plugin name>`.
-- The permissions modal lists only permissions requested by that plugin, shows segmented button choices (for example `Allow` / `Deny`, with richer choices for some permission groups), and includes an `Apply changes` button.
-- When a plugin requests no capabilities, the modal shows: `The plugin does not request permissions`.
 - Plugin settings persistence is automatic in the host under:
   - `plugin-data/<plugin-id>/settings.json`
-- Settings save/load/reset/apply flow is driven by plugin hooks:
-  - `settings-defaults`
-  - `settings-on-load`
-  - `settings-on-apply`
-  - `settings-on-save`
-  - `settings-on-reset`
+
+## Security model
+
+Plugins are trust-model based and do not use per-capability permission prompts.
+Plugins run with full system access in their own Node process.
+
+Before a plugin module can start, the installed version must be marked
+`approved` in plugin installation metadata.
+
+Plugin modules run only with the app-bundled Node runtime; OpenVCS does not
+fall back to `node` from system PATH.
+
+Install only plugins you trust.
 
 ## Building bundles
 

@@ -110,6 +110,18 @@ fn ensure_generated_builtins_resource_dir(manifest_dir: &std::path::Path) {
     }
 }
 
+/// Ensures the generated bundled Node runtime resource directory exists.
+fn ensure_generated_node_runtime_resource_dir(manifest_dir: &std::path::Path) {
+    let generated = manifest_dir.join("../target/openvcs/node-runtime");
+    if let Err(err) = fs::create_dir_all(&generated) {
+        panic!(
+            "failed to create generated node runtime resource dir {}: {}",
+            generated.display(),
+            err
+        );
+    }
+}
+
 /// Generates Tauri build config and exports build-time metadata env vars.
 fn main() {
     // Base config path (in the Backend crate)
@@ -255,6 +267,7 @@ fn main() {
     println!("cargo:rustc-env=OPENVCS_BUILD={}", build_id);
 
     ensure_generated_builtins_resource_dir(&manifest_dir);
+    ensure_generated_node_runtime_resource_dir(&manifest_dir);
 
     // Proceed with tauri build steps
     tauri_build::build();

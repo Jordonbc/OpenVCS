@@ -6,7 +6,7 @@ use crate::logging::LogTimer;
 use crate::plugin_bundles::{PluginBundleStore, PluginManifest, VcsBackendProvide};
 use crate::plugin_paths::{built_in_plugin_dirs, PLUGIN_MANIFEST_NAME};
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
-use crate::plugin_runtime::runtime_select::create_component_runtime_instance;
+use crate::plugin_runtime::runtime_select::create_node_runtime_instance;
 use crate::plugin_runtime::settings_store;
 use crate::plugin_runtime::{vcs_proxy::PluginVcsProxy, PluginRuntimeManager};
 use crate::settings::AppConfig;
@@ -166,6 +166,25 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
             );
             continue;
         }
+
+        let approved = store
+            .get_current_installed(&p.plugin_id)
+            .ok()
+            .flatten()
+            .is_some_and(|installed| {
+                matches!(
+                    installed.approval,
+                    crate::plugin_bundles::ApprovalState::Approved { .. }
+                )
+            });
+        if !approved {
+            trace!(
+                "list_plugin_vcs_backends: plugin {} is not approved",
+                p.plugin_id
+            );
+            continue;
+        }
+
         let Some(module) = p.module else {
             trace!(
                 "list_plugin_vcs_backends: plugin {} has no module",
@@ -389,7 +408,7 @@ pub fn open_repo_via_plugin_vcs_backend(
             }
         })?;
 
-    let runtime = create_component_runtime_instance(spawn).map_err(|e| {
+    let runtime = create_node_runtime_instance(spawn).map_err(|e| {
         error!(
             "open_repo_via_plugin_vcs_backend: failed to create runtime for plugin {}: {}",
             desc.plugin_id, e

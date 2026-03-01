@@ -39,23 +39,6 @@ pub fn unregister_plugin(plugin_id: &str) {
     }
 }
 
-/// Subscribes a plugin to a named host/plugin event channel.
-///
-/// # Parameters
-/// - `plugin_id`: Subscriber plugin id.
-/// - `event`: Event name to subscribe to.
-///
-/// # Returns
-/// - `()`.
-pub fn subscribe(plugin_id: &str, event: &str) {
-    if let Ok(mut lock) = registry().lock() {
-        lock.subs
-            .entry(plugin_id.to_string())
-            .or_default()
-            .insert(event.to_string());
-    }
-}
-
 /// Emits an event originating from a plugin to other subscribers.
 ///
 /// # Parameters

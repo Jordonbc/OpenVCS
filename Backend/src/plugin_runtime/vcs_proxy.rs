@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::logging::LogTimer;
-use crate::plugin_runtime::component_instance::ComponentPluginRuntimeInstance;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
+use crate::plugin_runtime::node_instance::NodePluginRuntimeInstance;
 use log::{debug, error, info, warn};
 use openvcs_core::models::{
     Capabilities, ConflictDetails, ConflictSide, FetchOptions, LogQuery, StashItem, StatusPayload,
@@ -21,15 +21,15 @@ pub struct PluginVcsProxy {
     backend_id: BackendId,
     /// Repository worktree path associated with this backend session.
     workdir: PathBuf,
-    /// Started plugin runtime used for typed WIT calls.
-    runtime: Arc<ComponentPluginRuntimeInstance>,
+    /// Started plugin runtime used for JSON-RPC calls.
+    runtime: Arc<NodePluginRuntimeInstance>,
 }
 
 impl PluginVcsProxy {
     /// Opens a repository through a previously started plugin module runtime.
     pub fn open_with_process(
         backend_id: BackendId,
-        runtime: Arc<ComponentPluginRuntimeInstance>,
+        runtime: Arc<NodePluginRuntimeInstance>,
         repo_path: &Path,
         cfg: serde_json::Value,
     ) -> Result<Arc<dyn Vcs>, VcsError> {
@@ -431,6 +431,7 @@ impl Vcs for PluginVcsProxy {
     fn stash_show(&self, selector: &str) -> VcsResult<Vec<String>> {
         self.runtime
             .vcs_stash_show(selector)
+            .map(|value| value.lines().map(|line| line.to_string()).collect())
             .map_err(|e| self.map_runtime_error(e))
     }
 
