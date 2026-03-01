@@ -7,6 +7,7 @@
 
 use log::warn;
 use openvcs_core::BackendId;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::path::BaseDirectory;
 use tauri::WindowEvent;
@@ -104,6 +105,27 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
     }
 }
 
+/// Resolves a development fallback path for the bundled Node runtime.
+///
+/// In `cargo tauri dev`, the generated runtime is placed under
+/// `target/openvcs/node-runtime`, while Tauri resource resolution can point at
+/// `target/debug/node-runtime`. This helper probes the generated location.
+///
+/// # Returns
+/// - `Some(PathBuf)` when the dev bundled node binary exists.
+/// - `None` when the path cannot be derived or does not exist.
+fn resolve_dev_bundled_node_fallback() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let exe_dir = exe.parent()?;
+    let target_dir = exe_dir.parent()?;
+    let node_name = if cfg!(windows) { "node.exe" } else { "node" };
+    let candidate = target_dir
+        .join("openvcs")
+        .join("node-runtime")
+        .join(node_name);
+    candidate.is_file().then_some(candidate)
+}
+
 /// Starts the OpenVCS backend runtime and Tauri application.
 ///
 /// This configures logging, plugin bundle synchronization, startup restore
@@ -154,21 +176,33 @@ pub fn run() {
                     );
                 }
             }
-            if let Ok(node_runtime_dir) = app.path().resolve("node-runtime", BaseDirectory::Resource) {
-                let node_name = if cfg!(windows) { "node.exe" } else { "node" };
-                let bundled_node = node_runtime_dir.join(node_name);
-                if bundled_node.is_file() {
-                    crate::plugin_paths::set_node_executable_path(bundled_node.clone());
-                    log::info!(
-                        "plugins: using bundled node runtime: {}",
-                        bundled_node.display()
-                    );
-                } else {
-                    log::warn!(
-                        "plugins: bundled node runtime missing at {}; plugin modules will not start",
-                        bundled_node.display()
-                    );
+            let node_name = if cfg!(windows) { "node.exe" } else { "node" };
+            let mut node_candidates: Vec<PathBuf> = Vec::new();
+            if let Ok(node_runtime_dir) = app.path().resolve("node-runtime", BaseDirectory::Resource)
+            {
+                node_candidates.push(node_runtime_dir.join(node_name));
+            }
+            if let Some(dev_fallback) = resolve_dev_bundled_node_fallback() {
+                if !node_candidates.iter().any(|p| p == &dev_fallback) {
+                    node_candidates.push(dev_fallback);
                 }
+            }
+
+            if let Some(bundled_node) = node_candidates.iter().find(|path| path.is_file()) {
+                crate::plugin_paths::set_node_executable_path(bundled_node.to_path_buf());
+                log::info!(
+                    "plugins: using bundled node runtime: {}",
+                    bundled_node.display()
+                );
+            } else if let Some(primary) = node_candidates.first() {
+                log::warn!(
+                    "plugins: bundled node runtime missing at {}; plugin modules will not start",
+                    primary.display()
+                );
+            } else {
+                log::warn!(
+                    "plugins: bundled node runtime path could not be resolved; plugin modules will not start"
+                );
             }
             let store = crate::plugin_bundles::PluginBundleStore::new_default();
             if let Err(err) = store.sync_built_in_plugins() {

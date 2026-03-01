@@ -615,18 +615,8 @@ impl PluginRuntimeManager {
     /// Finds installed plugin components by plugin id (case-insensitive).
     fn find_components(&self, plugin_id: &str) -> Result<InstalledPluginComponents, String> {
         trace!("find_components: plugin_id='{}'", plugin_id);
-
-        let all_components = self.store.list_current_components()?;
-        debug!(
-            "find_components: found {} total components",
-            all_components.len()
-        );
-
-        let found = all_components
-            .into_iter()
-            .find(|components| components.plugin_id.eq_ignore_ascii_case(plugin_id));
-
-        match found {
+        let normalized = normalize_plugin_key(plugin_id)?;
+        match self.store.load_current_components(&normalized)? {
             Some(comp) => {
                 debug!("find_components: matched plugin_id='{}'", comp.plugin_id);
                 Ok(comp)
@@ -805,6 +795,19 @@ mod tests {
         assert!(vcs.spawn.is_vcs_backend);
     }
 
+    #[test]
+    /// Verifies enabling a non-runtime plugin does not depend on other plugins.
+    fn enabling_non_runtime_plugin_ignores_unrelated_invalid_plugin() {
+        let temp = tempdir().expect("tempdir");
+        write_non_runtime_plugin(temp.path(), "themes.plugin", false);
+        write_invalid_runtime_plugin(temp.path(), "broken.plugin");
+        let manager = PluginRuntimeManager::new(PluginBundleStore::new_at(temp.path().into()));
+
+        manager
+            .set_plugin_enabled("themes.plugin", true)
+            .expect("enable themes plugin");
+    }
+
     /// Writes a minimal module-capable plugin layout into a temp store.
     fn write_plugin(root: &std::path::Path, plugin_id: &str, default_enabled: bool) {
         write_plugin_with_backends(root, plugin_id, default_enabled, false);
@@ -897,6 +900,62 @@ mod tests {
             "name": "Theme Plugin",
             "version": "1.0.0",
             "default_enabled": default_enabled
+        });
+        fs::write(
+            plugin_dir.join("openvcs.plugin.json"),
+            serde_json::to_vec_pretty(&manifest).expect("serialize manifest"),
+        )
+        .expect("write manifest");
+
+        let mut versions = BTreeMap::new();
+        versions.insert(
+            "1.0.0".to_string(),
+            InstalledPluginVersion {
+                version: "1.0.0".to_string(),
+                bundle_sha256: "sha".to_string(),
+                installed_at_unix_ms: 0,
+                requested_capabilities: Vec::new(),
+                approval: ApprovalState::Approved {
+                    capabilities: Vec::new(),
+                    approved_at_unix_ms: 0,
+                },
+            },
+        );
+        let index = InstalledPluginIndex {
+            plugin_id: plugin_id.to_string(),
+            current: Some("1.0.0".to_string()),
+            versions,
+        };
+        fs::write(
+            plugin_dir.join("index.json"),
+            serde_json::to_vec_pretty(&index).expect("serialize index"),
+        )
+        .expect("write index");
+
+        let current = CurrentPointer {
+            version: "1.0.0".to_string(),
+        };
+        fs::write(
+            plugin_dir.join("current.json"),
+            serde_json::to_vec_pretty(&current).expect("serialize current"),
+        )
+        .expect("write current");
+    }
+
+    /// Writes a plugin with an invalid runtime module entrypoint extension.
+    fn write_invalid_runtime_plugin(root: &std::path::Path, plugin_id: &str) {
+        let plugin_dir = root.join(plugin_id);
+        fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+
+        let manifest = serde_json::json!({
+            "id": plugin_id,
+            "name": "Broken Plugin",
+            "version": "1.0.0",
+            "default_enabled": false,
+            "module": {
+                "exec": "broken.wasm",
+                "vcs_backends": []
+            }
         });
         fs::write(
             plugin_dir.join("openvcs.plugin.json"),

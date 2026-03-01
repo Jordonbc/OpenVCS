@@ -1035,18 +1035,27 @@ impl PluginBundleStore {
             };
 
             debug!("list_current_components: checking plugin '{}'", plugin_id);
-            if let Some(c) = self.load_current_components(&plugin_id)? {
-                debug!(
-                    "list_current_components: plugin '{}' has components, has_module={}",
-                    plugin_id,
-                    c.module.is_some()
-                );
-                out.push(c);
-            } else {
-                debug!(
-                    "list_current_components: plugin '{}' has no current components",
-                    plugin_id
-                );
+            match self.load_current_components(&plugin_id) {
+                Ok(Some(c)) => {
+                    debug!(
+                        "list_current_components: plugin '{}' has components, has_module={}",
+                        plugin_id,
+                        c.module.is_some()
+                    );
+                    out.push(c);
+                }
+                Ok(None) => {
+                    debug!(
+                        "list_current_components: plugin '{}' has no current components",
+                        plugin_id
+                    );
+                }
+                Err(err) => {
+                    warn!(
+                        "list_current_components: skipping invalid plugin '{}': {}",
+                        plugin_id, err
+                    );
+                }
             }
         }
         out.sort_by(|a, b| a.plugin_id.cmp(&b.plugin_id));
@@ -1761,5 +1770,97 @@ mod tests {
 
         let err = store.install_ovcsp_with_limits(&bundle_path, limits);
         assert!(err.is_err());
+    }
+
+    #[test]
+    /// Verifies component listing skips invalid plugins instead of failing globally.
+    fn list_current_components_skips_invalid_plugins() {
+        let root = tempdir().expect("tempdir");
+        let store = PluginBundleStore::new_at(root.path().to_path_buf());
+
+        write_installed_plugin(root.path(), "valid.theme", "1.0.0", None);
+        write_installed_plugin(root.path(), "broken.runtime", "1.0.0", Some("plugin.wasm"));
+
+        let components = store
+            .list_current_components()
+            .expect("list current components");
+
+        assert_eq!(components.len(), 1);
+        assert_eq!(components[0].plugin_id, "valid.theme");
+        assert!(components[0].module.is_none());
+    }
+
+    /// Writes an installed plugin directory with optional module entrypoint.
+    fn write_installed_plugin(
+        root: &std::path::Path,
+        plugin_id: &str,
+        version: &str,
+        module_exec: Option<&str>,
+    ) {
+        let plugin_dir = root.join(plugin_id);
+        fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+
+        let manifest = if let Some(exec) = module_exec {
+            serde_json::json!({
+                "id": plugin_id,
+                "name": "Test",
+                "version": version,
+                "default_enabled": false,
+                "module": {
+                    "exec": exec,
+                    "vcs_backends": []
+                }
+            })
+        } else {
+            serde_json::json!({
+                "id": plugin_id,
+                "name": "Test",
+                "version": version,
+                "default_enabled": false
+            })
+        };
+
+        fs::write(
+            plugin_dir.join(PLUGIN_MANIFEST_NAME),
+            serde_json::to_vec_pretty(&manifest).expect("serialize manifest"),
+        )
+        .expect("write manifest");
+
+        let index = InstalledPluginIndex {
+            plugin_id: plugin_id.to_string(),
+            current: Some(version.to_string()),
+            versions: {
+                let mut versions = BTreeMap::new();
+                versions.insert(
+                    version.to_string(),
+                    InstalledPluginVersion {
+                        version: version.to_string(),
+                        bundle_sha256: "sha".to_string(),
+                        installed_at_unix_ms: 0,
+                        requested_capabilities: Vec::new(),
+                        approval: ApprovalState::Approved {
+                            capabilities: Vec::new(),
+                            approved_at_unix_ms: 0,
+                        },
+                    },
+                );
+                versions
+            },
+        };
+
+        fs::write(
+            plugin_dir.join("index.json"),
+            serde_json::to_vec_pretty(&index).expect("serialize index"),
+        )
+        .expect("write index");
+
+        let current = CurrentPointer {
+            version: version.to_string(),
+        };
+        fs::write(
+            plugin_dir.join("current.json"),
+            serde_json::to_vec_pretty(&current).expect("serialize current"),
+        )
+        .expect("write current");
     }
 }
