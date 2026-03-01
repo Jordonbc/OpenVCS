@@ -31,7 +31,7 @@ Core plugin->host notifications:
 - `host.status_set`
 - `host.event_emit`
 - `vcs.event`
-- Plugin runtime requires the app-bundled Node binary (`node-runtime/node` or `node.exe`); no system `node` fallback.
+- Plugin runtime requires the app-bundled Node binary (`node-runtime/node` or `node.exe`); no system `node` fallback. In dev runs, the backend also probes the generated bundled path under `target/openvcs/node-runtime/`.
 
 ## Plugin types
 
