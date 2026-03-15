@@ -83,20 +83,27 @@ Install only plugins you trust.
 
 ## Building bundles
 
-Install the SDK from crates.io:
+Install the SDK in your plugin project:
 
 ```bash
-cargo install openvcs-sdk
+npm install --save-dev @openvcs/sdk
 ```
 
-Then build plugin bundles with:
+Code plugins should expose a `build:plugin` npm script that compiles runtime
+assets into `bin/`. Then use the SDK CLI in two steps:
 
 ```bash
-# From a plugin directory
-cargo openvcs dist
+# Build runtime assets from a plugin directory
+npx openvcs build
 
-# Or explicitly
-cargo openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist
+# Package a bundle from a plugin directory
+npx openvcs dist --plugin-dir . --out dist
+
+# Or explicitly from anywhere
+npx openvcs build --plugin-dir /path/to/plugin
+npx openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist
 ```
+
+`openvcs dist` runs the build step automatically unless `--no-build` is passed.
 
 See `Client/docs/plugin architecture.md` for the runtime model and `SDK/README.md` for packager details.

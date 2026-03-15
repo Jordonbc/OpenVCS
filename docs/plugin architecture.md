@@ -74,6 +74,8 @@ Dependency notes:
 
 - Plugin dependencies are expected to be pre-bundled in `.ovcsp`.
 - The host does not run npm/yarn/pnpm during plugin install/update.
+- SDK packaging is a two-step npm flow: `openvcs build` creates runtime assets,
+  then `openvcs dist` validates and bundles them into `.ovcsp`.
 
 ## Security model
 

@@ -51,7 +51,7 @@
 
 ## Plugin runtime & host expectations
 
-- Plugin components live under `Backend/built-in-plugins/` and follow the manifest format in `openvcs.plugin.json`. Built-in bundles ship with the AppImage/Flatpak and are also built by the SDK (`cargo openvcs dist`).
+- Plugin components live under `Backend/built-in-plugins/` and follow the manifest format in `openvcs.plugin.json`. Built-in bundles ship with the AppImage/Flatpak and are also built by the SDK (`openvcs build` + `openvcs dist`).
 - The backend loads plugin modules as Node.js runtime scripts (`*.mjs|*.js|*.cjs`) via `Backend/src/plugin_runtime/node_instance.rs`.
 - The canonical host/plugin contract is JSON-RPC over stdio with method names in `Backend/src/plugin_runtime/protocol.rs`.
 - When changing host APIs or runtime behavior, update protocol constants and runtime logic in `Backend/src/plugin_runtime`.
