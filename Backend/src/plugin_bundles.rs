@@ -36,7 +36,7 @@ impl Default for InstallerLimits {
     /// - Default [`InstallerLimits`] values.
     fn default() -> Self {
         Self {
-            max_files: 4096,
+            max_files: 50_000,
             max_file_bytes: 64 * 1024 * 1024,
             max_total_bytes: 512 * 1024 * 1024,
             max_compression_ratio: 200,
@@ -446,6 +446,18 @@ impl PluginBundleStore {
 
             if !entry_type.is_file() {
                 return Err(format!("unsupported tar entry type: {}", raw_name));
+            }
+
+            if stripped
+                .as_os_str()
+                .to_string_lossy()
+                .to_ascii_lowercase()
+                .ends_with(".node")
+            {
+                return Err(format!(
+                    "bundle contains unsupported native Node addon: {}",
+                    raw_name
+                ));
             }
 
             total_files += 1;

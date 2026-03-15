@@ -19,8 +19,8 @@ jobs:
     permissions:
       id-token: write
       contents: read
-      pull-requests: read
-      issues: read
+      pull-requests: write
+      issues: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -28,7 +28,8 @@ jobs:
           persist-credentials: false
 
       - name: Run opencode
-        uses: anomalyco/opencode/github@latest
+        # Pinned to an immutable commit for CodeQL (tag: github-v1.2.17)
+        uses: anomalyco/opencode/github@2410593023d2c61f05123c9b0faf189a28dfbeee
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         with:

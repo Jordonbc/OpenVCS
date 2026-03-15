@@ -22,6 +22,8 @@ An `.ovcsp` is a tar.xz archive with this layout:
   themes/               (optional)
   bin/
     <module>.mjs|.js|.cjs
+    ...other runtime files
+  node_modules/         (optional; pre-bundled npm dependencies)
 ```
 
 ## Manifest (`openvcs.plugin.json`)
@@ -52,6 +54,8 @@ Notes:
 - `module.exec` must end with `.js`, `.mjs`, or `.cjs`.
 - The runtime loads only Node entry files from `bin/`.
 - If `themes/` exists, it is packaged and discovered automatically.
+- Dependency installation is a packaging concern (SDK), not an app install concern.
+- OpenVCS does not run npm during plugin installation or updates.
 
 ## Plugin UI menus and settings
 

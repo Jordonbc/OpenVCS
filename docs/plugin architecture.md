@@ -55,6 +55,8 @@ Plugins are installed from `.ovcsp` tar.xz archives. Layout:
   themes/               (optional; may coexist with a module)
   bin/
     <module>.mjs|.js|.cjs
+    ...other runtime files
+  node_modules/         (optional; pre-bundled npm dependencies)
 ```
 
 ## Manifest (`openvcs.plugin.json`)
@@ -66,6 +68,11 @@ The host currently consumes:
 - `default_enabled` (optional)
 - `module.exec` (optional Node entry filename under `bin/`)
 - `module.vcs_backends` (optional VCS backend ids the module provides)
+
+Dependency notes:
+
+- Plugin dependencies are expected to be pre-bundled in `.ovcsp`.
+- The host does not run npm/yarn/pnpm during plugin install/update.
 
 ## Security model
 
