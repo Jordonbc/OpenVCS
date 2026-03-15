@@ -274,7 +274,6 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         }
     }});
     items.push({ label: '---' });
-    items.push({ label: '---' });
     if (explicitMultiSelection) {
         items.push({ label: 'Discard all selected', action: async () => {
             if (!TAURI.has) return;

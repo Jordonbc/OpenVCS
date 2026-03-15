@@ -14,7 +14,23 @@ export function buildCtxMenu(items: CtxItem[], x: number, y: number) {
   // Position gets clamped to viewport after measuring.
   m.style.left = `${Math.round(x)}px`;
   m.style.top = `${Math.round(y)}px`;
-  items.forEach((it) => {
+  // Normalize separators: remove leading/trailing, collapse consecutive.
+  const normalized: CtxItem[] = [];
+  let lastWasSep = true; // start as true to drop leading separators
+  for (const it of items) {
+    const isSep = it.label === '---';
+    if (isSep) {
+      if (!lastWasSep) { normalized.push(it); }
+    } else {
+      normalized.push(it);
+    }
+    lastWasSep = isSep;
+  }
+  // Drop trailing separator if present
+  if (normalized.length > 0 && normalized[normalized.length - 1].label === '---') {
+    normalized.pop();
+  }
+  normalized.forEach((it) => {
     if (it.label === '---') {
       const sep = document.createElement('div');
       sep.className = 'sep';
