@@ -9,8 +9,7 @@ use tauri::{async_runtime, Emitter, Manager, Runtime, State, Window};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 
-use openvcs_core::BackendId;
-
+use crate::core::BackendId;
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::state::AppState;
@@ -260,9 +259,9 @@ pub async fn clone_repo<R: Runtime>(
         );
         // Plugin backends currently do not support clone in the host.
         let _ = on;
-        Err(openvcs_core::VcsError::Unsupported(
-            openvcs_core::BackendId::from(be_label.as_str()),
-        ))
+        Err(crate::core::VcsError::Unsupported(BackendId::from(
+            be_label.as_str(),
+        )))
     });
     handle
         .await

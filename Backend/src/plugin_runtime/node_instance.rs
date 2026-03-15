@@ -5,6 +5,12 @@
 //! This runtime spawns long-lived Node processes and exchanges JSON-RPC 2.0
 //! messages over stdio using an LSP-style framing protocol.
 
+use crate::core::models::{
+    BranchItem, CommitItem, ConflictDetails, ConflictSide, LogQuery, StashItem, StatusPayload,
+    VcsEvent,
+};
+use crate::core::settings::SettingKv;
+use crate::core::ui::Menu;
 use crate::plugin_paths;
 use crate::plugin_runtime::events;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
@@ -15,12 +21,6 @@ use crate::plugin_runtime::protocol::{
 use crate::plugin_runtime::spawn::SpawnConfig;
 use base64::Engine;
 use log::{debug, info, trace, warn};
-use openvcs_core::models::{
-    Capabilities, ConflictDetails, ConflictSide, FetchOptions, LogQuery, StashItem, StatusPayload,
-    StatusSummary, VcsEvent,
-};
-use openvcs_core::settings::SettingKv;
-use openvcs_core::ui::Menu;
 use parking_lot::{Mutex, RwLock};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -439,11 +439,6 @@ impl NodePluginRuntimeInstance {
         }
     }
 
-    /// Calls `vcs.get-caps` and returns backend capability flags.
-    pub fn vcs_get_caps(&self) -> Result<Capabilities, String> {
-        self.rpc_call(Methods::VCS_GET_CAPS, Value::Object(serde_json::Map::new()))
-    }
-
     /// Calls `vcs.open` and stores active session id.
     ///
     /// # Parameters
@@ -473,15 +468,9 @@ impl NodePluginRuntimeInstance {
     }
 
     /// Calls `vcs.list-branches`.
-    pub fn vcs_list_branches(&self) -> Result<Vec<openvcs_core::models::BranchItem>, String> {
+    pub fn vcs_list_branches(&self) -> Result<Vec<BranchItem>, String> {
         let params = self.session_params(Value::Object(serde_json::Map::new()))?;
         self.rpc_call(Methods::VCS_LIST_BRANCHES, params)
-    }
-
-    /// Calls `vcs.list-local-branches`.
-    pub fn vcs_list_local_branches(&self) -> Result<Vec<String>, String> {
-        let params = self.session_params(Value::Object(serde_json::Map::new()))?;
-        self.rpc_call(Methods::VCS_LIST_LOCAL_BRANCHES, params)
     }
 
     /// Calls `vcs.create-branch`.
@@ -522,21 +511,6 @@ impl NodePluginRuntimeInstance {
     pub fn vcs_fetch(&self, remote: &str, refspec: &str) -> Result<(), String> {
         let params = self.session_params(json!({ "remote": remote, "refspec": refspec }))?;
         self.rpc_call_unit(Methods::VCS_FETCH, params)
-    }
-
-    /// Calls `vcs.fetch-with-options`.
-    pub fn vcs_fetch_with_options(
-        &self,
-        remote: &str,
-        refspec: &str,
-        opts: FetchOptions,
-    ) -> Result<(), String> {
-        let params = self.session_params(json!({
-            "remote": remote,
-            "refspec": refspec,
-            "opts": opts,
-        }))?;
-        self.rpc_call_unit(Methods::VCS_FETCH_WITH_OPTIONS, params)
     }
 
     /// Calls `vcs.push`.
@@ -583,12 +557,6 @@ impl NodePluginRuntimeInstance {
         self.rpc_call(Methods::VCS_COMMIT_INDEX, params)
     }
 
-    /// Calls `vcs.get-status-summary`.
-    pub fn vcs_get_status_summary(&self) -> Result<StatusSummary, String> {
-        let params = self.session_params(Value::Object(serde_json::Map::new()))?;
-        self.rpc_call(Methods::VCS_GET_STATUS_SUMMARY, params)
-    }
-
     /// Calls `vcs.get-status-payload`.
     pub fn vcs_get_status_payload(&self) -> Result<StatusPayload, String> {
         let params = self.session_params(Value::Object(serde_json::Map::new()))?;
@@ -596,10 +564,7 @@ impl NodePluginRuntimeInstance {
     }
 
     /// Calls `vcs.list-commits`.
-    pub fn vcs_list_commits(
-        &self,
-        query: &LogQuery,
-    ) -> Result<Vec<openvcs_core::models::CommitItem>, String> {
+    pub fn vcs_list_commits(&self, query: &LogQuery) -> Result<Vec<CommitItem>, String> {
         let params = self.session_params(json!({ "query": query }))?;
         self.rpc_call(Methods::VCS_LIST_COMMITS, params)
     }
@@ -702,12 +667,6 @@ impl NodePluginRuntimeInstance {
     pub fn vcs_get_branch_upstream(&self, branch: &str) -> Result<Option<String>, String> {
         let params = self.session_params(json!({ "branch": branch }))?;
         self.rpc_call(Methods::VCS_GET_BRANCH_UPSTREAM, params)
-    }
-
-    /// Calls `vcs.hard-reset-head`.
-    pub fn vcs_hard_reset_head(&self) -> Result<(), String> {
-        let params = self.session_params(Value::Object(serde_json::Map::new()))?;
-        self.rpc_call_unit(Methods::VCS_HARD_RESET_HEAD, params)
     }
 
     /// Calls `vcs.reset-soft-to`.

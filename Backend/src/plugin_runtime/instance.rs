@@ -1,9 +1,10 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-use openvcs_core::models::VcsEvent;
-use openvcs_core::settings::SettingKv;
-use openvcs_core::ui::Menu;
 use std::sync::Arc;
+
+use crate::core::models::VcsEvent;
+use crate::core::settings::SettingKv;
+use crate::core::ui::Menu;
 
 /// Runtime instance abstraction used by the plugin runtime manager.
 pub trait PluginRuntimeInstance: Send + Sync {

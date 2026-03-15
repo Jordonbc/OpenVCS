@@ -3,8 +3,8 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+use crate::core::models::{ConflictDetails, ConflictSide};
 use log::{debug, error, info, trace, warn};
-use openvcs_core::models::{ConflictDetails, ConflictSide};
 use shlex::split;
 use tauri::State;
 

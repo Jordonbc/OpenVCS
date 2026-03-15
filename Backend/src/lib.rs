@@ -6,7 +6,6 @@
 //! plugin discovery, and startup behavior.
 
 use log::warn;
-use openvcs_core::BackendId;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::path::BaseDirectory;
@@ -14,6 +13,9 @@ use tauri::WindowEvent;
 use tauri::{Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
 
+use crate::core::BackendId;
+
+mod core;
 mod logging;
 mod output_log;
 mod plugin_bundles;

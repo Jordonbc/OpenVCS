@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Discovery and opening logic for plugin-provided VCS backends.
 
+use crate::core::{BackendId, Result as VcsResult, Vcs, VcsError};
 use crate::logging::LogTimer;
 use crate::plugin_bundles::{PluginBundleStore, PluginManifest, VcsBackendProvide};
 use crate::plugin_paths::{built_in_plugin_dirs, PLUGIN_MANIFEST_NAME};
@@ -11,7 +12,6 @@ use crate::plugin_runtime::settings_store;
 use crate::plugin_runtime::{vcs_proxy::PluginVcsProxy, PluginRuntimeManager};
 use crate::settings::AppConfig;
 use log::{debug, error, info, trace, warn};
-use openvcs_core::{BackendId, Result as VcsResult, Vcs, VcsError};
 use std::{
     collections::BTreeMap,
     fs,

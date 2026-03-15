@@ -5,8 +5,7 @@ use std::path::PathBuf;
 use log::{error, info};
 use tauri::State;
 
-use openvcs_core::models::StashItem;
-
+use crate::core::models::StashItem;
 use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};

@@ -5,8 +5,7 @@ use std::path::PathBuf;
 use log::{error, info};
 use tauri::{async_runtime, Manager, Runtime, State, Window};
 
-use openvcs_core::models::VcsEvent;
-
+use crate::core::models::VcsEvent;
 use crate::state::AppState;
 
 use super::{current_repo_or_err, progress_bridge, run_repo_task};

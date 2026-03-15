@@ -1,13 +1,11 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+use crate::core::models::{CommitItem, LogQuery, VcsEvent};
+use crate::core::{Vcs, VcsError};
+use crate::state::AppState;
+
 use log::{error, info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window};
-
-use openvcs_core::models::{CommitItem, LogQuery, VcsEvent};
-use openvcs_core::Vcs;
-use openvcs_core::VcsError;
-
-use crate::state::AppState;
 
 use super::{current_repo_or_err, progress_bridge, run_repo_task, ProgressPayload};
 

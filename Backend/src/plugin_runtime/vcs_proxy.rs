@@ -1,15 +1,15 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::core::models::{
+    BranchItem, CommitItem, ConflictDetails, ConflictSide, LogQuery, StashItem, StatusPayload,
+    VcsEvent,
+};
+use crate::core::{BackendId, OnEvent, Result as VcsResult, Vcs, VcsError};
 use crate::logging::LogTimer;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::node_instance::NodePluginRuntimeInstance;
-use log::{debug, error, info, warn};
-use openvcs_core::models::{
-    Capabilities, ConflictDetails, ConflictSide, FetchOptions, LogQuery, StashItem, StatusPayload,
-    StatusSummary, VcsEvent,
-};
-use openvcs_core::{BackendId, OnEvent, Result as VcsResult, Vcs, VcsError};
+use log::{debug, error, info};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -87,6 +87,10 @@ impl PluginVcsProxy {
 
     /// Maps string runtime errors into backend-scoped VCS errors.
     fn map_runtime_error(&self, err: String) -> VcsError {
+        if err == "no upstream configured" {
+            return VcsError::NoUpstream;
+        }
+
         VcsError::Backend {
             backend: self.backend_id.clone(),
             msg: err,
@@ -99,33 +103,6 @@ impl Vcs for PluginVcsProxy {
         self.backend_id.clone()
     }
 
-    fn caps(&self) -> Capabilities {
-        self.runtime.vcs_get_caps().unwrap_or_else(|e| {
-            warn!("caps: failed to query capabilities: {}", e);
-            Capabilities::default()
-        })
-    }
-
-    fn open(_path: &Path) -> VcsResult<Self>
-    where
-        Self: Sized,
-    {
-        Err(VcsError::Backend {
-            backend: BackendId::from("plugin"),
-            msg: "PluginVcsProxy::open must be constructed via the host runtime".into(),
-        })
-    }
-
-    fn clone(_url: &str, _dest: &Path, _on: Option<OnEvent>) -> VcsResult<Self>
-    where
-        Self: Sized,
-    {
-        Err(VcsError::Backend {
-            backend: BackendId::from("plugin"),
-            msg: "PluginVcsProxy::clone must be constructed via the host runtime".into(),
-        })
-    }
-
     fn workdir(&self) -> &Path {
         &self.workdir
     }
@@ -136,15 +113,9 @@ impl Vcs for PluginVcsProxy {
             .map_err(|e| self.map_runtime_error(e))
     }
 
-    fn branches(&self) -> VcsResult<Vec<openvcs_core::models::BranchItem>> {
+    fn branches(&self) -> VcsResult<Vec<BranchItem>> {
         self.runtime
             .vcs_list_branches()
-            .map_err(|e| self.map_runtime_error(e))
-    }
-
-    fn local_branches(&self) -> VcsResult<Vec<String>> {
-        self.runtime
-            .vcs_list_local_branches()
             .map_err(|e| self.map_runtime_error(e))
     }
 
@@ -182,20 +153,6 @@ impl Vcs for PluginVcsProxy {
         self.with_events(on, || {
             self.runtime
                 .vcs_fetch(remote, refspec)
-                .map_err(|e| self.map_runtime_error(e))
-        })
-    }
-
-    fn fetch_with_options(
-        &self,
-        remote: &str,
-        refspec: &str,
-        opts: FetchOptions,
-        on: Option<OnEvent>,
-    ) -> VcsResult<()> {
-        self.with_events(on, || {
-            self.runtime
-                .vcs_fetch_with_options(remote, refspec, opts)
                 .map_err(|e| self.map_runtime_error(e))
         })
     }
@@ -238,19 +195,13 @@ impl Vcs for PluginVcsProxy {
             .map_err(|e| self.map_runtime_error(e))
     }
 
-    fn status_summary(&self) -> VcsResult<StatusSummary> {
-        self.runtime
-            .vcs_get_status_summary()
-            .map_err(|e| self.map_runtime_error(e))
-    }
-
     fn status_payload(&self) -> VcsResult<StatusPayload> {
         self.runtime
             .vcs_get_status_payload()
             .map_err(|e| self.map_runtime_error(e))
     }
 
-    fn log_commits(&self, query: &LogQuery) -> VcsResult<Vec<openvcs_core::models::CommitItem>> {
+    fn log_commits(&self, query: &LogQuery) -> VcsResult<Vec<CommitItem>> {
         self.runtime
             .vcs_list_commits(query)
             .map_err(|e| self.map_runtime_error(e))
@@ -359,12 +310,6 @@ impl Vcs for PluginVcsProxy {
     fn branch_upstream(&self, branch: &str) -> VcsResult<Option<String>> {
         self.runtime
             .vcs_get_branch_upstream(branch)
-            .map_err(|e| self.map_runtime_error(e))
-    }
-
-    fn hard_reset_head(&self) -> VcsResult<()> {
-        self.runtime
-            .vcs_hard_reset_head()
             .map_err(|e| self.map_runtime_error(e))
     }
 

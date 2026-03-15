@@ -1,13 +1,15 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-use crate::plugin_bundles::{ApprovalState, InstalledPlugin, InstalledPluginIndex, PluginBundleStore};
+use crate::core::settings::{SettingKv, SettingValue};
+use crate::core::ui::{Menu, UiElement};
+use crate::plugin_bundles::{
+    ApprovalState, InstalledPlugin, InstalledPluginIndex, PluginBundleStore,
+};
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::settings_store;
 use crate::plugins;
 use crate::state::AppState;
 use log::{debug, error, info, trace, warn};
-use openvcs_core::settings::{SettingKv, SettingValue};
-use openvcs_core::ui::{Menu, UiElement};
 use serde_json::Value;
 use std::sync::Arc;
 use tauri::{Runtime, State, Window};

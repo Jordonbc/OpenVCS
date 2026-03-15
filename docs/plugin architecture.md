@@ -15,6 +15,7 @@ Client (Frontend) -> Client (Backend host) <-> Plugin (Node.js process)
 ## Runtime contract
 
 - Method names and framing live in `Client/Backend/src/plugin_runtime/protocol.rs`.
+- Backend-owned shared Rust contracts for VCS backends and plugin-facing payloads live in `Client/Backend/src/core/`.
 - Runtime process implementation lives in:
   - `Client/Backend/src/plugin_runtime/node_instance.rs`
   - `Client/Backend/src/plugin_runtime/runtime_select.rs`

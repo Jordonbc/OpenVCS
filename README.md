@@ -178,6 +178,7 @@ cargo build
 
 - **Frontend:** TypeScript + Vite for a fast iteration loop.
 - **Backend:** Rust + Tauri commands for native operations.
+- **Backend contracts:** shared Rust VCS models/traits now live in `Backend/src/core/` and are owned by the backend module.
 - **Bridge:** Tauri `invoke` is used to call Rust from the UI; events are used for progress/streaming.
 
 ---

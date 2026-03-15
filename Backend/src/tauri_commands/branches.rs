@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use log::{debug, error, info, warn};
 use tauri::State;
 
-use openvcs_core::models::{BranchItem, BranchKind};
-use openvcs_core::BackendId;
+use crate::core::models::{BranchItem, BranchKind};
+use crate::core::BackendId;
 
 use crate::plugin_runtime::settings_store;
 use crate::plugin_vcs_backends;
@@ -257,7 +257,7 @@ pub struct HeadStatus {
 /// - `Ok(HeadStatus)` with branch and commit data.
 /// - `Err(String)` when repository queries fail.
 pub async fn git_head_status(state: State<'_, AppState>) -> Result<HeadStatus, String> {
-    use openvcs_core::models::LogQuery;
+    use crate::core::models::LogQuery;
 
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_head_status", repo, move |repo| {

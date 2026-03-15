@@ -5,8 +5,7 @@ use std::path::PathBuf;
 use log::{debug, error, info};
 use tauri::State;
 
-use openvcs_core::models::{CommitItem, LogQuery, StatusPayload};
-
+use crate::core::models::{CommitItem, LogQuery, StatusPayload};
 use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};

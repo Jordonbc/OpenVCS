@@ -6,9 +6,9 @@ use std::sync::Arc;
 use log::{error, info, warn};
 use tauri::{async_runtime, State};
 
-use openvcs_core::BackendId;
 use std::collections::BTreeMap;
 
+use crate::core::BackendId;
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::state::AppState;
