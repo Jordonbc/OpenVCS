@@ -68,6 +68,10 @@ pub struct PluginMenuPayload {
     pub elements: Vec<Value>,
 }
 
+/// Return type for plugin settings defaults resolution.
+type PluginSettingsDefaultsResolution =
+    (Vec<SettingKv>, Option<Arc<dyn PluginRuntimeInstance>>);
+
 #[tauri::command]
 /// Lists plugin summaries discovered by the backend.
 ///
@@ -578,7 +582,7 @@ fn resolve_plugin_settings_defaults(
     state: &AppState,
     cfg: &crate::settings::AppConfig,
     plugin_id: &str,
-) -> Result<(Vec<SettingKv>, Option<Arc<dyn PluginRuntimeInstance>>), String> {
+) -> Result<PluginSettingsDefaultsResolution, String> {
     let mut runtime = state
         .plugin_runtime()
         .runtime_for_workspace_with_config(cfg, plugin_id, None)

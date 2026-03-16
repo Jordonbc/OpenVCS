@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::core::models::{
-    BranchItem, CommitItem, ConflictDetails, ConflictSide, LogQuery, StashItem, StatusPayload,
-    VcsEvent,
+    BranchItem, CommitItem, ConflictDetails, ConflictSide, LogQuery, OnEvent, StashItem,
+    StatusPayload,
 };
-use crate::core::{BackendId, OnEvent, Result as VcsResult, Vcs, VcsError};
+use crate::core::{BackendId, Result as VcsResult, Vcs, VcsError};
 use crate::logging::LogTimer;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::node_instance::NodePluginRuntimeInstance;
@@ -77,9 +77,7 @@ impl PluginVcsProxy {
     where
         F: FnOnce() -> Result<R, VcsError>,
     {
-        let sink: Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>> =
-            on.map(|cb| Arc::new(move |evt| cb(evt)) as _);
-        self.runtime.set_event_sink(sink);
+        self.runtime.set_event_sink(on);
         let res = f();
         self.runtime.set_event_sink(None);
         res

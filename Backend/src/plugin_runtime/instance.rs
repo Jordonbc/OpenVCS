@@ -1,8 +1,6 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-use std::sync::Arc;
-
-use crate::core::models::VcsEvent;
+use crate::core::models::OnEvent;
 use crate::core::settings::SettingKv;
 use crate::core::ui::Menu;
 
@@ -48,7 +46,7 @@ pub trait PluginRuntimeInstance: Send + Sync {
     }
 
     /// Installs an optional event sink for runtime-emitted events.
-    fn set_event_sink(&self, _sink: Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>>) {}
+    fn set_event_sink(&self, _sink: Option<OnEvent>) {}
 
     /// Stops the runtime instance.
     fn stop(&self);

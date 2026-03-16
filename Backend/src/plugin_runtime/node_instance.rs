@@ -6,8 +6,8 @@
 //! messages over stdio using an LSP-style framing protocol.
 
 use crate::core::models::{
-    BranchItem, CommitItem, ConflictDetails, ConflictSide, LogQuery, StashItem, StatusPayload,
-    VcsEvent,
+    BranchItem, CommitItem, ConflictDetails, ConflictSide, LogQuery, OnEvent, StashItem,
+    StatusPayload, VcsEvent,
 };
 use crate::core::settings::SettingKv;
 use crate::core::ui::Menu;
@@ -27,7 +27,6 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::io::BufReader;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::Arc;
 
 /// Live stdio-backed JSON-RPC process handle.
 struct NodeRpcProcess {
@@ -150,7 +149,7 @@ pub struct NodePluginRuntimeInstance {
     /// Active VCS session id for backend plugins.
     vcs_session_id: Mutex<Option<String>>,
     /// Optional sink for VCS progress events.
-    event_sink: RwLock<Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>>>,
+    event_sink: RwLock<Option<OnEvent>>,
 }
 
 impl NodePluginRuntimeInstance {
@@ -805,7 +804,7 @@ impl PluginRuntimeInstance for NodePluginRuntimeInstance {
     }
 
     /// Updates the optional VCS event sink.
-    fn set_event_sink(&self, sink: Option<Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>>) {
+    fn set_event_sink(&self, sink: Option<OnEvent>) {
         *self.event_sink.write() = sink;
     }
 

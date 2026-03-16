@@ -233,11 +233,11 @@ impl PluginCache {
 
                             let is_built_in = built_in_ids.contains(&norm);
 
-                            if !is_built_in {
-                                if bundle_store.get_current_dir(&norm).ok().flatten().is_none() {
-                                    debug!("plugins: skipping '{}' - not properly installed (no current version)", norm);
-                                    continue;
-                                }
+                            if !is_built_in
+                                && bundle_store.get_current_dir(&norm).ok().flatten().is_none()
+                            {
+                                debug!("plugins: skipping '{}' - not properly installed (no current version)", norm);
+                                continue;
                             }
 
                             let effective_origin = if is_built_in {

@@ -5,8 +5,11 @@
 use parking_lot::RwLock;
 use std::sync::OnceLock;
 
+/// Callback type for status text updates from plugins to frontend.
+type StatusEventEmitter = Box<dyn Fn(&str) + Send + Sync + 'static>;
+
 /// Global status emitter callback used by backend->frontend bridge.
-static STATUS_EVENT_EMITTER: OnceLock<Box<dyn Fn(&str) + Send + Sync + 'static>> = OnceLock::new();
+static STATUS_EVENT_EMITTER: OnceLock<StatusEventEmitter> = OnceLock::new();
 /// Shared in-memory status text for plugin updates.
 static STATUS_TEXT: OnceLock<RwLock<String>> = OnceLock::new();
 
