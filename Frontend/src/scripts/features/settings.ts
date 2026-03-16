@@ -46,6 +46,159 @@ function pluginSectionId(pluginId: string, menuId: string): string {
     return `plugin-${toKebab(`${pluginId}-${menuId}`)}`;
 }
 
+function flashSavedState(button: HTMLButtonElement, originalText = 'Save') {
+    button.classList.add('saved-state');
+    button.textContent = 'Saved!';
+    setTimeout(() => {
+        button.textContent = originalText;
+        button.classList.remove('saved-state');
+    }, 2000);
+}
+
+function renderPluginSettingFields(
+    fields: PluginSettingFieldPayload[],
+): HTMLDivElement {
+    const settingsWrap = document.createElement('div');
+    settingsWrap.className = 'group';
+    const heading = document.createElement('h4');
+    heading.className = 'settings-section-title';
+    heading.textContent = 'Settings';
+    settingsWrap.appendChild(heading);
+
+    const controls = new Map<string, HTMLInputElement | HTMLSelectElement>();
+    for (const field of fields) {
+        const settingId = String(field?.id || '').trim();
+        if (!settingId) continue;
+        const kind = String(field?.kind || '').trim().toLowerCase();
+
+        const row = document.createElement('div');
+        row.className = 'group';
+
+        const hasOptions = Array.isArray(field.options) && field.options.length > 0;
+        let control: HTMLInputElement | HTMLSelectElement;
+
+        if (kind === 'bool') {
+            const labelEl = document.createElement('label');
+            labelEl.className = 'checkbox';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.checked = Boolean(field.value);
+            labelEl.appendChild(input);
+            labelEl.append(` ${String(field?.label || settingId).trim() || settingId}`);
+            control = input;
+            row.appendChild(labelEl);
+        } else if (kind === 'text' && hasOptions) {
+            const labelEl = document.createElement('label');
+            labelEl.textContent = String(field?.label || settingId).trim() || settingId;
+            row.appendChild(labelEl);
+            const select = document.createElement('select');
+            for (const option of field.options || []) {
+                const opt = document.createElement('option');
+                opt.value = String(option?.value || '');
+                opt.textContent = String(option?.label || option?.value || '').trim() || opt.value;
+                select.appendChild(opt);
+            }
+            const value = String(field?.value ?? '');
+            if (value && Array.from(select.options).some((opt) => opt.value === value)) {
+                select.value = value;
+            }
+            control = select;
+            row.appendChild(control);
+        } else {
+            const labelEl = document.createElement('label');
+            labelEl.textContent = String(field?.label || settingId).trim() || settingId;
+            row.appendChild(labelEl);
+            const input = document.createElement('input');
+            if (kind === 's32' || kind === 'u32' || kind === 'f64') {
+                input.type = 'number';
+                input.step = kind === 'f64' ? 'any' : '1';
+                if (kind === 'u32') input.min = '0';
+                const n = Number(field?.value ?? field?.default_value ?? 0);
+                input.value = Number.isFinite(n) ? String(n) : '0';
+            } else {
+                input.type = 'text';
+                input.value = String(field?.value ?? field?.default_value ?? '');
+            }
+            control = input;
+            row.appendChild(control);
+        }
+
+        control.setAttribute('data-setting-id', settingId);
+        control.setAttribute('data-setting-kind', kind);
+        controls.set(settingId, control);
+
+        const description = String(field?.description || '').trim();
+        if (description) {
+            const hint = document.createElement('small');
+            hint.textContent = description;
+            row.appendChild(hint);
+        }
+
+        settingsWrap.appendChild(row);
+    }
+
+    return settingsWrap;
+}
+
+const loadedPluginSettings = new Map<string, PluginSettingFieldPayload[]>();
+
+export function clearPluginSettingsCache(): void {
+    loadedPluginSettings.clear();
+}
+
+async function ensurePluginSettingsLoaded(modal: HTMLElement, pluginId: string, section: string): Promise<boolean> {
+    const panelsScroll = modal.querySelector('#settings-panels-scroll');
+    if (!panelsScroll) return false;
+
+    const panel = panelsScroll.querySelector<HTMLElement>(`.panel-form[data-panel="${CSS.escape(section)}"]`);
+    if (!panel) return false;
+
+    const cacheKey = pluginId.toLowerCase();
+    if (loadedPluginSettings.has(cacheKey)) {
+        const existing = panel.querySelector('.group');
+        if (existing) return true;
+        const fields = loadedPluginSettings.get(cacheKey)!;
+        const settingsWrap = renderPluginSettingFields(fields);
+        panel.appendChild(settingsWrap);
+        return true;
+    }
+
+    const loading = panel.querySelector('.plugin-settings-loading');
+    if (loading) {
+        (loading as HTMLElement).dataset.loading = 'true';
+    }
+
+    try {
+        const fields = await TAURI.invoke<PluginSettingFieldPayload[]>('get_plugin_settings', { pluginId });
+        loadedPluginSettings.set(cacheKey, Array.isArray(fields) ? fields : []);
+
+        const loadingEl = panel.querySelector('.plugin-settings-loading');
+        if (loadingEl) loadingEl.remove();
+
+        if (!Array.isArray(fields) || fields.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'group';
+            empty.textContent = 'No settings available';
+            panel.appendChild(empty);
+            return true;
+        }
+
+        const settingsWrap = renderPluginSettingFields(fields);
+        panel.appendChild(settingsWrap);
+        return true;
+    } catch {
+        const loadingEl = panel.querySelector('.plugin-settings-loading');
+        if (loadingEl) {
+            (loadingEl as HTMLElement).dataset.loading = 'false';
+            const error = document.createElement('div');
+            error.className = 'group';
+            error.textContent = 'Failed to load settings';
+            loadingEl.appendChild(error);
+        }
+        return false;
+    }
+}
+
 export function applyAnimationPreference(enabled: boolean | undefined | null) {
     document.documentElement.dataset.animations = enabled === false ? 'off' : 'on';
 }
@@ -199,14 +352,6 @@ async function renderPluginMenus(modal: HTMLElement): Promise<void> {
         const pluginKey = pluginId.toLowerCase();
         if (!pluginId) continue;
 
-        let fields: PluginSettingFieldPayload[] = [];
-        try {
-            fields = await TAURI.invoke<PluginSettingFieldPayload[]>('get_plugin_settings', { pluginId });
-        } catch {
-            continue;
-        }
-        if (!Array.isArray(fields) || fields.length === 0) continue;
-
         const section = `plugin-settings-${toKebab(pluginId)}`;
         const navLi = document.createElement('li');
         navLi.dataset.pluginMenu = 'true';
@@ -224,86 +369,12 @@ async function renderPluginMenus(modal: HTMLElement): Promise<void> {
         panel.dataset.pluginId = pluginId;
         panel.dataset.pluginSettings = 'true';
 
-        const settingsWrap = document.createElement('div');
-        settingsWrap.className = 'group';
-        const heading = document.createElement('h4');
-        heading.className = 'settings-section-title';
-        heading.textContent = 'Settings';
-        settingsWrap.appendChild(heading);
+        const loading = document.createElement('div');
+        loading.className = 'plugin-settings-loading group';
+        loading.dataset.loading = 'true';
+        loading.textContent = 'Loading settings...';
+        panel.appendChild(loading);
 
-        const controls = new Map<string, HTMLInputElement | HTMLSelectElement>();
-        for (const field of fields) {
-            const settingId = String(field?.id || '').trim();
-            if (!settingId) continue;
-            const kind = String(field?.kind || '').trim().toLowerCase();
-
-            const row = document.createElement('div');
-            row.className = 'group';
-
-            const hasOptions = Array.isArray(field.options) && field.options.length > 0;
-            let control: HTMLInputElement | HTMLSelectElement;
-
-            if (kind === 'bool') {
-                const labelEl = document.createElement('label');
-                labelEl.className = 'checkbox';
-                const input = document.createElement('input');
-                input.type = 'checkbox';
-                input.checked = Boolean(field.value);
-                labelEl.appendChild(input);
-                labelEl.append(` ${String(field?.label || settingId).trim() || settingId}`);
-                control = input;
-                row.appendChild(labelEl);
-            } else if (kind === 'text' && hasOptions) {
-                const labelEl = document.createElement('label');
-                labelEl.textContent = String(field?.label || settingId).trim() || settingId;
-                row.appendChild(labelEl);
-                const select = document.createElement('select');
-                for (const option of field.options || []) {
-                    const opt = document.createElement('option');
-                    opt.value = String(option?.value || '');
-                    opt.textContent = String(option?.label || option?.value || '').trim() || opt.value;
-                    select.appendChild(opt);
-                }
-                const value = String(field?.value ?? '');
-                if (value && Array.from(select.options).some((opt) => opt.value === value)) {
-                    select.value = value;
-                }
-                control = select;
-                row.appendChild(control);
-            } else {
-                const labelEl = document.createElement('label');
-                labelEl.textContent = String(field?.label || settingId).trim() || settingId;
-                row.appendChild(labelEl);
-                const input = document.createElement('input');
-                if (kind === 's32' || kind === 'u32' || kind === 'f64') {
-                    input.type = 'number';
-                    input.step = kind === 'f64' ? 'any' : '1';
-                    if (kind === 'u32') input.min = '0';
-                    const n = Number(field?.value ?? field?.default_value ?? 0);
-                    input.value = Number.isFinite(n) ? String(n) : '0';
-                } else {
-                    input.type = 'text';
-                    input.value = String(field?.value ?? field?.default_value ?? '');
-                }
-                control = input;
-                row.appendChild(control);
-            }
-
-            control.setAttribute('data-setting-id', settingId);
-            control.setAttribute('data-setting-kind', kind);
-            controls.set(settingId, control);
-
-            const description = String(field?.description || '').trim();
-            if (description) {
-                const hint = document.createElement('small');
-                hint.textContent = description;
-                row.appendChild(hint);
-            }
-
-            settingsWrap.appendChild(row);
-        }
-
-        panel.appendChild(settingsWrap);
         panelsScroll.appendChild(panel);
     }
 }
@@ -403,6 +474,13 @@ function activateSection(modal: HTMLElement, section: string) {
     const isPluginSettingsPanel = activePanel?.getAttribute('data-plugin-settings') === 'true';
     const hideActions = safeSection === 'plugins' || (isPluginMenuPanel && !isPluginSettingsPanel);
     if (actions) actions.classList.toggle('hidden', hideActions);
+
+    if (isPluginSettingsPanel && activePanel) {
+        const pluginId = String(activePanel.dataset.pluginId || '').trim();
+        if (pluginId) {
+            ensurePluginSettingsLoaded(modal, pluginId, safeSection).catch(() => {});
+        }
+    }
 }
 
 /** Collects typed plugin setting values from a plugin-settings panel. */
@@ -599,12 +677,7 @@ export function wireSettings() {
                     values: collectPluginSettingsFromPanel(activePanel),
                 });
                 notify('Plugin settings saved');
-                settingsSave.classList.add('saved-state');
-                settingsSave.textContent = 'Saved!';
-                setTimeout(() => {
-                    settingsSave.textContent = 'Save';
-                    settingsSave.classList.remove('saved-state');
-                }, 2000);
+                flashSavedState(settingsSave);
                 return;
             }
 
@@ -634,12 +707,7 @@ export function wireSettings() {
             } catch {}
 
             notify('Settings saved');
-            settingsSave.classList.add('saved-state');
-            settingsSave.textContent = 'Saved!';
-            setTimeout(() => {
-                settingsSave.textContent = 'Save';
-                settingsSave.classList.remove('saved-state');
-            }, 2000);
+            flashSavedState(settingsSave);
         } catch (e) {
             console.error('Failed to save settings:', e);
             notify('Failed to save settings');
@@ -659,6 +727,7 @@ export function wireSettings() {
                 }
                 await TAURI.invoke('reset_plugin_settings', { pluginId });
                 notify('Plugin settings reset');
+                clearPluginSettingsCache();
                 await renderPluginMenus(modal);
                 if (section) activateSection(modal, section);
                 return;
@@ -1567,6 +1636,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             }
             console.log(`Plugin '${pluginId}' ${enabled ? 'enabled' : 'disabled'}`);
             await reloadPlugins();
+            clearPluginSettingsCache();
             await renderPluginMenus(modal);
             if (activeSection) activateSection(modal, activeSection);
             try {
