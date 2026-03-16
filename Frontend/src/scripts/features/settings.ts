@@ -1641,7 +1641,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
                 state.enabled.delete(idLower);
                 state.disabled.add(idLower);
             }
-            console.log(`Plugin '${pluginId}' ${enabled ? 'enabled' : 'disabled'}`);
+            console.debug(`Plugin '${pluginId}' ${enabled ? 'enabled' : 'disabled'}`);
             await reloadPlugins();
             clearPluginSettingsCache();
             await renderPluginMenus(modal);

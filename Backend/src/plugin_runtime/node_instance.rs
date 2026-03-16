@@ -91,8 +91,10 @@ impl NodeRpcProcess {
         write_framed_message(&mut self.stdin, &request_value)?;
 
         let timeout = Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_RPC_TIMEOUT_SECS));
+        let start = std::time::Instant::now();
+        let mut remaining = timeout;
         loop {
-            let message = self.rx.recv_timeout(timeout).map_err(|_| {
+            let message = self.rx.recv_timeout(remaining).map_err(|_| {
                 format!(
                     "plugin '{}' rpc '{}' timed out after {}s",
                     plugin_id,
@@ -104,6 +106,16 @@ impl NodeRpcProcess {
             if let Some(method_name) = message.get("method").and_then(Value::as_str) {
                 let params = message.get("params").cloned().unwrap_or(Value::Null);
                 on_notification(method_name, &params)?;
+                let elapsed = start.elapsed();
+                if elapsed >= timeout {
+                    return Err(format!(
+                        "plugin '{}' rpc '{}' timed out after {}s (including notification delays)",
+                        plugin_id,
+                        method,
+                        timeout.as_secs()
+                    ));
+                }
+                remaining = timeout - elapsed;
                 continue;
             }
 
