@@ -26,7 +26,14 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::io::BufReader;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::mpsc::{channel, Receiver};
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
+
+const DEFAULT_RPC_TIMEOUT_SECS: u64 = 30;
+const VCS_OPERATION_TIMEOUT_SECS: u64 = 60;
 
 /// Live stdio-backed JSON-RPC process handle.
 struct NodeRpcProcess {
@@ -34,30 +41,35 @@ struct NodeRpcProcess {
     child: Child,
     /// Writable stdin stream for requests.
     stdin: ChildStdin,
-    /// Readable stdout stream for responses and notifications.
-    stdout: BufReader<ChildStdout>,
+    /// Channel for receiving decoded RPC messages from the reader thread.
+    rx: Receiver<Value>,
+    /// Flag to signal the reader thread to stop.
+    shutdown_flag: Arc<Mutex<bool>>,
     /// Monotonic request id counter.
     next_request_id: u64,
 }
 
 impl NodeRpcProcess {
-    /// Sends one JSON-RPC request and waits for a matching response.
+    /// Sends one JSON-RPC request and waits for a matching response with timeout.
     ///
     /// # Parameters
     /// - `method`: RPC method name.
     /// - `params`: RPC params payload.
     /// - `plugin_id`: Plugin id for diagnostics.
     /// - `on_notification`: Callback for incoming notifications.
+    /// - `timeout_secs`: Optional timeout in seconds. Defaults to 30s for lifecycle calls,
+    ///   60s for VCS operations.
     ///
     /// # Returns
     /// - `Ok(T)` decoded response result.
-    /// - `Err(String)` when transport/protocol/plugin errors occur.
+    /// - `Err(String)` when transport/protocol/plugin errors or timeout occur.
     fn call<T>(
         &mut self,
         method: &str,
         params: Value,
         plugin_id: &str,
         on_notification: &mut dyn FnMut(&str, &Value) -> Result<(), String>,
+        timeout_secs: Option<u64>,
     ) -> Result<T, String>
     where
         T: DeserializeOwned,
@@ -78,8 +90,16 @@ impl NodeRpcProcess {
             serde_json::to_value(request).map_err(|e| format!("encode rpc request: {e}"))?;
         write_framed_message(&mut self.stdin, &request_value)?;
 
+        let timeout = Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_RPC_TIMEOUT_SECS));
         loop {
-            let message = read_framed_message(&mut self.stdout)?;
+            let message = self.rx.recv_timeout(timeout).map_err(|_| {
+                format!(
+                    "plugin '{}' rpc '{}' timed out after {}s",
+                    plugin_id,
+                    method,
+                    timeout.as_secs()
+                )
+            })?;
 
             if let Some(method_name) = message.get("method").and_then(Value::as_str) {
                 let params = message.get("params").cloned().unwrap_or(Value::Null);
@@ -219,10 +239,36 @@ impl NodePluginRuntimeInstance {
             .take()
             .ok_or_else(|| "node runtime missing stdout pipe".to_string())?;
 
+        let (tx, rx) = channel::<Value>();
+        let shutdown_flag = Arc::new(Mutex::new(false));
+        let stdout_for_thread = BufReader::new(stdout);
+        let shutdown_for_thread = Arc::clone(&shutdown_flag);
+
+        thread::spawn(move || {
+            let mut stdout = stdout_for_thread;
+            loop {
+                if *shutdown_for_thread.lock() {
+                    break;
+                }
+                match read_framed_message(&mut stdout) {
+                    Ok(msg) => {
+                        if tx.send(msg).is_err() {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        debug!("node rpc reader thread: read error: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+
         let mut process = NodeRpcProcess {
             child,
             stdin,
-            stdout: BufReader::new(stdout),
+            rx,
+            shutdown_flag,
             next_request_id: 1,
         };
 
@@ -237,6 +283,7 @@ impl NodePluginRuntimeInstance {
                 self.handle_notification(method, params);
                 Ok(())
             },
+            Some(DEFAULT_RPC_TIMEOUT_SECS),
         )?;
         if initialize.protocol_version != PROTOCOL_VERSION {
             return Err(format!(
@@ -253,6 +300,7 @@ impl NodePluginRuntimeInstance {
                 self.handle_notification(method, params);
                 Ok(())
             },
+            Some(DEFAULT_RPC_TIMEOUT_SECS),
         )?;
 
         Ok(process)
@@ -291,6 +339,34 @@ impl NodePluginRuntimeInstance {
     where
         T: DeserializeOwned,
     {
+        self.rpc_call_with_timeout(method, params, None)
+    }
+
+    /// Sends one RPC request to the plugin process with a specific timeout.
+    ///
+    /// # Parameters
+    /// - `method`: Method name.
+    /// - `params`: Params object.
+    /// - `timeout_secs`: Optional timeout in seconds.
+    ///
+    /// # Returns
+    /// - Decoded result value.
+    fn rpc_call_with_timeout<T>(
+        &self,
+        method: &str,
+        params: Value,
+        timeout_secs: Option<u64>,
+    ) -> Result<T, String>
+    where
+        T: DeserializeOwned,
+    {
+        let timeout = timeout_secs.or_else(|| {
+            if method.starts_with("vcs.") {
+                Some(VCS_OPERATION_TIMEOUT_SECS)
+            } else {
+                Some(DEFAULT_RPC_TIMEOUT_SECS)
+            }
+        });
         self.with_process(|process| {
             process.call(
                 method,
@@ -300,6 +376,7 @@ impl NodePluginRuntimeInstance {
                     self.handle_notification(notif_method, notif_params);
                     Ok(())
                 },
+                timeout,
             )
         })
     }
@@ -814,6 +891,7 @@ impl PluginRuntimeInstance for NodePluginRuntimeInstance {
 
         let process = self.process.lock().take();
         if let Some(mut process) = process {
+            *process.shutdown_flag.lock() = true;
             let _ = process.call::<Value>(
                 Methods::PLUGIN_DEINIT,
                 Value::Object(serde_json::Map::new()),
@@ -822,6 +900,7 @@ impl PluginRuntimeInstance for NodePluginRuntimeInstance {
                     self.handle_notification(method, params);
                     Ok(())
                 },
+                Some(DEFAULT_RPC_TIMEOUT_SECS),
             );
 
             let _ = process.child.kill();
@@ -835,6 +914,7 @@ impl Drop for NodePluginRuntimeInstance {
     /// Ensures child process cleanup on drop.
     fn drop(&mut self) {
         if let Some(mut process) = self.process.get_mut().take() {
+            *process.shutdown_flag.lock() = true;
             let _ = process.child.kill();
             let _ = process.child.wait();
         }
