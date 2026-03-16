@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { TAURI } from './lib/tauri';
 import { notify } from './lib/notify';
 import { getRegisteredThemePayload, getRegisteredThemeSummaries } from './plugins';
@@ -26,10 +28,12 @@ let activeScripts: string[] = [];
 let currentMode: 'system' | 'light' | 'dark' = 'system';
 let systemListenerInstalled = false;
 
+/** Resolves the current system appearance mode from media query state. */
 function effectiveSystemMode(): 'light' | 'dark' {
     return SYSTEM_DARK_MQ.matches ? 'dark' : 'light';
 }
 
+/** Checks whether an id refers to one of the built-in defaults. */
 function isBuiltInDefaultThemeId(id: string): boolean {
     const desired = String(id ?? '').trim().toLowerCase();
     return (
@@ -39,22 +43,26 @@ function isBuiltInDefaultThemeId(id: string): boolean {
     );
 }
 
+/** Resolves the built-in default theme id for a display mode. */
 function defaultThemeIdForMode(mode: 'system' | 'light' | 'dark'): string {
     const target = mode === 'system' ? effectiveSystemMode() : mode;
     return target === 'dark' ? DEFAULT_DARK_THEME_ID : DEFAULT_LIGHT_THEME_ID;
 }
 
+/** Normalizes theme appearance metadata from external sources. */
 function normalizeAppearance(value: unknown): 'light' | 'dark' | 'both' | null {
     const raw = String(value ?? '').trim().toLowerCase();
     if (raw === 'light' || raw === 'dark' || raw === 'both') return raw;
     return null;
 }
 
+/** Finds a loaded theme summary by id. */
 function getThemeSummary(id: string): ThemeSummary | null {
     const desired = String(id || DEFAULT_THEME_ID).trim().toLowerCase() || DEFAULT_THEME_ID;
     return availableThemes.find((t) => (t.id || '').toLowerCase() === desired) ?? null;
 }
 
+/** Returns a paired theme id when switching between light and dark variants. */
 function resolvePairedThemeId(id: string): string | null {
     const desired = String(id || DEFAULT_THEME_ID).trim() || DEFAULT_THEME_ID;
     const summary = getThemeSummary(desired);
@@ -82,6 +90,7 @@ function resolvePairedThemeId(id: string): string | null {
     return null;
 }
 
+/** Broadcasts a theme-pack change event to the UI. */
 function dispatchThemeChanged() {
     try {
         window.dispatchEvent(new CustomEvent('openvcs:theme-pack-changed', { detail: { id: activeThemeId } }));
@@ -90,6 +99,7 @@ function dispatchThemeChanged() {
     }
 }
 
+/** Installs a system color-scheme listener once. */
 function ensureSystemListener() {
     if (systemListenerInstalled) return;
     systemListenerInstalled = true;
@@ -104,6 +114,7 @@ function ensureSystemListener() {
     });
 }
 
+/** Builds the fallback generic default theme summary. */
 function defaultSummary(): ThemeSummary {
     return {
         id: DEFAULT_THEME_ID,
@@ -113,6 +124,7 @@ function defaultSummary(): ThemeSummary {
     };
 }
 
+/** Builds the fallback built-in light theme summary. */
 function defaultLightSummary(): ThemeSummary {
     return {
         id: DEFAULT_LIGHT_THEME_ID,
@@ -124,6 +136,7 @@ function defaultLightSummary(): ThemeSummary {
     };
 }
 
+/** Builds the fallback built-in dark theme summary. */
 function defaultDarkSummary(): ThemeSummary {
     return {
         id: DEFAULT_DARK_THEME_ID,
@@ -135,6 +148,7 @@ function defaultDarkSummary(): ThemeSummary {
     };
 }
 
+/** Sanitizes externally provided theme summary fields. */
 function sanitizeSummary(raw: ThemeSummary): ThemeSummary {
     const id = String(raw?.id ?? '').trim() || DEFAULT_THEME_ID;
     const base: ThemeSummary = {
@@ -150,6 +164,7 @@ function sanitizeSummary(raw: ThemeSummary): ThemeSummary {
     return base;
 }
 
+/** Creates, updates, or removes a style tag by id. */
 function setStyleContent(id: string, css: string | null | undefined) {
     const existing = document.getElementById(id) as HTMLStyleElement | null;
     const text = typeof css === 'string' ? css : '';
@@ -170,6 +185,7 @@ function setStyleContent(id: string, css: string | null | undefined) {
     target.textContent = text;
 }
 
+/** Syncs the active theme-pack id onto the document root attribute. */
 function syncThemePackAttr() {
     const root = document.documentElement;
     if (!root) return;
@@ -185,6 +201,7 @@ function syncThemePackAttr() {
     root.setAttribute(THEME_PACK_ATTR, current);
 }
 
+/** Applies active markup snippets to head and body. */
 function applyMarkupNodes() {
     const markup = activeMarkup ?? null;
     const headHtml = markup?.head ?? null;
@@ -193,6 +210,7 @@ function applyMarkupNodes() {
     setMarkupForTarget(document.body, BODY_MARKUP_NODES, bodyHtml);
 }
 
+/** Replaces tracked markup nodes for a target container. */
 function setMarkupForTarget(target: ParentNode | null, store: ChildNode[], html: string | null | undefined) {
     const parent = target ?? null;
     if (!parent) return;
@@ -208,6 +226,7 @@ function setMarkupForTarget(target: ParentNode | null, store: ChildNode[], html:
     store.push(...nodes);
 }
 
+/** Rebuilds theme-provided script nodes from the active payload. */
 function applyScriptNodes() {
     while (THEME_SCRIPT_NODES.length) {
         const node = THEME_SCRIPT_NODES.pop();
@@ -231,6 +250,7 @@ function applyScriptNodes() {
     });
 }
 
+/** Removes tracked DOM nodes from the document. */
 function clearNodes(store: ChildNode[]) {
     while (store.length) {
         const node = store.pop();
@@ -238,6 +258,7 @@ function clearNodes(store: ChildNode[]) {
     }
 }
 
+/** Applies currently selected theme assets for the requested appearance mode. */
 function applyModeStyles(mode: 'system' | 'light' | 'dark') {
     currentMode = mode;
     ensureSystemListener();
@@ -250,6 +271,7 @@ function applyModeStyles(mode: 'system' | 'light' | 'dark') {
     dispatchThemeChanged();
 }
 
+/** Resolves the id written to the root theme-pack attribute. */
 function resolveThemePackAttrId(summary: ThemeSummary | null | undefined, themeId: string): string {
     const rawId = String(summary?.id ?? themeId ?? DEFAULT_THEME_ID).trim() || DEFAULT_THEME_ID;
     const pluginId = String(summary?.plugin_id ?? '').trim();
@@ -261,18 +283,22 @@ function resolveThemePackAttrId(summary: ThemeSummary | null | undefined, themeI
     return rawId;
 }
 
+/** Returns the current list of available theme summaries. */
 export function getAvailableThemes(): ThemeSummary[] {
     return [...availableThemes];
 }
 
+/** Returns the currently active theme id. */
 export function getActiveThemeId(): string {
     return activeThemeId;
 }
 
+/** Returns the current appearance mode used by theme rendering. */
 export function getCurrentMode(): 'system' | 'light' | 'dark' {
     return currentMode;
 }
 
+/** Refreshes available themes from backend and plugin registries. */
 export async function refreshAvailableThemes(): Promise<ThemeSummary[]> {
     const pluginSummaries = getRegisteredThemeSummaries();
     if (!TAURI.has) {
@@ -338,6 +364,7 @@ export async function refreshAvailableThemes(): Promise<ThemeSummary[]> {
     return availableThemes;
 }
 
+/** Ensures theme metadata has been loaded at least once. */
 export async function ensureThemesLoaded(force?: boolean): Promise<ThemeSummary[]> {
     if (!fetchedThemes || force) {
         return refreshAvailableThemes();
@@ -345,6 +372,7 @@ export async function ensureThemesLoaded(force?: boolean): Promise<ThemeSummary[
     return availableThemes;
 }
 
+/** Loads and applies a theme pack for the requested mode. */
 export async function selectThemePack(
     themeId: string,
     opts: { silent?: boolean; mode?: 'system' | 'light' | 'dark' } = {},
@@ -407,6 +435,7 @@ export async function selectThemePack(
     }
 }
 
+/** Reapplies active theme assets for a new appearance mode. */
 export function setAppearanceMode(mode: 'system' | 'light' | 'dark') {
     applyModeStyles(mode);
 }

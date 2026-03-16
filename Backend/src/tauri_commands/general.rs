@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -7,8 +9,7 @@ use tauri::{async_runtime, Emitter, Manager, Runtime, State, Window};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 
-use openvcs_core::BackendId;
-
+use crate::core::BackendId;
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::state::AppState;
@@ -20,8 +21,11 @@ use super::progress_bridge;
 const WIKI_URL: &str = "https://github.com/jordonbc/OpenVCS/wiki";
 
 #[derive(serde::Serialize)]
+/// Event payload emitted after selecting/opening a repository.
 struct RepoSelectedPayload {
+    /// Selected repository path.
     path: String,
+    /// Backend identifier that opened the repository.
     backend: String,
 }
 
@@ -171,8 +175,12 @@ pub async fn add_repo_internal<R: Runtime>(
     let open_path = path.clone();
     let backend_label = backend_id.as_ref().to_string();
     let backend_id_for_task = backend_id.clone();
+    let cfg = state.config();
+    let runtime_manager = state.plugin_runtime();
     let handle = async_runtime::spawn_blocking(move || {
         plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
+            runtime_manager.as_ref(),
+            &cfg,
             backend_id_for_task,
             Path::new(&open_path),
         )
@@ -251,9 +259,9 @@ pub async fn clone_repo<R: Runtime>(
         );
         // Plugin backends currently do not support clone in the host.
         let _ = on;
-        Err(openvcs_core::VcsError::Unsupported(
-            openvcs_core::BackendId::from(be_label.as_str()),
-        ))
+        Err(crate::core::VcsError::Unsupported(BackendId::from(
+            be_label.as_str(),
+        )))
     });
     handle
         .await
@@ -316,8 +324,11 @@ pub fn current_repo_path(state: State<'_, AppState>) -> Option<String> {
 }
 
 #[derive(serde::Serialize)]
+/// Serializable recent-repository item for frontend rendering.
 pub struct RecentRepoDto {
+    /// Absolute repository path.
     path: String,
+    /// Last path segment used as a display name when available.
     name: Option<String>,
 }
 

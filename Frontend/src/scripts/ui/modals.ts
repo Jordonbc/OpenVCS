@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 // src/scripts/ui/modals.ts
 import { qs } from "@scripts/lib/dom";
 import { initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from "../lib/scrollbars";

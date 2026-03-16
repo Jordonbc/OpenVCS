@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 // src/scripts/features/about.ts
 import { openModal } from "@scripts/ui/modals";
 import { TAURI } from "../lib/tauri";

@@ -1,147 +1,98 @@
-# OpenVCS Plugin Bundles (.ovcsp) — Architecture
+# OpenVCS Plugin Architecture
 
-This document describes OpenVCS’s **secure, out-of-process** plugin system for distributing plugins as **`.ovcsp`** bundles.
+OpenVCS plugins run as long-lived Node.js processes and are authored in TypeScript.
 
-## Goals (non-negotiables)
+## Architecture
 
-- The OpenVCS-Client process **never loads third-party dynamic libraries** and **never runs third-party plugin code in-process**.
-- Every plugin component executes **out-of-process** and communicates over **JSON-RPC (line-delimited JSON) via stdio**.
-- Plugins are **installed (unpacked) before execution**; nothing executes directly from inside a tar.xz archive.
-- The bundle manifest uses the existing `openvcs.plugin.json` format and extends it minimally.
-
-## Bundle format
-
-An `.ovcsp` is a tar.xz archive containing exactly one top-level plugin folder named by plugin id:
-
+```text
+Client (Frontend) -> Client (Backend host) <-> Plugin (Node.js process)
 ```
-<pluginId>/
+
+- The frontend talks to the backend via Tauri commands/events.
+- The backend starts each plugin module as a persistent Node.js process.
+- Host and plugin communicate through JSON-RPC 2.0 over stdio with `Content-Length` framing.
+
+## Runtime contract
+
+- Method names and framing live in `Client/Backend/src/plugin_runtime/protocol.rs`.
+- Backend-owned shared Rust contracts for VCS backends and plugin-facing payloads live in `Client/Backend/src/core/`.
+- Runtime process implementation lives in:
+  - `Client/Backend/src/plugin_runtime/node_instance.rs`
+  - `Client/Backend/src/plugin_runtime/runtime_select.rs`
+
+Core groups of host->plugin methods:
+
+- `plugin.*`: lifecycle, menus, and settings hooks
+- `vcs.*`: backend operations for repository workflows
+
+Core plugin->host notifications:
+
+- `host.log`
+- `host.ui_notify`
+- `host.status_set`
+- `host.event_emit`
+- `vcs.event`
+- Plugin runtime requires the app-bundled Node binary (`node-runtime/node` or `node.exe`); no system `node` fallback. In dev runs, the backend also probes the generated bundled path under `target/openvcs/node-runtime/`.
+
+## Plugin types
+
+- Theme pack plugin
+  - Ships `themes/` assets only.
+
+- Module plugin (lifecycle + optional settings/UI hooks)
+  - Exposes `plugin.*` methods over JSON-RPC.
+
+- VCS backend plugin
+  - Exposes both `plugin.*` and `vcs.*` methods.
+
+## Bundle format (`.ovcsp`)
+
+Plugins are installed from `.ovcsp` tar.xz archives. Layout:
+
+```text
+<plugin-id>/
   openvcs.plugin.json
+  icon.<ext>            (optional)
+  themes/               (optional; may coexist with a module)
   bin/
-    <entrypoint>.wasm
-  assets/...               (optional)
-  themes/...               (optional; existing `theme.json` packs)
+    <module>.mjs|.js|.cjs
+    ...other runtime files
+  node_modules/         (optional; pre-bundled npm dependencies)
 ```
-
-Notes:
-
-- Bundles are **WASM-only**; OpenVCS will reject native binaries.
-- Bundle entry paths must be relative and use `/` separators (the installer normalizes and validates).
 
 ## Manifest (`openvcs.plugin.json`)
 
-Existing fields like `id`, `name`, `version`, etc. remain unchanged.
+The host currently consumes:
 
-This system uses the `module` section (used by `OpenVCS-Plugin-Git`) and adds:
+- `id` (required)
+- `name`, `version` (optional but recommended)
+- `default_enabled` (optional)
+- `module.exec` (optional Node entry filename under `bin/`)
+- `module.vcs_backends` (optional VCS backend ids the module provides)
 
-- `capabilities`: string array of requested capabilities.
-- `functions`: optional function component descriptor.
+Dependency notes:
 
-Example:
-
-```json
-{
-  "id": "openvcs.git",
-  "name": "Git",
-  "version": "0.1.0",
-  "capabilities": ["workspace.read", "vcs.read", "vcs.write"],
-  "module": {
-    "exec": "openvcs-git-plugin.wasm",
-    "vcs_backends": [
-      { "id": "git", "name": "Git" }
-    ]
-  },
-  "functions": {
-    "exec": "openvcs-hello-functions.wasm"
-  }
-}
-```
-
-### Component types
-
-- **Module component** (`module`): a plugin-executed WASI module. It is spawned with:
-  - module: `bin/<module.exec>` (must end in `.wasm`)
-  - arguments: `--backend <backendId>` for each id in `module.vcs_backends`
-  - protocol: stdio JSON-RPC using `openvcs_core::plugin_protocol` message types
-- **Function component** (`functions`): a WASI module exposing callable functions/hooks/commands over the same stdio JSON-RPC transport.
-
-## Installation locations and layout
-
-OpenVCS installs bundles into the user config directory (via `directories::ProjectDirs`):
-
-- Config root:
-  - Linux: `$XDG_CONFIG_HOME/OpenVCS` (or `~/.config/OpenVCS`)
-  - Windows: `%APPDATA%\\OpenVCS`
-  - macOS: `~/Library/Application Support/OpenVCS`
-
-Installed bundle layout:
-
-```
-plugins/
-  <pluginId>/
-    index.json              (metadata, including SHA-256 + approvals)
-    current.json            (pointer: {"version": "..."}; used instead of symlinks)
-    <version>/
-      openvcs.plugin.json
-      bin/...
-      ...
-```
-
-The runtime discovers plugins **only** from this installed directory and resolves `<pluginId>/current.json` to a concrete version folder.
+- Plugin dependencies are expected to be pre-bundled in `.ovcsp`.
+- The host does not run npm/yarn/pnpm during plugin install/update.
+- SDK packaging is a two-step npm flow: `openvcs build` creates runtime assets,
+  then `openvcs dist` validates and bundles them into `.ovcsp`.
 
 ## Security model
 
-### Secure ZIP extraction (install-time)
+Plugins are trust-model based:
 
-The installer enforces:
+- No per-capability permission prompts.
+- Plugins have full system access within their own Node process.
+- Plugin module startup is gated by installed-version approval state.
+- Install only plugins from authors you trust.
 
-- **ZipSlip/path traversal prevention**
-  - reject absolute paths and Windows drive prefixes
-  - normalize separators and reject any `..` components
-  - canonicalize and ensure every extracted path stays within the install directory
-- **Symlink rejection**
-  - reject any archive entries that are symlinks (Unix mode `0120000`)
-- **Resource limits**
-  - cap total uncompressed size per bundle
-  - cap per-file size
-  - cap file count
-  - reject suspicious compression ratios (zip-bomb heuristics)
-- **Required file validation**
-  - `openvcs.plugin.json` must exist at `<pluginId>/openvcs.plugin.json`
-  - declared component entrypoints must exist under `bin/` after extraction and be valid `.wasm` modules
-- **Integrity**
-  - compute and store SHA-256 of the `.ovcsp` bundle in `<pluginId>/index.json`
+## Runtime lifecycle
 
-### Trust + capabilities
+- Module runtimes are started/stopped by lifecycle operations (startup sync and plugin enable/disable toggles).
+- VCS backend plugin runtimes are repo-scoped and started when opening a repository through that backend.
+- Backend plugin command calls do not implicitly start stopped plugin runtimes.
 
-Plugins are **untrusted by default**.
+## Plugin settings persistence
 
-- Capabilities are declared in the manifest (`capabilities`).
-- Capabilities must be **approved by the user** at install-time (or on first run).
-- The host enforces capabilities for **plugin → host** JSON-RPC calls; denied calls return structured errors.
-
-Capability strings:
-
-- `workspace.read`, `workspace.write`
-- `vcs.read`, `vcs.write`
-- `network.http`
-- `credentials.request`
-- `ui.commands`, `ui.notifications`
-
-### Process isolation (best-effort)
-
-Each plugin component is spawned with:
-
-- sanitized environment (allowlist)
-- controlled working directory
-- restricted `PATH` and no implicit shell execution
-
-Runtime hardening:
-
-- per-request timeouts and cancellation best-effort
-- stdout/stderr captured into per-plugin logs (rotation + size limits)
-- crash restart with exponential backoff; auto-disable after repeated crashes
-
-OS-level sandboxing is optional and best-effort:
-
-- Linux: supports wrappers (e.g. `bwrap`) if configured; otherwise runs unprivileged.
-- Windows/macOS: no large dependencies; relies on install validation + capability gating + process isolation.
+- Plugin settings are persisted by the host in the user config directory under:
+  - `plugin-data/<plugin-id>/settings.json`

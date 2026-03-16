@@ -1,6 +1,9 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 // src/scripts/features/branches.ts
 import { qs } from '../lib/dom';
 import { TAURI } from '../lib/tauri';
+import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
 import { refreshOverlayScrollbarsFor } from '../lib/scrollbars';
 import { state } from '../state/state';
@@ -202,7 +205,7 @@ export function bindBranchUI() {
         }});
         items.push({ label: 'Merge into current…', action: async () => {
             if (name === cur) { notify('Cannot merge a branch into itself'); return; }
-            const ok = window.confirm(`Merge '${name}' into '${cur}'?`);
+            const ok = await confirmBool(`Merge '${name}' into '${cur}'?`);
             if (!ok) return;
             try {
                 if (TAURI.has) await TAURI.invoke('git_merge_branch', { name });
@@ -282,7 +285,7 @@ export function bindBranchUI() {
                         notify(`Force-deleted '${name}'`);
                         await loadBranches();
                         await runHook('postBranchDelete', hookData);
-                    } catch { notify('Force delete failed'); }
+                    } catch (e) { console.error('Force delete failed:', e); notify('Force delete failed'); }
                 }
             }});
         }

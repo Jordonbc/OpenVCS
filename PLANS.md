@@ -139,7 +139,7 @@ Prefer additive code changes followed by subtractions that keep tests passing. P
 
     Be prescriptive. Name the libraries, modules, and services to use and why. Specify the types, traits/interfaces, and function signatures that must exist at the end of the milestone. Prefer stable names and paths such as `crate::module::function` or `package.submodule.Interface`. E.g.:
 
-    In crates/foo/planner.rs, define:
+    In src/foo/planner.rs, define:
 
         pub trait Planner {
             fn plan(&self, observed: &Observed) -> Vec<Action>;

@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { filterInput } from './context';
 import { disableDefaultSelectAll, prefs, state } from '../../state/state';
 import { getVisibleFiles } from './selectionState';

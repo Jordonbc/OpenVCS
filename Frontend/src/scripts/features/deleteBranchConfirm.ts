@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 // src/scripts/features/deleteBranchConfirm.ts
 import { closeModal, hydrate, openModal } from "../ui/modals";
 

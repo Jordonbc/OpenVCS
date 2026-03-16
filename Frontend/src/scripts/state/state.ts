@@ -1,6 +1,9 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 // src/state/state.ts
 import type { AppPrefs, Branch, CommitItem, FileStatus, StashItem } from '../types';
 
+/** Default application preferences. */
 export const defaultPrefs: AppPrefs = {
     theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
     leftW: 0,
@@ -8,11 +11,17 @@ export const defaultPrefs: AppPrefs = {
 };
 
 // In-memory-only UI prefs. Persisted preferences now live in native Rust config.
+/** Current application preferences. */
 export let prefs: AppPrefs = { ...defaultPrefs };
+/**
+ * Save preferences to storage.
+ * @deprecated Web prefs are not persisted; native settings handle persistence
+ */
 export function savePrefs() {
     // no-op: web prefs are not persisted; native settings handle persistence
 }
 
+/** Metadata for diff view rendering. */
 export type DiffMeta = {
     offset: number;
     rest: string[];
@@ -21,12 +30,14 @@ export type DiffMeta = {
     totalHunks: number;
 };
 
+/** References to DOM elements for a hunk. */
 export type HunkNodeRefs = {
     hunkEl: HTMLElement;
     hunkCheckbox: HTMLInputElement | null;
     lineCheckboxes: Record<number, HTMLInputElement>;
 };
 
+/** Global application state. */
 export const state = {
     hasRepo: false,                 // backend truth (set after open/clone/add)
     branch: '' as string,           // current branch name
@@ -60,13 +71,18 @@ export const state = {
     // repoPath: '' as string,
 };
 
-/** True iff a repo is selected AND we know the current branch. Always boolean. */
-export const hasRepo = (): boolean => Boolean(state.hasRepo && state.branch);
+/** True iff a repository is selected. Always boolean. */
+export const hasRepo = (): boolean => Boolean(state.hasRepo);
 
 /** True iff there are staged/unstaged changes. Always boolean. */
 export const hasChanges = (): boolean =>
     Array.isArray(state.files) && state.files.length > 0;
 
+/**
+ * Get display label for a file status code.
+ * @param s - Status code character
+ * @returns Human-readable status label
+ */
 export const statusLabel = (s: string) =>
     s === 'A' ? 'Added' :
         s === '?' ? 'Untracked' :
@@ -78,6 +94,11 @@ export const statusLabel = (s: string) =>
         s === 'M' ? 'Modified' :
             s === 'D' ? 'Deleted' : 'Changed';
 
+/**
+ * Get CSS class token for a file status code.
+ * @param s - Status code character
+ * @returns CSS class suffix used by status badges
+ */
 export const statusClass = (s: string) =>
     s === 'A' ? 'add' :
         s === '?' ? 'untracked' :
@@ -89,8 +110,11 @@ export const statusClass = (s: string) =>
                             s === 'M' ? 'mod' :
                                 s === 'D' ? 'del' : 'mod';
 
-// Disable the implicit "select all" mode. When clearImplicit is true, drop the
-// auto-filled selection set so later logic only sees explicit user picks.
+/**
+ * Disables implicit select-all behavior.
+ * @param clearImplicit - Whether to clear auto-filled file selections
+ * @returns True when implicit selections were cleared
+ */
 export function disableDefaultSelectAll(clearImplicit = false): boolean {
     const hadImplicit = state.defaultSelectAll && state.selectionImplicitAll;
     if (clearImplicit && hadImplicit) {

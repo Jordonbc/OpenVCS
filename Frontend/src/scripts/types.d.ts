@@ -1,9 +1,14 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+/** Represents a generic JSON-like object map. */
 export type Json = Record<string, any>;
 
+/** Represents branch kind metadata reported by the backend. */
 export interface BranchKind {
     type?: 'Local' | 'Remote' | string;
     remote?: string;
 }
+/** Represents a Git branch entry used in branch pickers. */
 export interface Branch {
     name: string;
     full_ref?: string;
@@ -11,6 +16,7 @@ export interface Branch {
     kind?: BranchKind;
 }
 
+/** Represents a file status row in the Changes view. */
 export interface FileStatus {
     path: string;
     old_path?: string;
@@ -20,6 +26,7 @@ export interface FileStatus {
     hunks?: string[];
 }
 
+/** Represents merge conflict payload data for a file. */
 export interface ConflictDetails {
     path: string;
     ours?: string | null;
@@ -28,6 +35,7 @@ export interface ConflictDetails {
     binary?: boolean;
 }
 
+/** Represents a commit list item for History. */
 export interface CommitItem {
     id: string;
     msg?: string;
@@ -37,18 +45,21 @@ export interface CommitItem {
     remoteRef?: string;
 }
 
+/** Represents a stash list item for the Stash tab. */
 export interface StashItem {
     selector: string; // e.g., "stash@{0}"
     msg?: string;
     meta?: string;    // date string
 }
 
+/** Represents persisted local UI preferences. */
 export interface AppPrefs {
     theme: 'dark' | 'light';
     leftW: number;   // px
     tab: 'changes' | 'history' | 'stash';
 }
 
+/** Represents global settings loaded from the backend. */
 export interface GlobalSettings {
     general?: {
         theme?: 'system'|'dark'|'light';
@@ -111,6 +122,7 @@ export interface GlobalSettings {
     };
 }
 
+/** Represents theme metadata shown in settings. */
 export interface ThemeSummary {
     id: string;
     name: string;
@@ -123,6 +135,7 @@ export interface ThemeSummary {
     plugin_id?: string;
 }
 
+/** Represents the full theme package payload. */
 export interface ThemePayload {
     summary: ThemeSummary;
     styles?: string | null;
@@ -133,6 +146,7 @@ export interface ThemePayload {
     scripts?: string[];
 }
 
+/** Represents repository-local identity and remote settings. */
 export interface RepoSettings {
     user_name?: string;
     user_email?: string;

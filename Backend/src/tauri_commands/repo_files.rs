@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use std::collections::HashSet;
 use std::path::{Component, PathBuf};
 

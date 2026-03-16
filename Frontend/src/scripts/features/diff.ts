@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { qs } from '../lib/dom';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
@@ -34,19 +36,6 @@ export function bindCommit() {
                 ...Object.keys(hunksMap).filter(p => Array.isArray(hunksMap[p]) && hunksMap[p].length > 0),
                 ...Object.keys(linesMap).filter(p => linesMap[p] && Object.keys(linesMap[p] || {}).length > 0),
             ]));
-
-            // Guard: libgit2 backend does not support partial-hunk commit (stage_patch)
-            if (TAURI.has && partialFiles.length > 0) {
-                try {
-                    const cfg = await TAURI.invoke<any>('get_global_settings');
-                    const backend = String(cfg?.git?.backend || 'system');
-                    if (backend === 'libgit2') {
-                        notify('Partial-hunk commits are not supported with the Libgit2 backend. Commit full files or switch to System backend in Settings.');
-                        clearBusy('Ready');
-                        return;
-                    }
-                } catch {}
-            }
 
             // Build patch only from hunks; ignore selectedFiles for commit content per latest request
             let combinedPatch = '';
@@ -97,7 +86,7 @@ export function bindCommit() {
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
             await runHook('postCommit', { summary, description, branch: state.branch, files: fullFiles, partialFiles });
             clearBusy('Ready');
-        } catch { notify('Commit failed'); }
+        } catch (e) { console.error('Commit failed:', e); notify('Commit failed'); }
         finally {
             clearBusy('Ready');
         }
