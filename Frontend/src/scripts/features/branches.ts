@@ -18,7 +18,8 @@ import type { ConflictDetails, FileStatus } from '../types';
 import { openConflictsSummary } from './conflicts';
 import { getPluginContextMenuItems, runHook, runPluginAction } from '../plugins';
 
-type Branch = { name: string; full_ref?: string; current?: boolean; kind?: { type?: string; remote?: string } };
+type BranchKind = { type?: string; remote?: string };
+type Branch = { name: string; full_ref?: string; current?: boolean; kind?: BranchKind };
 
 const branchBtn    = qs<HTMLButtonElement>('#branch-switch');
 const branchName   = qs<HTMLElement>('#branch-name');
