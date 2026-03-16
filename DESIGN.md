@@ -27,7 +27,7 @@ OpenVCS client is split into three main runtime concerns:
 
 1. UI layer (`Frontend/src/scripts/`): renders state and invokes backend commands.
 2. Host layer (`Backend/src/`): owns app state, command handling, and orchestration.
-3. Plugin components (`.ovcsp` bundles): out-of-process modules used by backend/plugin runtime.
+3. Plugin modules (`.ovcsp` bundles): out-of-process Node.js modules used by backend/plugin runtime.
 
 Primary request flow:
 
@@ -48,7 +48,7 @@ UI code under `Frontend/src/scripts/features/` delegates repository operations t
 
 ### 3) Backend to plugin communication is process-isolated
 
-Plugin backend/function components communicate over stdio JSON-RPC (`Backend/src/plugin_runtime/stdio_rpc.rs` and `Backend/src/plugin_runtime/vcs_proxy.rs`), not in-process calls.
+Plugin backend/function modules communicate over JSON-RPC over stdio (`Backend/src/plugin_runtime/node_instance.rs` and `Backend/src/plugin_runtime/vcs_proxy.rs`), not in-process calls.
 
 ### 4) Safety checks are centralized
 
@@ -76,8 +76,7 @@ Current repo/backend validity checks and progress forwarding are centralized in 
 
 ## Plugin Lifecycle
 
-- Plugin discovery, load, installation, uninstall, capability approval, and function invocation are handled in `Backend/src/tauri_commands/plugins.rs` plus plugin store/runtime modules.
-- UI plugin loading is coordinated in `Frontend/src/scripts/plugins.ts`.
+- Plugin discovery, load, installation, uninstall, approval gating, and function invocation are handled in `Backend/src/tauri_commands/plugins.rs` plus plugin store/runtime modules.
 
 ## State Model
 
@@ -114,7 +113,7 @@ Frontend listeners are attached through `TAURI.listen(...)` in feature modules.
 
 - Command handlers return stringified errors at the Tauri boundary for predictable UI handling.
 - Plugin module execution has timeout/restart/backoff behavior in runtime helpers.
-- Bundle install/runtime path and capability checks are enforced in backend plugin subsystems.
+- Bundle install/runtime path and approval checks are enforced in backend plugin subsystems.
 - Output logging is centralized so operations can be inspected in the output-log UI.
 
 ## Contributor Guidance
@@ -134,11 +133,10 @@ When adding or changing behavior:
 - `Backend/src/lib.rs`
 - `Backend/src/tauri_commands/mod.rs`
 - `Backend/src/tauri_commands/shared.rs`
-- `Backend/src/plugin_runtime/stdio_rpc.rs`
+- `Backend/src/plugin_runtime/node_instance.rs`
 - `Backend/src/plugin_runtime/vcs_proxy.rs`
 - `Backend/src/plugin_vcs_backends.rs`
 - `Frontend/src/scripts/lib/tauri.ts`
 - `Frontend/src/scripts/main.ts`
-- `Frontend/src/scripts/plugins.ts`
 - `docs/plugin architecture.md`
 - `docs/plugins.md`

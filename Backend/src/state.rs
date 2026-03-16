@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Application-level mutable state and persistence helpers.
 
 use std::{fs, io};
@@ -7,6 +9,7 @@ use log::{debug, info};
 use parking_lot::RwLock;
 
 use crate::output_log::OutputLogEntry;
+use crate::plugin_runtime::PluginRuntimeManager;
 use crate::repo::Repo;
 use crate::repo_settings::RepoConfig;
 use crate::settings::AppConfig;
@@ -73,6 +76,9 @@ pub struct AppState {
 
     /// MRU list for “Recents”
     recents: RwLock<Vec<PathBuf>>,
+
+    /// Long-lived plugin process runtime manager.
+    plugin_runtime: Arc<PluginRuntimeManager>,
 }
 
 impl AppState {
@@ -106,21 +112,6 @@ impl AppState {
     /// - A cloned [`AppConfig`] representing the current global settings.
     pub fn config(&self) -> AppConfig {
         self.config.read().clone()
-    }
-
-    /// Read-only closure access (avoid cloning if you’re just reading).
-    ///
-    /// # Parameters
-    /// - `f`: Closure invoked with a shared reference to the current config.
-    ///
-    /// # Returns
-    /// - Whatever value the closure returns.
-    pub fn with_config<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&AppConfig) -> R,
-    {
-        let cfg = self.config.read();
-        f(&cfg)
     }
 
     /// Replace whole config: validate → save → swap (readers never see an unsaved state).
@@ -270,6 +261,14 @@ impl AppState {
     pub fn recents(&self) -> Vec<PathBuf> {
         self.recents.read().clone()
     }
+
+    /// Returns the shared plugin runtime manager.
+    ///
+    /// # Returns
+    /// - Plugin runtime manager reference.
+    pub fn plugin_runtime(&self) -> Arc<PluginRuntimeManager> {
+        Arc::clone(&self.plugin_runtime)
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -279,6 +278,7 @@ impl AppState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RecentFileEntry {
+    /// Stored repository path string.
     path: String,
 }
 

@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { qs, qsa, setText } from '../lib/dom';
 import { prefs, savePrefs, state, hasRepo, hasChanges } from '../state/state';
 import { TAURI } from '../lib/tauri';
@@ -10,6 +12,7 @@ const SYSTEM_DARK_MQ = matchMedia('(prefers-color-scheme: dark)');
 let systemSyncActive = false;
 let systemSyncWired = false;
 
+/** Wires a single listener that keeps system-theme mode in sync. */
 function ensureSystemSyncListener() {
     if (systemSyncWired) return;
     systemSyncWired = true;
@@ -32,6 +35,7 @@ const repoTitleEl  = qs<HTMLElement>('#repo-title');
 const repoBranchEl = qs<HTMLElement>('#repo-branch');
 const aheadBehindEl = qs<HTMLElement>('#ahead-behind');
 
+/** Applies a requested appearance mode to the document and persisted prefs. */
 export function setTheme(theme: 'dark'|'light'|'system') {
     const root = document.documentElement;
     ensureSystemSyncListener();
@@ -50,6 +54,7 @@ export function setTheme(theme: 'dark'|'light'|'system') {
     savePrefs();
 }
 
+/** Toggles between light and dark appearance modes. */
 export function toggleTheme() {
     const next = (prefs.theme === 'dark' ? 'light' : 'dark');
     // Persist to native settings when available, then apply to UI
@@ -69,6 +74,7 @@ export function toggleTheme() {
     }
 }
 
+/** Switches the active center tab and updates related UI state. */
 export function setTab(tab: 'changes'|'history'|'stash') {
     const prevTab = prefs.tab;
     prefs.tab = tab; savePrefs();
@@ -110,10 +116,12 @@ export function setTab(tab: 'changes'|'history'|'stash') {
     window.dispatchEvent(new CustomEvent('app:tab-changed', { detail: tab }));
 }
 
+/** Binds tab button clicks to an external change handler. */
 export function bindTabs(onChange: (t: 'changes'|'history'|'stash') => void) {
     tabs.forEach(btn => btn.addEventListener('click', () => onChange((btn.dataset.tab as any) ?? 'changes')));
 }
 
+/** Enables drag-resizing for the work grid split view. */
 export function initResizer() {
     if (!workGrid || !resizer) return;
 
@@ -172,6 +180,7 @@ export function initResizer() {
     });
 }
 
+/** Recomputes enablement and labels for repo-scoped UI actions. */
 export function refreshRepoActions() {
     const repoOn       = hasRepo();
     const changesOn    = hasChanges();
@@ -238,6 +247,7 @@ export function refreshRepoActions() {
     }
 }
 
+/** Binds layout action refresh handlers to app lifecycle events. */
 export function bindLayoutActionState() {
     // Recompute on repo selection, status refresh, branch changes, and typing (when enabled)
     window.addEventListener('app:repo-selected', refreshRepoActions);

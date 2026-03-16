@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Global application configuration types and persistence helpers.
 
 use directories::ProjectDirs;
@@ -68,7 +70,7 @@ impl Default for AppConfig {
 }
 
 /// Settings for app-wide behavior and startup UX.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct General {
     #[serde(default)]
     pub theme: Theme,
@@ -118,7 +120,7 @@ fn default_theme_pack() -> String {
 }
 
 /// Settings that control Git backend behavior.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Git {
     #[serde(default)]
     pub backend: String,
@@ -171,7 +173,7 @@ impl Default for Git {
 }
 
 /// Settings for authentication and signing tools.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Credentials {
     #[serde(default)]
     pub helper: CredentialHelper,
@@ -205,7 +207,7 @@ impl Default for Credentials {
 }
 
 /// Settings that control diff rendering and external tools.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Diff {
     #[serde(default)]
     pub tab_width: u8,
@@ -245,7 +247,7 @@ impl Default for Diff {
 }
 
 /// Git LFS behavior settings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Lfs {
     #[serde(default)]
     pub enabled: bool,
@@ -272,7 +274,7 @@ impl Default for Lfs {
 }
 
 /// Performance and animation tuning options.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Performance {
     #[serde(default)]
     pub progressive_render: bool,
@@ -296,7 +298,7 @@ impl Default for Performance {
 }
 
 /// Integrations with editors and issue providers.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Integrations {
     #[serde(default)]
     pub default_editor: EditorChoice,
@@ -321,7 +323,7 @@ impl Default for Integrations {
 }
 
 /// Plugin enable/disable overrides.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Plugins {
     /// Plugin ids that are installed but disabled.
     ///
@@ -336,7 +338,7 @@ pub struct Plugins {
 }
 
 /// User interface and accessibility options.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Ux {
     #[serde(default)]
     pub ui_scale: f32,
@@ -367,7 +369,7 @@ impl Default for Ux {
 }
 
 /// Advanced networking and force-push safety options.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Advanced {
     #[serde(default)]
     pub confirm_force_push: ForcePushPolicy,
@@ -391,7 +393,7 @@ impl Default for Advanced {
 }
 
 /// Experimental features that may change between releases.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Experimental {
     #[serde(default)]
     pub parallel_history_scan: bool,
@@ -402,7 +404,7 @@ pub struct Experimental {
 }
 
 /// Logging verbosity and retention options.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Logging {
     #[serde(default)]
     pub level: LogLevel,
@@ -525,7 +527,7 @@ pub enum WhitespaceMode {
 }
 
 /// Executable and arguments for an optional external diff/merge tool.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExternalTool {
     #[serde(default)]
     pub enabled: bool,
@@ -607,7 +609,7 @@ pub enum ForcePushPolicy {
 }
 
 /// HTTP proxy configuration used for network operations.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Proxy {
     #[serde(default)]
     pub mode: ProxyMode,
@@ -703,6 +705,36 @@ impl AppConfig {
         let tmp = p.with_extension("conf.tmp");
         fs::write(&tmp, data)?;
         fs::rename(tmp, p)
+    }
+
+    /// Returns whether a plugin should be considered enabled by current settings.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin id to evaluate.
+    /// - `default_enabled`: Manifest-provided default enabled flag.
+    ///
+    /// # Returns
+    /// - `true` when plugin should be active.
+    /// - `false` otherwise.
+    pub fn is_plugin_enabled(&self, plugin_id: &str, default_enabled: bool) -> bool {
+        let plugin_id = plugin_id.trim().to_ascii_lowercase();
+        if plugin_id.is_empty() {
+            return false;
+        }
+        if self
+            .plugins
+            .disabled
+            .iter()
+            .any(|id| id.trim().eq_ignore_ascii_case(&plugin_id))
+        {
+            return false;
+        }
+        default_enabled
+            || self
+                .plugins
+                .enabled
+                .iter()
+                .any(|id| id.trim().eq_ignore_ascii_case(&plugin_id))
     }
 
     /// Future-proof migrations between schema versions.

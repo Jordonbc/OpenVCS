@@ -1,5 +1,8 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use std::{env, fs, path::PathBuf, process::Command};
 
+/// Returns whether the build is running for Flatpak packaging.
 fn is_flatpak_build() -> bool {
     matches!(
         env::var("OPENVCS_FLATPAK").as_deref(),
@@ -7,10 +10,12 @@ fn is_flatpak_build() -> bool {
     )
 }
 
+/// Returns whether the build is running under `cargo tauri dev`.
 fn is_tauri_dev() -> bool {
     matches!(env::var("DEP_TAURI_DEV").as_deref(), Ok("true"))
 }
 
+/// Returns whether an environment variable is set to a truthy value.
 fn is_truthy_env(key: &str) -> bool {
     matches!(
         env::var(key).as_deref(),
@@ -18,6 +23,7 @@ fn is_truthy_env(key: &str) -> bool {
     )
 }
 
+/// Runs `git` with arguments and returns trimmed stdout on success.
 fn run_git(args: &[&str]) -> Option<String> {
     let out = Command::new("git").args(args).output().ok()?;
     if !out.status.success() {
@@ -27,6 +33,7 @@ fn run_git(args: &[&str]) -> Option<String> {
     (!s.is_empty()).then_some(s)
 }
 
+/// Resolves the current branch name from CI environment or local Git.
 fn git_branch() -> Option<String> {
     if let Ok(v) = env::var("GITHUB_REF_NAME") {
         let v = v.trim().to_string();
@@ -51,15 +58,18 @@ fn git_branch() -> Option<String> {
     }
 }
 
+/// Returns the current commit short hash.
 fn git_short_hash() -> Option<String> {
     run_git(&["rev-parse", "--short=8", "HEAD"])
 }
 
+/// Returns whether the Git worktree has uncommitted changes.
 fn git_is_dirty() -> Option<bool> {
     let s = run_git(&["status", "--porcelain"])?;
     Some(!s.trim().is_empty())
 }
 
+/// Sanitizes arbitrary text into a semver-safe build metadata identifier.
 fn sanitize_semver_ident(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut last_was_dash = false;
@@ -86,6 +96,7 @@ fn sanitize_semver_ident(s: &str) -> String {
     }
 }
 
+/// Ensures the generated built-in plugin resource directory exists.
 fn ensure_generated_builtins_resource_dir(manifest_dir: &std::path::Path) {
     // Keep `bundle.resources` valid for plain `cargo build` runs even before
     // plugin bundles are generated.
@@ -99,6 +110,19 @@ fn ensure_generated_builtins_resource_dir(manifest_dir: &std::path::Path) {
     }
 }
 
+/// Ensures the generated bundled Node runtime resource directory exists.
+fn ensure_generated_node_runtime_resource_dir(manifest_dir: &std::path::Path) {
+    let generated = manifest_dir.join("../target/openvcs/node-runtime");
+    if let Err(err) = fs::create_dir_all(&generated) {
+        panic!(
+            "failed to create generated node runtime resource dir {}: {}",
+            generated.display(),
+            err
+        );
+    }
+}
+
+/// Generates Tauri build config and exports build-time metadata env vars.
 fn main() {
     // Base config path (in the Backend crate)
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
@@ -243,6 +267,7 @@ fn main() {
     println!("cargo:rustc-env=OPENVCS_BUILD={}", build_id);
 
     ensure_generated_builtins_resource_dir(&manifest_dir);
+    ensure_generated_node_runtime_resource_dir(&manifest_dir);
 
     // Proceed with tauri build steps
     tauri_build::build();

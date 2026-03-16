@@ -1,6 +1,8 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use tauri::{Manager, Runtime, WebviewUrl, WebviewWindowBuilder, Window};
 
-use crate::output_log::OutputLogEntry;
+use crate::output_log::{OutputLevel, OutputLogEntry};
 use crate::state::AppState;
 
 /// Reads up to the last `max_lines` lines from a log file efficiently.
@@ -72,6 +74,54 @@ pub fn get_output_log(state: tauri::State<'_, AppState>) -> Vec<OutputLogEntry> 
 /// - `()`.
 pub fn clear_output_log(state: tauri::State<'_, AppState>) {
     state.clear_output_log();
+}
+
+#[tauri::command]
+/// Handles log messages from the frontend, forwarding them to the output log.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `level`: Log severity level ("debug", "info", "warn", "error").
+/// - `source`: Source subsystem (e.g., "ui", "plugin").
+/// - `message`: Log message text.
+///
+/// # Returns
+/// - `()`.
+pub fn log_frontend_message(state: tauri::State<'_, AppState>, level: String, message: String) {
+    let (output_level, log_level) = match level.to_lowercase().as_str() {
+        "trace" => (OutputLevel::Info, log::Level::Trace),
+        "debug" => (OutputLevel::Info, log::Level::Debug),
+        "info" => (OutputLevel::Info, log::Level::Info),
+        "warn" | "warning" => (OutputLevel::Warn, log::Level::Warn),
+        "error" | "err" => (OutputLevel::Error, log::Level::Error),
+        _ => (OutputLevel::Info, log::Level::Info),
+    };
+
+    // Write directly to stderr with [FRONTEND] tag
+    let now = time::OffsetDateTime::now_utc();
+    let timestamp = format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        now.year(),
+        now.month() as u8,
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second()
+    );
+    let log_line = format!("{} {:5} [FRONTEND]: {}", timestamp, log_level, message);
+    eprintln!("{}", log_line);
+    let _ = crate::logging::write_to_log(&log_line);
+
+    let entry = OutputLogEntry::new(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0),
+        output_level,
+        "frontend",
+        message,
+    );
+    state.push_output_log(entry);
 }
 
 #[tauri::command]

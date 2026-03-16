@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect, beforeEach } from 'vitest'
 import { qs, qsa, setText, setValue, setChecked, escapeHtml, toKebab } from './dom'
 

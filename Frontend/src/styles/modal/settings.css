@@ -58,6 +58,29 @@
     box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent);
 }
 
+#settings-modal nav [data-plugin-menus-wrap="true"]{
+    margin-top: 0;
+    padding-top: 0;
+}
+
+#settings-modal nav .settings-plugin-subhead{
+    margin: 4rem 0 .35rem;
+    font-size: .74rem;
+    line-height: 1.2;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+#settings-modal nav .settings-plugin-sublist{
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: .5rem;
+}
+
 /* Make the right-side content a flex column so the footer can hug the content
    when there's extra vertical space, but still stick while scrolling */
 #settings-panels{
@@ -191,9 +214,89 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.plugin-row input[type="checkbox"]{
+.plugin-check{
+    position: relative;
     width: 1.1rem;
     height: 1.1rem;
+    flex: 0 0 1.1rem;
+    display: inline-grid;
+    place-items: center;
+}
+
+.plugin-check-input{
+    -webkit-appearance: none;
+    appearance: none;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: transparent;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.plugin-check-ui{
+    position: relative;
+    width: 1.1rem;
+    height: 1.1rem;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    border-radius: .3rem;
+    transition: color .15s ease;
+}
+
+.plugin-check-input:focus-visible + .plugin-check-ui{
+    outline: none;
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent);
+}
+
+.plugin-check[data-state="enabled"] .plugin-check-ui::after{
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 1px;
+    width: 4px;
+    height: 8px;
+    border: solid color-mix(in oklab, #2aa84a 85%, white 15%);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.plugin-check[data-state="enabling"] .plugin-check-ui::after{
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border-radius: 999px;
+    border: 2px solid color-mix(in oklab, #2aa84a 50%, transparent);
+    border-top-color: color-mix(in oklab, #2aa84a 95%, white 5%);
+    animation: plugin-check-spin .75s linear infinite;
+}
+
+.plugin-check[data-state="enabling"] .plugin-check-input{
+    cursor: progress;
+}
+
+.plugin-check[data-state="error"] .plugin-check-ui::after{
+    content: "!";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: #e35353;
+    font-size: .95rem;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.plugin-check-input:disabled{
+    cursor: not-allowed;
+}
+
+@keyframes plugin-check-spin {
+    to { transform: rotate(360deg); }
 }
 
 .plugins-context-menu{
@@ -242,6 +345,8 @@
 .plugins-detail{
     padding: .85rem .9rem;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 .plugins-detail.empty{
     color: var(--muted);
@@ -273,10 +378,40 @@
     gap: .5rem;
     align-items: center;
 }
+.plugin-toggle-btn{
+    min-width: 7.6rem;
+    text-align: center;
+}
+.plugin-toggle-btn.plugin-toggle-btn-enable{
+    border-color: color-mix(in oklab, #2aa84a 55%, var(--border));
+    background: color-mix(in oklab, #2aa84a 20%, transparent);
+    color: color-mix(in oklab, #2aa84a 82%, white 18%);
+}
+.plugin-toggle-btn.plugin-toggle-btn-enable:hover{
+    border-color: #2aa84a;
+    background: color-mix(in oklab, #2aa84a 28%, transparent);
+    color: #eaf9ef;
+}
+.plugin-toggle-btn.plugin-toggle-btn-disable{
+    border-color: color-mix(in oklab, #d64545 55%, var(--border));
+    background: color-mix(in oklab, #d64545 18%, transparent);
+    color: color-mix(in oklab, #d64545 80%, white 20%);
+}
+.plugin-toggle-btn.plugin-toggle-btn-disable:hover{
+    border-color: #d64545;
+    background: color-mix(in oklab, #d64545 26%, transparent);
+    color: #fdeeee;
+}
 .plugin-detail-body{
     margin-top: .85rem;
     display: grid;
     gap: .75rem;
+}
+.plugin-detail-footer{
+    margin-top: auto;
+    padding-top: .9rem;
+    display: flex;
+    justify-content: flex-end;
 }
 .plugin-detail-body .desc{
     color: var(--muted);
