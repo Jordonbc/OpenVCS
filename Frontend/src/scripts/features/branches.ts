@@ -218,7 +218,7 @@ export function bindBranchUI() {
                 notify(`Merged branch '${name}' into '${cur}'`);
                 await Promise.allSettled([renderList(), loadBranches()]);
             } catch (e) {
-                const msg = String(e || '');
+                const msg = String(e);
                 const looksLikeConflict =
                     /CONFLICT/i.test(msg) ||
                     /Automatic merge failed/i.test(msg) ||
