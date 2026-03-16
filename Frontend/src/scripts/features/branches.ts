@@ -269,7 +269,7 @@ export function bindBranchUI() {
                     await loadBranches();
                     await runHook('postBranchDelete', hookData);
                 } catch (e) {
-                    const msg = String(e || '');
+                    const msg = String(e);
                     if (wantForce) { notify(`Force delete failed${msg ? `: ${msg}` : ''}`); return; }
                     // If not fully merged, offer force delete as a fallback
                     const ok2 = await confirmDeleteBranch({
