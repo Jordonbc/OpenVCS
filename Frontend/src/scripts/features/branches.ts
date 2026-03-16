@@ -85,10 +85,11 @@ function renderBranches() {
         const kindType = b.kind?.type || '';
         const remoteFromName = b.name.includes('/') ? b.name.split('/')[0] : '';
         const remote   = b.kind?.remote || remoteFromName || '';
+        const remoteLabel = remote || 'remote';
         let kindLabel = '';
         if (kindType.toLowerCase() === 'local') kindLabel = '<span class="badge kind">Local</span>';
-        else if (kindType.toLowerCase() === 'remote') kindLabel = `<span class="badge kind">Remote:${remote || 'remote'}</span>`;
-        else if (remote) kindLabel = `<span class="badge kind">Remote:${remote || 'remote'}</span>`;
+        else if (kindType.toLowerCase() === 'remote') kindLabel = `<span class="badge kind">Remote:${remoteLabel}</span>`;
+        else if (remote) kindLabel = `<span class="badge kind">Remote:${remoteLabel}</span>`;
         return `
       <li role="option" data-branch="${b.name}" aria-selected="${b.current ? 'true' : 'false'}">
         <span class="label">
