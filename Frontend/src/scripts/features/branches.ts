@@ -285,7 +285,10 @@ export function bindBranchUI() {
                         notify(`Force-deleted '${name}'`);
                         await loadBranches();
                         await runHook('postBranchDelete', hookData);
-                    } catch (e) { console.error('Force delete failed:', e); notify('Force delete failed'); }
+                    } catch (e) {
+                        console.error('Force delete failed:', e);
+                        notify('Force delete failed');
+                    }
                 }
             }});
         }
