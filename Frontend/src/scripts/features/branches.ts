@@ -12,7 +12,7 @@ import { openRenameBranch } from './renameBranch';
 import { openSetUpstream } from './setUpstream';
 import { confirmDeleteBranch } from './deleteBranchConfirm';
 import { buildCtxMenu, CtxItem } from '../lib/menu';
-import { renderList, hydrateCommits, hydrateStatus } from './repo';
+import { renderList, hydrateStatus } from './repo';
 import { setTab } from '../ui/layout';
 import type { ConflictDetails, FileStatus } from '../types';
 import { openConflictsSummary } from './conflicts';
