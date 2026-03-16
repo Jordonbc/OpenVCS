@@ -578,23 +578,31 @@ pub fn reset_plugin_settings(state: State<'_, AppState>, plugin_id: String) -> R
 }
 
 /// Resolves plugin settings defaults from runtime hooks.
+///
+/// If the plugin is disabled, this returns early without starting the runtime
+/// to honor the enable/disable contract.
 fn resolve_plugin_settings_defaults(
     state: &AppState,
     cfg: &crate::settings::AppConfig,
     plugin_id: &str,
 ) -> Result<PluginSettingsDefaultsResolution, String> {
-    let mut runtime = state
+    let runtime_result = state
         .plugin_runtime()
-        .runtime_for_workspace_with_config(cfg, plugin_id, None)
-        .ok();
+        .runtime_for_workspace_with_config(cfg, plugin_id, None);
 
-    if runtime.is_none() {
-        let _ = state.plugin_runtime().start_plugin(plugin_id);
-        runtime = state
-            .plugin_runtime()
-            .runtime_for_workspace_with_config(cfg, plugin_id, None)
-            .ok();
-    }
+    let runtime = match runtime_result {
+        Ok(r) => Some(r),
+        Err(e) if e.contains("is disabled") => {
+            return Ok((Vec::new(), None));
+        }
+        Err(_) => {
+            let _ = state.plugin_runtime().start_plugin(plugin_id);
+            state
+                .plugin_runtime()
+                .runtime_for_workspace_with_config(cfg, plugin_id, None)
+                .ok()
+        }
+    };
 
     if let Some(runtime_ref) = runtime.as_ref() {
         let runtime_defaults = runtime_ref.settings_defaults()?;
