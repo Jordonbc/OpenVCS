@@ -1,6 +1,9 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { TAURI } from '../lib/tauri';
 import { openModal, closeModal } from '../ui/modals';
 import { toKebab } from '../lib/dom';
+import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
 import { setTheme } from '../ui/layout';
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
@@ -11,6 +14,190 @@ import type { GlobalSettings, ThemeSummary } from '../types';
 
 const THEME_PACK_HINT = 'Install a theme ZIP into the themes folder, or install a plugin that provides themes.';
 const SYSTEM_DARK_MQ = matchMedia('(prefers-color-scheme: dark)');
+
+interface PluginMenuPayload {
+    plugin_id: string;
+    id: string;
+    label: string;
+    elements: Array<{
+        type: 'text' | 'button' | string;
+        id?: string;
+        content?: string;
+        label?: string;
+    }>;
+}
+
+interface PluginSettingOptionPayload {
+    value: string;
+    label: string;
+}
+
+interface PluginSettingFieldPayload {
+    id: string;
+    kind: 'bool' | 's32' | 'u32' | 'f64' | 'text' | string;
+    label: string;
+    description?: string | null;
+    default_value: unknown;
+    value: unknown;
+    options?: PluginSettingOptionPayload[];
+}
+
+function pluginSectionId(pluginId: string, menuId: string): string {
+    return `plugin-${toKebab(`${pluginId}-${menuId}`)}`;
+}
+
+function flashSavedState(button: HTMLButtonElement, originalText = 'Save') {
+    button.classList.add('saved-state');
+    button.textContent = 'Saved!';
+    setTimeout(() => {
+        button.textContent = originalText;
+        button.classList.remove('saved-state');
+    }, 2000);
+}
+
+function renderPluginSettingFields(
+    fields: PluginSettingFieldPayload[],
+): HTMLDivElement {
+    const settingsWrap = document.createElement('div');
+    settingsWrap.className = 'group';
+    const heading = document.createElement('h4');
+    heading.className = 'settings-section-title';
+    heading.textContent = 'Settings';
+    settingsWrap.appendChild(heading);
+
+    const controls = new Map<string, HTMLInputElement | HTMLSelectElement>();
+    for (const field of fields) {
+        const settingId = String(field?.id || '').trim();
+        if (!settingId) continue;
+        const kind = String(field?.kind || '').trim().toLowerCase();
+
+        const row = document.createElement('div');
+        row.className = 'group';
+
+        const hasOptions = Array.isArray(field.options) && field.options.length > 0;
+        let control: HTMLInputElement | HTMLSelectElement;
+
+        if (kind === 'bool') {
+            const labelEl = document.createElement('label');
+            labelEl.className = 'checkbox';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.checked = Boolean(field.value);
+            labelEl.appendChild(input);
+            labelEl.append(` ${String(field?.label || settingId).trim() || settingId}`);
+            control = input;
+            row.appendChild(labelEl);
+        } else if (kind === 'text' && hasOptions) {
+            const labelEl = document.createElement('label');
+            labelEl.textContent = String(field?.label || settingId).trim() || settingId;
+            row.appendChild(labelEl);
+            const select = document.createElement('select');
+            for (const option of field.options || []) {
+                const opt = document.createElement('option');
+                opt.value = String(option?.value || '');
+                opt.textContent = String(option?.label || option?.value || '').trim() || opt.value;
+                select.appendChild(opt);
+            }
+            const value = String(field?.value ?? '');
+            if (value && Array.from(select.options).some((opt) => opt.value === value)) {
+                select.value = value;
+            }
+            control = select;
+            row.appendChild(control);
+        } else {
+            const labelEl = document.createElement('label');
+            labelEl.textContent = String(field?.label || settingId).trim() || settingId;
+            row.appendChild(labelEl);
+            const input = document.createElement('input');
+            if (kind === 's32' || kind === 'u32' || kind === 'f64') {
+                input.type = 'number';
+                input.step = kind === 'f64' ? 'any' : '1';
+                if (kind === 'u32') input.min = '0';
+                const n = Number(field?.value ?? field?.default_value ?? 0);
+                input.value = Number.isFinite(n) ? String(n) : '0';
+            } else {
+                input.type = 'text';
+                input.value = String(field?.value ?? field?.default_value ?? '');
+            }
+            control = input;
+            row.appendChild(control);
+        }
+
+        control.setAttribute('data-setting-id', settingId);
+        control.setAttribute('data-setting-kind', kind);
+        controls.set(settingId, control);
+
+        const description = String(field?.description || '').trim();
+        if (description) {
+            const hint = document.createElement('small');
+            hint.textContent = description;
+            row.appendChild(hint);
+        }
+
+        settingsWrap.appendChild(row);
+    }
+
+    return settingsWrap;
+}
+
+const loadedPluginSettings = new Map<string, PluginSettingFieldPayload[]>();
+
+export function clearPluginSettingsCache(): void {
+    loadedPluginSettings.clear();
+}
+
+async function ensurePluginSettingsLoaded(modal: HTMLElement, pluginId: string, section: string): Promise<boolean> {
+    const panelsScroll = modal.querySelector('#settings-panels-scroll');
+    if (!panelsScroll) return false;
+
+    const panel = panelsScroll.querySelector<HTMLElement>(`.panel-form[data-panel="${CSS.escape(section)}"]`);
+    if (!panel) return false;
+
+    const cacheKey = pluginId.toLowerCase();
+    if (loadedPluginSettings.has(cacheKey)) {
+        const existing = panel.querySelector('.group');
+        if (existing) return true;
+        const fields = loadedPluginSettings.get(cacheKey)!;
+        const settingsWrap = renderPluginSettingFields(fields);
+        panel.appendChild(settingsWrap);
+        return true;
+    }
+
+    const loading = panel.querySelector('.plugin-settings-loading');
+    if (loading) {
+        (loading as HTMLElement).dataset.loading = 'true';
+    }
+
+    try {
+        const fields = await TAURI.invoke<PluginSettingFieldPayload[]>('get_plugin_settings', { pluginId });
+        loadedPluginSettings.set(cacheKey, Array.isArray(fields) ? fields : []);
+
+        const loadingEl = panel.querySelector('.plugin-settings-loading');
+        if (loadingEl) loadingEl.remove();
+
+        if (!Array.isArray(fields) || fields.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'group';
+            empty.textContent = 'No settings available';
+            panel.appendChild(empty);
+            return true;
+        }
+
+        const settingsWrap = renderPluginSettingFields(fields);
+        panel.appendChild(settingsWrap);
+        return true;
+    } catch {
+        const loadingEl = panel.querySelector('.plugin-settings-loading');
+        if (loadingEl) {
+            (loadingEl as HTMLElement).dataset.loading = 'false';
+            const error = document.createElement('div');
+            error.className = 'group';
+            error.textContent = 'Failed to load settings';
+            loadingEl.appendChild(error);
+        }
+        return false;
+    }
+}
 
 export function applyAnimationPreference(enabled: boolean | undefined | null) {
     document.documentElement.dataset.animations = enabled === false ? 'off' : 'on';
@@ -44,6 +231,152 @@ function themeTooltip(id: string): string {
     const meta = [theme.author, theme.version].filter(Boolean).join(' • ');
     if (meta) details.push(meta);
     return details.join('\n') || THEME_PACK_HINT;
+}
+
+async function renderPluginMenus(modal: HTMLElement): Promise<void> {
+    const nav = modal.querySelector('#settings-nav');
+    const panelsScroll = modal.querySelector('#settings-panels-scroll');
+    if (!nav || !panelsScroll) return;
+
+    nav.querySelectorAll<HTMLElement>('[data-plugin-menu="true"]').forEach((node) => node.remove());
+    nav.querySelectorAll<HTMLElement>('[data-plugin-menus-wrap="true"]').forEach((node) => node.remove());
+    panelsScroll
+        .querySelectorAll<HTMLElement>('.panel-form[data-plugin-menu="true"]')
+        .forEach((node) => node.remove());
+
+    if (!TAURI.has) return;
+    let menus: PluginMenuPayload[] = [];
+    let pluginSummaries: PluginSummary[] = [];
+    try {
+        menus = await TAURI.invoke<PluginMenuPayload[]>('list_plugin_menus');
+    } catch {
+        return;
+    }
+    try {
+        pluginSummaries = await TAURI.invoke<PluginSummary[]>('list_plugins');
+    } catch {
+        pluginSummaries = [];
+    }
+
+    const pluginSources = new Map<string, string>();
+    const pluginNames = new Map<string, string>();
+    for (const summary of Array.isArray(pluginSummaries) ? pluginSummaries : []) {
+        const id = String(summary?.id || '').trim().toLowerCase();
+        if (!id) continue;
+        pluginSources.set(id, String(summary?.source || '').trim().toLowerCase());
+        pluginNames.set(id, String(summary?.name || summary?.id || '').trim() || id);
+    }
+
+    const pluginsNavBtn = nav.querySelector<HTMLElement>('[data-section="plugins"]');
+    const pluginsNavLi = pluginsNavBtn?.closest('li') || null;
+
+    let thirdPartySublist: HTMLElement | null = null;
+    const ensureThirdPartySublist = (): HTMLElement => {
+        if (thirdPartySublist) return thirdPartySublist;
+
+        const wrap = document.createElement('div');
+        wrap.setAttribute('data-plugin-menus-wrap', 'true');
+
+        const heading = document.createElement('div');
+        heading.className = 'settings-plugin-subhead';
+        heading.textContent = 'Plugin Settings';
+        wrap.appendChild(heading);
+
+        const list = document.createElement('ul');
+        list.className = 'settings-plugin-sublist';
+        list.setAttribute('data-plugin-menus', 'true');
+        wrap.appendChild(list);
+
+        if (pluginsNavLi) {
+            pluginsNavLi.appendChild(wrap);
+        } else {
+            nav.appendChild(wrap);
+        }
+
+        thirdPartySublist = list;
+        return list;
+    };
+
+    for (const menu of menus) {
+        const section = pluginSectionId(menu.plugin_id, menu.id);
+        const navLi = document.createElement('li');
+        navLi.dataset.pluginMenu = 'true';
+        const navBtn = document.createElement('button');
+        const source = pluginSources.get(String(menu.plugin_id || '').trim().toLowerCase()) || '';
+        const isBuiltIn = source === 'built-in';
+        navBtn.className = 'seg-btn';
+        navBtn.setAttribute('data-section', section);
+        navBtn.textContent = menu.label || menu.id;
+        navLi.appendChild(navBtn);
+
+        if (isBuiltIn) {
+            if (pluginsNavLi?.parentElement) {
+                pluginsNavLi.parentElement.insertBefore(navLi, pluginsNavLi);
+            } else {
+                nav.appendChild(navLi);
+            }
+        } else {
+            ensureThirdPartySublist().appendChild(navLi);
+        }
+
+        const panel = document.createElement('form');
+        panel.className = 'panel-form hidden';
+        panel.setAttribute('data-panel', section);
+        panel.setAttribute('data-plugin-menu', 'true');
+        panel.dataset.pluginId = menu.plugin_id;
+        panel.dataset.menuId = menu.id;
+
+        for (const element of menu.elements || []) {
+            const group = document.createElement('div');
+            group.className = 'group';
+            if (element.type === 'text') {
+                const text = document.createElement('div');
+                text.textContent = String(element.content || '');
+                group.appendChild(text);
+            } else if (element.type === 'button') {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'tbtn';
+                button.textContent = String(element.label || 'Action');
+                button.dataset.pluginAction = String(element.id || '');
+                button.dataset.pluginId = menu.plugin_id;
+                group.appendChild(button);
+            }
+            panel.appendChild(group);
+        }
+        panelsScroll.appendChild(panel);
+    }
+
+    for (const summary of Array.isArray(pluginSummaries) ? pluginSummaries : []) {
+        const pluginId = String(summary?.id || '').trim();
+        const pluginKey = pluginId.toLowerCase();
+        if (!pluginId) continue;
+
+        const section = `plugin-settings-${toKebab(pluginId)}`;
+        const navLi = document.createElement('li');
+        navLi.dataset.pluginMenu = 'true';
+        const navBtn = document.createElement('button');
+        navBtn.className = 'seg-btn';
+        navBtn.setAttribute('data-section', section);
+        navBtn.textContent = pluginNames.get(pluginKey) || pluginId;
+        navLi.appendChild(navBtn);
+        ensureThirdPartySublist().appendChild(navLi);
+
+        const panel = document.createElement('form');
+        panel.className = 'panel-form hidden';
+        panel.setAttribute('data-panel', section);
+        panel.setAttribute('data-plugin-menu', 'true');
+        panel.dataset.pluginId = pluginId;
+        panel.dataset.pluginSettings = 'true';
+
+        const loading = document.createElement('div');
+        loading.className = 'plugin-settings-loading group';
+        loading.dataset.loading = 'true';
+        loading.textContent = 'Loading settings...';
+        panel.appendChild(loading);
+
+        panelsScroll.appendChild(panel);
+    }
 }
 
 async function rebuildThemePackOptions(
@@ -81,7 +414,11 @@ export function openSettings(section?: string){
     const modal = document.getElementById('settings-modal') as HTMLElement | null;
     if (!modal) return;
     applyPluginSettingsSections(modal);
-    if (section) activateSection(modal, section);
+    renderPluginMenus(modal)
+        .catch(() => {})
+        .finally(() => {
+            if (section) activateSection(modal, section);
+        });
 
     // Prevent a "double-click to refresh" feel where the user opens the Theme dropdown
     // before the async settings/theme list has finished loading.
@@ -128,9 +465,62 @@ function activateSection(modal: HTMLElement, section: string) {
         p.classList.toggle('hidden', p.getAttribute('data-panel') !== safeSection);
     });
 
-    // Plugins are applied immediately (no Save/Cancel).
+    // Keep footer actions hidden for action-only plugin menu panels.
     const actions = modal.querySelector<HTMLElement>('.sheet-actions');
-    if (actions) actions.classList.toggle('hidden', safeSection === 'plugins');
+    const activePanel = panels.querySelector<HTMLElement>(
+        `.panel-form[data-panel="${CSS.escape(safeSection)}"]`,
+    );
+    const isPluginMenuPanel = activePanel?.getAttribute('data-plugin-menu') === 'true';
+    const isPluginSettingsPanel = activePanel?.getAttribute('data-plugin-settings') === 'true';
+    const hideActions = safeSection === 'plugins' || (isPluginMenuPanel && !isPluginSettingsPanel);
+    if (actions) actions.classList.toggle('hidden', hideActions);
+
+    if (isPluginSettingsPanel && activePanel) {
+        const pluginId = String(activePanel.dataset.pluginId || '').trim();
+        if (pluginId) {
+            ensurePluginSettingsLoaded(modal, pluginId, safeSection).catch(() => {});
+        }
+    }
+}
+
+/** Collects typed plugin setting values from a plugin-settings panel. */
+function collectPluginSettingsFromPanel(
+    panel: HTMLElement,
+): Array<{ id: string; value: unknown }> {
+    const entries: Array<{ id: string; value: unknown }> = [];
+    const controls = panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+        '[data-setting-id][data-setting-kind]',
+    );
+
+    for (const control of controls) {
+        const settingId = String(control.getAttribute('data-setting-id') || '').trim();
+        const kind = String(control.getAttribute('data-setting-kind') || '')
+            .trim()
+            .toLowerCase();
+        if (!settingId || !kind) continue;
+
+        let value: unknown;
+        if (kind === 'bool' && control instanceof HTMLInputElement) {
+            value = control.checked;
+        } else if (kind === 's32' || kind === 'u32' || kind === 'f64') {
+            const n = Number(control.value);
+            if (!Number.isFinite(n)) {
+                value = 0;
+            } else if (kind === 's32') {
+                value = Math.trunc(n);
+            } else if (kind === 'u32') {
+                value = Math.max(0, Math.trunc(n));
+            } else {
+                value = n;
+            }
+        } else {
+            value = control.value ?? '';
+        }
+
+        entries.push({ id: settingId, value });
+    }
+
+    return entries;
 }
 
 export function wireSettings() {
@@ -158,6 +548,20 @@ export function wireSettings() {
             const target = btn.getAttribute('data-section') || undefined;
             if (!target) return;
             activateSection(modal, target);
+        });
+
+        panels.addEventListener('click', async (e) => {
+            const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-plugin-action][data-plugin-id]');
+            if (!btn || !TAURI.has) return;
+            const pluginId = btn.dataset.pluginId || '';
+            const actionId = btn.dataset.pluginAction || '';
+            if (!pluginId || !actionId) return;
+            try {
+                await TAURI.invoke('invoke_plugin_action', { pluginId, actionId });
+            } catch (err) {
+                console.error('Failed to invoke plugin action', err);
+                notify('Plugin action failed');
+            }
         });
     }
 
@@ -252,26 +656,44 @@ export function wireSettings() {
     const settingsSave  = modal.querySelector('#settings-save')  as HTMLButtonElement | null;
     const settingsReset = modal.querySelector('#settings-reset') as HTMLButtonElement | null;
 
+    if (settingsSave) {
+        settingsSave.style.width = '5rem';
+        settingsSave.style.textAlign = 'center';
+    }
+
     settingsSave?.addEventListener('click', async () => {
+        if (!settingsSave) return;
+        if (settingsSave.classList.contains('saved-state') || settingsSave.classList.contains('saving-state')) return;
+
+        settingsSave.classList.add('saving-state');
+        settingsSave.disabled = true;
+
         try {
-            const baseRaw = (modal as HTMLElement).dataset.currentCfg || '{}';
-            const base = JSON.parse(baseRaw || '{}');
-            const prevBackend: string = String(base?.git?.backend || 'system');
+            const activePanel = modal.querySelector<HTMLElement>('#settings-panels .panel-form:not(.hidden)');
+            if (activePanel?.getAttribute('data-plugin-settings') === 'true') {
+                if (!TAURI.has) return;
+                const pluginId = String(activePanel.dataset.pluginId || '').trim();
+                if (!pluginId) {
+                    notify('Failed to save plugin settings');
+                    return;
+                }
+                await TAURI.invoke('save_plugin_settings', {
+                    pluginId,
+                    values: collectPluginSettingsFromPanel(activePanel),
+                });
+                notify('Plugin settings saved');
+                flashSavedState(settingsSave);
+                return;
+            }
+
             const next = collectSettingsFromForm(modal);
 
             if (TAURI.has) {
                 await TAURI.invoke('set_global_settings', { cfg: next });
-
-                // If Git engine changed, reopen the current repo so the plugin can reconfigure.
-                const newBackend: string = String(next?.git?.backend || 'system');
-                if (newBackend && newBackend !== prevBackend) {
-                    try { await TAURI.invoke('reopen_current_repo_cmd'); } catch {}
-                }
             }
 
             modal.dataset.currentCfg = JSON.stringify(next);
 
-            // Apply visual prefs immediately (no restart): theme, tab width, UI scale, mono font
             const theme = (next.general?.theme || 'system') as 'system' | 'light' | 'dark';
             const pack = String(next.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
             setTheme(theme);
@@ -289,12 +711,35 @@ export function wireSettings() {
             } catch {}
 
             notify('Settings saved');
-            closeModal('settings-modal');
-        } catch { notify('Failed to save settings'); }
+            flashSavedState(settingsSave);
+        } catch (e) {
+            console.error('Failed to save settings:', e);
+            notify('Failed to save settings');
+        } finally {
+            settingsSave.classList.remove('saving-state');
+            settingsSave.disabled = false;
+        }
     });
 
     settingsReset?.addEventListener('click', async () => {
         try {
+            const activePanel = modal.querySelector<HTMLElement>('#settings-panels .panel-form:not(.hidden)');
+            if (activePanel?.getAttribute('data-plugin-settings') === 'true') {
+                if (!TAURI.has) return;
+                const pluginId = String(activePanel.dataset.pluginId || '').trim();
+                const section = String(activePanel.getAttribute('data-panel') || '').trim();
+                if (!pluginId) {
+                    notify('Failed to reset plugin settings');
+                    return;
+                }
+                await TAURI.invoke('reset_plugin_settings', { pluginId });
+                notify('Plugin settings reset');
+                clearPluginSettingsCache();
+                await renderPluginMenus(modal);
+                if (section) activateSection(modal, section);
+                return;
+            }
+
             if (!TAURI.has) return;
             const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
 
@@ -309,7 +754,6 @@ export function wireSettings() {
                 telemetry: false,
                 crash_reports: false,
             };
-            cur.git = { backend: 'system', default_branch: 'main', prune_on_fetch: true, fetch_on_focus: true, allow_hooks: 'ask', respect_core_autocrlf: true, merge_commit_message_template: "Merged branch '{branch:source}' into '{branch:target}'" };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
             cur.performance = { progressive_render: true, gpu_accel: true, animations: true };
@@ -323,7 +767,7 @@ export function wireSettings() {
             setTheme('system');
             try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
             notify('Defaults restored');
-        } catch { notify('Failed to restore defaults'); }
+        } catch (e) { console.error('Failed to restore defaults:', e); notify('Failed to restore defaults'); }
     });
 
     // Settings are loaded by `openSettings()` on open.
@@ -350,20 +794,6 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         reopen_last_repos: !!get<HTMLInputElement>('#set-reopen-last')?.checked,
         checks_on_launch: !!get<HTMLInputElement>('#set-checks-on-launch')?.checked,
     };
-
-    if (get('#set-git-backend') || get('#set-merge-message-template') || get('#set-git-ssh-binary')) {
-        o.git = {
-            ...o.git,
-            backend: get<HTMLSelectElement>('#set-git-backend')?.value as any,
-            merge_commit_message_template: get<HTMLInputElement>('#set-merge-message-template')?.value ?? '',
-            ssh_binary: (get<HTMLSelectElement>('#set-git-ssh-binary')?.value || 'auto') as any,
-            ssh_path: (get<HTMLInputElement>('#set-git-ssh-path')?.value || '').trim(),
-            prune_on_fetch: !!get<HTMLInputElement>('#set-prune-on-fetch')?.checked,
-            fetch_on_focus: !!get<HTMLInputElement>('#set-fetch-on-focus')?.checked,
-            allow_hooks: get<HTMLSelectElement>('#set-hook-policy')?.value,
-            respect_core_autocrlf: !!get<HTMLInputElement>('#set-respect-autocrlf')?.checked,
-        };
-    }
 
     o.diff = {
         ...o.diff,
@@ -504,24 +934,6 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elChk   = get<HTMLInputElement>('#set-checks-on-launch'); if (elChk) elChk.checked = !!cfg.general?.checks_on_launch;
     const elRl    = get<HTMLInputElement>('#set-recents-limit'); if (elRl) elRl.value = String(cfg.ux?.recents_limit ?? 10);
 
-    await refreshGitBackendOptions(m, cfg);
-    const elMmt = get<HTMLInputElement>('#set-merge-message-template');
-    if (elMmt) elMmt.value = cfg.git?.merge_commit_message_template ?? '';
-    const elSshBin = get<HTMLSelectElement>('#set-git-ssh-binary');
-    if (elSshBin) elSshBin.value = toKebab(cfg.git?.ssh_binary) || 'auto';
-    const elSshPath = get<HTMLInputElement>('#set-git-ssh-path');
-    if (elSshPath) elSshPath.value = cfg.git?.ssh_path ?? '';
-    if (elSshPath) {
-        const enabled = (elSshBin?.value || 'auto') === 'custom';
-        elSshPath.disabled = !enabled;
-        if (!enabled) elSshPath.value = '';
-    }
-    const elPr = get<HTMLInputElement>('#set-prune-on-fetch'); if (elPr) elPr.checked = !!cfg.git?.prune_on_fetch;
-    const elFoF = get<HTMLInputElement>('#set-fetch-on-focus'); if (elFoF) elFoF.checked = !!cfg.git?.fetch_on_focus;
-    
-    const elHp = get<HTMLSelectElement>('#set-hook-policy'); if (elHp) elHp.value = toKebab(cfg.git?.allow_hooks);
-    const elRc = get<HTMLInputElement>('#set-respect-autocrlf'); if (elRc) elRc.checked = !!cfg.git?.respect_core_autocrlf;
-
     const elTw = get<HTMLInputElement>('#set-tab-width'); if (elTw) elTw.value = String(cfg.diff?.tab_width ?? 0);
     const elIw = get<HTMLSelectElement>('#set-ignore-whitespace'); if (elIw) elIw.value = toKebab(cfg.diff?.ignore_whitespace);
     const elMx = get<HTMLInputElement>('#set-max-file-size-mb'); if (elMx) elMx.value = String(cfg.diff?.max_file_size_mb ?? 0);
@@ -557,28 +969,6 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     // Logging
     const elLvl = get<HTMLSelectElement>('#set-log-level'); if (elLvl) elLvl.value = toKebab(cfg.logging?.level || 'info');
     const elKeep= get<HTMLInputElement>('#set-log-keep'); if (elKeep) elKeep.value = String(cfg.logging?.retain_archives ?? 10);
-}
-
-async function refreshGitBackendOptions(modal: HTMLElement, cfg: GlobalSettings) {
-    const elGb = modal.querySelector<HTMLSelectElement>('#set-git-backend');
-    if (!elGb) return;
-
-    const backend = String(cfg.git?.backend || '').trim();
-    const options: Array<[string, string]> = [
-        ['system', 'System'],
-        ['libgit2', 'Libgit2'],
-    ];
-
-    elGb.innerHTML = '';
-    for (const [id, label] of options) {
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = label;
-        elGb.appendChild(opt);
-    }
-
-    elGb.disabled = false;
-    elGb.value = (backend === 'libgit2') ? 'libgit2' : 'system';
 }
 
 async function refreshDefaultBackendOptions(modal: HTMLElement, cfg: GlobalSettings) {
@@ -624,125 +1014,8 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     const installBundleBtn = modal.querySelector<HTMLButtonElement>('#plugins-install-bundle');
     const enableAllBtn = modal.querySelector<HTMLButtonElement>('#plugins-enable-all');
     const disableAllBtn = modal.querySelector<HTMLButtonElement>('#plugins-disable-all');
-    const bundleListEl = modal.querySelector<HTMLElement>('#plugin-bundles-list');
 
-    if (!pane || !listEl || !detailEl || !groupLabelEl || !searchEl || !installBundleBtn || !enableAllBtn || !disableAllBtn || !bundleListEl) return;
-
-    const renderBundles = async () => {
-        bundleListEl.innerHTML = '';
-        if (!TAURI.has) {
-            bundleListEl.textContent = 'Bundles are only available in the desktop app.';
-            return;
-        }
-
-        let bundles: any[] = [];
-        try {
-            bundles = await TAURI.invoke<any[]>('list_installed_bundles');
-        } catch (err) {
-            bundleListEl.textContent = 'Failed to load installed bundles.';
-            return;
-        }
-
-        if (!Array.isArray(bundles) || bundles.length === 0) {
-            bundleListEl.textContent = 'No bundles installed.';
-            return;
-        }
-
-        const wrap = document.createElement('div');
-        wrap.style.display = 'grid';
-        wrap.style.gap = '.5rem';
-
-        for (const b of bundles) {
-            const pluginId = String(b?.plugin_id || '').trim();
-            const current = String(b?.current || '').trim();
-            const versions = b?.versions && typeof b.versions === 'object' ? b.versions : {};
-            const cur = current && versions[current] ? versions[current] : null;
-            const approval = cur?.approval?.Pending ? 'Pending' : (cur?.approval?.Denied ? 'Denied' : (cur?.approval?.Approved ? 'Approved' : 'Pending'));
-            const requestedCaps: string[] = Array.isArray(cur?.requested_capabilities) ? cur.requested_capabilities : [];
-
-            const row = document.createElement('div');
-            row.className = 'card';
-            (row.style as any).padding = '.6rem .7rem';
-            (row.style as any).display = 'flex';
-            (row.style as any).gap = '.75rem';
-            (row.style as any).alignItems = 'center';
-
-            const left = document.createElement('div');
-            left.style.flex = '1';
-            const title = document.createElement('div');
-            title.textContent = pluginId || '(unknown plugin)';
-            const sub = document.createElement('div');
-            sub.className = 'muted';
-            sub.style.fontSize = '.85rem';
-            sub.textContent = current ? `version ${current} • ${approval}` : `no current version • ${approval}`;
-            left.appendChild(title);
-            left.appendChild(sub);
-
-            const actions = document.createElement('div');
-            actions.style.display = 'flex';
-            actions.style.gap = '.4rem';
-
-            const approveBtn = document.createElement('button');
-            approveBtn.type = 'button';
-            approveBtn.className = 'tbtn';
-            approveBtn.textContent = 'Approve';
-            approveBtn.disabled = !pluginId || !current;
-            approveBtn.addEventListener('click', async () => {
-                try {
-                    await TAURI.invoke('approve_plugin_capabilities', {
-                        pluginId,
-                        version: current,
-                        approved: true,
-                    });
-                    notify('Capabilities approved');
-                    await renderBundles();
-                } catch (err) {
-                    const msg = String(err || '').trim();
-                    notify(msg ? `Approve failed: ${msg}` : 'Approve failed');
-                }
-            });
-
-            const denyBtn = document.createElement('button');
-            denyBtn.type = 'button';
-            denyBtn.className = 'tbtn';
-            denyBtn.textContent = 'Deny';
-            denyBtn.disabled = !pluginId || !current;
-            denyBtn.addEventListener('click', async () => {
-                try {
-                    await TAURI.invoke('approve_plugin_capabilities', {
-                        pluginId,
-                        version: current,
-                        approved: false,
-                    });
-                    notify('Capabilities denied');
-                    await renderBundles();
-                } catch (err) {
-                    const msg = String(err || '').trim();
-                    notify(msg ? `Deny failed: ${msg}` : 'Deny failed');
-                }
-            });
-
-            actions.appendChild(approveBtn);
-            actions.appendChild(denyBtn);
-
-            if (requestedCaps.length) {
-                const caps = document.createElement('div');
-                caps.className = 'muted';
-                caps.style.fontSize = '.8rem';
-                caps.style.marginTop = '.2rem';
-                caps.textContent = `requested: ${requestedCaps.join(', ')}`;
-                left.appendChild(caps);
-            }
-
-            row.appendChild(left);
-            row.appendChild(actions);
-            wrap.appendChild(row);
-        }
-
-        bundleListEl.appendChild(wrap);
-    };
-
-    await renderBundles();
+    if (!pane || !listEl || !detailEl || !groupLabelEl || !searchEl || !installBundleBtn || !enableAllBtn || !disableAllBtn) return;
 
     // This settings pane can be initialized multiple times during navigation/rerender.
     // Avoid stacking duplicate click handlers which would open many dialogs.
@@ -757,20 +1030,25 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
                 const installed = await TAURI.invoke<any>('install_ovcsp', { bundlePath });
                 notify(`Installed ${installed?.plugin_id || 'plugin'} ${installed?.version || ''}`.trim());
 
-                const caps = Array.isArray(installed?.requested_capabilities) ? installed.requested_capabilities : [];
-                if (caps.length) {
-                    const ok = window.confirm(
-                        `Plugin requests capabilities:\n\n- ${caps.join('\n- ')}\n\nApprove and allow it to run?`
+                const pluginId = String(installed?.plugin_id || '').trim();
+                const version = String(installed?.version || '').trim();
+                if (pluginId && version) {
+                    const trusted = await confirmBool(
+                        'Trust this plugin and allow it to run?\n\n'
+                        + 'Only approve plugins from sources you trust.'
                     );
-                    await TAURI.invoke('approve_plugin_capabilities', {
-                        pluginId: String(installed?.plugin_id || '').trim(),
-                        version: String(installed?.version || '').trim(),
-                        approved: ok,
+                    await TAURI.invoke('set_plugin_approval', {
+                        pluginId,
+                        version,
+                        approved: trusted,
                     });
-                    notify(ok ? 'Capabilities approved' : 'Capabilities denied');
+                    if (trusted) {
+                        notify('Plugin approved');
+                    } else {
+                        notify('Plugin installed but not approved to run');
+                    }
                 }
 
-                await renderBundles();
                 await reloadPluginSummaries();
             } catch (err) {
                 const msg = String(err || '').trim();
@@ -987,6 +1265,10 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         list: PluginSummary[];
         disabled: Set<string>;
         enabled: Set<string>;
+        pendingToggleById: Map<string, boolean>;
+        errorToggleById: Set<string>;
+        buttonErrorToggleById: Set<string>;
+        buttonErrorTimerById: Map<string, number>;
         query: string;
         selectedId: string | null;
     };
@@ -994,6 +1276,10 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         list: [],
         disabled: new Set<string>(),
         enabled: new Set<string>(),
+        pendingToggleById: new Map<string, boolean>(),
+        errorToggleById: new Set<string>(),
+        buttonErrorToggleById: new Set<string>(),
+        buttonErrorTimerById: new Map<string, number>(),
         query: '',
         selectedId: null,
     };
@@ -1001,6 +1287,23 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     state.disabled = disabled;
     state.enabled = enabled;
     state.query = String(searchEl.value || '').trim();
+
+    const syncStartFailures = async (): Promise<void> => {
+        if (!TAURI.has) {
+            state.errorToggleById.clear();
+            return;
+        }
+        try {
+            const failed = await TAURI.invoke<string[]>('list_plugin_start_failures');
+            state.errorToggleById = new Set(
+                (Array.isArray(failed) ? failed : [])
+                    .map((id) => String(id || '').trim().toLowerCase())
+                    .filter(Boolean),
+            );
+        } catch (err) {
+            console.warn('list_plugin_start_failures failed', err);
+        }
+    };
 
     const pluginIsEnabled = (p: PluginSummary): boolean => {
         const id = String(p?.id || '').trim().toLowerCase();
@@ -1053,7 +1356,11 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         detailEl.classList.remove('empty');
 
         const id = String(plugin.id).trim();
+        const idLower = id.toLowerCase();
         const isEnabledNow = pluginIsEnabled(plugin);
+        const pendingToggle = state.pendingToggleById.get(idLower);
+        const hasButtonError = state.buttonErrorToggleById.has(idLower);
+        const isDisablingAction = typeof pendingToggle === 'boolean' ? pendingToggle === false : isEnabledNow;
         const version = String(plugin.version || '').trim();
         const author = String(plugin.author || '').trim();
         const category = String(plugin.category || '').trim();
@@ -1083,9 +1390,18 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         actions.className = 'plugin-detail-actions';
         const toggle = document.createElement('button');
         toggle.type = 'button';
-        toggle.className = 'tbtn';
+        toggle.className = `tbtn plugin-toggle-btn ${(hasButtonError || isDisablingAction) ? 'plugin-toggle-btn-disable' : 'plugin-toggle-btn-enable'}`;
         toggle.id = 'plugins-toggle-selected';
-        toggle.textContent = isEnabledNow ? 'Disable' : 'Enable';
+        toggle.disabled = typeof pendingToggle === 'boolean' || hasButtonError;
+        toggle.textContent = hasButtonError
+            ? 'Error'
+            : pendingToggle === true
+                ? 'Enabling...'
+                : pendingToggle === false
+                    ? 'Disabling...'
+                    : isEnabledNow
+                        ? 'Disable'
+                        : 'Enable';
         toggle.dataset.pluginToggle = id;
         actions.appendChild(toggle);
 
@@ -1126,6 +1442,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
         detailEl.appendChild(head);
         detailEl.appendChild(body);
+
     };
 
     const renderList = () => {
@@ -1153,7 +1470,10 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
         for (const plugin of filtered) {
             const id = String(plugin.id).trim();
+            const idLower = id.toLowerCase();
             const isEnabledNow = pluginIsEnabled(plugin);
+            const pendingToggle = state.pendingToggleById.get(idLower);
+            const hasToggleError = state.errorToggleById.has(idLower);
 
             const li = document.createElement('li');
             li.className = 'plugin-row';
@@ -1205,14 +1525,33 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             main.appendChild(icon);
             main.appendChild(text);
 
+            const checkboxWrap = document.createElement('label');
+            checkboxWrap.className = 'plugin-check';
+            checkboxWrap.dataset.state = hasToggleError
+                ? 'error'
+                : pendingToggle === true
+                    ? 'enabling'
+                    : isEnabledNow
+                        ? 'enabled'
+                        : 'disabled';
+
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
+            checkbox.className = 'plugin-check-input';
             checkbox.checked = isEnabledNow;
+            checkbox.disabled = typeof pendingToggle === 'boolean';
             checkbox.dataset.pluginId = id;
             checkbox.setAttribute('aria-label', `Enable ${String(plugin.name || '').trim() || 'plugin'}`);
 
+            const checkboxUi = document.createElement('span');
+            checkboxUi.className = 'plugin-check-ui';
+            checkboxUi.setAttribute('aria-hidden', 'true');
+
+            checkboxWrap.appendChild(checkbox);
+            checkboxWrap.appendChild(checkboxUi);
+
             li.appendChild(main);
-            li.appendChild(checkbox);
+            li.appendChild(checkboxWrap);
             listEl.appendChild(li);
         }
 
@@ -1235,11 +1574,13 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         }
 
         state.list = Array.isArray(list) ? list : [];
+        await syncStartFailures();
         ensureSelection(getFiltered());
         renderList();
         updateCounts();
     }
 
+    await syncStartFailures();
     ensureSelection(getFiltered());
     (modal as any)[stateKey] = state;
     renderList();
@@ -1255,7 +1596,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             await TAURI.invoke('set_global_settings', { cfg: next });
             modal.dataset.currentCfg = JSON.stringify(next);
             await reloadPlugins();
-            await refreshGitBackendOptions(modal, next);
             try {
                 await refreshAvailableThemes();
                 const themeSel = modal.querySelector<HTMLSelectElement>('#set-theme');
@@ -1281,9 +1621,73 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
                     }
                 }
             } catch {}
-        } catch {
-            notify('Failed to update plugins');
+        } catch (e) { console.error('Failed to update plugins:', e); notify('Failed to update plugins'); }
+    };
+
+    const persistSinglePluginToggle = async (pluginId: string, enabled: boolean) => {
+        if (!TAURI.has) return;
+        const idLower = pluginId.trim().toLowerCase();
+        try {
+            const activeSection = String(
+                modal
+                    .querySelector<HTMLElement>('#settings-nav .seg-btn.active')
+                    ?.getAttribute('data-section') || '',
+            ).trim();
+            await TAURI.invoke('set_plugin_enabled', { pluginId, enabled });
+            if (enabled) {
+                state.disabled.delete(idLower);
+                state.enabled.add(idLower);
+            } else {
+                state.enabled.delete(idLower);
+                state.disabled.add(idLower);
+            }
+            console.debug(`Plugin '${pluginId}' ${enabled ? 'enabled' : 'disabled'}`);
+            await reloadPlugins();
+            clearPluginSettingsCache();
+            await renderPluginMenus(modal);
+            if (activeSection) activateSection(modal, activeSection);
+            try {
+                await refreshAvailableThemes();
+            } catch (e) { console.warn('refreshAvailableThemes failed:', e); }
+        } catch (e) {
+            state.errorToggleById.add(idLower);
+            const existingTimer = state.buttonErrorTimerById.get(idLower);
+            if (typeof existingTimer === 'number') {
+                window.clearTimeout(existingTimer);
+            }
+            state.buttonErrorToggleById.add(idLower);
+            const timer = window.setTimeout(() => {
+                state.buttonErrorToggleById.delete(idLower);
+                state.buttonErrorTimerById.delete(idLower);
+                renderDetails(getFiltered());
+            }, 2000);
+            state.buttonErrorTimerById.set(idLower, timer);
+            console.error('Failed to toggle plugin:', e);
+            notify('Failed to toggle plugin');
+        } finally {
+            state.pendingToggleById.delete(idLower);
+            updateCounts();
+            renderList();
         }
+    };
+
+    const queuePluginToggle = (pluginIdRaw: string, enabled: boolean) => {
+        const id = String(pluginIdRaw || '').trim().toLowerCase();
+        if (!id) return;
+        if (state.pendingToggleById.has(id)) return;
+        const existingTimer = state.buttonErrorTimerById.get(id);
+        if (typeof existingTimer === 'number') {
+            window.clearTimeout(existingTimer);
+            state.buttonErrorTimerById.delete(id);
+        }
+        state.buttonErrorToggleById.delete(id);
+        state.errorToggleById.delete(id);
+        state.pendingToggleById.set(id, enabled);
+        renderList();
+        void (async () => {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            await persistSinglePluginToggle(id, enabled);
+        })();
     };
 
     if (!(pane as any).__wired) {
@@ -1373,7 +1777,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             const plugin = state.list.find((p) => String(p?.id || '').trim() === id) || null;
             if (!plugin) return;
             const label = String(plugin.name || plugin.id || 'plugin');
-            if (!window.confirm(`Remove ${label}? This will delete the plugin bundle.`)) return;
+            if (!(await confirmBool(`Remove ${label}? This will delete the plugin bundle.`))) return;
             if (!TAURI.has) {
                 notify('Plugin removal is only available in the desktop app.');
                 return;
@@ -1385,7 +1789,17 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
                 const normalizedLower = normalized.toLowerCase();
                 state.disabled.delete(normalizedLower);
                 state.enabled.delete(normalizedLower);
+                const activeSection = String(
+                    modal
+                        .querySelector<HTMLElement>('#settings-nav .seg-btn.active')
+                        ?.getAttribute('data-section') || '',
+                ).trim();
                 await reloadPluginSummaries();
+                clearPluginSettingsCache();
+                await renderPluginMenus(modal);
+                const nav = modal.querySelector('#settings-nav');
+                const safeSection = activeSection && nav?.querySelector(`[data-section="${CSS.escape(activeSection)}"]`) ? activeSection : 'plugins';
+                activateSection(modal, safeSection);
                 persistPluginsDisabled().catch(() => {});
             } catch (err) {
                 const msg = String(err || '').trim();
@@ -1428,11 +1842,16 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             const toggleBtn = target?.closest<HTMLButtonElement>('[data-plugin-toggle]') || null;
             if (toggleBtn) {
                 const id = String(toggleBtn.dataset.pluginToggle || '').trim();
-                const checkbox = pane.querySelector<HTMLInputElement>(`input[type="checkbox"][data-plugin-id="${CSS.escape(id)}"]`);
-                if (checkbox) {
-                    checkbox.checked = !checkbox.checked;
-                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-                }
+                if (!id) return;
+                const plugin = state.list.find(
+                    (p) => String(p?.id || '').trim().toLowerCase() === id.toLowerCase(),
+                );
+                const desiredEnabled = plugin ? !pluginIsEnabled(plugin) : false;
+                const checkbox = pane.querySelector<HTMLInputElement>(
+                    `input[type="checkbox"][data-plugin-id="${CSS.escape(id)}"]`,
+                );
+                if (checkbox) checkbox.checked = plugin ? pluginIsEnabled(plugin) : false;
+                queuePluginToggle(id, desiredEnabled);
                 return;
             }
 
@@ -1441,7 +1860,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             const id = String(row.dataset.plugin || '').trim();
             if (!id) return;
 
-            const isCheckbox = !!target?.closest('input[type="checkbox"]');
+            const isCheckbox = !!target?.closest('.plugin-check');
             if (!isCheckbox) {
                 const now = Date.now();
                 const idKey = id.toLowerCase();
@@ -1474,16 +1893,13 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             if (!el || el.type !== 'checkbox' || !el.dataset.pluginId) return;
             const id = String(el.dataset.pluginId).trim().toLowerCase();
             if (!id) return;
-            if (el.checked) {
-                state.disabled.delete(id);
-                state.enabled.add(id);
-            } else {
-                state.enabled.delete(id);
-                state.disabled.add(id);
-            }
-            updateCounts();
-            renderDetails(getFiltered());
-            persistPluginsDisabled().catch(() => {});
+            const plugin = state.list.find(
+                (p) => String(p?.id || '').trim().toLowerCase() === id,
+            );
+            const currentEnabled = plugin ? pluginIsEnabled(plugin) : false;
+            const desiredEnabled = !currentEnabled;
+            el.checked = currentEnabled;
+            queuePluginToggle(id, desiredEnabled);
         });
 
         searchEl.addEventListener('input', () => {

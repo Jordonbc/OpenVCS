@@ -1,4 +1,7 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { TAURI } from '../lib/tauri';
+import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
 import { hydrate, openModal, closeModal } from '../ui/modals';
 import { hydrateStatus } from './repo';
@@ -83,7 +86,7 @@ async function ensureSummaryModal() {
 
     abortBtn?.addEventListener('click', async () => {
         if (!TAURI.has) return;
-        const ok = window.confirm('Abort the merge? This will discard merge progress.');
+        const ok = await confirmBool('Abort the merge? This will discard merge progress.');
         if (!ok) return;
         try {
             await TAURI.invoke('git_merge_abort');

@@ -1,16 +1,20 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use std::sync::Arc;
 
-use openvcs_core::models::VcsEvent;
-use openvcs_core::OnEvent;
 use tauri::{async_runtime, AppHandle, Emitter, Manager, Runtime, State};
 
+use crate::core::models::VcsEvent;
+use crate::core::OnEvent;
 use crate::output_log::{OutputLevel, OutputLogEntry};
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::state::AppState;
 
 #[derive(serde::Serialize, Clone)]
+/// Generic progress event payload sent to the UI.
 pub struct ProgressPayload {
+    /// Human-readable progress message.
     pub message: String,
 }
 

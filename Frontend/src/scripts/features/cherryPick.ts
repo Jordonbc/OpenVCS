@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { closeModal, hydrate, openModal } from '../ui/modals';

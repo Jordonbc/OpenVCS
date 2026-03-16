@@ -1,4 +1,7 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
+import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
 import { TAURI } from '../../lib/tauri';
 import { getPluginContextMenuItems, runPluginAction } from '../../plugins';
@@ -11,6 +14,7 @@ import { selectFile, renderCombinedDiff, clearDiffSelection, clearActiveRows, to
 import { hydrateStatus, hydrateStash } from './hydrate';
 import { getVisibleFiles, updateSelectAllState } from './selectionState';
 
+/** Handles click selection behavior for a file row. */
 export function onFileClick(e: MouseEvent, file: FileStatus, index: number, visible: FileStatus[]) {
     if (dragState.suppressNextClick) {
         dragState.suppressNextClick = false;
@@ -61,6 +65,7 @@ export function onFileClick(e: MouseEvent, file: FileStatus, index: number, visi
     updateCommitButton();
 }
 
+/** Starts drag-selection for diff or commit selection gestures. */
 export function onFileMouseDown(e: MouseEvent, file: FileStatus, index: number, visible: FileStatus[], li: HTMLElement) {
     if (e.button !== 0) return;
     const mode = e.shiftKey ? 'diff' : (e.ctrlKey || e.metaKey) ? 'commit' : null;
@@ -124,6 +129,7 @@ export function onFileMouseDown(e: MouseEvent, file: FileStatus, index: number, 
     document.addEventListener('mouseup', onUp, { once: true });
 }
 
+/** Applies one row selection change for the active drag mode. */
 export function applySelect(path: string, on: boolean, rowEl: HTMLElement | null, visible: FileStatus[], mode: 'diff' | 'commit') {
     disableDefaultSelectAll();
     if (mode === 'commit') {
@@ -138,6 +144,7 @@ export function applySelect(path: string, on: boolean, rowEl: HTMLElement | null
     }
 }
 
+/** Recomputes drag selection state for the current cursor range. */
 export function updateDragRange(visible: FileStatus[]) {
     if (!dragState.isDragSelecting || dragState.dragMode === null) return;
     const list = listEl;
@@ -184,6 +191,7 @@ export function updateDragRange(visible: FileStatus[]) {
     }
 }
 
+/** Toggles commit selection for all visible files. */
 export function toggleSelectAll(on: boolean, visible: FileStatus[]) {
     if (on) {
         visible.forEach((f) => { if (f.path) toggleFilePick(f.path, true); });
@@ -192,6 +200,7 @@ export function toggleSelectAll(on: boolean, visible: FileStatus[]) {
     }
 }
 
+/** Opens the context menu for one file row and current selection. */
 export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     ev.preventDefault();
     const x = ev.clientX, y = ev.clientY;
@@ -206,6 +215,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         selectedPaths.length === 1 &&
         !state.selectionImplicitAll;
     const items: CtxItem[] = [];
+    /** Opens the stash modal pre-filled for the provided paths. */
     const openStashForPaths = (paths: string[], defaultMessage: string) => {
         if (!paths.length) return;
         openStashConfirm({
@@ -253,7 +263,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         const targets = (explicitMultiSelection ? selectedPaths.slice() : [f.path]).filter(Boolean);
         if (!targets.length) return;
         const label = targets.length > 1 ? `${targets.length} files` : targets[0];
-        const ok = window.confirm(`Add ${label} to .gitignore?`);
+        const ok = await confirmBool(`Add ${label} to .gitignore?`);
         if (!ok) return;
         try {
             await TAURI.invoke('git_add_to_gitignore_paths', { paths: targets });
@@ -264,23 +274,22 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         }
     }});
     items.push({ label: '---' });
-    items.push({ label: '---' });
     if (explicitMultiSelection) {
         items.push({ label: 'Discard all selected', action: async () => {
             if (!TAURI.has) return;
             const paths = selectedPaths.slice();
-            const ok = window.confirm(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
+            const ok = await confirmBool(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
             if (!ok) return;
             try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
-            catch { notify('Discard failed'); }
+            catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
         }});
     }
     items.push({ label: 'Discard changes', action: async () => {
         if (!TAURI.has) return;
-        const ok = window.confirm(`Discard all changes in \n${f.path}? This cannot be undone.`);
+        const ok = await confirmBool(`Discard all changes in \n${f.path}? This cannot be undone.`);
         if (!ok) return;
         try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
-        catch { notify('Discard failed'); }
+        catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
     }});
 
     const pluginTargets = (explicitMultiSelection ? selectedPaths.slice() : [singleTarget]).filter(Boolean);
@@ -299,19 +308,25 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     buildCtxMenu(items, x, y);
 }
 
+/** Optional callback that re-renders the left list. */
 let renderListCallback: (() => void) | null = null;
+
+/** Registers a callback used after operations that refresh list state. */
 export function setRenderListCallback(fn: () => void) {
     renderListCallback = fn;
 }
 
+/** Returns true while drag selection is currently active. */
 export function isDragSelecting() {
     return dragState.isDragSelecting;
 }
 
+/** Stores the latest drag cursor index for range updates. */
 export function setDragCurrentIndex(index: number) {
     dragState.dragCurrentIndex = index;
 }
 
+/** Re-renders list state after shift-range toggling and reselects target row. */
 function renderListAfterRangeSelect(file: FileStatus) {
     renderListCallback?.();
     const refreshed = getVisibleFiles();
@@ -320,6 +335,7 @@ function renderListAfterRangeSelect(file: FileStatus) {
     updateCommitButton();
 }
 
+/** Applies active-row styling by index in the current list. */
 function highlightRow(index: number) {
     const rows = listEl?.querySelectorAll<HTMLElement>('li.row');
     rows?.forEach((el, i) => el.classList.toggle('active', i === index));

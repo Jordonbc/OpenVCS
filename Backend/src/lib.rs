@@ -1,16 +1,21 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! OpenVCS backend application crate.
 //!
 //! This crate wires together Tauri command handlers, runtime state,
 //! plugin discovery, and startup behavior.
 
 use log::warn;
-use openvcs_core::BackendId;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::path::BaseDirectory;
 use tauri::WindowEvent;
 use tauri::{Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
 
+use crate::core::BackendId;
+
+mod core;
 mod logging;
 mod output_log;
 mod plugin_bundles;
@@ -80,7 +85,10 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
 
         let path_str = path.to_string_lossy().to_string();
         if crate::plugin_vcs_backends::has_plugin_vcs_backend(&backend) {
+            let runtime_manager = state.plugin_runtime();
             match crate::plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
+                runtime_manager.as_ref(),
+                &app_config,
                 backend,
                 Path::new(&path),
             ) {
@@ -97,6 +105,27 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
             log::warn!("startup reopen: backend not available");
         }
     }
+}
+
+/// Resolves a development fallback path for the bundled Node runtime.
+///
+/// In `cargo tauri dev`, the generated runtime is placed under
+/// `target/openvcs/node-runtime`, while Tauri resource resolution can point at
+/// `target/debug/node-runtime`. This helper probes the generated location.
+///
+/// # Returns
+/// - `Some(PathBuf)` when the dev bundled node binary exists.
+/// - `None` when the path cannot be derived or does not exist.
+fn resolve_dev_bundled_node_fallback() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let exe_dir = exe.parent()?;
+    let target_dir = exe_dir.parent()?;
+    let node_name = if cfg!(windows) { "node.exe" } else { "node" };
+    let candidate = target_dir
+        .join("openvcs")
+        .join("node-runtime")
+        .join(node_name);
+    candidate.is_file().then_some(candidate)
 }
 
 /// Starts the OpenVCS backend runtime and Tauri application.
@@ -118,10 +147,15 @@ pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::new_with_config())
         .setup(|app| {
-            let store = crate::plugin_bundles::PluginBundleStore::new_default();
-            if let Err(err) = store.sync_built_in_plugins() {
-                warn!("plugins: failed to sync built-in bundles: {}", err);
-            }
+            crate::plugin_runtime::host_api::set_status_event_emitter({
+                let app_handle = app.handle().clone();
+                move |message| {
+                    if let Err(error) = app_handle.emit("status:set", message.to_string()) {
+                        log::warn!("status:set emit failed: {}", error);
+                    }
+                }
+            });
+
             // If the application bundle includes a `built-in-plugins` resource
             // directory, resolve its location via Tauri and register the
             // containing resource directory so runtime discovery can include
@@ -143,6 +177,42 @@ pub fn run() {
                         resolved.display()
                     );
                 }
+            }
+            let node_name = if cfg!(windows) { "node.exe" } else { "node" };
+            let mut node_candidates: Vec<PathBuf> = Vec::new();
+            if let Ok(node_runtime_dir) = app.path().resolve("node-runtime", BaseDirectory::Resource)
+            {
+                node_candidates.push(node_runtime_dir.join(node_name));
+            }
+            if let Some(dev_fallback) = resolve_dev_bundled_node_fallback() {
+                if !node_candidates.iter().any(|p| p == &dev_fallback) {
+                    node_candidates.push(dev_fallback);
+                }
+            }
+
+            if let Some(bundled_node) = node_candidates.iter().find(|path| path.is_file()) {
+                crate::plugin_paths::set_node_executable_path(bundled_node.to_path_buf());
+                log::info!(
+                    "plugins: using bundled node runtime: {}",
+                    bundled_node.display()
+                );
+            } else if let Some(primary) = node_candidates.first() {
+                log::warn!(
+                    "plugins: bundled node runtime missing at {}; plugin modules will not start",
+                    primary.display()
+                );
+            } else {
+                log::warn!(
+                    "plugins: bundled node runtime path could not be resolved; plugin modules will not start"
+                );
+            }
+            let store = crate::plugin_bundles::PluginBundleStore::new_default();
+            if let Err(err) = store.sync_built_in_plugins() {
+                warn!("plugins: failed to sync built-in bundles: {}", err);
+            }
+            let state = app.state::<state::AppState>();
+            if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {
+                warn!("plugins: failed to sync runtime on startup: {}", err);
             }
             // On startup, optionally reopen the last repository if enabled in settings.
             try_reopen_last_repo(app.handle());
@@ -172,6 +242,8 @@ pub fn run() {
             // If the main window is closed, exit the app even if auxiliary windows are open.
             if window.label() == "main" {
                 if let WindowEvent::CloseRequested { .. } = event {
+                    let state = window.app_handle().state::<state::AppState>();
+                    state.plugin_runtime().stop_all_plugins();
                     window.app_handle().exit(0);
                 }
             }
@@ -200,7 +272,6 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::list_vcs_backends_cmd,
         tauri_commands::set_vcs_backend_cmd,
         tauri_commands::reopen_current_repo_cmd,
-        tauri_commands::call_vcs_backend_method,
         tauri_commands::validate_git_url,
         tauri_commands::validate_add_path,
         tauri_commands::validate_clone_input,
@@ -256,14 +327,18 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::list_themes,
         tauri_commands::load_theme,
         tauri_commands::list_plugins,
+        tauri_commands::list_plugin_start_failures,
         tauri_commands::load_plugin,
         tauri_commands::install_ovcsp,
         tauri_commands::list_installed_bundles,
         tauri_commands::uninstall_plugin,
-        tauri_commands::approve_plugin_capabilities,
-        tauri_commands::list_plugin_functions,
-        tauri_commands::invoke_plugin_function,
-        tauri_commands::call_plugin_module_method,
+        tauri_commands::set_plugin_enabled,
+        tauri_commands::set_plugin_approval,
+        tauri_commands::list_plugin_menus,
+        tauri_commands::invoke_plugin_action,
+        tauri_commands::get_plugin_settings,
+        tauri_commands::save_plugin_settings,
+        tauri_commands::reset_plugin_settings,
         tauri_commands::get_global_settings,
         tauri_commands::set_global_settings,
         tauri_commands::get_repo_settings,
@@ -278,6 +353,7 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::open_output_log_window,
         tauri_commands::get_output_log,
         tauri_commands::clear_output_log,
+        tauri_commands::log_frontend_message,
         tauri_commands::tail_app_log,
         tauri_commands::clear_app_log,
         tauri_commands::exit_app,
