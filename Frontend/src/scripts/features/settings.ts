@@ -339,7 +339,6 @@ async function rebuildThemePackOptions(
 }
 
 export function openSettings(section?: string){
-    console.log('Opening settings modal', section ? `section: ${section}` : '');
     openModal('settings-modal');
     const modal = document.getElementById('settings-modal') as HTMLElement | null;
     if (!modal) return;
@@ -586,8 +585,6 @@ export function wireSettings() {
 
     settingsSave?.addEventListener('click', async () => {
         if (!settingsSave || settingsSave.classList.contains('saved-state')) return;
-        settingsSave.classList.add('saved-state');
-        settingsSave.textContent = 'Saved!';
         try {
             const activePanel = modal.querySelector<HTMLElement>('#settings-panels .panel-form:not(.hidden)');
             if (activePanel?.getAttribute('data-plugin-settings') === 'true') {
@@ -643,7 +640,10 @@ export function wireSettings() {
                 settingsSave.textContent = 'Save';
                 settingsSave.classList.remove('saved-state');
             }, 2000);
-        } catch (e) { console.error('Failed to save settings:', e); notify('Failed to save settings'); }
+        } catch (e) {
+            console.error('Failed to save settings:', e);
+            notify('Failed to save settings');
+        }
     });
 
     settingsReset?.addEventListener('click', async () => {
