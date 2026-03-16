@@ -78,7 +78,12 @@ impl NodeRpcProcess {
         self.next_request_id = self
             .next_request_id
             .checked_add(1)
-            .ok_or_else(|| "rpc request id overflow".to_string())?;
+            .ok_or_else(|| {
+                format!(
+                    "plugin '{}' exhausted RPC request IDs after {} calls; restart of plugin runtime required",
+                    plugin_id, request_id
+                )
+            })?;
 
         let request = RpcRequest {
             jsonrpc: "2.0".to_string(),
