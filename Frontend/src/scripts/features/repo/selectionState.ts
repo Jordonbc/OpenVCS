@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { prefs, state } from '../../state/state';
 import { filterInput, selectAllBox } from './context';
 import type { FileStatus } from '../../types';

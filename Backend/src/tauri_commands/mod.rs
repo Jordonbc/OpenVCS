@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 //! Aggregates the backend's Tauri command modules.
 //!
 //! Each submodule defines command handlers grouped by feature area, and this

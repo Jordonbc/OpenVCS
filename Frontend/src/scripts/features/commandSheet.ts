@@ -1,9 +1,12 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 // src/scripts/features/commandSheet.ts
 import { TAURI } from "../lib/tauri";
 import { notify } from "../lib/notify";
 import { openModal, closeModal, hydrate } from "../ui/modals";
 import { refreshRepoSummary } from "./repoSelection";
 
+/** Available command-sheet tabs. */
 type Which = "clone" | "add";
 
 // Elements inside the modal
@@ -105,6 +108,7 @@ function setSheet(which: Which) {
     positionIndicator();
 }
 
+/** Opens the command sheet and selects an initial tab. */
 export function openSheet(which: Which = "clone") {
     openModal("command-modal");
     if (!root) bindCommandSheet();
@@ -118,10 +122,12 @@ export function openSheet(which: Which = "clone") {
     requestAnimationFrame(positionIndicator);
 }
 
+/** Closes the command sheet modal. */
 export function closeSheet() {
     closeModal("command-modal");
 }
 
+/** Wires command-sheet controls and action handlers once. */
 export function bindCommandSheet() {
     // Inject the fragment if not already present
     hydrate("command-modal");

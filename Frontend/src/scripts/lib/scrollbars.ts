@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { OverlayScrollbars } from 'overlayscrollbars';
 
 // Use the official attribute name so OverlayScrollbars can hide native scrollbars
@@ -115,14 +117,26 @@ function queryScrollableElements(root: ParentNode, includeHidden = false): HTMLE
   return includeHidden ? all : all.filter(isVisibleForInit);
 }
 
+/**
+ * Initialize OverlayScrollbars for scrollable elements within a root.
+ * @param root - Root element to search for scrollable elements (defaults to document)
+ */
 export function initOverlayScrollbarsFor(root: ParentNode = document) {
   queryScrollableElements(root).forEach(initOne);
 }
 
+/**
+ * Refresh OverlayScrollbars for scrollable elements within a root.
+ * @param root - Root element to search for scrollable elements (defaults to document)
+ */
 export function refreshOverlayScrollbarsFor(root: ParentNode = document) {
   queryScrollableElements(root).forEach(refreshOne);
 }
 
+/**
+ * Destroy OverlayScrollbars instances for matching elements.
+ * @param target - CSS selector string or root element
+ */
 export function destroyOverlayScrollbarsFor(target: string | ParentNode = document) {
   if (typeof target === 'string') {
     let els: HTMLElement[] = [];

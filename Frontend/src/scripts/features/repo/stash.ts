@@ -1,6 +1,9 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 import { escapeHtml } from '../../lib/dom';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
+import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
 import { state } from '../../state/state';
 import { openStashConfirm } from '../stashConfirm';
@@ -8,14 +11,26 @@ import { diffEl, diffHeadPath, listEl, countEl, leftFootEl, undoLeftBtn } from '
 import { highlightRow, selectStashDiff } from './diffView';
 import { hydrateStatus, hydrateStash } from './hydrate';
 
+/** Lazily created footer container for stash actions. */
 let stashFootEl: HTMLElement | null = null;
+/** True once stash footer button handlers are wired. */
 let stashFootBound = false;
+/** Optional callback used to refresh the stash list. */
 let renderListRef: (() => void) | null = null;
 
+/** Minimal stash list item shape used by selection helpers. */
+type StashListItem = {
+    selector: string;
+    msg?: string;
+    meta?: string;
+};
+
+/** Registers a list render callback used after stash mutations. */
 export function setRenderListRef(fn: () => void) {
     renderListRef = fn;
 }
 
+/** Renders stash entries filtered by the provided query. */
 export function renderStashList(query: string): boolean {
     const list = listEl;
     const count = countEl;
@@ -27,6 +42,7 @@ export function renderStashList(query: string): boolean {
     const items = stash.filter((s) => !query || (s.msg || '').toLowerCase().includes(query) || (s.selector || '').includes(query));
     count.textContent = `${items.length} stash${items.length === 1 ? '' : 'es'}`;
 
+    /** Enables or disables footer action buttons for stash operations. */
     const enableActionButtons = (enabled: boolean) => {
         const a = document.querySelector<HTMLButtonElement>('#stash-apply-btn'); if (a) a.disabled = !enabled;
         const p = document.querySelector<HTMLButtonElement>('#stash-pop-btn'); if (p) p.disabled = !enabled;
@@ -66,10 +82,10 @@ export function renderStashList(query: string): boolean {
                     notify('Applied stash');
                     await Promise.allSettled([hydrateStatus(), hydrateStash()]);
                     renderListRef?.();
-                } catch { notify('Failed to apply stash'); }
+                } catch (e) { console.error('Failed to apply stash:', e); notify('Failed to apply stash'); }
             }});
             items.push({ label: 'Delete stash', action: async () => {
-                const ok = window.confirm(`Delete ${target}? This cannot be undone.`);
+                const ok = await confirmBool(`Delete ${target}? This cannot be undone.`);
                 if (!ok) return;
                 try {
                     if (!TAURI.has) return;
@@ -78,7 +94,7 @@ export function renderStashList(query: string): boolean {
                     if (state.currentStash === target) state.currentStash = '';
                     await Promise.allSettled([hydrateStash()]);
                     renderListRef?.();
-                } catch { notify('Failed to delete stash'); }
+                } catch (e) { console.error('Failed to delete stash:', e); notify('Failed to delete stash'); }
             }});
             buildCtxMenu(items, x, y);
         });
@@ -88,7 +104,8 @@ export function renderStashList(query: string): boolean {
     return true;
 }
 
-export async function selectStash(item: { selector: string; msg?: string; meta?: string }, index: number) {
+/** Selects a stash entry and loads its diff preview. */
+export async function selectStash(item: StashListItem, index: number) {
     if (!diffHeadPath || !diffEl) return;
     highlightRow(index);
     state.currentStash = item.selector;
@@ -106,6 +123,7 @@ export async function selectStash(item: { selector: string; msg?: string; meta?:
     }
 }
 
+/** Shows the stash-specific footer controls and hides undo UI. */
 export function showStashFooter() {
     if (!leftFootEl) return;
     const foot = ensureStashFooterControls();
@@ -116,6 +134,7 @@ export function showStashFooter() {
     foot.classList.add('show');
 }
 
+/** Hides stash footer controls and restores default footer state. */
 export function hideStashFooter() {
     if (!leftFootEl) return;
     if (leftFootEl.dataset.mode === 'stash') {
@@ -126,6 +145,7 @@ export function hideStashFooter() {
     if (stashFootEl) stashFootEl.classList.remove('show');
 }
 
+/** Returns the currently active stash selector from state or list row. */
 export function getActiveStashSelector(): string {
     if (state.currentStash) return state.currentStash;
     const active = listEl?.querySelector<HTMLElement>('li.row.commit.active');
@@ -134,6 +154,7 @@ export function getActiveStashSelector(): string {
     return sel;
 }
 
+/** Creates stash footer controls on demand and wires handlers once. */
 function ensureStashFooterControls(): HTMLElement | null {
     if (!leftFootEl) return null;
     if (!stashFootEl) {
@@ -155,6 +176,7 @@ function ensureStashFooterControls(): HTMLElement | null {
     return stashFootEl;
 }
 
+/** Binds click handlers for create/apply/pop/drop stash actions. */
 function wireStashFooterButtons(container: HTMLElement) {
     const createBtn = container.querySelector<HTMLButtonElement>('#stash-create-btn');
     createBtn?.addEventListener('click', () => {
@@ -176,7 +198,7 @@ function wireStashFooterButtons(container: HTMLElement) {
             notify('Applied stash');
             await Promise.allSettled([hydrateStatus(), hydrateStash()]);
             renderListRef?.();
-        } catch (e) { console.warn('git_stash_apply failed', e); notify('Failed to apply stash'); }
+        } catch (e) { console.error('git_stash_apply failed:', e); notify('Failed to apply stash'); }
     });
 
     const popBtn = container.querySelector<HTMLButtonElement>('#stash-pop-btn');
@@ -189,14 +211,14 @@ function wireStashFooterButtons(container: HTMLElement) {
             notify('Popped stash');
             await Promise.allSettled([hydrateStatus(), hydrateStash()]);
             renderListRef?.();
-        } catch (e) { console.warn('git_stash_pop failed', e); notify('Failed to pop stash'); }
+        } catch (e) { console.error('git_stash_pop failed:', e); notify('Failed to pop stash'); }
     });
 
     const dropBtn = container.querySelector<HTMLButtonElement>('#stash-drop-btn');
     dropBtn?.addEventListener('click', async () => {
         const selector = getActiveStashSelector();
         if (!selector) return;
-        const ok = window.confirm(`Drop ${selector}? This cannot be undone.`);
+        const ok = await confirmBool(`Drop ${selector}? This cannot be undone.`);
         if (!ok) return;
         try {
             if (!TAURI.has) return;
@@ -205,6 +227,6 @@ function wireStashFooterButtons(container: HTMLElement) {
             state.currentStash = '';
             await Promise.allSettled([hydrateStash()]);
             renderListRef?.();
-        } catch (e) { console.warn('git_stash_drop failed', e); notify('Failed to drop stash'); }
+        } catch (e) { console.error('git_stash_drop failed:', e); notify('Failed to drop stash'); }
     });
 }

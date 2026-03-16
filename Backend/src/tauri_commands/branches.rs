@@ -1,13 +1,20 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use std::collections::HashSet;
 
 use log::{debug, error, info, warn};
 use tauri::State;
 
-use openvcs_core::models::{BranchItem, BranchKind};
+use crate::core::models::{BranchItem, BranchKind};
+use crate::core::BackendId;
 
+use crate::plugin_runtime::settings_store;
+use crate::plugin_vcs_backends;
 use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};
+
+const DEFAULT_MERGE_TEMPLATE: &str = "Merged branch '{branch:source}' into '{branch:target}'";
 
 /// Extracts repository owner/user segment from remote URL.
 ///
@@ -100,6 +107,23 @@ fn apply_merge_template(
         .replace("{branch:target}", target_branch)
         .replace("{repo:name}", repo_name)
         .replace("{repo:username}", repo_username)
+}
+
+/// Returns the merge message template from the active backend plugin settings.
+fn backend_merge_message_template(backend_id: &BackendId) -> String {
+    let value = plugin_vcs_backends::plugin_vcs_backend_descriptor(backend_id)
+        .ok()
+        .and_then(|descriptor| settings_store::load_settings(&descriptor.plugin_id).ok())
+        .and_then(|settings| settings.get("merge_commit_message_template").cloned())
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_default();
+
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        DEFAULT_MERGE_TEMPLATE.to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 #[tauri::command]
@@ -213,9 +237,13 @@ pub async fn git_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchI
 }
 
 #[derive(serde::Serialize)]
+/// HEAD state payload for branch/commit status checks.
 pub struct HeadStatus {
+    /// Whether HEAD is detached from a local branch.
     pub detached: bool,
+    /// Current local branch name when attached.
     pub branch: Option<String>,
+    /// Current HEAD commit id when available.
     pub commit: Option<String>,
 }
 
@@ -229,7 +257,7 @@ pub struct HeadStatus {
 /// - `Ok(HeadStatus)` with branch and commit data.
 /// - `Err(String)` when repository queries fail.
 pub async fn git_head_status(state: State<'_, AppState>) -> Result<HeadStatus, String> {
-    use openvcs_core::models::LogQuery;
+    use crate::core::models::LogQuery;
 
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_head_status", repo, move |repo| {
@@ -366,7 +394,7 @@ pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Resul
     }
     let repo = current_repo_or_err(&state)?;
     let branch = name.to_string();
-    let template = state.with_config(|cfg| cfg.git.merge_commit_message_template.clone());
+    let template = backend_merge_message_template(&repo.id());
     run_repo_task("git_merge_branch", repo, move |repo| {
         let vcs = repo.inner();
         let target_branch = vcs
@@ -416,7 +444,9 @@ pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Resul
 }
 
 #[derive(serde::Serialize)]
+/// Merge-state payload consumed by the UI.
 pub struct MergeContext {
+    /// Whether an in-progress merge is detected in the repository.
     pub in_progress: bool,
 }
 
@@ -558,9 +588,13 @@ pub async fn git_create_branch(
 }
 
 #[derive(serde::Serialize)]
+/// Compact repository snapshot used by quick status views.
 pub struct RepoSummary {
+    /// Absolute repository worktree path.
     path: String,
+    /// Current branch name, or `HEAD` when detached.
     current_branch: String,
+    /// Normalized local/remote branch list.
     branches: Vec<BranchItem>,
 }
 
