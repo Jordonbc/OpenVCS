@@ -234,8 +234,8 @@ export function bindBranchUI() {
             items.push({ label: 'Set upstream…', action: async () => {
                 await loadBranches();
                 const remoteBranches = (state.branches || [])
-                    .filter((br: any) => (br?.kind?.type || '').toLowerCase() === 'remote')
-                    .map((br: any) => String(br?.name || '').trim())
+                    .filter((br: Branch) => (br?.kind?.type || '').toLowerCase() === 'remote')
+                    .map((br: Branch) => String(br?.name || '').trim())
                     .filter((s: string) => !!s);
 
                 if (remoteBranches.length === 0) {
