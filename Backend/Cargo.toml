@@ -27,12 +27,12 @@ default = []
 [dependencies]
 openvcs-core = { version = "0.1", features = ["plugin-protocol", "vcs"] }
 
-tauri = { version = "2.9", features = [] }
+tauri = { version = "2.10", features = [] }
 tauri-plugin-opener = "2.5"
 serde = { version = "1", features = ["derive"] }
 tauri-plugin-dialog = "2.5"
 tauri-plugin-updater = "2.9"
-tokio = { version = "1.49", features = ["io-util", "process", "rt", "sync", "time"] }
+tokio = { version = "1.50", features = ["io-util", "process", "rt", "sync", "time"] }
 dirs = "6"
 regex = "1.12"
 log = "0.4" 
