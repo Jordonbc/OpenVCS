@@ -181,8 +181,9 @@ export function bindBranchUI() {
             notify(`Switched to ${name}`);
             await renderList();         // higher-level refresh
             await runHook('postSwitchBranch', hookData);
-        } catch {
-            notify('Checkout failed');
+        } catch (err) {
+            const details = err instanceof Error ? err.message : String(err);
+            notify(`Checkout failed: ${details}`);
         }
     }
 
