@@ -125,7 +125,11 @@ async function openBranchPopover() {
     branchPop.style.top  = `${r.bottom + 6}px`;
     branchPop.hidden = false;
     branchBtn.setAttribute('aria-expanded', 'true');
-    try { refreshOverlayScrollbarsFor(branchPop); } catch {}
+    try {
+        refreshOverlayScrollbarsFor(branchPop);
+    } catch (err) {
+        console.debug('Failed to refresh scrollbars for branch popover:', err);
+    }
     setTimeout(() => branchFilter?.focus(), 0);
 }
 
