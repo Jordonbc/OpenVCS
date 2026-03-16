@@ -206,7 +206,7 @@ impl NodePluginRuntimeInstance {
     /// # Returns
     /// - `Ok(String)` with absolute path to bundled node runtime.
     /// - `Err(String)` when bundled runtime path is unavailable.
-    fn node_executable(&self) -> Result<String, String> {
+    fn node_executable() -> Result<String, String> {
         let Some(path) = plugin_paths::node_executable_path() else {
             return Err(
                 "bundled node runtime is unavailable; plugin execution requires app-bundled node"
@@ -222,7 +222,7 @@ impl NodePluginRuntimeInstance {
     /// - `Ok(NodeRpcProcess)` when startup succeeds.
     /// - `Err(String)` when process startup or init RPC fails.
     fn spawn_process(&self) -> Result<NodeRpcProcess, String> {
-        let node_exec = self.node_executable()?;
+        let node_exec = Self::node_executable()?;
         info!(
             "plugin runtime: starting node plugin '{}' via '{}'",
             self.spawn.plugin_id, node_exec

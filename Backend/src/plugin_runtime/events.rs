@@ -66,7 +66,7 @@ pub fn emit_from_plugin(plugin_id: &str, name: &str, payload: Value) {
 pub fn emit_to_plugins(origin_plugin_id: Option<&str>, name: &str, payload: Value) {
     let _ = payload;
     if let Ok(lock) = registry().lock() {
-        let _targets: Vec<String> = lock
+        let _ = lock
             .subs
             .iter()
             .filter_map(|(plugin_id, events)| {
@@ -78,6 +78,6 @@ pub fn emit_to_plugins(origin_plugin_id: Option<&str>, name: &str, payload: Valu
                 }
                 Some(plugin_id.clone())
             })
-            .collect();
+            .collect::<Vec<_>>();
     }
 }
