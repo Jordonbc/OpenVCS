@@ -662,7 +662,12 @@ export function wireSettings() {
     }
 
     settingsSave?.addEventListener('click', async () => {
-        if (!settingsSave || settingsSave.classList.contains('saved-state')) return;
+        if (!settingsSave) return;
+        if (settingsSave.classList.contains('saved-state') || settingsSave.classList.contains('saving-state')) return;
+
+        settingsSave.classList.add('saving-state');
+        settingsSave.disabled = true;
+
         try {
             const activePanel = modal.querySelector<HTMLElement>('#settings-panels .panel-form:not(.hidden)');
             if (activePanel?.getAttribute('data-plugin-settings') === 'true') {
@@ -689,7 +694,6 @@ export function wireSettings() {
 
             modal.dataset.currentCfg = JSON.stringify(next);
 
-            // Apply visual prefs immediately (no restart): theme, tab width, UI scale, mono font
             const theme = (next.general?.theme || 'system') as 'system' | 'light' | 'dark';
             const pack = String(next.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
             setTheme(theme);
@@ -711,6 +715,9 @@ export function wireSettings() {
         } catch (e) {
             console.error('Failed to save settings:', e);
             notify('Failed to save settings');
+        } finally {
+            settingsSave.classList.remove('saving-state');
+            settingsSave.disabled = false;
         }
     });
 
@@ -1782,7 +1789,17 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
                 const normalizedLower = normalized.toLowerCase();
                 state.disabled.delete(normalizedLower);
                 state.enabled.delete(normalizedLower);
+                const activeSection = String(
+                    modal
+                        .querySelector<HTMLElement>('#settings-nav .seg-btn.active')
+                        ?.getAttribute('data-section') || '',
+                ).trim();
                 await reloadPluginSummaries();
+                clearPluginSettingsCache();
+                await renderPluginMenus(modal);
+                const nav = modal.querySelector('#settings-nav');
+                const safeSection = activeSection && nav?.querySelector(`[data-section="${CSS.escape(activeSection)}"]`) ? activeSection : 'plugins';
+                activateSection(modal, safeSection);
                 persistPluginsDisabled().catch(() => {});
             } catch (err) {
                 const msg = String(err || '').trim();
