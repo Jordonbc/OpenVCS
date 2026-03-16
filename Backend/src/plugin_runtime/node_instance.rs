@@ -536,7 +536,13 @@ impl NodePluginRuntimeInstance {
         let config_value = if config.is_empty() {
             Value::Object(serde_json::Map::new())
         } else {
-            serde_json::from_slice(config).unwrap_or_else(|_| Value::Object(serde_json::Map::new()))
+            match serde_json::from_slice(config) {
+                Ok(v) => v,
+                Err(e) => {
+                    log::warn!("Failed to parse VCS open config as JSON, using empty object instead: {}", e);
+                    Value::Object(serde_json::Map::new())
+                }
+            }
         };
         let result: OpenSessionResponse = self.rpc_call(
             Methods::VCS_OPEN,
