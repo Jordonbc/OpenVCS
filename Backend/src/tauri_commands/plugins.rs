@@ -69,8 +69,7 @@ pub struct PluginMenuPayload {
 }
 
 /// Return type for plugin settings defaults resolution.
-type PluginSettingsDefaultsResolution =
-    (Vec<SettingKv>, Option<Arc<dyn PluginRuntimeInstance>>);
+type PluginSettingsDefaultsResolution = (Vec<SettingKv>, Option<Arc<dyn PluginRuntimeInstance>>);
 
 #[tauri::command]
 /// Lists plugin summaries discovered by the backend.
