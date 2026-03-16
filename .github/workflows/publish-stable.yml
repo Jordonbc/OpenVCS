@@ -128,7 +128,7 @@ jobs:
 
       # ---------- Cargo caching ----------
       - name: Rust cache
-        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       - name: Cargo fmt (check)
         run: cargo fmt --all -- --check
@@ -138,7 +138,7 @@ jobs:
 
       # ---------- Build & publish with Tauri action ----------
       - name: Build and create GitHub Release (draft)
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # action-v0.6.1
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # action-v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # We already built the Frontend; tell Backend/Tauri to skip any beforeBuildCommand
