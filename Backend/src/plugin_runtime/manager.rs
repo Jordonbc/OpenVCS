@@ -480,7 +480,7 @@ impl PluginRuntimeManager {
         }
 
         trace!("start_plugin_spec: creating new instance");
-        let instance = self.create_instance(&spec)?;
+        let instance = Self::create_instance(&spec)?;
         debug!("start_plugin_spec: instance created, ensuring running");
         instance.ensure_running()?;
 
@@ -521,10 +521,7 @@ impl PluginRuntimeManager {
     }
 
     /// Creates a runtime instance for a resolved plugin spec.
-    fn create_instance(
-        &self,
-        spec: &ModuleRuntimeSpec,
-    ) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
+    fn create_instance(spec: &ModuleRuntimeSpec) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
         create_runtime_instance(spec.spawn.clone())
     }
 
