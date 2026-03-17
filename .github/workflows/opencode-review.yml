@@ -6,7 +6,7 @@ on:
 
 jobs:
   review:
-    if: github.actor == 'Jordonbc' && github.event.pull_request.user.login == 'Jordonbc'
+    if: github.event.pull_request.user.login == 'Jordonbc'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
