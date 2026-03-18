@@ -124,14 +124,32 @@ function ensureBundledNodeRuntime() {
   console.log(`Bundled node runtime -> ${dest}`);
 }
 
+function getFileMtime(filePath) {
+  try {
+    return fs.statSync(filePath).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+function nodeModulesFresh(pluginDir) {
+  const nodeModulesDir = path.join(pluginDir, 'node_modules');
+  if (!fs.existsSync(nodeModulesDir)) return false;
+  const lockPath = path.join(pluginDir, 'package-lock.json');
+  const jsonPath = path.join(pluginDir, 'package.json');
+  const nmMtime = getFileMtime(nodeModulesDir);
+  if (getFileMtime(lockPath) > nmMtime) return false;
+  if (getFileMtime(jsonPath) > nmMtime) return false;
+  return true;
+}
+
 function ensurePluginDependencies(pluginDir) {
   const packageJsonPath = path.join(pluginDir, 'package.json');
   if (!fs.existsSync(packageJsonPath)) {
     return;
   }
 
-  const hasNodeModules = fs.existsSync(path.join(pluginDir, 'node_modules'));
-  if (hasNodeModules) {
+  if (nodeModulesFresh(pluginDir)) {
     return;
   }
 
