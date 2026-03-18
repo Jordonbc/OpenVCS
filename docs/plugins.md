@@ -90,7 +90,10 @@ npm install --save-dev @openvcs/sdk
 ```
 
 Code plugins should expose a `build:plugin` npm script that compiles runtime
-assets into `bin/`. Then use the SDK CLI in two steps:
+assets into `bin/plugin.js`. Plugins can also import `@openvcs/sdk/runtime` and
+`@openvcs/sdk/types` to reuse the Node JSON-RPC transport, host notification
+helpers, and delegate typings instead of implementing stdio framing manually.
+Then use the SDK CLI in two steps:
 
 ```bash
 # Build runtime assets from a plugin directory
@@ -105,5 +108,26 @@ npx openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist
 ```
 
 `openvcs dist` runs the build step automatically unless `--no-build` is passed.
+
+Typical Node plugin author modules now look like:
+
+```ts
+import type { PluginModuleDefinition } from '@openvcs/sdk/runtime';
+
+export const PluginDefinition: PluginModuleDefinition = {
+  plugin: {
+    async 'plugin.init'(_params, context) {
+      context.host.info('Plugin started');
+      return null;
+    },
+  },
+};
+
+export function OnPluginStart(): void {}
+```
+
+`openvcs build` then generates `bin/<module.exec>` as the SDK-owned bootstrap.
+Keep `module.exec` different from `plugin.js`; `plugin.js` is reserved for the
+compiled author module that exports `PluginDefinition` and `OnPluginStart()`.
 
 See `Client/docs/plugin architecture.md` for the runtime model and `SDK/README.md` for packager details.

@@ -11,19 +11,27 @@ Client (Frontend) -> Client (Backend host) <-> Plugin (Node.js process)
 - The frontend talks to the backend via Tauri commands/events.
 - The backend starts each plugin module as a persistent Node.js process.
 - Host and plugin communicate through JSON-RPC 2.0 over stdio with `Content-Length` framing.
+- Plugin authors can mirror that host contract through `@openvcs/sdk/runtime` and `@openvcs/sdk/types`, which provide a Node-only delegate runtime over the same transport.
+- Code plugins now export declarative runtime metadata plus `OnPluginStart()` from their compiled `bin/plugin.js` module; the SDK generates `bin/<module.exec>` as the `_start`-style bootstrap that imports that module, applies the exported runtime definition, invokes `OnPluginStart()`, and then starts the runtime loop.
 
 ## Runtime contract
 
 - Method names and framing live in `Client/Backend/src/plugin_runtime/protocol.rs`.
+- The SDK mirrors that contract for plugin authors under `SDK/src/lib/runtime/` and `SDK/src/lib/types/`.
 - Backend-owned shared Rust contracts for VCS backends and plugin-facing payloads live in `Client/Backend/src/core/`.
 - Runtime process implementation lives in:
   - `Client/Backend/src/plugin_runtime/node_instance.rs`
   - `Client/Backend/src/plugin_runtime/runtime_select.rs`
+- Plugin modules contribute `plugin.*`, `vcs.*`, and runtime options through the exported `PluginDefinition` object consumed by the generated bootstrap.
 
 Core groups of host->plugin methods:
 
 - `plugin.*`: lifecycle, menus, and settings hooks
 - `vcs.*`: backend operations for repository workflows
+
+The SDK runtime exposes exact host-method delegates such as `'plugin.init'`,
+`'plugin.settings.on_load'`, and `'vcs.get_status_payload'`, so plugins can
+register handlers without implementing their own method switch or stdio parser.
 
 Core plugin->host notifications:
 
