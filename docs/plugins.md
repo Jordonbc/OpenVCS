@@ -126,6 +126,39 @@ export const PluginDefinition: PluginModuleDefinition = {
 export function OnPluginStart(): void {}
 ```
 
+VCS backends can keep that same startup flow while using the SDK's class-based
+delegate helper:
+
+```ts
+import {
+  VcsDelegateBase,
+  type PluginModuleDefinition,
+} from '@openvcs/sdk/runtime';
+
+class ExampleVcsDelegates extends VcsDelegateBase<{}> {
+  override getCaps() {
+    return {
+      commits: true,
+      branches: true,
+      tags: false,
+      staging: true,
+      push_pull: true,
+      fast_forward: true,
+    };
+  }
+}
+
+export const PluginDefinition: PluginModuleDefinition = {};
+
+export function OnPluginStart(): void {
+  PluginDefinition.vcs = new ExampleVcsDelegates({}).toDelegates();
+}
+```
+
+`VcsDelegateBase` maps ordinary prototype methods such as `getCaps()` or
+`commitIndex()` to exact JSON-RPC method names like `vcs.get_caps` and
+`vcs.commit_index`.
+
 `openvcs build` then generates `bin/<module.exec>` as the SDK-owned bootstrap.
 Keep `module.exec` different from `plugin.js`; `plugin.js` is reserved for the
 compiled author module that exports `PluginDefinition` and `OnPluginStart()`.

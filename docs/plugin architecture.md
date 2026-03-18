@@ -13,6 +13,7 @@ Client (Frontend) -> Client (Backend host) <-> Plugin (Node.js process)
 - Host and plugin communicate through JSON-RPC 2.0 over stdio with `Content-Length` framing.
 - Plugin authors can mirror that host contract through `@openvcs/sdk/runtime` and `@openvcs/sdk/types`, which provide a Node-only delegate runtime over the same transport.
 - Code plugins now export declarative runtime metadata plus `OnPluginStart()` from their compiled `bin/plugin.js` module; the SDK generates `bin/<module.exec>` as the `_start`-style bootstrap that imports that module, applies the exported runtime definition, invokes `OnPluginStart()`, and then starts the runtime loop.
+- VCS backend authors can use `VcsDelegateBase` from `@openvcs/sdk/runtime` to implement ordinary camelCase class methods and register them as exact `vcs.*` JSON-RPC delegates during `OnPluginStart()`.
 
 ## Runtime contract
 
@@ -32,6 +33,8 @@ Core groups of host->plugin methods:
 The SDK runtime exposes exact host-method delegates such as `'plugin.init'`,
 `'plugin.settings.on_load'`, and `'vcs.get_status_payload'`, so plugins can
 register handlers without implementing their own method switch or stdio parser.
+`VcsDelegateBase.toDelegates()` provides the class-based path for `vcs.*`
+handlers by mapping methods like `getCaps()` to `vcs.get_caps`.
 
 Core plugin->host notifications:
 
