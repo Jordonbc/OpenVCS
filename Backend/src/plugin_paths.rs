@@ -1,19 +1,34 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! Path resolution helpers for installed and built-in plugins.
+
 use directories::ProjectDirs;
 use log::{info, warn};
 use std::{
     env,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        OnceLock,
+    },
 };
 
+/// File name expected for plugin manifests.
 pub const PLUGIN_MANIFEST_NAME: &str = "openvcs.plugin.json";
+/// Directory name used for built-in plugin bundles.
 pub const BUILT_IN_PLUGINS_DIR_NAME: &str = "built-in-plugins";
 
 // If the Tauri runtime resolves a resource directory at startup, we store
 // it here so plugin discovery can include resources embedded in the
 // application bundle.
 static RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
+static NODE_EXECUTABLE: OnceLock<PathBuf> = OnceLock::new();
+static LOGGED_BUILTIN_DIRS: AtomicBool = AtomicBool::new(false);
 
+/// Returns the user-writable plugin installation directory.
+///
+/// # Returns
+/// - The absolute config-directory path used to store installed plugins.
 pub fn plugins_dir() -> PathBuf {
     if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
         pd.config_dir().join("plugins")
@@ -22,12 +37,23 @@ pub fn plugins_dir() -> PathBuf {
     }
 }
 
+/// Creates a directory path recursively and logs failures.
+///
+/// # Parameters
+/// - `path`: Directory path to create if missing.
+///
+/// # Returns
+/// - `()`.
 pub fn ensure_dir(path: &Path) {
     if let Err(err) = std::fs::create_dir_all(path) {
         warn!("plugins: failed to create {}: {}", path.display(), err);
     }
 }
 
+/// Returns discovered built-in plugin directories that currently exist.
+///
+/// # Returns
+/// - Existing filesystem directories searched for built-in plugins.
 pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
 
@@ -83,15 +109,20 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
         })
         .collect();
 
-    if result.is_empty() {
-        info!("plugins: no built-in plugin directories found");
-    } else {
-        let joined = result
-            .iter()
-            .map(|p| p.display().to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
-        info!("plugins: checked built-in plugin directories: {}", joined);
+    if LOGGED_BUILTIN_DIRS
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+    {
+        if result.is_empty() {
+            info!("plugins: no built-in plugin directories found");
+        } else {
+            let joined = result
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            info!("plugins: checked built-in plugin directories: {}", joined);
+        }
     }
 
     result
@@ -100,7 +131,33 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
 /// Set the resolved Tauri resource directory so the plugin discovery can
 /// include resources embedded inside the application bundle. Call this from
 /// the Tauri `setup` callback with `app.path().resolve("built-in-plugins", BaseDirectory::Resource)`.
+///
+/// # Parameters
+/// - `path`: Resource directory path resolved by Tauri at runtime.
+///
+/// # Returns
+/// - `()`.
 pub fn set_resource_dir(path: PathBuf) {
     // it's fine if this fails to set more than once; first set wins.
     let _ = RESOURCE_DIR.set(path);
+}
+
+/// Sets the resolved bundled Node executable path used by plugin runtime.
+///
+/// # Parameters
+/// - `path`: Absolute path to the bundled Node binary.
+///
+/// # Returns
+/// - `()`.
+pub fn set_node_executable_path(path: PathBuf) {
+    let _ = NODE_EXECUTABLE.set(path);
+}
+
+/// Returns the bundled Node executable path when configured.
+///
+/// # Returns
+/// - `Some(PathBuf)` when a bundled runtime was resolved.
+/// - `None` when host should fall back to `node` on PATH.
+pub fn node_executable_path() -> Option<PathBuf> {
+    NODE_EXECUTABLE.get().cloned()
 }

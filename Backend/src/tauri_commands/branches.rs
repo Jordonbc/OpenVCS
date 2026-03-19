@@ -1,14 +1,29 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use std::collections::HashSet;
 
 use log::{debug, error, info, warn};
 use tauri::State;
 
-use openvcs_core::models::{BranchItem, BranchKind};
+use crate::core::models::{BranchItem, BranchKind};
+use crate::core::BackendId;
 
+use crate::plugin_runtime::settings_store;
+use crate::plugin_vcs_backends;
 use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};
 
+const DEFAULT_MERGE_TEMPLATE: &str = "Merged branch '{branch:source}' into '{branch:target}'";
+
+/// Extracts repository owner/user segment from remote URL.
+///
+/// # Parameters
+/// - `url`: Remote URL.
+///
+/// # Returns
+/// - `Some(String)` owner segment.
+/// - `None` when not parseable.
 fn repo_username_from_origin(url: &str) -> Option<String> {
     let u = url.trim();
     if u.is_empty() {
@@ -36,6 +51,14 @@ fn repo_username_from_origin(url: &str) -> Option<String> {
     None
 }
 
+/// Extracts repository name segment from remote URL.
+///
+/// # Parameters
+/// - `url`: Remote URL.
+///
+/// # Returns
+/// - `Some(String)` repository name.
+/// - `None` when not parseable.
 fn repo_name_from_origin(url: &str) -> Option<String> {
     let u = url.trim();
     if u.is_empty() {
@@ -61,6 +84,17 @@ fn repo_name_from_origin(url: &str) -> Option<String> {
     None
 }
 
+/// Expands merge-message template placeholders.
+///
+/// # Parameters
+/// - `template`: Template string.
+/// - `source_branch`: Source branch name.
+/// - `target_branch`: Target branch name.
+/// - `repo_name`: Repository name.
+/// - `repo_username`: Repository owner/user.
+///
+/// # Returns
+/// - Rendered merge message.
 fn apply_merge_template(
     template: &str,
     source_branch: &str,
@@ -75,7 +109,32 @@ fn apply_merge_template(
         .replace("{repo:username}", repo_username)
 }
 
+/// Returns the merge message template from the active backend plugin settings.
+fn backend_merge_message_template(backend_id: &BackendId) -> String {
+    let value = plugin_vcs_backends::plugin_vcs_backend_descriptor(backend_id)
+        .ok()
+        .and_then(|descriptor| settings_store::load_settings(&descriptor.plugin_id).ok())
+        .and_then(|settings| settings.get("merge_commit_message_template").cloned())
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_default();
+
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        DEFAULT_MERGE_TEMPLATE.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 #[tauri::command]
+/// Returns normalized local/remote branches for the current repository.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(Vec<BranchItem>)` sorted branch list.
+/// - `Err(String)` when repository access fails.
 pub async fn git_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_list_branches", repo, move |repo| {
@@ -93,6 +152,13 @@ pub async fn git_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchI
             e.to_string()
         })?;
 
+        /// Infers branch kind from full ref prefix.
+        ///
+        /// # Parameters
+        /// - `full_ref`: Full ref name.
+        ///
+        /// # Returns
+        /// - Inferred branch kind.
         fn infer_kind(full_ref: &str) -> BranchKind {
             if let Some(rest) = full_ref.strip_prefix("refs/heads/") {
                 let _ = rest;
@@ -171,15 +237,27 @@ pub async fn git_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchI
 }
 
 #[derive(serde::Serialize)]
+/// HEAD state payload for branch/commit status checks.
 pub struct HeadStatus {
+    /// Whether HEAD is detached from a local branch.
     pub detached: bool,
+    /// Current local branch name when attached.
     pub branch: Option<String>,
+    /// Current HEAD commit id when available.
     pub commit: Option<String>,
 }
 
 #[tauri::command]
+/// Returns HEAD status (detached/current branch/commit).
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(HeadStatus)` with branch and commit data.
+/// - `Err(String)` when repository queries fail.
 pub async fn git_head_status(state: State<'_, AppState>) -> Result<HeadStatus, String> {
-    use openvcs_core::models::LogQuery;
+    use crate::core::models::LogQuery;
 
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_head_status", repo, move |repo| {
@@ -202,6 +280,15 @@ pub async fn git_head_status(state: State<'_, AppState>) -> Result<HeadStatus, S
 }
 
 #[tauri::command]
+/// Checks out an existing branch.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `name`: Branch name to checkout.
+///
+/// # Returns
+/// - `Ok(())` when checkout succeeds.
+/// - `Err(String)` when validation or checkout fails.
 pub async fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let branch = name.trim();
     if branch.is_empty() {
@@ -225,6 +312,16 @@ pub async fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Re
 }
 
 #[tauri::command]
+/// Deletes a branch.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `name`: Branch name to delete.
+/// - `force`: Optional force-delete flag.
+///
+/// # Returns
+/// - `Ok(())` when deletion succeeds.
+/// - `Err(String)` when validation or deletion fails.
 pub async fn git_delete_branch(
     state: State<'_, AppState>,
     name: String,
@@ -246,6 +343,16 @@ pub async fn git_delete_branch(
 }
 
 #[tauri::command]
+/// Renames a branch.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `old_name`: Existing branch name.
+/// - `new_name`: New branch name.
+///
+/// # Returns
+/// - `Ok(())` when rename succeeds.
+/// - `Err(String)` when validation or rename fails.
 pub async fn git_rename_branch(
     state: State<'_, AppState>,
     old_name: String,
@@ -271,6 +378,15 @@ pub async fn git_rename_branch(
 }
 
 #[tauri::command]
+/// Merges a source branch into the current branch.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `name`: Source branch to merge.
+///
+/// # Returns
+/// - `Ok(())` when merge succeeds.
+/// - `Err(String)` when validation or merge fails.
 pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let name = name.trim();
     if name.is_empty() {
@@ -278,7 +394,7 @@ pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Resul
     }
     let repo = current_repo_or_err(&state)?;
     let branch = name.to_string();
-    let template = state.with_config(|cfg| cfg.git.merge_commit_message_template.clone());
+    let template = backend_merge_message_template(&repo.id());
     run_repo_task("git_merge_branch", repo, move |repo| {
         let vcs = repo.inner();
         let target_branch = vcs
@@ -328,11 +444,21 @@ pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Resul
 }
 
 #[derive(serde::Serialize)]
+/// Merge-state payload consumed by the UI.
 pub struct MergeContext {
+    /// Whether an in-progress merge is detected in the repository.
     pub in_progress: bool,
 }
 
 #[tauri::command]
+/// Returns whether a merge operation is currently in progress.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(MergeContext)` merge state payload.
+/// - `Err(String)` when repository access fails.
 pub async fn git_merge_context(state: State<'_, AppState>) -> Result<MergeContext, String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_merge_context", repo, move |repo| {
@@ -343,6 +469,14 @@ pub async fn git_merge_context(state: State<'_, AppState>) -> Result<MergeContex
 }
 
 #[tauri::command]
+/// Aborts the current merge operation.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(())` when abort succeeds.
+/// - `Err(String)` when abort fails.
 pub async fn git_merge_abort(state: State<'_, AppState>) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_merge_abort", repo, move |repo| {
@@ -352,6 +486,14 @@ pub async fn git_merge_abort(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+/// Continues the current merge operation.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(())` when continuation succeeds.
+/// - `Err(String)` when continuation fails.
 pub async fn git_merge_continue(state: State<'_, AppState>) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_merge_continue", repo, move |repo| {
@@ -361,6 +503,16 @@ pub async fn git_merge_continue(state: State<'_, AppState>) -> Result<(), String
 }
 
 #[tauri::command]
+/// Sets upstream tracking branch for a local branch.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `branch`: Local branch name.
+/// - `upstream`: Upstream ref name.
+///
+/// # Returns
+/// - `Ok(())` when upstream is updated.
+/// - `Err(String)` when validation or update fails.
 pub async fn git_set_upstream(
     state: State<'_, AppState>,
     branch: String,
@@ -384,6 +536,17 @@ pub async fn git_set_upstream(
 }
 
 #[tauri::command]
+/// Creates a branch, optionally from another branch and optionally checks it out.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `name`: New branch name.
+/// - `from`: Optional base branch to checkout before creation.
+/// - `checkout`: Optional flag to checkout the new branch.
+///
+/// # Returns
+/// - `Ok(())` when creation succeeds.
+/// - `Err(String)` when backend operations fail.
 pub async fn git_create_branch(
     state: State<'_, AppState>,
     name: String,
@@ -425,13 +588,25 @@ pub async fn git_create_branch(
 }
 
 #[derive(serde::Serialize)]
+/// Compact repository snapshot used by quick status views.
 pub struct RepoSummary {
+    /// Absolute repository worktree path.
     path: String,
+    /// Current branch name, or `HEAD` when detached.
     current_branch: String,
+    /// Normalized local/remote branch list.
     branches: Vec<BranchItem>,
 }
 
 #[tauri::command]
+/// Returns a compact summary of the current repository.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(RepoSummary)` containing path/current branch/branch list.
+/// - `Err(String)` when repository access fails.
 pub async fn get_repo_summary(state: State<'_, AppState>) -> Result<RepoSummary, String> {
     let repo = current_repo_or_err(&state)?;
     let (path, current) = run_repo_task("get_repo_summary", repo, move |repo| {
@@ -455,6 +630,14 @@ pub async fn get_repo_summary(state: State<'_, AppState>) -> Result<RepoSummary,
 }
 
 #[tauri::command]
+/// Returns the current local branch name.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(String)` branch name.
+/// - `Err(String)` when detached HEAD or backend failure occurs.
 pub async fn git_current_branch(state: State<'_, AppState>) -> Result<String, String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("git_current_branch", repo, move |repo| {

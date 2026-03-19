@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use log::warn;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fs, path::Path};
@@ -44,6 +46,14 @@ pub struct ThemeMarkup {
     pub body: Option<String>,
 }
 
+/// Returns whether markup payload has no head/body content.
+///
+/// # Parameters
+/// - `markup`: Markup payload.
+///
+/// # Returns
+/// - `true` when both fields are `None`.
+/// - `false` otherwise.
 fn markup_is_empty(markup: &ThemeMarkup) -> bool {
     markup.head.is_none() && markup.body.is_none()
 }
@@ -89,6 +99,14 @@ struct RawThemeMarkup {
     body: Vec<String>,
 }
 
+/// Serde helper that accepts either a string or string array.
+///
+/// # Parameters
+/// - `deserializer`: Input deserializer.
+///
+/// # Returns
+/// - `Ok(Vec<String>)` parsed values.
+/// - `Err(D::Error)` when deserialization fails.
 fn string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -98,10 +116,24 @@ where
     impl<'de> serde::de::Visitor<'de> for StringOrVecVisitor {
         type Value = Vec<String>;
 
+        /// Describes expected input for this serde visitor.
+        ///
+        /// # Parameters
+        /// - `formatter`: Formatter to write expectation text into.
+        ///
+        /// # Returns
+        /// - `std::fmt::Result` formatting result.
         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
             formatter.write_str("a string or a sequence of strings")
         }
 
+        /// Handles string slice input.
+        ///
+        /// # Parameters
+        /// - `v`: Input string slice.
+        ///
+        /// # Returns
+        /// - Single-element vector containing `v`.
         fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -109,6 +141,13 @@ where
             Ok(vec![v.to_string()])
         }
 
+        /// Handles owned string input.
+        ///
+        /// # Parameters
+        /// - `v`: Input string.
+        ///
+        /// # Returns
+        /// - Single-element vector containing `v`.
         fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
         where
             E: serde::de::Error,
@@ -116,6 +155,13 @@ where
             Ok(vec![v])
         }
 
+        /// Handles sequence input.
+        ///
+        /// # Parameters
+        /// - `seq`: Sequence access over string elements.
+        ///
+        /// # Returns
+        /// - Vector of collected strings.
         fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
         where
             A: serde::de::SeqAccess<'de>,
@@ -131,6 +177,13 @@ where
     deserializer.deserialize_any(StringOrVecVisitor)
 }
 
+/// Normalizes an optional string by trimming and dropping empties.
+///
+/// # Parameters
+/// - `value`: Optional string.
+///
+/// # Returns
+/// - Trimmed non-empty value or `None`.
 fn clean_opt(value: Option<String>) -> Option<String> {
     value.and_then(|v| {
         let trimmed = v.trim();
@@ -142,6 +195,13 @@ fn clean_opt(value: Option<String>) -> Option<String> {
     })
 }
 
+/// Normalizes appearance mode values to `light|dark|both`.
+///
+/// # Parameters
+/// - `value`: Optional appearance string.
+///
+/// # Returns
+/// - Normalized appearance mode or `None`.
 fn clean_mode(value: Option<String>) -> Option<String> {
     let raw = clean_opt(value)?;
     let norm = raw.to_ascii_lowercase();
@@ -151,10 +211,26 @@ fn clean_mode(value: Option<String>) -> Option<String> {
     }
 }
 
+/// Prefixes a plugin theme id with plugin namespace.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin id.
+/// - `theme_id`: Theme id.
+///
+/// # Returns
+/// - Namespaced theme id.
 fn namespaced_plugin_theme_id(plugin_id: &str, theme_id: &str) -> String {
     format!("{}.{}", plugin_id.trim(), theme_id.trim())
 }
 
+/// Normalizes `paired_with` references for plugin themes.
+///
+/// # Parameters
+/// - `plugin_id`: Plugin id.
+/// - `paired_with`: Raw paired theme id.
+///
+/// # Returns
+/// - Namespaced paired theme id or empty string.
 fn namespaced_plugin_paired_with(plugin_id: &str, paired_with: &str) -> String {
     let trimmed = paired_with.trim();
     if trimmed.is_empty() {
@@ -169,6 +245,10 @@ fn namespaced_plugin_paired_with(plugin_id: &str, paired_with: &str) -> String {
     }
 }
 
+/// Returns the built-in default theme summary.
+///
+/// # Returns
+/// - Summary metadata for the default theme.
 pub fn default_theme_summary() -> ThemeSummary {
     ThemeSummary {
         id: DEFAULT_THEME_ID.to_string(),
@@ -183,6 +263,10 @@ pub fn default_theme_summary() -> ThemeSummary {
     }
 }
 
+/// Returns the built-in default theme payload.
+///
+/// # Returns
+/// - Theme payload for the default theme.
 pub fn default_theme_payload() -> ThemePayload {
     ThemePayload {
         summary: default_theme_summary(),
@@ -192,6 +276,10 @@ pub fn default_theme_payload() -> ThemePayload {
     }
 }
 
+/// Lists available themes from built-in and plugin theme directories.
+///
+/// # Returns
+/// - Theme summaries sorted by name, prefixed with the default theme.
 pub fn list_themes() -> Vec<ThemeSummary> {
     let mut summaries: Vec<ThemeSummary> = Vec::new();
     let mut seen = HashSet::new();
@@ -250,6 +338,14 @@ pub fn list_themes() -> Vec<ThemeSummary> {
     out
 }
 
+/// Loads a theme payload by id.
+///
+/// # Parameters
+/// - `id`: Theme id (supports plugin namespaced ids).
+///
+/// # Returns
+/// - `Ok(ThemePayload)` when found.
+/// - `Err(String)` when the id is ambiguous or missing.
 pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
     let requested = id.trim();
     if requested.is_empty() || requested.eq_ignore_ascii_case(DEFAULT_THEME_ID) {
@@ -316,6 +412,14 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
     Err(format!("theme `{}` not found", requested))
 }
 
+/// Reads and validates a theme manifest from a directory.
+///
+/// # Parameters
+/// - `path`: Theme directory path.
+///
+/// # Returns
+/// - `Ok(RawThemeManifest)` parsed manifest.
+/// - `Err(String)` when file is missing/invalid.
 fn read_manifest_from_directory(path: &Path) -> Result<RawThemeManifest, String> {
     let manifest_path = path.join(MANIFEST_NAME);
     let text = match fs::read_to_string(&manifest_path) {
@@ -342,6 +446,17 @@ fn read_manifest_from_directory(path: &Path) -> Result<RawThemeManifest, String>
     Ok(manifest)
 }
 
+/// Builds a complete theme payload from manifest and on-disk assets.
+///
+/// # Parameters
+/// - `path`: Theme directory.
+/// - `manifest`: Parsed manifest.
+/// - `source`: Theme source kind.
+/// - `plugin_id`: Optional owning plugin id.
+///
+/// # Returns
+/// - `Ok(ThemePayload)` on success.
+/// - `Err(String)` when asset loading fails.
 fn build_theme_payload_from_directory(
     path: &Path,
     manifest: RawThemeManifest,
@@ -387,6 +502,15 @@ fn build_theme_payload_from_directory(
     })
 }
 
+/// Reads style/markup/script assets described by a theme manifest.
+///
+/// # Parameters
+/// - `base`: Theme base directory.
+/// - `manifest`: Parsed manifest.
+///
+/// # Returns
+/// - `Ok((Option<String>, ThemeMarkup, Vec<String>))` loaded assets.
+/// - `Err(String)` when asset loading fails.
 fn read_assets_from_directory(
     base: &Path,
     manifest: &RawThemeManifest,
@@ -398,6 +522,16 @@ fn read_assets_from_directory(
     Ok((styles, markup, scripts))
 }
 
+/// Reads and concatenates CSS files.
+///
+/// # Parameters
+/// - `base`: Theme base directory.
+/// - `files`: CSS file names.
+///
+/// # Returns
+/// - `Ok(Some(String))` concatenated CSS when files exist.
+/// - `Ok(None)` when list is empty.
+/// - `Err(String)` when reads fail.
 fn read_css_set_from_directory(base: &Path, files: &[String]) -> Result<Option<String>, String> {
     if files.is_empty() {
         return Ok(None);
@@ -428,6 +562,15 @@ fn read_css_set_from_directory(base: &Path, files: &[String]) -> Result<Option<S
     })
 }
 
+/// Reads markup fragments for head/body sections.
+///
+/// # Parameters
+/// - `base`: Theme base directory.
+/// - `markup`: Raw markup file declarations.
+///
+/// # Returns
+/// - `Ok(ThemeMarkup)` loaded markup payload.
+/// - `Err(String)` when reads fail.
 fn read_markup_from_directory(base: &Path, markup: &RawThemeMarkup) -> Result<ThemeMarkup, String> {
     Ok(ThemeMarkup {
         head: read_css_set_from_directory(base, &markup.head)?,
@@ -435,6 +578,15 @@ fn read_markup_from_directory(base: &Path, markup: &RawThemeMarkup) -> Result<Th
     })
 }
 
+/// Reads script file contents in declared order.
+///
+/// # Parameters
+/// - `base`: Theme base directory.
+/// - `files`: Script file names.
+///
+/// # Returns
+/// - `Ok(Vec<String>)` script contents.
+/// - `Err(String)` when reads fail.
 fn read_scripts_from_directory(base: &Path, files: &[String]) -> Result<Vec<String>, String> {
     if files.is_empty() {
         return Ok(Vec::new());
@@ -455,6 +607,15 @@ fn read_scripts_from_directory(base: &Path, files: &[String]) -> Result<Vec<Stri
     Ok(scripts)
 }
 
+/// Reads a UTF-8 text file relative to a base directory.
+///
+/// # Parameters
+/// - `base`: Base directory.
+/// - `name`: Relative file name.
+///
+/// # Returns
+/// - `Ok(String)` file contents.
+/// - `Err(String)` when path validation or read fails.
 fn read_text_file_from_directory(base: &Path, name: &str) -> Result<String, String> {
     let relative = name.trim_start_matches("./");
     let path = base.join(relative);

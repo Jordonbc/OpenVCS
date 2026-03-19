@@ -1,31 +1,24 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use crate::{plugins, settings, state::AppState, themes};
 use std::collections::HashSet;
 use tauri::State;
 
+/// Computes set of enabled plugin ids based on settings and plugin defaults.
+///
+/// # Parameters
+/// - `cfg`: App configuration snapshot.
+///
+/// # Returns
+/// - Lowercase set of enabled plugin ids.
 fn enabled_plugins(cfg: &settings::AppConfig) -> HashSet<String> {
-    let disabled: HashSet<String> = cfg
-        .plugins
-        .disabled
-        .iter()
-        .map(|s| s.trim().to_ascii_lowercase())
-        .collect();
-    let enabled: HashSet<String> = cfg
-        .plugins
-        .enabled
-        .iter()
-        .map(|s| s.trim().to_ascii_lowercase())
-        .collect();
-
     let mut out = HashSet::new();
     for p in plugins::list_plugins() {
         let id = p.id.trim().to_ascii_lowercase();
         if id.is_empty() {
             continue;
         }
-        if disabled.contains(&id) {
-            continue;
-        }
-        if enabled.contains(&id) || p.default_enabled {
+        if cfg.is_plugin_enabled(&id, p.default_enabled) {
             out.insert(id);
         }
     }
@@ -33,6 +26,13 @@ fn enabled_plugins(cfg: &settings::AppConfig) -> HashSet<String> {
 }
 
 #[tauri::command]
+/// Lists themes filtered to those from enabled plugins (plus built-ins).
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - Theme summaries visible to the current configuration.
 pub fn list_themes(state: State<'_, AppState>) -> Vec<themes::ThemeSummary> {
     let cfg: settings::AppConfig = state.config();
     let enabled = enabled_plugins(&cfg);
@@ -54,6 +54,15 @@ pub fn list_themes(state: State<'_, AppState>) -> Vec<themes::ThemeSummary> {
 }
 
 #[tauri::command]
+/// Loads a theme payload, rejecting themes from disabled plugins.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `id`: Theme id to load.
+///
+/// # Returns
+/// - `Ok(ThemePayload)` when theme is found and allowed.
+/// - `Err(String)` when load fails or the owning plugin is disabled.
 pub fn load_theme(state: State<'_, AppState>, id: String) -> Result<themes::ThemePayload, String> {
     let cfg: settings::AppConfig = state.config();
     let enabled = enabled_plugins(&cfg);

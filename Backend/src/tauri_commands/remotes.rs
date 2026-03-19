@@ -1,15 +1,22 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+use crate::core::models::{CommitItem, LogQuery, VcsEvent};
+use crate::core::{Vcs, VcsError};
+use crate::state::AppState;
+
 use log::{error, info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window};
 
-use openvcs_core::models::{CommitItem, LogQuery, VcsEvent};
-use openvcs_core::FetchOptions;
-use openvcs_core::Vcs;
-use openvcs_core::VcsError;
-
-use crate::state::AppState;
-
 use super::{current_repo_or_err, progress_bridge, run_repo_task, ProgressPayload};
 
+/// Extracts host name from common Git remote URL formats.
+///
+/// # Parameters
+/// - `url`: Remote URL.
+///
+/// # Returns
+/// - `Some(String)` host when parsed.
+/// - `None` otherwise.
 fn host_from_remote_url(url: &str) -> Option<String> {
     let u = url.trim();
     if u.is_empty() {
@@ -51,6 +58,14 @@ fn host_from_remote_url(url: &str) -> Option<String> {
     None
 }
 
+/// Heuristically detects unknown-host-key style errors.
+///
+/// # Parameters
+/// - `msg`: Error text.
+///
+/// # Returns
+/// - `true` when text resembles host-key issues.
+/// - `false` otherwise.
 fn looks_like_unknown_host_key(msg: &str) -> bool {
     let m = msg.to_lowercase();
     m.contains("the authenticity of host")
@@ -61,6 +76,14 @@ fn looks_like_unknown_host_key(msg: &str) -> bool {
         || m.contains("strict host key checking")
 }
 
+/// Heuristically detects SSH authentication failures.
+///
+/// # Parameters
+/// - `msg`: Error text.
+///
+/// # Returns
+/// - `true` when text resembles auth failure.
+/// - `false` otherwise.
 fn looks_like_ssh_auth_failure(msg: &str) -> bool {
     let m = msg.to_lowercase();
     m.contains("permission denied")
@@ -69,6 +92,15 @@ fn looks_like_ssh_auth_failure(msg: &str) -> bool {
         || m.contains("authentication failed")
 }
 
+/// Returns remote URL for a named remote.
+///
+/// # Parameters
+/// - `repo`: Repository backend.
+/// - `remote`: Remote name.
+///
+/// # Returns
+/// - `Some(String)` URL when found.
+/// - `None` otherwise.
 fn remote_url_for(repo: &dyn Vcs, remote: &str) -> Option<String> {
     let remote = remote.trim();
     if remote.is_empty() {
@@ -81,6 +113,16 @@ fn remote_url_for(repo: &dyn Vcs, remote: &str) -> Option<String> {
         .find_map(|(name, url)| if name == remote { Some(url) } else { None })
 }
 
+/// Emits SSH host-key/auth prompt events based on failure text.
+///
+/// # Parameters
+/// - `app`: App handle for event emission.
+/// - `remote`: Remote name.
+/// - `url`: Remote URL.
+/// - `msg`: Error message.
+///
+/// # Returns
+/// - `()`.
 fn emit_ssh_prompt<R: Runtime>(app: &tauri::AppHandle<R>, remote: &str, url: &str, msg: &str) {
     if looks_like_unknown_host_key(msg) {
         if let Some(host) = host_from_remote_url(url) {
@@ -110,22 +152,42 @@ fn emit_ssh_prompt<R: Runtime>(app: &tauri::AppHandle<R>, remote: &str, url: &st
 }
 
 #[derive(Clone, serde::Serialize)]
+/// UI event payload requesting unknown-host-key confirmation.
 struct SshHostKeyPrompt {
+    /// Remote host name requiring trust confirmation.
     host: String,
+    /// Remote alias involved in the failed operation.
     remote: String,
+    /// Remote URL associated with the host.
     url: String,
+    /// Raw backend error message.
     message: String,
 }
 
 #[derive(Clone, serde::Serialize)]
+/// UI event payload requesting SSH authentication troubleshooting.
 struct SshAuthPrompt {
+    /// Remote host that rejected authentication.
     host: String,
+    /// Remote alias involved in the failed operation.
     remote: String,
+    /// Remote URL associated with the host.
     url: String,
+    /// Raw backend error message.
     message: String,
 }
 
 #[tauri::command]
+/// Creates or updates a remote URL by name.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `name`: Remote name.
+/// - `url`: Remote URL.
+///
+/// # Returns
+/// - `Ok(())` when remote is set.
+/// - `Err(String)` on validation or backend failure.
 pub async fn git_set_remote_url(
     state: State<'_, AppState>,
     name: String,
@@ -154,15 +216,21 @@ pub async fn git_set_remote_url(
 }
 
 #[tauri::command]
+/// Fetches updates for the current branch's upstream (or origin fallback).
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress/events.
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(())` when fetch completes.
+/// - `Err(String)` when no repo/branch is selected or fetch fails.
 pub async fn git_fetch<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let fetch_opts = FetchOptions {
-        prune: state.with_config(|c| c.git.prune_on_fetch),
-    };
     let current = run_repo_task("git_fetch", repo, move |repo| {
         info!("git_fetch called");
         let on = Some(progress_bridge(app.clone()));
@@ -194,10 +262,7 @@ pub async fn git_fetch<R: Runtime>(
         }
 
         info!("Fetching '{refspec}' from remote '{remote}' (current branch '{current}')");
-        if let Err(e) = repo
-            .inner()
-            .fetch_with_options(&remote, &refspec, fetch_opts, on)
-        {
+        if let Err(e) = repo.inner().fetch(&remote, &refspec, on) {
             let msg = e.to_string();
             let url = remote_url_for(repo.inner(), &remote).unwrap_or_default();
             emit_ssh_prompt(&app, &remote, &url, &msg);
@@ -220,15 +285,21 @@ pub async fn git_fetch<R: Runtime>(
 }
 
 #[tauri::command]
+/// Fetches all branch refs from all configured remotes.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress/events.
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(())` when all remotes fetch successfully.
+/// - `Err(String)` when one or more remotes fail.
 pub async fn git_fetch_all<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let fetch_opts = FetchOptions {
-        prune: state.with_config(|c| c.git.prune_on_fetch),
-    };
     run_repo_task("git_fetch_all", repo, move |repo| {
         info!("git_fetch_all called");
         let on = Some(progress_bridge(app.clone()));
@@ -249,15 +320,9 @@ pub async fn git_fetch_all<R: Runtime>(
 
             // Some backends/environments can be picky about force-refspec syntax; fall back to a
             // non-force refspec so we still populate `refs/remotes/<remote>/*` for the UI.
-            if let Err(e) =
-                repo.inner()
-                    .fetch_with_options(&r, &refspec_force, fetch_opts, on.clone())
-            {
+            if let Err(e) = repo.inner().fetch(&r, &refspec_force, on.clone()) {
                 warn!("Fetch (force refspec) failed for remote '{r}': {e}; retrying without '+'");
-                if let Err(e2) =
-                    repo.inner()
-                        .fetch_with_options(&r, &refspec, fetch_opts, on.clone())
-                {
+                if let Err(e2) = repo.inner().fetch(&r, &refspec, on.clone()) {
                     let msg = e2.to_string();
                     emit_ssh_prompt(&app, &r, &url, &msg);
                     error!("Fetch failed for remote '{r}': {msg}");
@@ -296,6 +361,15 @@ pub async fn git_fetch_all<R: Runtime>(
 }
 
 #[tauri::command]
+/// Performs a fast-forward-only pull from the current branch upstream.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress/events.
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(PullResult)` describing whether pull executed or was skipped.
+/// - `Err(String)` when pull fails.
 pub async fn git_pull<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -395,22 +469,32 @@ pub async fn git_pull<R: Runtime>(
 }
 
 #[derive(serde::Serialize)]
+/// Pull execution result returned to the frontend.
 pub struct PullResult {
+    /// Whether a pull operation ran and updated local refs.
     pub pulled: bool,
+    /// Branch name evaluated for the pull.
     pub branch: String,
+    /// Skip/failure context when no pull was performed.
     pub reason: Option<String>,
 }
 
 #[tauri::command]
+/// Pushes the current branch to `origin` and refreshes tracking refs.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress/events.
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(())` when push completes.
+/// - `Err(String)` when push fails.
 pub async fn git_push<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let fetch_opts = FetchOptions {
-        prune: state.with_config(|c| c.git.prune_on_fetch),
-    };
     let current = run_repo_task("git_push", repo, move |repo| {
         info!("git_push called");
         let on = Some(progress_bridge(app.clone()));
@@ -438,10 +522,7 @@ pub async fn git_push<R: Runtime>(
         // Pushing does not update local remote-tracking refs (refs/remotes/origin/*),
         // which the UI uses for ahead/behind; refresh them best-effort.
         let on_fetch = Some(progress_bridge(app));
-        if let Err(e) = repo
-            .inner()
-            .fetch_with_options("origin", &current, fetch_opts, on_fetch)
-        {
+        if let Err(e) = repo.inner().fetch("origin", &current, on_fetch) {
             warn!("Post-push fetch failed for branch '{current}': {e}");
         }
 
@@ -461,6 +542,15 @@ pub async fn git_push<R: Runtime>(
 }
 
 #[tauri::command]
+/// Soft-resets HEAD to upstream to undo unpushed commits.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress/events.
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(())` when reset succeeds.
+/// - `Err(String)` when nothing is ahead or reset fails.
 pub async fn git_undo_since_push<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -497,6 +587,16 @@ pub async fn git_undo_since_push<R: Runtime>(
 }
 
 #[tauri::command]
+/// Soft-resets HEAD to a selected commit, constrained to ahead-of-upstream history.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress/events.
+/// - `state`: Shared application state.
+/// - `id`: Target commit id/prefix.
+///
+/// # Returns
+/// - `Ok(())` when reset succeeds.
+/// - `Err(String)` when validation or reset fails.
 pub async fn git_undo_to_commit<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,

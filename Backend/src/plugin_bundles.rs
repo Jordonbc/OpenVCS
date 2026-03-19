@@ -1,5 +1,10 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! Plugin bundle installation, indexing, and component discovery.
+
+use crate::logging::LogTimer;
 use crate::plugin_paths::{built_in_plugin_dirs, ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME};
-use log::warn;
+use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
@@ -9,18 +14,29 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 use xz2::read::XzDecoder;
 
+const MODULE: &str = "plugin_bundles";
+
+/// Safety and resource limits enforced during bundle extraction.
 #[derive(Debug, Clone, Copy)]
 pub struct InstallerLimits {
+    /// Maximum number of files allowed in an extracted bundle.
     pub max_files: u64,
+    /// Maximum size of an individual extracted file.
     pub max_file_bytes: u64,
+    /// Maximum total extracted bytes for a bundle.
     pub max_total_bytes: u64,
+    /// Maximum accepted expansion ratio between compressed and uncompressed bytes.
     pub max_compression_ratio: u64,
 }
 
 impl Default for InstallerLimits {
+    /// Returns default installer safety limits.
+    ///
+    /// # Returns
+    /// - Default [`InstallerLimits`] values.
     fn default() -> Self {
         Self {
-            max_files: 4096,
+            max_files: 50_000,
             max_file_bytes: 64 * 1024 * 1024,
             max_total_bytes: 512 * 1024 * 1024,
             max_compression_ratio: 200,
@@ -28,6 +44,9 @@ impl Default for InstallerLimits {
     }
 }
 
+/// Legacy approval status for an installed plugin version.
+///
+/// Node runtime currently operates in trust mode and auto-approves installs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ApprovalState {
@@ -44,6 +63,7 @@ pub enum ApprovalState {
     },
 }
 
+/// Versioned installation metadata for a plugin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstalledPluginVersion {
     pub version: String,
@@ -54,6 +74,7 @@ pub struct InstalledPluginVersion {
     pub approval: ApprovalState,
 }
 
+/// Persisted plugin index stored under `<plugin>/index.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstalledPluginIndex {
     pub plugin_id: String,
@@ -63,11 +84,13 @@ pub struct InstalledPluginIndex {
     pub versions: BTreeMap<String, InstalledPluginVersion>,
 }
 
+/// Pointer to the active installed version stored in `current.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CurrentPointer {
     pub version: String,
 }
 
+/// Result metadata returned after installing a plugin bundle.
 #[derive(Debug, Clone, Serialize)]
 pub struct InstalledPlugin {
     pub plugin_id: String,
@@ -79,6 +102,7 @@ pub struct InstalledPlugin {
     pub install_dir: PathBuf,
 }
 
+/// Manifest representation of backend declarations in `openvcs.plugin.json`.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum VcsBackendProvide {
@@ -90,6 +114,7 @@ pub enum VcsBackendProvide {
     },
 }
 
+/// Manifest module component declaration.
 #[derive(Debug, Deserialize)]
 pub struct PluginManifestModule {
     #[serde(default)]
@@ -98,12 +123,7 @@ pub struct PluginManifestModule {
     pub vcs_backends: Vec<VcsBackendProvide>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct PluginManifestFunctions {
-    #[serde(default)]
-    pub exec: Option<String>,
-}
-
+/// Parsed plugin manifest payload.
 #[derive(Debug, Deserialize)]
 pub struct PluginManifest {
     pub id: String,
@@ -118,9 +138,13 @@ pub struct PluginManifest {
     #[serde(default)]
     pub module: Option<PluginManifestModule>,
     #[serde(default)]
-    pub functions: Option<PluginManifestFunctions>,
+    pub functions: Option<serde_json::Value>,
 }
 
+/// Returns current Unix timestamp in milliseconds.
+///
+/// # Returns
+/// - Millisecond Unix timestamp.
 fn now_unix_ms() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
@@ -129,6 +153,14 @@ fn now_unix_ms() -> u64 {
         .as_millis() as u64
 }
 
+/// Computes SHA-256 hex digest for a file.
+///
+/// # Parameters
+/// - `path`: File path.
+///
+/// # Returns
+/// - `Ok(String)` lowercase hex digest.
+/// - `Err(String)` when file IO fails.
 fn sha256_hex_file(path: &Path) -> Result<String, String> {
     let mut f = fs::File::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
     let mut hasher = Sha256::new();
@@ -145,6 +177,14 @@ fn sha256_hex_file(path: &Path) -> Result<String, String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
+/// Validates and normalizes a tar entry path to prevent path traversal.
+///
+/// # Parameters
+/// - `name`: Raw tar entry path.
+///
+/// # Returns
+/// - `Ok(PathBuf)` sanitized relative path.
+/// - `Err(String)` when path is unsafe.
 fn sanitize_tar_name(name: &str) -> Result<PathBuf, String> {
     if name.contains('\0') {
         return Err("tar entry contains NUL".to_string());
@@ -173,10 +213,12 @@ fn sanitize_tar_name(name: &str) -> Result<PathBuf, String> {
     Ok(p.to_path_buf())
 }
 
+/// Filesystem-backed store for installed plugin bundles.
 pub struct PluginBundleStore {
     root: PathBuf,
 }
 
+/// Installed module component metadata and resolved executable path.
 #[derive(Debug, Clone)]
 pub struct ModuleComponent {
     pub exec: String,
@@ -184,65 +226,117 @@ pub struct ModuleComponent {
     pub vcs_backends: Vec<(String, Option<String>)>,
 }
 
-#[derive(Debug, Clone)]
-pub struct FunctionsComponent {
-    pub exec: String,
-    pub exec_path: PathBuf,
-}
-
+/// Active component metadata for a plugin selected by `current.json`.
 #[derive(Debug, Clone)]
 pub struct InstalledPluginComponents {
     pub plugin_id: String,
     pub name: Option<String>,
-    pub version: String,
     pub default_enabled: bool,
-    pub requested_capabilities: Vec<String>,
     pub module: Option<ModuleComponent>,
-    pub functions: Option<FunctionsComponent>,
 }
 
 impl PluginBundleStore {
+    /// Creates a store rooted at the default plugins directory.
+    ///
+    /// # Returns
+    /// - A [`PluginBundleStore`] rooted at [`plugins_dir`].
     pub fn new_default() -> Self {
         let root = plugins_dir();
         ensure_dir(&root);
+        trace!("PluginBundleStore::new_default: root={}", root.display());
         Self { root }
-    }
-
-    pub fn plugin_root_dir(&self, plugin_id: &str) -> PathBuf {
-        self.root.join(plugin_id.trim())
     }
 
     #[cfg(test)]
-    fn new_at(root: PathBuf) -> Self {
+    /// Creates a store rooted at an explicit test directory.
+    ///
+    /// # Parameters
+    /// - `root`: Store root path.
+    ///
+    /// # Returns
+    /// - Store instance rooted at `root`.
+    pub(crate) fn new_at(root: PathBuf) -> Self {
         Self { root }
     }
 
+    /// Installs a `.ovcsp` bundle using default installer limits.
+    ///
+    /// # Parameters
+    /// - `bundle_path`: Path to the plugin bundle archive.
+    ///
+    /// # Returns
+    /// - `Ok(InstalledPlugin)` with installed metadata.
+    /// - `Err(String)` when validation, extraction, or index updates fail.
     pub fn install_ovcsp(&self, bundle_path: &Path) -> Result<InstalledPlugin, String> {
         self.install_ovcsp_with_limits(bundle_path, InstallerLimits::default())
     }
 
+    /// Installs a `.ovcsp` bundle and validates extraction against provided limits.
+    ///
+    /// # Parameters
+    /// - `bundle_path`: Path to the plugin bundle archive.
+    /// - `limits`: Extraction and compression safety limits to enforce.
+    ///
+    /// # Returns
+    /// - `Ok(InstalledPlugin)` with installed metadata and resolved install directory.
+    /// - `Err(String)` when bundle structure is invalid or filesystem operations fail.
     pub fn install_ovcsp_with_limits(
         &self,
         bundle_path: &Path,
         limits: InstallerLimits,
     ) -> Result<InstalledPlugin, String> {
+        let _timer = LogTimer::new(MODULE, "install_ovcsp_with_limits");
+        let start = std::time::Instant::now();
+        info!(
+            "install_ovcsp_with_limits: bundle={}",
+            bundle_path.display()
+        );
+        debug!(
+            "install_ovcsp_with_limits: limits={{max_files={}, max_file_bytes={}, max_total_bytes={}}}", limits.max_files, limits.max_file_bytes, limits.max_total_bytes
+        );
+
         if !bundle_path.is_file() {
+            error!(
+                "install_ovcsp_with_limits: bundle is not a file: {}",
+                bundle_path.display()
+            );
             return Err(format!("bundle is not a file: {}", bundle_path.display()));
         }
 
-        fs::create_dir_all(&self.root)
-            .map_err(|e| format!("create {}: {e}", self.root.display()))?;
+        fs::create_dir_all(&self.root).map_err(|e| {
+            error!(
+                "install_ovcsp_with_limits: failed to create {}: {}",
+                self.root.display(),
+                e
+            );
+            format!("create {}: {e}", self.root.display())
+        })?;
 
         let bundle_sha256 = sha256_hex_file(bundle_path)?;
         let bundle_compressed_bytes = fs::metadata(bundle_path)
-            .map_err(|e| format!("metadata {}: {e}", bundle_path.display()))?
+            .map_err(|e| {
+                error!("install_ovcsp_with_limits: failed to get metadata: {}", e);
+                format!("metadata {}: {e}", bundle_path.display())
+            })?
             .len();
+
+        debug!(
+            "install_ovcsp_with_limits: bundle size={} bytes, sha256={}",
+            bundle_compressed_bytes,
+            &bundle_sha256[..12]
+        );
 
         let (manifest_bundle_path, manifest) = locate_manifest_tar_xz(bundle_path)?;
         let plugin_id = manifest.id.trim().to_string();
         if plugin_id.is_empty() {
+            error!("install_ovcsp_with_limits: manifest id is empty",);
             return Err("manifest id is empty".to_string());
         }
+
+        debug!(
+            "install_ovcsp_with_limits: plugin_id={}, version={:?}",
+            plugin_id, manifest.version
+        );
 
         // Enforce that the top-level directory name matches the manifest id.
         let bundle_root = manifest_bundle_path
@@ -252,6 +346,10 @@ impl PluginBundleStore {
             .unwrap_or_default()
             .to_string();
         if bundle_root != plugin_id {
+            error!(
+                "install_ovcsp_with_limits: bundle root '{}' does not match manifest id '{}'",
+                bundle_root, plugin_id
+            );
             return Err(format!(
                 "bundle root folder '{}' does not match manifest id '{}'",
                 bundle_root, plugin_id
@@ -271,6 +369,13 @@ impl PluginBundleStore {
         }
         fs::create_dir_all(&staging).map_err(|e| format!("create {}: {e}", staging.display()))?;
         let staging_version_dir = staging.join(&version);
+
+        trace!(
+            "install_ovcsp_with_limits: staging_dir={}, plugin_dir={}",
+            staging_version_dir.display(),
+            plugin_dir.display()
+        );
+
         fs::create_dir_all(&staging_version_dir)
             .map_err(|e| format!("create {}: {e}", staging_version_dir.display()))?;
 
@@ -341,6 +446,18 @@ impl PluginBundleStore {
 
             if !entry_type.is_file() {
                 return Err(format!("unsupported tar entry type: {}", raw_name));
+            }
+
+            if stripped
+                .as_os_str()
+                .to_string_lossy()
+                .to_ascii_lowercase()
+                .ends_with(".node")
+            {
+                return Err(format!(
+                    "bundle contains unsupported native Node addon: {}",
+                    raw_name
+                ));
             }
 
             total_files += 1;
@@ -443,26 +560,46 @@ impl PluginBundleStore {
         // Validate required files.
         let extracted_manifest = staging_version_dir.join(PLUGIN_MANIFEST_NAME);
         if !extracted_manifest.is_file() {
+            error!(
+                "install_ovcsp_with_limits: missing manifest at {}",
+                extracted_manifest.display()
+            );
             return Err(format!(
                 "installed bundle is missing {}",
                 extracted_manifest.display()
             ));
         }
 
-        let (module_exec, functions_exec) = (
-            normalize_exec(manifest.module.and_then(|m| m.exec)),
-            normalize_exec(manifest.functions.and_then(|f| f.exec)),
-        );
+        if manifest.functions.is_some() {
+            error!("install_ovcsp_with_limits: manifest uses deprecated 'functions' field",);
+            return Err(
+                "manifest uses unsupported field 'functions'; use module.exec only".to_string(),
+            );
+        }
+
+        let module_exec = normalize_exec(manifest.module.and_then(|m| m.exec));
 
         validate_entrypoint(&staging_version_dir, module_exec.as_deref(), "module")?;
-        validate_entrypoint(&staging_version_dir, functions_exec.as_deref(), "functions")?;
+
+        debug!(
+            "install_ovcsp_with_limits: extracted {} files, promoting to final location",
+            total_files
+        );
 
         // Promote staged version into place (flat layout, drop old version directory).
         if plugin_dir.exists() {
+            trace!(
+                "install_ovcsp_with_limits: removing existing plugin dir {}",
+                plugin_dir.display()
+            );
             fs::remove_dir_all(&plugin_dir)
                 .map_err(|e| format!("remove {}: {e}", plugin_dir.display()))?;
         }
         fs::rename(&staging_version_dir, &plugin_dir).map_err(|e| {
+            error!(
+                "install_ovcsp_with_limits: failed to move plugin into place: {}",
+                e
+            );
             format!(
                 "move installed plugin into place {} -> {}: {e}",
                 staging_version_dir.display(),
@@ -499,6 +636,12 @@ impl PluginBundleStore {
             },
         )?;
 
+        let elapsed = start.elapsed();
+        info!(
+            "install_ovcsp_with_limits: installed plugin {} v{} in {:?}",
+            plugin_id, version, elapsed
+        );
+
         Ok(InstalledPlugin {
             plugin_id,
             version,
@@ -509,69 +652,151 @@ impl PluginBundleStore {
         })
     }
 
+    /// Ensures shipped built-in bundles are installed and up to date locally.
+    ///
+    /// # Returns
+    /// - `Ok(())` when all built-in bundles are synchronized.
+    /// - `Err(String)` when one or more bundles fail to sync.
     pub fn sync_built_in_plugins(&self) -> Result<(), String> {
+        let _timer = LogTimer::new(MODULE, "sync_built_in_plugins");
+        let bundles = builtin_bundle_paths();
+        info!(
+            "sync_built_in_plugins: syncing {} built-in bundles",
+            bundles.len()
+        );
+
         let mut errors = Vec::new();
-        for bundle in builtin_bundle_paths() {
-            if let Err(err) = self.ensure_built_in_bundle(&bundle) {
+        for bundle in &bundles {
+            debug!("sync_built_in_plugins: checking {}", bundle.display());
+            if let Err(err) = self.ensure_built_in_bundle(bundle) {
                 let msg = format!("{}: {}", bundle.display(), err);
-                warn!("plugins: failed to sync built-in bundle: {}", msg);
+                warn!("sync_built_in_plugins: failed to sync: {}", msg);
                 errors.push(msg);
             }
         }
+
         if errors.is_empty() {
+            debug!("sync_built_in_plugins: all bundles synced successfully",);
             Ok(())
         } else {
+            error!("sync_built_in_plugins: {} bundles failed", errors.len());
             Err(errors.join("; "))
         }
     }
 
+    /// Installs/updates a single built-in bundle when needed.
+    ///
+    /// # Parameters
+    /// - `bundle_path`: Built-in bundle path.
+    ///
+    /// # Returns
+    /// - `Ok(())` when bundle is already current or installed successfully.
+    /// - `Err(String)` on install/validation failures.
     fn ensure_built_in_bundle(&self, bundle_path: &Path) -> Result<(), String> {
+        trace!("ensure_built_in_bundle: {}", bundle_path.display());
+
         let bundle_sha256 = sha256_hex_file(bundle_path)?;
         let (_manifest_path, manifest) = locate_manifest_tar_xz(bundle_path)?;
         let plugin_id = manifest.id.trim();
         if plugin_id.is_empty() {
+            error!("ensure_built_in_bundle: bundle manifest id is empty",);
             return Err("bundle manifest id is empty".to_string());
         }
         let plugin_id = plugin_id.to_string();
         let version = derive_install_version(&manifest, &bundle_sha256);
+
         if let Some(installed) = self.get_current_installed(&plugin_id)? {
             if installed.bundle_sha256 == bundle_sha256 && installed.version == version {
+                trace!(
+                    "ensure_built_in_bundle: {} already installed and current",
+                    plugin_id
+                );
                 return Ok(());
             }
+            debug!(
+                "ensure_built_in_bundle: {} needs update (installed={}, new={})",
+                plugin_id, installed.version, version
+            );
         }
+
+        debug!("ensure_built_in_bundle: installing {}", plugin_id);
         self.install_ovcsp_with_limits(bundle_path, InstallerLimits::default())?;
+
         if let Err(err) = self.approve_capabilities(&plugin_id, &version, true) {
             warn!(
-                "plugins: failed to auto-approve built-in {} ({}): {}",
+                "ensure_built_in_bundle: failed to auto-approve built-in {} ({}): {}",
                 plugin_id, version, err
+            );
+        } else {
+            debug!(
+                "ensure_built_in_bundle: auto-approved built-in {} ({})",
+                plugin_id, version
             );
         }
         Ok(())
     }
 
+    /// Removes an installed non-built-in plugin and all of its versions.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier to uninstall.
+    ///
+    /// # Returns
+    /// - `Ok(())` when the plugin is removed or not installed.
+    /// - `Err(String)` if the id is invalid, built-in, or removal fails.
     pub fn uninstall_plugin(&self, plugin_id: &str) -> Result<(), String> {
+        let _timer = LogTimer::new(MODULE, "uninstall_plugin");
         let id = plugin_id.trim();
+        info!("uninstall_plugin: plugin={}", id);
+
         if id.is_empty() {
+            warn!("uninstall_plugin: empty plugin id");
             return Err("plugin id is empty".to_string());
         }
         let lower = id.to_ascii_lowercase();
         if built_in_plugin_ids().contains(&lower) {
+            warn!("uninstall_plugin: cannot uninstall built-in plugin {}", id);
             return Err("built-in plugins cannot be removed".to_string());
         }
         let dir = self.root.join(id);
         if !dir.exists() {
+            debug!("uninstall_plugin: plugin {} not installed", id);
             return Ok(());
         }
-        fs::remove_dir_all(&dir).map_err(|e| format!("remove {}: {e}", dir.display()))
+        fs::remove_dir_all(&dir).map_err(|e| {
+            error!(
+                "uninstall_plugin: failed to remove {}: {}",
+                dir.display(),
+                e
+            );
+            format!("remove {}: {e}", dir.display())
+        })?;
+        debug!("uninstall_plugin: plugin {} removed", id);
+        Ok(())
     }
 
+    /// Lists installed plugin indices discovered from the plugin store root.
+    ///
+    /// # Returns
+    /// - `Ok(Vec<InstalledPluginIndex>)` sorted by plugin id.
+    /// - `Err(String)` when the plugin root cannot be read.
     pub fn list_installed(&self) -> Result<Vec<InstalledPluginIndex>, String> {
+        let _timer = LogTimer::new(MODULE, "list_installed");
+        trace!("list_installed: scanning {}", self.root.display());
+
         if !self.root.is_dir() {
+            debug!("list_installed: root does not exist");
             return Ok(Vec::new());
         }
         let mut out = Vec::new();
-        let entries =
-            fs::read_dir(&self.root).map_err(|e| format!("read {}: {e}", self.root.display()))?;
+        let entries = fs::read_dir(&self.root).map_err(|e| {
+            error!(
+                "list_installed: failed to read {}: {}",
+                self.root.display(),
+                e
+            );
+            format!("read {}: {e}", self.root.display())
+        })?;
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_dir() {
@@ -588,9 +813,19 @@ impl PluginBundleStore {
             }
         }
         out.sort_by(|a, b| a.plugin_id.cmp(&b.plugin_id));
+        debug!("list_installed: found {} installed plugins", out.len());
         Ok(out)
     }
 
+    /// Resolves the filesystem directory for the current version of a plugin.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier to query.
+    ///
+    /// # Returns
+    /// - `Ok(Some(PathBuf))` with the current plugin directory.
+    /// - `Ok(None)` if no current version is configured.
+    /// - `Err(String)` if the id is invalid or metadata cannot be parsed.
     pub fn get_current_dir(&self, plugin_id: &str) -> Result<Option<PathBuf>, String> {
         let id = plugin_id.trim();
         if id.is_empty() {
@@ -615,23 +850,56 @@ impl PluginBundleStore {
         }
     }
 
+    /// Returns metadata for the currently selected plugin version, if present.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier to query.
+    ///
+    /// # Returns
+    /// - `Ok(Some(InstalledPluginVersion))` when a current version exists.
+    /// - `Ok(None)` when the plugin or current version is missing.
+    /// - `Err(String)` if the id is invalid.
     pub fn get_current_installed(
         &self,
         plugin_id: &str,
     ) -> Result<Option<InstalledPluginVersion>, String> {
+        trace!("get_current_installed: plugin_id='{}'", plugin_id);
+
         let id = plugin_id.trim();
+        debug!("get_current_installed: trimmed id='{}'", id);
+
         if id.is_empty() {
             return Err("plugin id is empty".to_string());
         }
+
+        trace!("get_current_installed: reading index");
         let Some(index) = self.read_index(id) else {
+            debug!("get_current_installed: no index found for '{}'", id);
             return Ok(None);
         };
+
+        trace!("get_current_installed: checking current pointer");
         let Some(ver) = index.current.as_deref() else {
+            debug!("get_current_installed: no current version for '{}'", id);
             return Ok(None);
         };
-        Ok(index.versions.get(ver).cloned())
+
+        debug!("get_current_installed: current version='{}'", ver);
+        let result = index.versions.get(ver).cloned();
+        debug!("get_current_installed: found={}", result.is_some());
+        Ok(result)
     }
 
+    /// Updates capability approval for a specific plugin version.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier to update.
+    /// - `version`: Installed version key to modify.
+    /// - `approved`: `true` to approve, `false` to deny.
+    ///
+    /// # Returns
+    /// - `Ok(())` when approval state is updated.
+    /// - `Err(String)` if the plugin/version is missing or index write fails.
     pub fn approve_capabilities(
         &self,
         plugin_id: &str,
@@ -660,6 +928,15 @@ impl PluginBundleStore {
         Ok(())
     }
 
+    /// Loads resolved components for the current plugin version.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier to load.
+    ///
+    /// # Returns
+    /// - `Ok(Some(InstalledPluginComponents))` when current metadata is valid.
+    /// - `Ok(None)` when no current version is available.
+    /// - `Err(String)` when manifests or entrypoints are invalid.
     pub fn load_current_components(
         &self,
         plugin_id: &str,
@@ -672,6 +949,12 @@ impl PluginBundleStore {
             .map_err(|e| format!("read {}: {e}", manifest_path.display()))?;
         let manifest: PluginManifest = serde_json::from_str(&text)
             .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
+        if manifest.functions.is_some() {
+            return Err(format!(
+                "manifest {} uses unsupported field 'functions'; use module.exec only",
+                manifest_path.display()
+            ));
+        }
         let id = manifest.id.trim().to_string();
         if id.is_empty() {
             return Err("manifest id is empty".to_string());
@@ -683,22 +966,6 @@ impl PluginBundleStore {
                 plugin_id.trim()
             ));
         }
-
-        let version = manifest
-            .version
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| {
-                version_dir
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string()
-            });
-
-        let requested_capabilities = normalize_capabilities(manifest.capabilities.clone());
 
         let module = manifest.module.and_then(|m| {
             let exec = m.exec?.trim().to_string();
@@ -734,21 +1001,9 @@ impl PluginBundleStore {
             })
         });
 
-        let functions = manifest.functions.and_then(|f| {
-            let exec = f.exec?.trim().to_string();
-            if exec.is_empty() {
-                return None;
-            }
-            let exec_path = version_dir.join("bin").join(platform_exec_name(&exec));
-            Some(FunctionsComponent { exec, exec_path })
-        });
-
         // Validate that declared entrypoints exist (defense-in-depth; installer should have ensured).
         if let Some(m) = &module {
             validate_entrypoint(&version_dir, Some(&m.exec), "module")?;
-        }
-        if let Some(f) = &functions {
-            validate_entrypoint(&version_dir, Some(&f.exec), "functions")?;
         }
 
         Ok(Some(InstalledPluginComponents {
@@ -757,22 +1012,30 @@ impl PluginBundleStore {
                 .name
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
-            version,
             default_enabled: manifest.default_enabled,
-
-            requested_capabilities,
             module,
-            functions,
         }))
     }
 
+    /// Lists resolved components for every plugin with a valid current version.
+    ///
+    /// # Returns
+    /// - `Ok(Vec<InstalledPluginComponents>)` sorted by plugin id.
+    /// - `Err(String)` when store traversal fails.
     pub fn list_current_components(&self) -> Result<Vec<InstalledPluginComponents>, String> {
+        trace!("list_current_components: root='{}'", self.root.display());
+
         if !self.root.is_dir() {
+            debug!("list_current_components: root is not a directory, returning empty");
             return Ok(Vec::new());
         }
+
+        trace!("list_current_components: reading directory");
         let entries =
             fs::read_dir(&self.root).map_err(|e| format!("read {}: {e}", self.root.display()))?;
         let mut out = Vec::new();
+
+        trace!("list_current_components: iterating entries");
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_dir() {
@@ -782,20 +1045,84 @@ impl PluginBundleStore {
                 Some(s) => s.to_string(),
                 None => continue,
             };
-            if let Some(c) = self.load_current_components(&plugin_id)? {
-                out.push(c);
+
+            debug!("list_current_components: checking plugin '{}'", plugin_id);
+            match self.load_current_components(&plugin_id) {
+                Ok(Some(c)) => {
+                    debug!(
+                        "list_current_components: plugin '{}' has components, has_module={}",
+                        plugin_id,
+                        c.module.is_some()
+                    );
+                    out.push(c);
+                }
+                Ok(None) => {
+                    debug!(
+                        "list_current_components: plugin '{}' has no current components",
+                        plugin_id
+                    );
+                }
+                Err(err) => {
+                    warn!(
+                        "list_current_components: skipping invalid plugin '{}': {}",
+                        plugin_id, err
+                    );
+                }
             }
         }
         out.sort_by(|a, b| a.plugin_id.cmp(&b.plugin_id));
+        debug!(
+            "list_current_components: returning {} components",
+            out.len()
+        );
         Ok(out)
     }
 
+    /// Reads plugin index metadata from disk.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin id.
+    ///
+    /// # Returns
+    /// - `Some(InstalledPluginIndex)` when present and parseable.
+    /// - `None` otherwise.
     fn read_index(&self, plugin_id: &str) -> Option<InstalledPluginIndex> {
+        trace!("read_index: plugin_id='{}'", plugin_id);
         let p = self.root.join(plugin_id).join("index.json");
-        let text = fs::read_to_string(p).ok()?;
-        serde_json::from_str(&text).ok()
+        debug!("read_index: path='{}'", p.display());
+
+        let text = match fs::read_to_string(&p) {
+            Ok(t) => {
+                debug!("read_index: file read successfully");
+                t
+            }
+            Err(e) => {
+                debug!("read_index: failed to read file: {}", e);
+                return None;
+            }
+        };
+
+        match serde_json::from_str(&text) {
+            Ok(index) => {
+                debug!("read_index: parsed index for '{}'", plugin_id);
+                Some(index)
+            }
+            Err(e) => {
+                debug!("read_index: failed to parse index: {}", e);
+                None
+            }
+        }
     }
 
+    /// Writes plugin index metadata atomically.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin id.
+    /// - `index`: Index payload.
+    ///
+    /// # Returns
+    /// - `Ok(())` on success.
+    /// - `Err(String)` on serialization or IO failure.
     fn write_index(&self, plugin_id: &str, index: &InstalledPluginIndex) -> Result<(), String> {
         let p = self.root.join(plugin_id).join("index.json");
         let tmp = p.with_extension("json.tmp");
@@ -806,6 +1133,15 @@ impl PluginBundleStore {
         Ok(())
     }
 
+    /// Writes current-version pointer atomically.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin id.
+    /// - `cur`: Current version payload.
+    ///
+    /// # Returns
+    /// - `Ok(())` on success.
+    /// - `Err(String)` on serialization or IO failure.
     fn write_current(&self, plugin_id: &str, cur: &CurrentPointer) -> Result<(), String> {
         let p = self.root.join(plugin_id).join("current.json");
         let tmp = p.with_extension("json.tmp");
@@ -819,10 +1155,18 @@ impl PluginBundleStore {
 
 static BUILT_IN_PLUGIN_IDS: OnceLock<HashSet<String>> = OnceLock::new();
 
+/// Returns the set of built-in plugin identifiers normalized to lowercase.
+///
+/// # Returns
+/// - A process-wide cached set of lowercase built-in plugin ids.
 pub fn built_in_plugin_ids() -> &'static HashSet<String> {
     BUILT_IN_PLUGIN_IDS.get_or_init(read_built_in_plugin_ids)
 }
 
+/// Reads built-in plugin ids from bundled `.ovcsp` archives.
+///
+/// # Returns
+/// - Lowercased built-in plugin id set.
 fn read_built_in_plugin_ids() -> HashSet<String> {
     let mut out: HashSet<String> = HashSet::new();
 
@@ -849,6 +1193,10 @@ fn read_built_in_plugin_ids() -> HashSet<String> {
     out
 }
 
+/// Lists discovered built-in `.ovcsp` bundle files.
+///
+/// # Returns
+/// - Bundle file paths.
 fn builtin_bundle_paths() -> Vec<PathBuf> {
     let mut out = Vec::new();
     for root in built_in_plugin_dirs() {
@@ -874,6 +1222,14 @@ fn builtin_bundle_paths() -> Vec<PathBuf> {
     out
 }
 
+/// Chooses an install version string from manifest version or bundle hash.
+///
+/// # Parameters
+/// - `manifest`: Parsed manifest.
+/// - `bundle_sha256`: Bundle digest.
+///
+/// # Returns
+/// - Version string used for installation metadata.
 fn derive_install_version(manifest: &PluginManifest, bundle_sha256: &str) -> String {
     manifest
         .version
@@ -884,6 +1240,14 @@ fn derive_install_version(manifest: &PluginManifest, bundle_sha256: &str) -> Str
         .unwrap_or_else(|| format!("sha256-{}", &bundle_sha256[..12]))
 }
 
+/// Finds and parses `openvcs.plugin.json` from a tar.xz bundle.
+///
+/// # Parameters
+/// - `bundle_path`: Bundle file path.
+///
+/// # Returns
+/// - `Ok((PathBuf, PluginManifest))` manifest path inside archive and manifest payload.
+/// - `Err(String)` on read/parse/validation failure.
 fn locate_manifest_tar_xz(bundle_path: &Path) -> Result<(PathBuf, PluginManifest), String> {
     let file =
         fs::File::open(bundle_path).map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
@@ -935,6 +1299,13 @@ fn locate_manifest_tar_xz(bundle_path: &Path) -> Result<(PathBuf, PluginManifest
     Ok((manifest_path, manifest))
 }
 
+/// Normalizes capability identifiers (trim/sort/dedup).
+///
+/// # Parameters
+/// - `caps`: Raw capability list.
+///
+/// # Returns
+/// - Normalized capability list.
 fn normalize_capabilities(mut caps: Vec<String>) -> Vec<String> {
     for c in &mut caps {
         *c = c.trim().to_string();
@@ -945,14 +1316,38 @@ fn normalize_capabilities(mut caps: Vec<String>) -> Vec<String> {
     caps
 }
 
+/// Normalizes optional exec name values.
+///
+/// # Parameters
+/// - `exec`: Optional exec string.
+///
+/// # Returns
+/// - Trimmed non-empty exec name or `None`.
 fn normalize_exec(exec: Option<String>) -> Option<String> {
     exec.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
+/// Applies platform-specific executable naming.
+///
+/// # Parameters
+/// - `base`: Base executable name.
+///
+/// # Returns
+/// - Platform-adjusted executable name.
 fn platform_exec_name(base: &str) -> String {
     base.to_string()
 }
 
+/// Validates that a declared entrypoint exists and is a Node module.
+///
+/// # Parameters
+/// - `version_dir`: Installed version directory.
+/// - `exec`: Optional exec name.
+/// - `label`: Component label for error messages.
+///
+/// # Returns
+/// - `Ok(())` when valid.
+/// - `Err(String)` when invalid or missing.
 fn validate_entrypoint(version_dir: &Path, exec: Option<&str>, label: &str) -> Result<(), String> {
     let Some(exec) = exec else {
         return Ok(());
@@ -962,9 +1357,11 @@ fn validate_entrypoint(version_dir: &Path, exec: Option<&str>, label: &str) -> R
         return Ok(());
     }
 
-    if !trimmed.ends_with(".wasm") {
+    let lower = trimmed.to_ascii_lowercase();
+    let is_supported = lower.ends_with(".js") || lower.ends_with(".mjs") || lower.ends_with(".cjs");
+    if !is_supported {
         return Err(format!(
-            "{} entrypoint must be a .wasm module, got: {}",
+            "{} entrypoint must be a .js/.mjs/.cjs Node module, got: {}",
             label, trimmed
         ));
     }
@@ -989,18 +1386,33 @@ mod tests {
     use tempfile::tempdir;
     use xz2::write::XzEncoder;
 
+    /// Synthetic tar entry kind used by bundle-construction helpers.
     enum TarEntryKind {
+        /// Regular file entry.
         File,
+        /// Symbolic-link entry targeting `target`.
         Symlink { target: String },
     }
 
+    /// Synthetic tar entry used to build fixture bundles in tests.
     struct TarEntry {
+        /// Path written into the tar header.
         name: String,
+        /// Raw entry payload bytes.
         data: Vec<u8>,
+        /// Optional Unix mode to set in the tar header.
         unix_mode: Option<u32>,
+        /// Tar entry type selector.
         kind: TarEntryKind,
     }
 
+    /// Builds a tar.xz bundle from synthetic test entries.
+    ///
+    /// # Parameters
+    /// - `entries`: Tar entries to include.
+    ///
+    /// # Returns
+    /// - Encoded tar.xz bytes.
     fn make_tar_xz_bundle(entries: Vec<TarEntry>) -> Vec<u8> {
         let cursor = Cursor::new(Vec::<u8>::new());
         let encoder = XzEncoder::new(cursor, 6);
@@ -1037,7 +1449,22 @@ mod tests {
         encoder.finish().unwrap().into_inner()
     }
 
+    /// Builds a minimal raw tar.xz bundle from `(path, bytes)` tuples.
+    ///
+    /// # Parameters
+    /// - `entries`: Raw path/data entries.
+    ///
+    /// # Returns
+    /// - Encoded tar.xz bytes.
     fn make_raw_tar_xz_bundle(entries: Vec<(String, Vec<u8>)>) -> Vec<u8> {
+        /// Writes an octal tar header field.
+        ///
+        /// # Parameters
+        /// - `field`: Mutable tar field bytes.
+        /// - `value`: Numeric value to encode.
+        ///
+        /// # Returns
+        /// - `()`.
         fn write_octal(field: &mut [u8], value: u64) {
             field.fill(0);
             let width = field.len();
@@ -1050,6 +1477,14 @@ mod tests {
             }
         }
 
+        /// Creates a POSIX tar header block for a file.
+        ///
+        /// # Parameters
+        /// - `name`: Tar entry name.
+        /// - `size`: Entry size in bytes.
+        ///
+        /// # Returns
+        /// - 512-byte tar header.
         fn tar_header(name: &str, size: u64) -> [u8; 512] {
             let mut h = [0u8; 512];
             let name_bytes = name.as_bytes();
@@ -1095,6 +1530,13 @@ mod tests {
         out
     }
 
+    /// Writes bundle bytes to a temporary `.ovcsp` file.
+    ///
+    /// # Parameters
+    /// - `bytes`: Bundle bytes.
+    ///
+    /// # Returns
+    /// - Tempdir handle and bundle path.
     fn write_bundle_to_temp(bytes: &[u8]) -> (tempfile::TempDir, PathBuf) {
         let dir = tempdir().unwrap();
         let path = dir.path().join("bundle.ovcsp");
@@ -1102,11 +1544,23 @@ mod tests {
         (dir, path)
     }
 
+    /// Builds a minimal manifest JSON payload used by tests.
+    ///
+    /// # Parameters
+    /// - `id`: Plugin id.
+    /// - `extra`: Extra JSON fragment appended into the object.
+    ///
+    /// # Returns
+    /// - Manifest JSON bytes.
     fn basic_manifest(id: &str, extra: &str) -> Vec<u8> {
         format!("{{\"id\":\"{id}\",\"name\":\"Test\",\"version\":\"1.0.0\"{extra}}}").into_bytes()
     }
 
     #[test]
+    /// Verifies installer enforces file-count limits.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_enforces_file_count_and_size_limits() {
         let mut entries = vec![TarEntry {
             name: "test.plugin/openvcs.plugin.json".into(),
@@ -1139,6 +1593,10 @@ mod tests {
     }
 
     #[test]
+    /// Verifies installer requires manifest at expected path.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_requires_manifest_at_expected_location() {
         let bundle = make_tar_xz_bundle(vec![TarEntry {
             name: "test.plugin/other.json".into(),
@@ -1156,12 +1614,16 @@ mod tests {
     }
 
     #[test]
+    /// Verifies installer validates declared entrypoints.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_validates_declared_entrypoints_exist() {
         let bundle = make_tar_xz_bundle(vec![TarEntry {
             name: "test.plugin/openvcs.plugin.json".into(),
             data: basic_manifest(
                 "test.plugin",
-                ",\"module\":{\"exec\":\"missing.wasm\",\"vcs_backends\":[\"x\"]}",
+                ",\"module\":{\"exec\":\"missing.mjs\",\"vcs_backends\":[\"x\"]}",
             ),
             unix_mode: None,
             kind: TarEntryKind::File,
@@ -1176,20 +1638,48 @@ mod tests {
     }
 
     #[test]
+    /// Verifies installer rejects deprecated functions component manifests.
+    ///
+    /// # Returns
+    /// - `()`.
+    fn install_rejects_functions_component() {
+        let bundle = make_tar_xz_bundle(vec![TarEntry {
+            name: "test.plugin/openvcs.plugin.json".into(),
+            data: basic_manifest("test.plugin", ",\"functions\":{\"exec\":\"legacy.mjs\"}"),
+            unix_mode: None,
+            kind: TarEntryKind::File,
+        }]);
+
+        let (_tmp, bundle_path) = write_bundle_to_temp(&bundle);
+        let store_root = tempdir().unwrap();
+        let store = PluginBundleStore::new_at(store_root.path().to_path_buf());
+
+        let err = store.install_ovcsp(&bundle_path).unwrap_err();
+        assert_eq!(
+            err,
+            "manifest uses unsupported field 'functions'; use module.exec only"
+        );
+    }
+
+    #[test]
+    /// Verifies installer accepts valid tar.xz bundles.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_accepts_tar_xz_bundles() {
         let bundle = make_tar_xz_bundle(vec![
             TarEntry {
                 name: "test.plugin/openvcs.plugin.json".into(),
                 data: basic_manifest(
                     "test.plugin",
-                    ",\"module\":{\"exec\":\"mod.wasm\",\"vcs_backends\":[]}",
+                    ",\"module\":{\"exec\":\"mod.mjs\",\"vcs_backends\":[]}",
                 ),
                 unix_mode: None,
                 kind: TarEntryKind::File,
             },
             TarEntry {
-                name: "test.plugin/bin/mod.wasm".into(),
-                data: b"\0asm".to_vec(),
+                name: "test.plugin/bin/mod.mjs".into(),
+                data: b"export {};\n".to_vec(),
                 unix_mode: Some(0o100644),
                 kind: TarEntryKind::File,
             },
@@ -1205,6 +1695,10 @@ mod tests {
     }
 
     #[test]
+    /// Verifies installer rejects zip-slip parent path traversal.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_rejects_tar_zipslip_parent_dir() {
         let bundle = make_raw_tar_xz_bundle(vec![
             (
@@ -1223,6 +1717,10 @@ mod tests {
     }
 
     #[test]
+    /// Verifies installer rejects symlink entries.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_rejects_tar_symlink_entries() {
         let bundle = make_tar_xz_bundle(vec![
             TarEntry {
@@ -1250,6 +1748,10 @@ mod tests {
     }
 
     #[test]
+    /// Verifies installer rejects suspicious compression ratios.
+    ///
+    /// # Returns
+    /// - `()`.
     fn install_rejects_tar_suspicious_compression_ratio() {
         let big = vec![0u8; 2 * 1024 * 1024];
         let bundle = make_tar_xz_bundle(vec![
@@ -1280,5 +1782,97 @@ mod tests {
 
         let err = store.install_ovcsp_with_limits(&bundle_path, limits);
         assert!(err.is_err());
+    }
+
+    #[test]
+    /// Verifies component listing skips invalid plugins instead of failing globally.
+    fn list_current_components_skips_invalid_plugins() {
+        let root = tempdir().expect("tempdir");
+        let store = PluginBundleStore::new_at(root.path().to_path_buf());
+
+        write_installed_plugin(root.path(), "valid.theme", "1.0.0", None);
+        write_installed_plugin(root.path(), "broken.runtime", "1.0.0", Some("plugin.wasm"));
+
+        let components = store
+            .list_current_components()
+            .expect("list current components");
+
+        assert_eq!(components.len(), 1);
+        assert_eq!(components[0].plugin_id, "valid.theme");
+        assert!(components[0].module.is_none());
+    }
+
+    /// Writes an installed plugin directory with optional module entrypoint.
+    fn write_installed_plugin(
+        root: &std::path::Path,
+        plugin_id: &str,
+        version: &str,
+        module_exec: Option<&str>,
+    ) {
+        let plugin_dir = root.join(plugin_id);
+        fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+
+        let manifest = if let Some(exec) = module_exec {
+            serde_json::json!({
+                "id": plugin_id,
+                "name": "Test",
+                "version": version,
+                "default_enabled": false,
+                "module": {
+                    "exec": exec,
+                    "vcs_backends": []
+                }
+            })
+        } else {
+            serde_json::json!({
+                "id": plugin_id,
+                "name": "Test",
+                "version": version,
+                "default_enabled": false
+            })
+        };
+
+        fs::write(
+            plugin_dir.join(PLUGIN_MANIFEST_NAME),
+            serde_json::to_vec_pretty(&manifest).expect("serialize manifest"),
+        )
+        .expect("write manifest");
+
+        let index = InstalledPluginIndex {
+            plugin_id: plugin_id.to_string(),
+            current: Some(version.to_string()),
+            versions: {
+                let mut versions = BTreeMap::new();
+                versions.insert(
+                    version.to_string(),
+                    InstalledPluginVersion {
+                        version: version.to_string(),
+                        bundle_sha256: "sha".to_string(),
+                        installed_at_unix_ms: 0,
+                        requested_capabilities: Vec::new(),
+                        approval: ApprovalState::Approved {
+                            capabilities: Vec::new(),
+                            approved_at_unix_ms: 0,
+                        },
+                    },
+                );
+                versions
+            },
+        };
+
+        fs::write(
+            plugin_dir.join("index.json"),
+            serde_json::to_vec_pretty(&index).expect("serialize index"),
+        )
+        .expect("write index");
+
+        let current = CurrentPointer {
+            version: version.to_string(),
+        };
+        fs::write(
+            plugin_dir.join("current.json"),
+            serde_json::to_vec_pretty(&current).expect("serialize current"),
+        )
+        .expect("write current");
     }
 }

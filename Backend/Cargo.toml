@@ -1,6 +1,6 @@
 [package]
 name = "openvcs"
-version = "0.1.1"
+version = "0.2.0"
 description = "OpenVCS: a lightweight, highly customizable Git GUI built on Rust & Tauri"
 authors = ["Jordon Brooks"]
 homepage = "https://bbgames.dev"
@@ -25,20 +25,19 @@ serde_json = "1.0"
 default = []
 
 [dependencies]
-openvcs-core = { version = "0.1", features = ["plugin-protocol", "vcs"] }
-
-tauri = { version = "2.9", features = [] }
+tauri = { version = "2.10", features = [] }
 tauri-plugin-opener = "2.5"
 serde = { version = "1", features = ["derive"] }
+notify = "6"
 tauri-plugin-dialog = "2.5"
 tauri-plugin-updater = "2.9"
-tokio = { version = "1.49", features = ["io-util", "process", "rt", "sync", "time"] }
+tokio = { version = "1.50", features = ["io-util", "process", "rt", "sync", "time"] }
 dirs = "6"
 regex = "1.12"
 log = "0.4" 
 env_logger = "0.11"
 parking_lot = "0.12"
-toml = "0.9.11"
+toml = "1.0.6"
 directories = "6"
 serde_json = "1.0"
 time = { version = "0.3", features = ["local-offset"] }
@@ -49,8 +48,8 @@ shlex = "1.2"
 sha2 = "0.10"
 hex = "0.4"
 os_pipe = "1.2"
-wasmtime = "41"
-wasmtime-wasi = "41"
+base64 = "0.22"
+thiserror = "2"
 
 [dev-dependencies]
 tempfile = "3"

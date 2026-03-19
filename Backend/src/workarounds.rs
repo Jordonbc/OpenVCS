@@ -1,4 +1,10 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 #[cfg(target_os = "linux")]
+/// Applies a runtime workaround for NVIDIA + Wayland rendering issues.
+///
+/// # Returns
+/// - `()`.
 pub fn apply_linux_nvidia_workaround() {
     // Only apply if we're on Wayland + NVIDIA
     let is_wayland = std::env::var("XDG_SESSION_TYPE")
@@ -33,6 +39,10 @@ pub fn apply_linux_nvidia_workaround() {
 
 #[cfg(not(target_os = "linux"))]
 #[inline]
+/// No-op on non-Linux platforms.
+///
+/// # Returns
+/// - `()`.
 pub fn apply_linux_nvidia_workaround() {
     // no-op on non-Linux
 }

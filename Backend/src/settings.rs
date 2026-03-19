@@ -1,12 +1,21 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! Global application configuration types and persistence helpers.
+
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{fs, io};
 
+/// Serde helper default for `true`.
+///
+/// # Returns
+/// - `true`.
 fn default_true() -> bool {
     true
 }
 
+/// Root global settings document persisted as TOML.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub schema_version: u32,
@@ -37,6 +46,10 @@ pub struct AppConfig {
 }
 
 impl Default for AppConfig {
+    /// Returns default global configuration values.
+    ///
+    /// # Returns
+    /// - Default [`AppConfig`].
     fn default() -> Self {
         Self {
             schema_version: 1,
@@ -56,7 +69,8 @@ impl Default for AppConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Settings for app-wide behavior and startup UX.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct General {
     #[serde(default)]
     pub theme: Theme,
@@ -78,6 +92,10 @@ pub struct General {
     pub crash_reports: bool,
 }
 impl Default for General {
+    /// Returns default general settings values.
+    ///
+    /// # Returns
+    /// - Default [`General`].
     fn default() -> Self {
         Self {
             theme: Theme::System,
@@ -93,11 +111,16 @@ impl Default for General {
     }
 }
 
+/// Returns the default theme pack id.
+///
+/// # Returns
+/// - Default theme pack string.
 fn default_theme_pack() -> String {
     "default".to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Settings that control Git backend behavior.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Git {
     #[serde(default)]
     pub backend: String,
@@ -129,6 +152,10 @@ pub struct Git {
     pub merge_commit_message_template: String,
 }
 impl Default for Git {
+    /// Returns default Git settings values.
+    ///
+    /// # Returns
+    /// - Default [`Git`].
     fn default() -> Self {
         Self {
             backend: String::new(),
@@ -145,7 +172,8 @@ impl Default for Git {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Settings for authentication and signing tools.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Credentials {
     #[serde(default)]
     pub helper: CredentialHelper,
@@ -162,6 +190,10 @@ pub struct Credentials {
     pub signing_key: String,
 }
 impl Default for Credentials {
+    /// Returns default credential settings values.
+    ///
+    /// # Returns
+    /// - Default [`Credentials`].
     fn default() -> Self {
         Self {
             helper: CredentialHelper::OsKeychain,
@@ -174,7 +206,8 @@ impl Default for Credentials {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Settings that control diff rendering and external tools.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Diff {
     #[serde(default)]
     pub tab_width: u8,
@@ -195,6 +228,10 @@ pub struct Diff {
     pub binary_exts: Vec<String>,
 }
 impl Default for Diff {
+    /// Returns default diff settings values.
+    ///
+    /// # Returns
+    /// - Default [`Diff`].
     fn default() -> Self {
         Self {
             tab_width: 4,
@@ -209,7 +246,8 @@ impl Default for Diff {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Git LFS behavior settings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Lfs {
     #[serde(default)]
     pub enabled: bool,
@@ -221,6 +259,10 @@ pub struct Lfs {
     pub background_fetch_on_checkout: bool,
 }
 impl Default for Lfs {
+    /// Returns default LFS settings values.
+    ///
+    /// # Returns
+    /// - Default [`Lfs`].
     fn default() -> Self {
         Self {
             enabled: true,
@@ -231,7 +273,8 @@ impl Default for Lfs {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Performance and animation tuning options.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Performance {
     #[serde(default)]
     pub progressive_render: bool,
@@ -241,6 +284,10 @@ pub struct Performance {
     pub animations: bool,
 }
 impl Default for Performance {
+    /// Returns default performance settings values.
+    ///
+    /// # Returns
+    /// - Default [`Performance`].
     fn default() -> Self {
         Self {
             progressive_render: true,
@@ -250,7 +297,8 @@ impl Default for Performance {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Integrations with editors and issue providers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Integrations {
     #[serde(default)]
     pub default_editor: EditorChoice,
@@ -261,6 +309,10 @@ pub struct Integrations {
     pub host_overrides: std::collections::BTreeMap<String, IssueProvider>,
 }
 impl Default for Integrations {
+    /// Returns default integration settings values.
+    ///
+    /// # Returns
+    /// - Default [`Integrations`].
     fn default() -> Self {
         Self {
             default_editor: EditorChoice::System,
@@ -270,7 +322,8 @@ impl Default for Integrations {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// Plugin enable/disable overrides.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Plugins {
     /// Plugin ids that are installed but disabled.
     ///
@@ -284,7 +337,8 @@ pub struct Plugins {
     pub enabled: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// User interface and accessibility options.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Ux {
     #[serde(default)]
     pub ui_scale: f32,
@@ -299,6 +353,10 @@ pub struct Ux {
     pub recents_limit: u32,
 }
 impl Default for Ux {
+    /// Returns default UX settings values.
+    ///
+    /// # Returns
+    /// - Default [`Ux`].
     fn default() -> Self {
         Self {
             ui_scale: 1.0,
@@ -310,7 +368,8 @@ impl Default for Ux {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Advanced networking and force-push safety options.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Advanced {
     #[serde(default)]
     pub confirm_force_push: ForcePushPolicy,
@@ -320,6 +379,10 @@ pub struct Advanced {
     pub proxy: Proxy,
 }
 impl Default for Advanced {
+    /// Returns default advanced settings values.
+    ///
+    /// # Returns
+    /// - Default [`Advanced`].
     fn default() -> Self {
         Self {
             confirm_force_push: ForcePushPolicy::Always,
@@ -329,7 +392,8 @@ impl Default for Advanced {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// Experimental features that may change between releases.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Experimental {
     #[serde(default)]
     pub parallel_history_scan: bool,
@@ -339,7 +403,8 @@ pub struct Experimental {
     pub sparse_checkout_ui: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Logging verbosity and retention options.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Logging {
     #[serde(default)]
     pub level: LogLevel,
@@ -352,6 +417,10 @@ pub struct Logging {
     pub retain_archives: u32,
 }
 impl Default for Logging {
+    /// Returns default logging settings values.
+    ///
+    /// # Returns
+    /// - Default [`Logging`].
     fn default() -> Self {
         Self {
             level: LogLevel::Info,
@@ -361,10 +430,15 @@ impl Default for Logging {
     }
 }
 
+/// Serde helper default for retained log archive count.
+///
+/// # Returns
+/// - Archive count default.
 fn default_retain_archives() -> u32 {
     10
 }
 
+/// Theme preference for application chrome.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -375,6 +449,7 @@ pub enum Theme {
     System,
 }
 
+/// Preferred language for localized UI text.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -384,6 +459,7 @@ pub enum Language {
     EN,
 }
 
+/// Release channel used by update checks.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -394,6 +470,7 @@ pub enum UpdateChannel {
     Nightly,
 }
 
+/// SSH binary selection strategy for Git operations.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -405,6 +482,7 @@ pub enum GitSshBinary {
     Custom,
 }
 
+/// Policy used when Git hooks are encountered.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -415,6 +493,7 @@ pub enum HookPolicy {
     Allow,
 }
 
+/// Credential helper preference used for HTTPS authentication.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -424,6 +503,7 @@ pub enum CredentialHelper {
     None,
 }
 
+/// SSH agent integration mode.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -435,6 +515,7 @@ pub enum SshAgent {
     None,
 }
 
+/// Whitespace filtering mode for diffs.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -445,7 +526,8 @@ pub enum WhitespaceMode {
     All,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Executable and arguments for an optional external diff/merge tool.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExternalTool {
     #[serde(default)]
     pub enabled: bool,
@@ -455,6 +537,10 @@ pub struct ExternalTool {
     pub args: String,
 }
 impl ExternalTool {
+    /// Returns a disabled external tool configuration.
+    ///
+    /// # Returns
+    /// - An [`ExternalTool`] with `enabled = false` and empty command fields.
     pub fn disabled() -> Self {
         Self {
             enabled: false,
@@ -464,11 +550,16 @@ impl ExternalTool {
     }
 }
 impl Default for ExternalTool {
+    /// Returns the disabled default external tool config.
+    ///
+    /// # Returns
+    /// - Default [`ExternalTool`].
     fn default() -> Self {
         Self::disabled()
     }
 }
 
+/// Preferred editor integration target.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -482,6 +573,7 @@ pub enum EditorChoice {
     Custom,
 }
 
+/// Preferred issue provider mapping mode.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -493,6 +585,7 @@ pub enum IssueProvider {
     Forgejo,
 }
 
+/// Color-vision accessibility mode for diff/UI accents.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -504,6 +597,7 @@ pub enum ColorBlindMode {
     Tritanopia,
 }
 
+/// Force-push confirmation policy.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -514,7 +608,8 @@ pub enum ForcePushPolicy {
     Never,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// HTTP proxy configuration used for network operations.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Proxy {
     #[serde(default)]
     pub mode: ProxyMode,
@@ -522,6 +617,10 @@ pub struct Proxy {
     pub url: String,
 }
 impl Proxy {
+    /// Returns the default proxy configuration that uses the system proxy settings.
+    ///
+    /// # Returns
+    /// - A [`Proxy`] configured with [`ProxyMode::System`].
     pub fn system() -> Self {
         Self {
             mode: ProxyMode::System,
@@ -530,11 +629,16 @@ impl Proxy {
     }
 }
 impl Default for Proxy {
+    /// Returns the default system-proxy configuration.
+    ///
+    /// # Returns
+    /// - Default [`Proxy`].
     fn default() -> Self {
         Proxy::system()
     }
 }
 
+/// Proxy mode selection.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -545,6 +649,7 @@ pub enum ProxyMode {
     Off,
 }
 
+/// Application log verbosity.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -560,6 +665,9 @@ pub enum LogLevel {
 //
 impl AppConfig {
     /// ~/.config/openvcs/openvcs.conf (XDG/macOS/Windows aware)
+    ///
+    /// # Returns
+    /// - Filesystem path to the global OpenVCS config file.
     pub fn path() -> PathBuf {
         if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
             pd.config_dir().join("openvcs.conf")
@@ -569,6 +677,9 @@ impl AppConfig {
     }
 
     /// Load from disk or fall back to defaults; then migrate+validate.
+    ///
+    /// # Returns
+    /// - A valid [`AppConfig`] loaded from disk or synthesized from defaults.
     pub fn load_or_default() -> Self {
         let p = Self::path();
         let mut cfg = match fs::read_to_string(&p) {
@@ -581,6 +692,10 @@ impl AppConfig {
     }
 
     /// Pretty TOML write with atomic-ish replace.
+    ///
+    /// # Returns
+    /// - `Ok(())` when the config file was written successfully.
+    /// - `Err(io::Error)` when writing or renaming fails.
     pub fn save(&self) -> io::Result<()> {
         let p = Self::path();
         if let Some(parent) = p.parent() {
@@ -592,7 +707,40 @@ impl AppConfig {
         fs::rename(tmp, p)
     }
 
+    /// Returns whether a plugin should be considered enabled by current settings.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin id to evaluate.
+    /// - `default_enabled`: Manifest-provided default enabled flag.
+    ///
+    /// # Returns
+    /// - `true` when plugin should be active.
+    /// - `false` otherwise.
+    pub fn is_plugin_enabled(&self, plugin_id: &str, default_enabled: bool) -> bool {
+        let plugin_id = plugin_id.trim().to_ascii_lowercase();
+        if plugin_id.is_empty() {
+            return false;
+        }
+        if self
+            .plugins
+            .disabled
+            .iter()
+            .any(|id| id.trim().eq_ignore_ascii_case(&plugin_id))
+        {
+            return false;
+        }
+        default_enabled
+            || self
+                .plugins
+                .enabled
+                .iter()
+                .any(|id| id.trim().eq_ignore_ascii_case(&plugin_id))
+    }
+
     /// Future-proof migrations between schema versions.
+    ///
+    /// # Returns
+    /// - `()`.
     pub fn migrate(&mut self) {
         match self.schema_version {
             0 => { /* never shipped */ }
@@ -603,6 +751,9 @@ impl AppConfig {
     }
 
     /// Clamp and normalize values so hand edits can’t break the app.
+    ///
+    /// # Returns
+    /// - `()`.
     pub fn validate(&mut self) {
         // General: nothing to clamp right now.
         if self.general.theme_pack.trim().is_empty() {

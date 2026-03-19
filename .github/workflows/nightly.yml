@@ -21,7 +21,7 @@ env:
   # Scheduled runs should always build from Dev. Manual runs should build from the selected branch.
   TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'Dev' }}
   # Flatpak is enabled in CI.
-  OPENVCS_ENABLE_FLATPAK: '1'
+  OPENVCS_ENABLE_FLATPAK: '0'
 
 jobs:
   check-changes:
@@ -156,7 +156,7 @@ jobs:
 
       # ---------- Frontend ----------
       - name: Setup Node
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -175,9 +175,6 @@ jobs:
         uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
         with:
           components: rustfmt, clippy
-
-      - name: Add WASI target
-        run: rustup target add wasm32-wasip1
 
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
@@ -224,14 +221,14 @@ jobs:
 
       - name: Upload Flatpak bundle (artifact)
         if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: OpenVCS-flatpak-nightly
           path: OpenVCS.flatpak
 
       # ---------- Cache ----------
       - name: Rust cache
-        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       - name: Cargo fmt (check)
         run: cargo fmt --all -- --check
@@ -258,7 +255,7 @@ jobs:
 
       # ---------- Build & publish ----------
       - name: Build and publish Nightly prerelease
-        uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # action-v0.6.1
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # action-v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FRONTEND_SKIP_BUILD: '1'

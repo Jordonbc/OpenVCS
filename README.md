@@ -59,7 +59,7 @@ Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 
 ## Features (Current)
 
-- 🔗 **Git support** with a selectable backend (**system Git** by default; **libgit2** optional).
+- 🔗 **Git support** via the built-in `openvcs.git` plugin (System Git execution).
 - 📁 **Repo workflows:** clone, open existing repos, recent repos list, optional reopen of last repo on launch.
 - ✅ **Status & diffs:** working tree status, per-file diff, commit diff, discard changes.
 - 🧩 **Staging & commits:** stage files, partial staging/commits via patch, commit from index.
@@ -70,7 +70,7 @@ Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 - 🗃 **Git LFS helpers:** fetch/pull/prune, track/untrack, inspect tracked paths.
 - 🔐 **SSH helpers:** trust host keys, list/add SSH agent keys, key discovery.
 - 🎨 **Themes:** built-in light/dark themes, plus plugin-provided themes (standalone theme `.zip` packs are not supported).
-- 🧩 **Plugins (early):** local plugins with manifests, hooks/actions, and UI contributions (no store yet).
+- 🧩 **Plugins (early):** installable `.ovcsp` bundles (theme packs and/or Node.js modules).
 - 🔄 **Updater & logs:** update check/install, VCS output log window, app log tail/clear.
 
 ## Planned / Exploratory
@@ -89,10 +89,6 @@ Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 .
 ├── Backend/              # Rust + Tauri backend (native logic, app entry)
 ├── Frontend/             # TypeScript + Vite frontend (UI layer)
-├── crates/               # Rust crates for modular OpenVCS components
-│   ├── openvcs-core      # Core traits and abstractions
-│   ├── openvcs-git       # Git implementation
-│   └── openvcs-git-libgit2 # Alternative Git backend (libgit2)
 ├── Cargo.toml            # Workspace manifest
 ├── LICENSE
 └── README.md
@@ -131,7 +127,7 @@ A Flatpak manifest exists under `packaging/flatpak/`, but Flatpak support is cur
 
 Known issues/limitations:
 
-- The sandbox does not provide `git`, but OpenVCS currently defaults to the **system Git** backend; in Flatpak you may need to switch to the **libgit2** backend in settings.
+- The sandbox does not provide `git`, and OpenVCS currently relies on **system Git** via plugin execution.
 - If the frontend assets are not included correctly, the app can show a blank window / “could not connect to localhost” (dev server) instead of loading `Frontend/dist`.
 
 For local build notes see `packaging/flatpak/README.md`.
@@ -155,6 +151,7 @@ npm install
 **Run in development mode (dev server):**
 
 ```bash
+cd Backend
 cargo tauri dev
 ```
 
@@ -181,7 +178,7 @@ cargo build
 
 - **Frontend:** TypeScript + Vite for a fast iteration loop.
 - **Backend:** Rust + Tauri commands for native operations.
-- **Crates:** All modular logic (e.g., Git backend, core abstractions) lives under `crates/`.
+- **Backend contracts:** shared Rust VCS models/traits now live in `Backend/src/core/` and are owned by the backend module.
 - **Bridge:** Tauri `invoke` is used to call Rust from the UI; events are used for progress/streaming.
 
 ---
@@ -189,7 +186,7 @@ cargo build
 ## Testing
 
 - Use `just test` to run the full project test/check flow (runs `cargo test --workspace`, then frontend typecheck and tests).
-- Use `just fix` to run formatting and quick fixes; it now also builds the frontend and typechecks (`npm run build` and `npm exec tsc -- -p tsconfig.json --noEmit`).
+- Use `just fix` to run formatting and clippy fixes plus a frontend typecheck.
 - Frontend-only commands (from `Frontend/`):
   - `npm exec tsc -- -p tsconfig.json --noEmit` — TypeScript typecheck for the frontend.
   - `npm test` — run Vitest unit tests (added to the frontend devDependencies).

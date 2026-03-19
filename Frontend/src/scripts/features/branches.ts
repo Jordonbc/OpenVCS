@@ -1,6 +1,9 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 // src/scripts/features/branches.ts
 import { qs } from '../lib/dom';
 import { TAURI } from '../lib/tauri';
+import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
 import { refreshOverlayScrollbarsFor } from '../lib/scrollbars';
 import { state } from '../state/state';
@@ -9,13 +12,14 @@ import { openRenameBranch } from './renameBranch';
 import { openSetUpstream } from './setUpstream';
 import { confirmDeleteBranch } from './deleteBranchConfirm';
 import { buildCtxMenu, CtxItem } from '../lib/menu';
-import { renderList, hydrateCommits, hydrateStatus } from './repo';
+import { renderList, hydrateStatus } from './repo';
 import { setTab } from '../ui/layout';
 import type { ConflictDetails, FileStatus } from '../types';
 import { openConflictsSummary } from './conflicts';
 import { getPluginContextMenuItems, runHook, runPluginAction } from '../plugins';
 
-type Branch = { name: string; full_ref?: string; current?: boolean; kind?: { type?: string; remote?: string } };
+type BranchKind = { type?: string; remote?: string };
+type Branch = { name: string; full_ref?: string; current?: boolean; kind?: BranchKind };
 
 const branchBtn    = qs<HTMLButtonElement>('#branch-switch');
 const branchName   = qs<HTMLElement>('#branch-name');
@@ -82,10 +86,11 @@ function renderBranches() {
         const kindType = b.kind?.type || '';
         const remoteFromName = b.name.includes('/') ? b.name.split('/')[0] : '';
         const remote   = b.kind?.remote || remoteFromName || '';
+        const remoteLabel = remote || 'remote';
         let kindLabel = '';
         if (kindType.toLowerCase() === 'local') kindLabel = '<span class="badge kind">Local</span>';
-        else if (kindType.toLowerCase() === 'remote') kindLabel = `<span class="badge kind">Remote:${remote || 'remote'}</span>`;
-        else if (remote) kindLabel = `<span class="badge kind">Remote:${remote || 'remote'}</span>`;
+        else if (kindType.toLowerCase() === 'remote') kindLabel = `<span class="badge kind">Remote:${remoteLabel}</span>`;
+        else if (remote) kindLabel = `<span class="badge kind">Remote:${remoteLabel}</span>`;
         return `
       <li role="option" data-branch="${b.name}" aria-selected="${b.current ? 'true' : 'false'}">
         <span class="label">
@@ -122,7 +127,11 @@ async function openBranchPopover() {
     branchPop.style.top  = `${r.bottom + 6}px`;
     branchPop.hidden = false;
     branchBtn.setAttribute('aria-expanded', 'true');
-    try { refreshOverlayScrollbarsFor(branchPop); } catch {}
+    try {
+        refreshOverlayScrollbarsFor(branchPop);
+    } catch (err) {
+        console.debug('Failed to refresh scrollbars for branch popover:', err);
+    }
     setTimeout(() => branchFilter?.focus(), 0);
 }
 
@@ -202,7 +211,7 @@ export function bindBranchUI() {
         }});
         items.push({ label: 'Merge into current…', action: async () => {
             if (name === cur) { notify('Cannot merge a branch into itself'); return; }
-            const ok = window.confirm(`Merge '${name}' into '${cur}'?`);
+            const ok = await confirmBool(`Merge '${name}' into '${cur}'?`);
             if (!ok) return;
             try {
                 if (TAURI.has) await TAURI.invoke('git_merge_branch', { name });
@@ -231,8 +240,8 @@ export function bindBranchUI() {
             items.push({ label: 'Set upstream…', action: async () => {
                 await loadBranches();
                 const remoteBranches = (state.branches || [])
-                    .filter((br: any) => (br?.kind?.type || '').toLowerCase() === 'remote')
-                    .map((br: any) => String(br?.name || '').trim())
+                    .filter((br: Branch) => (br?.kind?.type || '').toLowerCase() === 'remote')
+                    .map((br: Branch) => String(br?.name || '').trim())
                     .filter((s: string) => !!s);
 
                 if (remoteBranches.length === 0) {
@@ -282,7 +291,10 @@ export function bindBranchUI() {
                         notify(`Force-deleted '${name}'`);
                         await loadBranches();
                         await runHook('postBranchDelete', hookData);
-                    } catch { notify('Force delete failed'); }
+                    } catch (e) {
+                        console.error('Force delete failed:', e);
+                        notify('Force delete failed');
+                    }
                 }
             }});
         }

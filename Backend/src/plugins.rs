@@ -1,10 +1,18 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+use crate::plugin_bundles::PluginBundleStore;
 use crate::plugin_paths::{built_in_plugin_dirs, ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME};
-use log::warn;
+use log::{debug, warn};
+use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, OnceLock, RwLock,
+    },
 };
 
 const PLUGIN_THEMES_DIR_NAME: &str = "themes";
@@ -54,7 +62,7 @@ pub struct PluginThemeDir {
     pub path: PathBuf,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct RawPluginManifest {
     id: String,
     name: String,
@@ -74,10 +82,24 @@ struct RawPluginManifest {
     default_enabled: bool,
 }
 
+/// Serde helper for skipping `false` values.
+///
+/// # Parameters
+/// - `v`: Boolean value.
+///
+/// # Returns
+/// - `true` when value is false.
 fn is_false(v: &bool) -> bool {
     !*v
 }
 
+/// Trims optional strings and removes empties.
+///
+/// # Parameters
+/// - `value`: Optional string.
+///
+/// # Returns
+/// - Trimmed non-empty string or `None`.
 fn clean_opt(value: Option<String>) -> Option<String> {
     value.and_then(|v| {
         let trimmed = v.trim();
@@ -89,6 +111,13 @@ fn clean_opt(value: Option<String>) -> Option<String> {
     })
 }
 
+/// Trims, deduplicates, and normalizes tag lists.
+///
+/// # Parameters
+/// - `tags`: Raw tag list.
+///
+/// # Returns
+/// - Deduplicated normalized tag list.
 fn clean_tags(tags: Vec<String>) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
@@ -113,6 +142,10 @@ enum PluginOrigin {
 }
 
 impl PluginOrigin {
+    /// Returns serialized source label.
+    ///
+    /// # Returns
+    /// - Source label string.
     fn as_str(&self) -> &'static str {
         match self {
             PluginOrigin::BuiltIn => "built-in",
@@ -121,6 +154,159 @@ impl PluginOrigin {
     }
 }
 
+#[derive(Clone)]
+struct CachedPlugin {
+    resolved: PathBuf,
+    manifest: RawPluginManifest,
+    origin: PluginOrigin,
+}
+
+#[derive(Default)]
+struct CacheData {
+    list: Vec<PluginSummary>,
+    entries: HashMap<String, CachedPlugin>,
+    loaded: bool,
+}
+
+struct PluginCache {
+    data: RwLock<CacheData>,
+    dirty: AtomicBool,
+    watcher: Mutex<Option<RecommendedWatcher>>,
+}
+
+impl PluginCache {
+    fn initialize() -> Arc<Self> {
+        let cache = Arc::new(Self {
+            data: RwLock::new(CacheData::default()),
+            dirty: AtomicBool::new(true),
+            watcher: Mutex::new(None),
+        });
+        cache.ensure_fresh();
+        cache.watch_directories();
+        cache
+    }
+
+    fn list(&self) -> Vec<PluginSummary> {
+        self.ensure_fresh();
+        self.data.read().unwrap().list.clone()
+    }
+
+    fn load_cached_plugin(&self, id: &str) -> Option<CachedPlugin> {
+        self.ensure_fresh();
+        self.data.read().unwrap().entries.get(id).cloned()
+    }
+
+    fn mark_dirty(&self) {
+        self.dirty.store(true, Ordering::SeqCst);
+    }
+
+    fn ensure_fresh(&self) {
+        let needs_reload = self.dirty.swap(false, Ordering::SeqCst) || {
+            let data = self.data.read().unwrap();
+            !data.loaded
+        };
+        if needs_reload {
+            self.reload();
+        }
+    }
+
+    fn reload(&self) {
+        let built_in_ids = crate::plugin_bundles::built_in_plugin_ids();
+        let bundle_store = PluginBundleStore::new_default();
+        let mut seen = HashSet::new();
+        let mut summaries: Vec<PluginSummary> = Vec::new();
+        let mut entries: HashMap<String, CachedPlugin> = HashMap::new();
+
+        for (root, origin) in plugin_roots() {
+            match fs::read_dir(&root) {
+                Ok(iter) => {
+                    for entry in iter.flatten() {
+                        let path = entry.path();
+                        if !path.is_dir() {
+                            continue;
+                        }
+                        if let Ok((resolved, manifest)) = read_manifest_from_directory(&path) {
+                            let norm = manifest.id.trim().to_ascii_lowercase();
+                            if !seen.insert(norm.clone()) {
+                                continue;
+                            }
+
+                            let is_built_in = built_in_ids.contains(&norm);
+
+                            if !is_built_in
+                                && bundle_store.get_current_dir(&norm).ok().flatten().is_none()
+                            {
+                                debug!("plugins: skipping '{}' - not properly installed (no current version)", norm);
+                                continue;
+                            }
+
+                            let effective_origin = if is_built_in {
+                                PluginOrigin::BuiltIn
+                            } else {
+                                origin
+                            };
+                            let summary =
+                                manifest_to_summary(&resolved, manifest.clone(), effective_origin);
+                            summaries.push(summary);
+                            entries.insert(
+                                norm,
+                                CachedPlugin {
+                                    resolved: resolved.clone(),
+                                    manifest,
+                                    origin: effective_origin,
+                                },
+                            );
+                        }
+                    }
+                }
+                Err(err) => warn!("plugins: failed to list {}: {}", root.display(), err),
+            }
+        }
+
+        summaries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        let mut data = self.data.write().unwrap();
+        data.list = summaries;
+        data.entries = entries;
+        data.loaded = true;
+    }
+
+    fn watch_directories(self: &Arc<Self>) {
+        let cache = Arc::clone(self);
+        let mut watcher = match RecommendedWatcher::new(
+            move |res: notify::Result<Event>| match res {
+                Ok(_) => cache.mark_dirty(),
+                Err(err) => warn!("plugins: watcher error: {}", err),
+            },
+            Config::default(),
+        ) {
+            Ok(w) => w,
+            Err(err) => {
+                warn!("plugins: failed to start directory watcher: {}", err);
+                return;
+            }
+        };
+
+        for (root, _) in plugin_roots() {
+            if let Err(err) = watcher.watch(&root, RecursiveMode::Recursive) {
+                warn!("plugins: failed to watch {}: {}", root.display(), err);
+            }
+        }
+
+        let mut guard = self.watcher.lock().unwrap();
+        *guard = Some(watcher);
+    }
+}
+
+static PLUGIN_CACHE: OnceLock<Arc<PluginCache>> = OnceLock::new();
+
+fn plugin_cache() -> &'static Arc<PluginCache> {
+    PLUGIN_CACHE.get_or_init(PluginCache::initialize)
+}
+
+/// Resolves plugin root directories (user + built-in).
+///
+/// # Returns
+/// - Unique list of plugin root paths with origin metadata.
 fn plugin_roots() -> Vec<(PathBuf, PluginOrigin)> {
     let mut roots: Vec<(PathBuf, PluginOrigin)> = Vec::new();
     let mut seen = HashSet::new();
@@ -141,6 +327,14 @@ fn plugin_roots() -> Vec<(PathBuf, PluginOrigin)> {
     roots
 }
 
+/// Resolves plugin directory for flat or versioned layouts.
+///
+/// # Parameters
+/// - `path`: Candidate plugin directory.
+///
+/// # Returns
+/// - `Some(PathBuf)` resolved plugin content directory.
+/// - `None` when unresolved.
 fn resolve_plugin_dir(path: &Path) -> Option<PathBuf> {
     let direct = path.join(PLUGIN_MANIFEST_NAME);
     if direct.is_file() {
@@ -166,6 +360,14 @@ fn resolve_plugin_dir(path: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Reads and validates plugin manifest from a directory.
+///
+/// # Parameters
+/// - `path`: Plugin directory.
+///
+/// # Returns
+/// - `Ok((PathBuf, RawPluginManifest))` resolved directory and manifest.
+/// - `Err(String)` when missing or invalid.
 fn read_manifest_from_directory(path: &Path) -> Result<(PathBuf, RawPluginManifest), String> {
     let resolved = resolve_plugin_dir(path).unwrap_or_else(|| path.to_path_buf());
     let manifest_path = resolved.join(PLUGIN_MANIFEST_NAME);
@@ -193,6 +395,14 @@ fn read_manifest_from_directory(path: &Path) -> Result<(PathBuf, RawPluginManife
     Ok((resolved, manifest))
 }
 
+/// Returns icon MIME type from file extension.
+///
+/// # Parameters
+/// - `path`: Icon file path.
+///
+/// # Returns
+/// - `Some(&str)` MIME type for supported extensions.
+/// - `None` for unsupported extensions.
 fn icon_mime_for_path(path: &Path) -> Option<&'static str> {
     let ext = path
         .extension()?
@@ -209,6 +419,14 @@ fn icon_mime_for_path(path: &Path) -> Option<&'static str> {
     }
 }
 
+/// Finds a supported icon file within a plugin directory.
+///
+/// # Parameters
+/// - `plugin_dir`: Plugin directory path.
+///
+/// # Returns
+/// - `Some(PathBuf)` icon path.
+/// - `None` when no supported icon exists.
 fn find_icon_path(plugin_dir: &Path) -> Option<PathBuf> {
     for ext in ["png", "jpg", "jpeg", "webp", "avif", "svg"] {
         let candidate = plugin_dir.join(format!("icon.{ext}"));
@@ -219,6 +437,14 @@ fn find_icon_path(plugin_dir: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Loads icon bytes and returns a data URL for UI use.
+///
+/// # Parameters
+/// - `plugin_dir`: Plugin directory path.
+///
+/// # Returns
+/// - `Some(String)` icon data URL.
+/// - `None` when icon is missing/invalid.
 fn icon_data_url(plugin_dir: &Path) -> Option<String> {
     let path = find_icon_path(plugin_dir)?;
     let mime = icon_mime_for_path(&path)?;
@@ -250,12 +476,26 @@ fn icon_data_url(plugin_dir: &Path) -> Option<String> {
     Some(format!("data:{mime};base64,{encoded}"))
 }
 
+/// Encodes SVG bytes as percent-escaped UTF-8 data URL content.
+///
+/// # Parameters
+/// - `data`: SVG bytes.
+///
+/// # Returns
+/// - Percent-encoded UTF-8 string.
 fn encode_svg_utf8_data(data: &[u8]) -> String {
     // Some WebViews are flaky with base64-encoded SVG data URLs; percent-encoded UTF-8 tends to be more reliable.
     let text = String::from_utf8_lossy(data);
     percent_encode_uri_component(text.trim())
 }
 
+/// Encodes bytes as base64 text.
+///
+/// # Parameters
+/// - `data`: Raw bytes.
+///
+/// # Returns
+/// - Base64-encoded string.
 fn encode_base64(data: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     if data.is_empty() {
@@ -294,6 +534,13 @@ fn encode_base64(data: &[u8]) -> String {
     out
 }
 
+/// Percent-encodes bytes for URI component contexts.
+///
+/// # Parameters
+/// - `input`: Raw text.
+///
+/// # Returns
+/// - Percent-encoded output string.
 fn percent_encode_uri_component(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for &b in input.as_bytes() {
@@ -310,6 +557,13 @@ fn percent_encode_uri_component(input: &str) -> String {
     out
 }
 
+/// Converts a nibble value to uppercase hexadecimal character.
+///
+/// # Parameters
+/// - `v`: Nibble value.
+///
+/// # Returns
+/// - Hex digit char.
 fn nibble_hex(v: u8) -> char {
     match v {
         0..=9 => (b'0' + v) as char,
@@ -318,6 +572,15 @@ fn nibble_hex(v: u8) -> char {
     }
 }
 
+/// Converts a raw manifest into a plugin summary payload.
+///
+/// # Parameters
+/// - `plugin_dir`: Resolved plugin directory.
+/// - `manifest`: Raw manifest payload.
+/// - `source`: Plugin source.
+///
+/// # Returns
+/// - Normalized plugin summary.
 fn manifest_to_summary(
     plugin_dir: &Path,
     manifest: RawPluginManifest,
@@ -341,6 +604,13 @@ fn manifest_to_summary(
     }
 }
 
+/// Discovers theme directories under a plugin.
+///
+/// # Parameters
+/// - `plugin_dir`: Plugin directory path.
+///
+/// # Returns
+/// - Deduplicated theme directory list.
 fn discover_theme_dirs(plugin_dir: &Path) -> Vec<PathBuf> {
     let root = plugin_dir.join(PLUGIN_THEMES_DIR_NAME);
     let mut out: Vec<PathBuf> = Vec::new();
@@ -355,6 +625,15 @@ fn discover_theme_dirs(plugin_dir: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// Recursively discovers theme directories to a fixed depth.
+///
+/// # Parameters
+/// - `dir`: Directory to scan.
+/// - `depth`: Remaining recursion depth.
+/// - `out`: Accumulator for discovered directories.
+///
+/// # Returns
+/// - `()`.
 fn discover_theme_dirs_recursive(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
     if depth == 0 {
         return;
@@ -382,110 +661,57 @@ fn discover_theme_dirs_recursive(dir: &Path, depth: usize, out: &mut Vec<PathBuf
     }
 }
 
+/// Returns cached plugin summaries, refreshing only when watched directories change.
 pub fn list_plugins() -> Vec<PluginSummary> {
-    let mut out: Vec<PluginSummary> = Vec::new();
-    let mut seen = HashSet::new();
-    let built_in_ids = crate::plugin_bundles::built_in_plugin_ids();
-
-    let roots = plugin_roots();
-
-    for (root, origin) in roots {
-        match fs::read_dir(&root) {
-            Ok(entries) => {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if !path.is_dir() {
-                        continue;
-                    }
-                    if let Ok((resolved, manifest)) = read_manifest_from_directory(&path) {
-                        let norm = manifest.id.trim().to_ascii_lowercase();
-                        let is_built_in = built_in_ids.contains(&norm);
-                        if !seen.insert(norm) {
-                            continue;
-                        }
-                        let effective_origin = if is_built_in {
-                            PluginOrigin::BuiltIn
-                        } else {
-                            origin
-                        };
-                        out.push(manifest_to_summary(&resolved, manifest, effective_origin));
-                    }
-                }
-            }
-            Err(err) => warn!("plugins: failed to list {}: {}", root.display(), err),
-        }
-    }
-
-    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    out
+    plugin_cache().list()
 }
 
+/// Loads plugin metadata and optional entry script text by plugin id.
+///
+/// # Parameters
+/// - `id`: Plugin id to load (case-insensitive).
+///
+/// # Returns
+/// - `Ok(PluginPayload)` when a matching plugin is found.
+/// - `Err(String)` if the id is empty or no plugin matches.
 pub fn load_plugin(id: &str) -> Result<PluginPayload, String> {
     let requested = id.trim();
     if requested.is_empty() {
         return Err("plugin id is empty".to_string());
     }
-    let requested_lower = requested.to_ascii_lowercase();
-    let built_in_ids = crate::plugin_bundles::built_in_plugin_ids();
+    let normalized = requested.to_ascii_lowercase();
+    let cached = plugin_cache()
+        .load_cached_plugin(&normalized)
+        .ok_or_else(|| format!("plugin `{}` not found", requested))?;
 
-    let roots = plugin_roots();
-
-    for (root, origin) in roots {
-        let entries = match fs::read_dir(&root) {
-            Ok(entries) => entries,
+    let summary = manifest_to_summary(&cached.resolved, cached.manifest.clone(), cached.origin);
+    let entry_path = clean_opt(cached.manifest.entry.clone());
+    let entry_code = entry_path.and_then(|entry| {
+        let target = cached.resolved.join(entry.trim());
+        match fs::read_to_string(&target) {
+            Ok(text) => Some(text),
             Err(err) => {
-                warn!("plugins: failed to list {}: {}", root.display(), err);
-                continue;
+                warn!(
+                    "plugins: failed to read entry {} for {}: {}",
+                    target.display(),
+                    summary.id,
+                    err
+                );
+                None
             }
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let (resolved, manifest) = match read_manifest_from_directory(&path) {
-                Ok(m) => m,
-                Err(_) => continue,
-            };
-            let entry_path = clean_opt(manifest.entry.clone());
-            if manifest.id.trim().to_ascii_lowercase() != requested_lower {
-                continue;
-            }
-
-            let effective_origin = if built_in_ids.contains(&requested_lower) {
-                PluginOrigin::BuiltIn
-            } else {
-                origin
-            };
-            let summary = manifest_to_summary(&resolved, manifest, effective_origin);
-            let entry_code = entry_path.and_then(|entry| {
-                let target = resolved.join(entry.trim());
-                match fs::read_to_string(&target) {
-                    Ok(text) => Some(text),
-                    Err(err) => {
-                        warn!(
-                            "plugins: failed to read entry {} for {}: {}",
-                            target.display(),
-                            summary.id,
-                            err
-                        );
-                        None
-                    }
-                }
-            });
-
-            return Ok(PluginPayload {
-                summary,
-                // Plugin code does not execute in-process; the UI runtime uses out-of-process components.
-                entry: entry_code,
-            });
         }
-    }
+    });
 
-    Err(format!("plugin `{}` not found", requested))
+    Ok(PluginPayload {
+        summary,
+        entry: entry_code,
+    })
 }
 
+/// Lists all discovered theme directories grouped by plugin id.
+///
+/// # Returns
+/// - A flat list of plugin/theme directory pairs.
 pub fn plugin_theme_dirs() -> Vec<PluginThemeDir> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();

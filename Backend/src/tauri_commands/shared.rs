@@ -1,19 +1,30 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use std::sync::Arc;
 
-use openvcs_core::models::VcsEvent;
-use openvcs_core::OnEvent;
 use tauri::{async_runtime, AppHandle, Emitter, Manager, Runtime, State};
 
+use crate::core::models::VcsEvent;
+use crate::core::OnEvent;
 use crate::output_log::{OutputLevel, OutputLogEntry};
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::state::AppState;
 
 #[derive(serde::Serialize, Clone)]
+/// Generic progress event payload sent to the UI.
 pub struct ProgressPayload {
+    /// Human-readable progress message.
     pub message: String,
 }
 
+/// Creates a callback that forwards VCS events to UI progress/log channels.
+///
+/// # Parameters
+/// - `app`: Application handle used to emit events and access state.
+///
+/// # Returns
+/// - An [`OnEvent`] callback compatible with backend VCS operations.
 pub(crate) fn progress_bridge<R: Runtime>(app: AppHandle<R>) -> OnEvent {
     Arc::new(move |evt| {
         let (level, msg) = match evt {
@@ -43,6 +54,14 @@ pub(crate) fn progress_bridge<R: Runtime>(app: AppHandle<R>) -> OnEvent {
     })
 }
 
+/// Returns the current repository if its backend is still available.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(Arc<Repo>)` for the active repository.
+/// - `Err(String)` when no repo is selected or backend is unavailable.
 pub(crate) fn current_repo_or_err(state: &State<'_, AppState>) -> Result<Arc<Repo>, String> {
     let repo = state
         .current_repo()
@@ -63,6 +82,16 @@ pub(crate) fn current_repo_or_err(state: &State<'_, AppState>) -> Result<Arc<Rep
     Ok(Arc::clone(&repo))
 }
 
+/// Runs a repository task on the blocking thread pool and maps join errors.
+///
+/// # Parameters
+/// - `label`: Human-readable task name for error context.
+/// - `repo`: Repository handle captured by the task.
+/// - `task`: Closure executed in a blocking worker thread.
+///
+/// # Returns
+/// - `Ok(T)` with the closure result.
+/// - `Err(String)` if join fails or the closure returns an error.
 pub(crate) async fn run_repo_task<T, F>(
     label: &'static str,
     repo: Arc<Repo>,

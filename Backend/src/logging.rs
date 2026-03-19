@@ -1,12 +1,96 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use crate::settings::{AppConfig, LogLevel};
 use std::fs::{self, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 use time::{OffsetDateTime, UtcOffset};
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
 static ACTIVE_LOG_FILE: OnceLock<Arc<Mutex<std::fs::File>>> = OnceLock::new();
 
+/// RAII timer that logs operation duration on drop.
+///
+/// Use this to measure and log timing for long-running operations.
+/// The duration is logged at trace level when the timer goes out of scope.
+pub struct LogTimer {
+    start: Instant,
+    operation: &'static str,
+}
+
+impl LogTimer {
+    /// Creates a new timer for the given operation.
+    ///
+    /// # Parameters
+    /// - `_module`: Module/component name (unused, kept for API compatibility).
+    /// - `operation`: Operation name (e.g., "fetch", "push").
+    ///
+    /// # Returns
+    /// - A new `LogTimer` instance.
+    pub fn new(_module: &'static str, operation: &'static str) -> Self {
+        Self {
+            start: Instant::now(),
+            operation,
+        }
+    }
+
+    /// Returns elapsed time in milliseconds.
+    ///
+    /// # Returns
+    /// - Elapsed time in milliseconds.
+    #[allow(dead_code)]
+    pub fn elapsed_ms(&self) -> u64 {
+        self.start.elapsed().as_millis() as u64
+    }
+}
+
+impl Drop for LogTimer {
+    fn drop(&mut self) {
+        let elapsed = self.start.elapsed();
+        let ms = elapsed.as_millis();
+        let us = elapsed.as_micros() - (ms * 1000);
+        log::trace!("{} completed in {}.{:03}ms", self.operation, ms, us);
+    }
+}
+
+/// Logs an operation entry at info level.
+///
+/// # Parameters
+/// - `module`: Module/component name.
+/// - `operation`: Operation name.
+/// - `details`: Additional details string.
+#[macro_export]
+macro_rules! log_op_enter {
+    ($module:expr, $operation:expr) => {
+        log::info!("[{}] {}: starting", $module, $operation)
+    };
+    ($module:expr, $operation:expr, $($arg:tt)*) => {
+        log::info!("[{}] {}: {}", $module, $operation, format!($($arg)*))
+    };
+}
+
+/// Logs an operation exit at info level.
+///
+/// # Parameters
+/// - `module`: Module/component name.
+/// - `operation`: Operation name.
+/// - `details`: Additional details string.
+#[macro_export]
+macro_rules! log_op_exit {
+    ($module:expr, $operation:expr) => {
+        log::info!("[{}] {}: completed", $module, $operation)
+    };
+    ($module:expr, $operation:expr, $($arg:tt)*) => {
+        log::info!("[{}] {}: {}", $module, $operation, format!($($arg)*))
+    };
+}
+
+/// Truncates the currently active `logs/openvcs.log` file in place.
+///
+/// # Returns
+/// - `Ok(())` if the active log file is cleared or not yet initialized.
+/// - `Err(String)` if file locking or truncation fails.
 pub fn clear_active_log_file() -> Result<(), String> {
     let Some(file) = ACTIVE_LOG_FILE.get() else {
         return Ok(());
@@ -20,8 +104,31 @@ pub fn clear_active_log_file() -> Result<(), String> {
     Ok(())
 }
 
+/// Writes a line directly to the active log file.
+///
+/// # Parameters
+/// - `line`: The line to write (without trailing newline).
+///
+/// # Returns
+/// - `Ok(())` if the line was written.
+/// - `Err(String)` if writing fails or log file not initialized.
+pub fn write_to_log(line: &str) -> Result<(), String> {
+    let Some(file) = ACTIVE_LOG_FILE.get() else {
+        return Ok(());
+    };
+    let mut f = file
+        .lock()
+        .map_err(|_| "log file lock poisoned".to_string())?;
+    writeln!(f, "{}", line).map_err(|e| e.to_string())?;
+    f.flush().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Initialize logging: console (env_logger) + append to `./logs/openvcs.log`.
 /// Respects `RUST_LOG` for filtering; sets a sensible default if missing.
+///
+/// # Returns
+/// - `()`.
 pub fn init() {
     // Load persisted settings early (does not require AppState) for logging configuration
     let cfg = AppConfig::load_or_default();
@@ -31,10 +138,25 @@ pub fn init() {
         file: Arc<Mutex<std::fs::File>>,
     }
     impl log::Log for DualLogger {
+        /// Delegates enable filtering to console logger.
+        ///
+        /// # Parameters
+        /// - `m`: Log metadata.
+        ///
+        /// # Returns
+        /// - `true` when record is enabled.
+        /// - `false` otherwise.
         fn enabled(&self, m: &log::Metadata) -> bool {
             // Delegate filtering to env_logger
             self.console.enabled(m)
         }
+        /// Writes log record to console and active log file.
+        ///
+        /// # Parameters
+        /// - `r`: Log record.
+        ///
+        /// # Returns
+        /// - `()`.
         fn log(&self, r: &log::Record) {
             if self.enabled(r.metadata()) {
                 self.console.log(r);
@@ -43,6 +165,10 @@ pub fn init() {
                 }
             }
         }
+        /// Flushes console and file logging outputs.
+        ///
+        /// # Returns
+        /// - `()`.
         fn flush(&self) {
             self.console.flush();
             if let Ok(mut f) = self.file.lock() {
@@ -51,16 +177,152 @@ pub fn init() {
         }
     }
 
-    // Build console logger (with timestamps) and then mirror to a file if possible.
+    // Build console logger with custom format
     let mut builder = env_logger::Builder::from_default_env();
-    builder.format_timestamp_millis();
+    builder.format(|buf, record| {
+        use std::io::Write;
+        let ts = record.level();
+        let target = record.target();
+        let args = record.args();
 
-    // Wasmtime/Cranelift can be extremely verbose at TRACE/DEBUG and drown out OpenVCS logs.
+        // Format: [YYYY-MM-DD] [HH:MM:SS] LEVEL [SOURCE]: message
+        let now = time::OffsetDateTime::now_utc();
+        let date = format!(
+            "{:04}-{:02}-{:02}",
+            now.year(),
+            now.month() as u8,
+            now.day()
+        );
+        let time = format!("{:02}:{:02}:{:02}", now.hour(), now.minute(), now.second());
+
+        // Extract source from target (e.g., "openvcs_lib::tauri_commands::output_log" -> "output_log")
+        let source = target.split("::").last().unwrap_or(target).to_uppercase();
+
+        // For Debug/Trace level, try to pretty-print JSON-like content in messages
+        let msg = args.to_string();
+
+        let format_braced = |body: &str| {
+            let mut out = String::with_capacity(body.len() + 64);
+            let mut indent: usize = 0;
+            let mut in_string = false;
+            let mut escaped = false;
+
+            for ch in body.chars() {
+                if in_string {
+                    out.push(ch);
+                    if escaped {
+                        escaped = false;
+                    } else if ch == '\\' {
+                        escaped = true;
+                    } else if ch == '"' {
+                        in_string = false;
+                    }
+                    continue;
+                }
+
+                match ch {
+                    '"' => {
+                        in_string = true;
+                        out.push(ch);
+                    }
+                    '{' => {
+                        out.push('{');
+                        indent += 1;
+                        out.push('\n');
+                        out.push_str(&"  ".repeat(indent));
+                    }
+                    '}' => {
+                        indent = indent.saturating_sub(1);
+                        out.push('\n');
+                        out.push_str(&"  ".repeat(indent));
+                        out.push('}');
+                    }
+                    ',' => {
+                        out.push(',');
+                        out.push('\n');
+                        out.push_str(&"  ".repeat(indent));
+                    }
+                    _ => out.push(ch),
+                }
+            }
+
+            out
+        };
+
+        let clean_label = |prefix: &str| {
+            let mut label = prefix.trim().trim_end_matches(':').trim().to_string();
+            for suffix in ["Object", "RemoteRelease"] {
+                if let Some(stripped) = label.strip_suffix(suffix) {
+                    label = stripped.trim().to_string();
+                }
+            }
+            if label.is_empty() {
+                "payload".to_string()
+            } else {
+                label
+            }
+        };
+
+        // Check if message contains JSON-like structure that can be extracted and formatted.
+        if msg.len() > 100 && (ts == log::Level::Debug || ts == log::Level::Trace) {
+            if let (Some(start), Some(end)) = (msg.find('{'), msg.rfind('}')) {
+                let json_part = &msg[start..=end];
+
+                let regex = regex::Regex::new(r#"String\("([^"]*)"\)"#).ok();
+
+                // Strategy 1: strict conversion of common Rust debug wrappers.
+                let mut attempts: Vec<String> = Vec::with_capacity(2);
+                let mut cleaned = json_part.replace("Object ", "");
+                if let Some(re) = &regex {
+                    cleaned = re.replace_all(&cleaned, r#""$1""#).to_string();
+                }
+                attempts.push(cleaned);
+
+                // Strategy 2: aggressive conversion fallback for odd wrapper nesting.
+                let aggressive = json_part
+                    .replace("Object ", "")
+                    .replace("String(\"", "\"")
+                    .replace("\")", "\"");
+                attempts.push(aggressive);
+
+                for json_clean in attempts {
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_clean) {
+                        if let Ok(pretty) = serde_json::to_string_pretty(&value) {
+                            let label = clean_label(&msg[..start]);
+                            let header =
+                                format!("[{}] [{}] {:5} [{}]: {} ", date, time, ts, source, label);
+                            let lines: Vec<&str> = pretty.lines().collect();
+                            return writeln!(
+                                buf,
+                                "{}{}",
+                                header,
+                                lines.join(&format!("\n{}", " ".repeat(header.len())))
+                            );
+                        }
+                    }
+                }
+
+                // Fallback: non-JSON Rust debug structs (e.g., RemoteRelease { ... })
+                let label = clean_label(&msg[..start]);
+                let pretty = format_braced(json_part);
+                let header = format!("[{}] [{}] {:5} [{}]: {} ", date, time, ts, source, label);
+                let lines: Vec<&str> = pretty.lines().collect();
+                return writeln!(
+                    buf,
+                    "{}{}",
+                    header,
+                    lines.join(&format!("\n{}", " ".repeat(header.len())))
+                );
+            }
+        }
+
+        writeln!(buf, "[{}] [{}] {:5} [{}]: {}", date, time, ts, source, msg)
+    });
+
+    // Cranelift can be extremely verbose at TRACE/DEBUG and drown out OpenVCS logs.
     // Keep these at WARN+ even if the user enables a global TRACE filter.
-    builder.filter_module("wasmtime", log::LevelFilter::Warn);
     builder.filter_module("cranelift", log::LevelFilter::Warn);
     builder.filter_module("cranelift_codegen", log::LevelFilter::Warn);
-    builder.filter_module("cranelift_wasm", log::LevelFilter::Warn);
     builder.filter_module("cranelift_native", log::LevelFilter::Warn);
 
     // If RUST_LOG is unset, apply level from settings
@@ -110,6 +372,13 @@ pub fn init() {
     }
 }
 
+/// Rotates existing active log into a timestamped zip archive.
+///
+/// # Parameters
+/// - `dir`: Logs directory path.
+///
+/// # Returns
+/// - `()`.
 fn rotate_existing_log(dir: &std::path::Path) {
     let active = dir.join("openvcs.log");
     let Ok(mut src) = std::fs::File::open(&active) else {
@@ -179,6 +448,14 @@ fn rotate_existing_log(dir: &std::path::Path) {
     }
 }
 
+/// Prunes old log archives, keeping only newest `keep` entries.
+///
+/// # Parameters
+/// - `dir`: Logs directory path.
+/// - `keep`: Number of archives to retain.
+///
+/// # Returns
+/// - `()`.
 fn prune_archives(dir: &std::path::Path, keep: usize) {
     use std::path::PathBuf;
     let Ok(read) = fs::read_dir(dir) else {

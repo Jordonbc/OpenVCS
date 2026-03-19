@@ -1,15 +1,27 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use std::path::PathBuf;
 
 use log::{error, info};
 use tauri::{async_runtime, Manager, Runtime, State, Window};
 
-use openvcs_core::models::VcsEvent;
-
+use crate::core::models::VcsEvent;
 use crate::state::AppState;
 
 use super::{current_repo_or_err, progress_bridge, run_repo_task};
 
 #[tauri::command]
+/// Commits all staged/working-tree changes using summary + optional description.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress events.
+/// - `state`: Shared application state.
+/// - `summary`: Commit summary line.
+/// - `description`: Optional commit body text.
+///
+/// # Returns
+/// - `Ok(String)` created commit id.
+/// - `Err(String)` when no repo is selected or commit fails.
 pub async fn commit_changes<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -78,6 +90,18 @@ pub async fn commit_changes<R: Runtime>(
 }
 
 #[tauri::command]
+/// Commits only selected file paths.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress events.
+/// - `state`: Shared application state.
+/// - `summary`: Commit summary line.
+/// - `description`: Optional commit body text.
+/// - `files`: Repository-relative file paths to include.
+///
+/// # Returns
+/// - `Ok(String)` created commit id.
+/// - `Err(String)` when commit fails.
 pub async fn commit_selected<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -139,6 +163,18 @@ pub async fn commit_selected<R: Runtime>(
 }
 
 #[tauri::command]
+/// Applies a patch to the index and creates a commit from staged hunks.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress events.
+/// - `state`: Shared application state.
+/// - `summary`: Commit summary line.
+/// - `description`: Optional commit body text.
+/// - `patch`: Unified patch to stage.
+///
+/// # Returns
+/// - `Ok(String)` created commit id.
+/// - `Err(String)` when staging or commit fails.
 pub async fn commit_patch<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -202,6 +238,19 @@ pub async fn commit_patch<R: Runtime>(
 }
 
 #[tauri::command]
+/// Commits a mix of staged patch hunks and explicit files.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress events.
+/// - `state`: Shared application state.
+/// - `summary`: Commit summary line.
+/// - `description`: Optional commit body text.
+/// - `patch`: Optional patch text to stage first.
+/// - `files`: Optional explicit file list.
+///
+/// # Returns
+/// - `Ok(String)` created commit id.
+/// - `Err(String)` when staging or commit fails.
 pub async fn commit_patch_and_files<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -278,6 +327,17 @@ pub async fn commit_patch_and_files<R: Runtime>(
 }
 
 #[tauri::command]
+/// Cherry-picks a commit onto a target branch.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress events.
+/// - `state`: Shared application state.
+/// - `id`: Commit id/revision to cherry-pick.
+/// - `branch`: Target branch name.
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` on validation or cherry-pick failure.
 pub async fn git_cherry_pick_to_branch<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -325,6 +385,16 @@ pub async fn git_cherry_pick_to_branch<R: Runtime>(
 }
 
 #[tauri::command]
+/// Reverts a commit by creating a new inverse commit.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress events.
+/// - `state`: Shared application state.
+/// - `id`: Commit id/revision to revert.
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` on validation or revert failure.
 pub async fn git_revert_commit<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,

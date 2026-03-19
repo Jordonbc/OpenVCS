@@ -1,4 +1,6 @@
-use log::warn;
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+use log::{info, warn};
 use std::collections::{HashMap, HashSet};
 use tauri::State;
 
@@ -8,17 +10,100 @@ use crate::state::AppState;
 
 use super::run_repo_task;
 
+fn diff_configs(old_cfg: &AppConfig, new_cfg: &AppConfig) -> Vec<String> {
+    let mut changes = Vec::new();
+
+    if old_cfg.general != new_cfg.general {
+        changes.push("general".to_string());
+    }
+    if old_cfg.git != new_cfg.git {
+        changes.push("git".to_string());
+    }
+    if old_cfg.credentials != new_cfg.credentials {
+        changes.push("credentials".to_string());
+    }
+    if old_cfg.diff != new_cfg.diff {
+        changes.push("diff".to_string());
+    }
+    if old_cfg.lfs != new_cfg.lfs {
+        changes.push("lfs".to_string());
+    }
+    if old_cfg.performance != new_cfg.performance {
+        changes.push("performance".to_string());
+    }
+    if old_cfg.integrations != new_cfg.integrations {
+        changes.push("integrations".to_string());
+    }
+    if old_cfg.plugins != new_cfg.plugins {
+        changes.push("plugins".to_string());
+    }
+    if old_cfg.ux != new_cfg.ux {
+        changes.push("ux".to_string());
+    }
+    if old_cfg.advanced != new_cfg.advanced {
+        changes.push("advanced".to_string());
+    }
+    if old_cfg.experimental != new_cfg.experimental {
+        changes.push("experimental".to_string());
+    }
+    if old_cfg.logging != new_cfg.logging {
+        changes.push("logging".to_string());
+    }
+
+    changes
+}
+
 #[tauri::command]
+/// Returns global application settings.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(AppConfig)` with current settings.
 pub fn get_global_settings(state: State<'_, AppState>) -> Result<AppConfig, String> {
     Ok(state.config())
 }
 
 #[tauri::command]
+/// Replaces and persists global application settings.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `cfg`: New global settings payload.
+///
+/// # Returns
+/// - `Ok(())` when settings are applied.
+/// - `Err(String)` when validation/persistence fails.
 pub fn set_global_settings(state: State<'_, AppState>, cfg: AppConfig) -> Result<(), String> {
-    state.set_config(cfg)
+    let old_cfg = state.config();
+    state.set_config(cfg.clone())?;
+    state
+        .plugin_runtime()
+        .sync_plugin_runtime_with_config(&cfg)
+        .map_err(|err| format!("settings saved but plugin runtime sync failed: {err}"))?;
+
+    let changes = diff_configs(&old_cfg, &cfg);
+    if changes.is_empty() {
+        info!("settings: global config saved (no changes detected)");
+    } else {
+        info!(
+            "settings: global config updated - changed: {}",
+            changes.join(", ")
+        );
+    }
+    Ok(())
 }
 
 #[tauri::command]
+/// Returns repository-local settings merged with current repo values when available.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(RepoConfig)` current effective repository settings.
+/// - `Err(String)` when repo queries fail.
 pub async fn get_repo_settings(state: State<'_, AppState>) -> Result<RepoConfig, String> {
     let mut cfg = state.repo_config();
     if let Some(repo) = state.current_repo() {
@@ -68,6 +153,15 @@ pub async fn get_repo_settings(state: State<'_, AppState>) -> Result<RepoConfig,
 }
 
 #[tauri::command]
+/// Updates repository-local settings and applies identity/remote changes.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `cfg`: Repository settings payload.
+///
+/// # Returns
+/// - `Ok(())` when updates are applied.
+/// - `Err(String)` when backend operations fail.
 pub async fn set_repo_settings(state: State<'_, AppState>, cfg: RepoConfig) -> Result<(), String> {
     let cfg_clone = cfg.clone();
     state.set_repo_config(RepoConfig { ..cfg.clone() })?;
@@ -123,5 +217,6 @@ pub async fn set_repo_settings(state: State<'_, AppState>, cfg: RepoConfig) -> R
         })
         .await?;
     }
+    info!("settings: repository config updated");
     Ok(())
 }

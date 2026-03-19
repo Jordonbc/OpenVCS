@@ -1,8 +1,19 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use tauri::{Manager, Runtime, WebviewUrl, WebviewWindowBuilder, Window};
 
-use crate::output_log::OutputLogEntry;
+use crate::output_log::{OutputLevel, OutputLogEntry};
 use crate::state::AppState;
 
+/// Reads up to the last `max_lines` lines from a log file efficiently.
+///
+/// # Parameters
+/// - `path`: Log file path.
+/// - `max_lines`: Maximum lines to return.
+///
+/// # Returns
+/// - `Ok(Vec<String>)` log lines.
+/// - `Err(std::io::Error)` on file IO failure.
 fn read_last_lines(path: &std::path::Path, max_lines: usize) -> std::io::Result<Vec<String>> {
     use std::io::{Read, Seek};
 
@@ -42,16 +53,85 @@ fn read_last_lines(path: &std::path::Path, max_lines: usize) -> std::io::Result<
 }
 
 #[tauri::command]
+/// Returns the current in-memory VCS/output log.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - A cloned list of output log entries.
 pub fn get_output_log(state: tauri::State<'_, AppState>) -> Vec<OutputLogEntry> {
     state.output_log()
 }
 
 #[tauri::command]
+/// Clears the in-memory VCS/output log.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `()`.
 pub fn clear_output_log(state: tauri::State<'_, AppState>) {
     state.clear_output_log();
 }
 
 #[tauri::command]
+/// Handles log messages from the frontend, forwarding them to the output log.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `level`: Log severity level ("debug", "info", "warn", "error").
+/// - `source`: Source subsystem (e.g., "ui", "plugin").
+/// - `message`: Log message text.
+///
+/// # Returns
+/// - `()`.
+pub fn log_frontend_message(state: tauri::State<'_, AppState>, level: String, message: String) {
+    let (output_level, log_level) = match level.to_lowercase().as_str() {
+        "trace" => (OutputLevel::Info, log::Level::Trace),
+        "debug" => (OutputLevel::Info, log::Level::Debug),
+        "info" => (OutputLevel::Info, log::Level::Info),
+        "warn" | "warning" => (OutputLevel::Warn, log::Level::Warn),
+        "error" | "err" => (OutputLevel::Error, log::Level::Error),
+        _ => (OutputLevel::Info, log::Level::Info),
+    };
+
+    // Write directly to stderr with [FRONTEND] tag
+    let now = time::OffsetDateTime::now_utc();
+    let timestamp = format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        now.year(),
+        now.month() as u8,
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second()
+    );
+    let log_line = format!("{} {:5} [FRONTEND]: {}", timestamp, log_level, message);
+    eprintln!("{}", log_line);
+    let _ = crate::logging::write_to_log(&log_line);
+
+    let entry = OutputLogEntry::new(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0),
+        output_level,
+        "frontend",
+        message,
+    );
+    state.push_output_log(entry);
+}
+
+#[tauri::command]
+/// Reads and returns recent lines from `logs/openvcs.log`.
+///
+/// # Parameters
+/// - `max_lines`: Optional number of lines to return (clamped).
+///
+/// # Returns
+/// - Parsed log lines converted to [`OutputLogEntry`] values.
 pub fn tail_app_log(max_lines: Option<usize>) -> Vec<OutputLogEntry> {
     use crate::output_log::{OutputLevel, OutputLogEntry};
 
@@ -70,11 +150,24 @@ pub fn tail_app_log(max_lines: Option<usize>) -> Vec<OutputLogEntry> {
 }
 
 #[tauri::command]
+/// Truncates the active application log file.
+///
+/// # Returns
+/// - `Ok(())` when clear succeeds.
+/// - `Err(String)` when truncation fails.
 pub fn clear_app_log() -> Result<(), String> {
     crate::logging::clear_active_log_file()
 }
 
 #[tauri::command]
+/// Opens or focuses the dedicated output log window.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+///
+/// # Returns
+/// - `Ok(())` when a window is focused or created.
+/// - `Err(String)` when window creation fails.
 pub fn open_output_log_window<R: Runtime>(window: Window<R>) -> Result<(), String> {
     let app = window.app_handle().clone();
     if let Some(existing) = app.get_webview_window("output-log") {

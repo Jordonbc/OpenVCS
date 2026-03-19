@@ -1,6 +1,10 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+import './lib/logger';
 import { TAURI } from './lib/tauri';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
+import { setStatus } from './lib/status';
 import { destroyOverlayScrollbarsFor, initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from './lib/scrollbars';
 import { prefs, state, hasRepo } from './state/state';
 import {
@@ -39,6 +43,7 @@ const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
 let fetchCloseTimer: number | null = null;
 const FETCH_CLOSE_MS = 130;
 
+/** Closes the Fetch/Pull popover, optionally with a short close animation. */
 function closeFetchPopover() {
     if (!fetchPop || !fetchCaret) return;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -56,6 +61,7 @@ function closeFetchPopover() {
     }, FETCH_CLOSE_MS);
 }
 
+/** Closes transient UI surfaces before a repo switch or hard refresh. */
 function forceCloseTransientUi() {
     closeAllModals();
     closeSheet();
@@ -74,6 +80,7 @@ function forceCloseTransientUi() {
     window.dispatchEvent(new CustomEvent('app:repo-will-switch'));
 }
 
+/** Boots the frontend shell, wires handlers, and hydrates initial state. */
 async function boot() {
     // If launched as the Output Log window, render that view and skip the main app UI.
     if (await initOutputLogViewIfRequested()) return;
@@ -315,39 +322,41 @@ async function boot() {
             notify('Pushed');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
             await runHook('postPush', hookData);
-        } catch { notify('Push failed'); } finally { clearBusy(); }
+        } catch (e) { console.error('Push failed:', e); notify('Push failed'); } finally { clearBusy(); }
     }
 
     async function openDocs() {
         if (TAURI.has) {
             try { await TAURI.invoke('open_docs', {}); return; } catch { /* fall back */ }
         }
-        try { window.open(WIKI_URL, '_blank', 'noopener'); } catch { notify('Unable to open docs'); }
+        try { window.open(WIKI_URL, '_blank', 'noopener'); } catch (e) { console.error('Unable to open docs:', e); notify('Unable to open docs'); }
     }
 
     async function runMenuAction(id?: string | null) {
         switch (id) {
-            case 'clone_repo': openSheet('clone'); break;
-            case 'add_repo':   openSheet('add');   break;
-            case 'open_repo':  openSwitchDrawer(); break;
-            case 'fetch': await defaultFetchAction(); break;
-            case 'push':  await pushChanges();  break;
-            case 'commit': commitBtn?.click(); break;
-            case 'docs': await openDocs(); break;
+            case 'clone_repo': console.log('Action: clone_repo'); openSheet('clone'); break;
+            case 'add_repo':   console.log('Action: add_repo'); openSheet('add'); break;
+            case 'open_repo':  console.log('Action: open_repo'); openSwitchDrawer(); break;
+            case 'fetch': console.log('Action: fetch'); await defaultFetchAction(); break;
+            case 'push':  console.log('Action: push'); await pushChanges();  break;
+            case 'commit': console.log('Action: commit'); commitBtn?.click(); break;
+            case 'docs': console.log('Action: docs'); await openDocs(); break;
             case 'show-output-log':
+                console.log('Action: show-output-log');
                 if (!TAURI.has) { notify('Output Log is available in the desktop app'); break; }
                 try { await TAURI.invoke('open_output_log_window', {}); }
-                catch { notify('Failed to open Output Log'); }
+                catch (e) { console.error('Failed to open Output Log:', e); notify('Failed to open Output Log'); }
                 break;
-            case 'about': openAbout(); break;
-            case 'settings': openSettings(); break;
-            case 'repo-settings': openRepoSettings(); break;
+            case 'about': console.log('Action: about'); openAbout(); break;
+            case 'settings': console.log('Action: settings'); openSettings(); break;
+            case 'repo-settings': console.log('Action: repo-settings'); openRepoSettings(); break;
             case 'repo-edit-gitignore':
             case 'repo-edit-gitattributes': {
+                console.log('Action:', id);
                 if (!TAURI.has) { notify('Open this in the desktop app to edit repository files'); break; }
                 const name = id === 'repo-edit-gitignore' ? '.gitignore' : '.gitattributes';
                 try { await TAURI.invoke('open_repo_dotfile', { name }); }
-                catch { notify(`Could not open ${name}`); }
+                catch (e) { console.error(`Could not open ${name}:`, e); notify(`Could not open ${name}`); }
                 break;
             }
             case 'lfs-settings': openSettings('lfs'); break;
@@ -356,7 +365,7 @@ async function boot() {
                 try {
                     const hasUpdate = await TAURI.invoke<boolean>('check_for_updates', {});
                     if (!hasUpdate) notify('Already up to date');
-                } catch { notify('Update check failed'); }
+                } catch (e) { console.error('Update check failed:', e); notify('Update check failed'); }
                 break;
             case 'exit': if (TAURI.has) { TAURI.invoke('exit_app', {}).catch(() => {}); } break;
             default: {
@@ -398,7 +407,7 @@ async function boot() {
             await TAURI.invoke('git_undo_since_push', {});
             notify('Undid unpushed commits');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
-        } catch { notify('Undo failed'); } finally { clearBusy(); }
+        } catch (e) { console.error('Undo failed:', e); notify('Undo failed'); } finally { clearBusy(); }
     });
 
 
@@ -485,9 +494,9 @@ async function boot() {
       .catch(() => {});
   }
 
-  // generic notifications from backend
-  TAURI.listen?.('ui:notify', ({ payload }) => {
-      try { notify(String((payload as any) ?? '')); } catch {}
+  // backend status updates (footer)
+  TAURI.listen?.('status:set', ({ payload }) => {
+      try { setStatus(String((payload as any) ?? '')); } catch {}
   });
 
     // update available payload from backend -> open modal with notes
@@ -500,11 +509,16 @@ async function boot() {
     async function onFocus() {
         if (focusInFlight) return focusInFlight;
         focusInFlight = (async () => {
-        let doFetch = false;
+        let doFetch = true;
         if (TAURI.has) {
             try {
-                const cfg = await TAURI.invoke<any>('get_global_settings');
-                doFetch = cfg?.git?.fetch_on_focus !== false; // default true when unset
+                const fields = await TAURI.invoke<Array<{ id: string; value: unknown }>>('get_plugin_settings', {
+                    pluginId: 'openvcs.git',
+                });
+                const fetchSetting = (Array.isArray(fields) ? fields : []).find((field) => String(field?.id || '').trim() === 'fetch_on_focus');
+                if (fetchSetting && typeof fetchSetting.value === 'boolean') {
+                    doFetch = fetchSetting.value;
+                }
             } catch {}
         }
         if (doFetch) {

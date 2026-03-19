@@ -7,8 +7,12 @@ const { spawnSync } = require('child_process');
 const scriptDir = __dirname;
 const backendDir = path.resolve(scriptDir, '..');
 const repoRoot = path.resolve(backendDir, '..');
+const workspaceRoot = path.resolve(repoRoot, '..');
+const sdkDir = path.join(workspaceRoot, 'SDK');
 const pluginSources = path.join(backendDir, 'built-in-plugins');
 const pluginBundles = path.join(repoRoot, 'target', 'openvcs', 'built-in-plugins');
+const nodeRuntimeDir = path.join(repoRoot, 'target', 'openvcs', 'node-runtime');
+const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 const skipDirs = new Set(['target', '.git', 'node_modules', 'dist']);
 
@@ -46,8 +50,23 @@ function latestSourceTime(dir) {
   return hasFile ? latest : null;
 }
 
+function bundleFileNameForPlugin(name) {
+  const manifestPath = path.join(pluginSources, name, 'openvcs.plugin.json');
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    const pluginId = typeof manifest.id === 'string' ? manifest.id.trim() : '';
+    if (pluginId) {
+      return `${pluginId}.ovcsp`;
+    }
+  } catch {
+    // Fall back to the directory name so the missing/invalid manifest still
+    // forces a rebuild attempt and surfaces the real packaging error later.
+  }
+  return `${name}.ovcsp`;
+}
+
 function pluginOutdated(name) {
-  const bundlePath = path.join(pluginBundles, `${name}.ovcsp`);
+  const bundlePath = path.join(pluginBundles, bundleFileNameForPlugin(name));
   if (!fs.existsSync(bundlePath)) return true;
   const bundleStat = fs.statSync(bundlePath);
   const srcPath = path.join(pluginSources, name);
@@ -55,33 +74,94 @@ function pluginOutdated(name) {
   return srcTime === null || srcTime > bundleStat.mtimeMs;
 }
 
-function findOutdatedPlugin() {
-  if (!fs.existsSync(pluginSources)) return null;
+function findOutdatedPlugins() {
+  if (!fs.existsSync(pluginSources)) return [];
   const entries = fs.readdirSync(pluginSources, { withFileTypes: true });
+  const outdated = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (pluginOutdated(entry.name)) {
-      return entry.name;
+      outdated.push(entry.name);
     }
   }
-  return null;
+  return outdated;
 }
 
 function ensureBundlesDir() {
   fs.mkdirSync(pluginBundles, { recursive: true });
 }
 
-function runDistCommand() {
-  console.log('Built-in plugin bundles need rebuilding; running cargo openvcs dist …');
-  const pluginDirArg = 'built-in-plugins';
-  const outArg = path.relative(backendDir, pluginBundles);
-  const res = spawnSync(
-    'cargo',
-    ['openvcs', 'dist', '--all', '--plugin-dir', pluginDirArg, '--out', outArg],
-    { cwd: backendDir, stdio: 'inherit' }
-  );
+function ensureNodeRuntimeDir() {
+  fs.mkdirSync(nodeRuntimeDir, { recursive: true });
+}
+
+function ensureBundledNodeRuntime() {
+  const src = process.execPath;
+  const outName = process.platform === 'win32' ? 'node.exe' : 'node';
+  const dest = path.join(nodeRuntimeDir, outName);
+
+  let shouldCopy = true;
+  if (fs.existsSync(dest)) {
+    try {
+      const srcStat = fs.statSync(src);
+      const destStat = fs.statSync(dest);
+      shouldCopy = srcStat.size !== destStat.size || srcStat.mtimeMs > destStat.mtimeMs;
+    } catch {
+      shouldCopy = true;
+    }
+  }
+
+  if (!shouldCopy) return;
+
+  fs.copyFileSync(src, dest);
+  if (process.platform !== 'win32') {
+    try {
+      fs.chmodSync(dest, 0o755);
+    } catch {
+      // Ignore chmod errors on restricted filesystems.
+    }
+  }
+  console.log(`Bundled node runtime -> ${dest}`);
+}
+
+function getFileMtime(filePath) {
+  try {
+    return fs.statSync(filePath).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+function nodeModulesFresh(pluginDir) {
+  const nodeModulesDir = path.join(pluginDir, 'node_modules');
+  if (!fs.existsSync(nodeModulesDir)) return false;
+  const lockPath = path.join(pluginDir, 'package-lock.json');
+  const jsonPath = path.join(pluginDir, 'package.json');
+  const nmMtime = getFileMtime(nodeModulesDir);
+  if (getFileMtime(lockPath) > nmMtime) return false;
+  if (getFileMtime(jsonPath) > nmMtime) return false;
+  return true;
+}
+
+function ensurePluginDependencies(pluginDir) {
+  const packageJsonPath = path.join(pluginDir, 'package.json');
+  if (!fs.existsSync(packageJsonPath)) {
+    return;
+  }
+
+  if (nodeModulesFresh(pluginDir)) {
+    return;
+  }
+
+  const hasPackageLock = fs.existsSync(path.join(pluginDir, 'package-lock.json'));
+  const installArgs = hasPackageLock ? ['ci'] : ['install'];
+  console.log(`Installing built-in plugin dependencies in ${pluginDir}...`);
+  const res = spawnSync(npmExecutable, installArgs, {
+    cwd: pluginDir,
+    stdio: 'inherit',
+  });
   if (res.error) {
-    console.error('Failed to run cargo openvcs dist:', res.error);
+    console.error(`Failed to install dependencies for ${pluginDir}:`, res.error);
     process.exit(res.status || 1);
   }
   if (res.status !== 0) {
@@ -89,11 +169,34 @@ function runDistCommand() {
   }
 }
 
-ensureBundlesDir();
+function runDistCommand(pluginNames) {
+  console.log(`Built-in plugin bundles need rebuilding: ${pluginNames.join(', ')}`);
+  for (const pluginName of pluginNames) {
+    const pluginDir = path.join(pluginSources, pluginName);
+    ensurePluginDependencies(pluginDir);
+    console.log(`Packaging built-in plugin ${pluginName} via SDK CLI...`);
+    const res = spawnSync(
+      npmExecutable,
+      ['--prefix', sdkDir, 'run', 'openvcs', '--', 'dist', '--plugin-dir', pluginDir, '--out', pluginBundles],
+      { cwd: backendDir, stdio: 'inherit' }
+    );
+    if (res.error) {
+      console.error(`Failed to run SDK packager for ${pluginName}:`, res.error);
+      process.exit(res.status || 1);
+    }
+    if (res.status !== 0) {
+      process.exit(res.status);
+    }
+  }
+}
 
-const outdated = findOutdatedPlugin();
-if (outdated) {
-  runDistCommand();
+ensureBundlesDir();
+ensureNodeRuntimeDir();
+ensureBundledNodeRuntime();
+
+const outdated = findOutdatedPlugins();
+if (outdated.length > 0) {
+  runDistCommand(outdated);
 } else {
   console.log('Built-in plugin bundles are up to date.');
 }

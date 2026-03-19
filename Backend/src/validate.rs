@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use std::path::Path;
 
 #[derive(serde::Serialize)]
@@ -8,6 +10,13 @@ pub struct Validation {
 
 // Expand ~ to home; leave other paths untouched.
 // Returns (normalized_path_string, exists, is_dir)
+/// Normalizes and probes a filesystem path for existence/dir status.
+///
+/// # Parameters
+/// - `input`: Raw user path input.
+///
+/// # Returns
+/// - Tuple of normalized path, exists flag, and is-dir flag.
 fn normalize_and_probe(input: &str) -> (String, bool, bool) {
     let mut s = input.trim().to_string();
     if s.starts_with('~') {
@@ -19,6 +28,14 @@ fn normalize_and_probe(input: &str) -> (String, bool, bool) {
     (s.clone(), p.exists(), p.is_dir())
 }
 
+/// Heuristically checks whether a string looks like a Git URL.
+///
+/// # Parameters
+/// - `u`: Candidate URL string.
+///
+/// # Returns
+/// - `true` when URL matches supported Git URL forms.
+/// - `false` otherwise.
 fn is_probably_git_url(u: &str) -> bool {
     let u = u.trim();
     if u.is_empty() {
@@ -41,6 +58,14 @@ fn is_probably_git_url(u: &str) -> bool {
     false
 }
 
+/// Checks whether a string looks like an absolute filesystem path.
+///
+/// # Parameters
+/// - `s`: Candidate path string.
+///
+/// # Returns
+/// - `true` when path format looks absolute.
+/// - `false` otherwise.
 fn looks_like_path(s: &str) -> bool {
     let s = s.trim();
     if s.is_empty() {
@@ -55,6 +80,13 @@ fn looks_like_path(s: &str) -> bool {
     win_abs.is_match(s)
 }
 
+/// Validates whether a string looks like a supported Git URL.
+///
+/// # Parameters
+/// - `url`: Candidate URL string.
+///
+/// # Returns
+/// - Validation result with `ok` and optional reason.
 pub fn validate_git_url(url: String) -> Validation {
     if is_probably_git_url(&url) {
         Validation {
@@ -71,6 +103,13 @@ pub fn validate_git_url(url: String) -> Validation {
     }
 }
 
+/// Validates a repository path for add/open operations.
+///
+/// # Parameters
+/// - `path`: Candidate absolute repository path.
+///
+/// # Returns
+/// - Validation result with `ok` and optional reason.
 pub fn validate_add_path(path: String) -> Validation {
     if !looks_like_path(&path) {
         return Validation {
@@ -107,6 +146,14 @@ pub fn validate_add_path(path: String) -> Validation {
     }
 }
 
+/// Validates clone URL and destination inputs.
+///
+/// # Parameters
+/// - `url`: Source repository URL.
+/// - `dest`: Destination path.
+///
+/// # Returns
+/// - Validation result with `ok` and optional reason.
 pub fn validate_clone_input(url: String, dest: String) -> Validation {
     if !is_probably_git_url(&url) {
         return Validation {

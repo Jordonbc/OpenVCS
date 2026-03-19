@@ -1,0 +1,53 @@
+name: opencode-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  review:
+    if: github.event.pull_request.user.login == 'Jordonbc'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: primary
+        id: review_primary
+        continue-on-error: true
+        uses: anomalyco/opencode/github@2410593023d2c61f05123c9b0faf189a28dfbeee
+        env:
+          OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: ${{ vars.OPENCODE_REVIEW_MODEL }}
+          use_github_token: true
+          prompt: |
+            Review this pull request:
+            - Check for code quality issues
+            - Look for potential bugs
+            - Suggest improvements
+
+      - name: fallback
+        if: steps.review_primary.outcome == 'failure'
+        uses: anomalyco/opencode/github@2410593023d2c61f05123c9b0faf189a28dfbeee
+        env:
+          OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: ${{ vars.OPENCODE_REVIEW_MODEL_FALLBACK }}
+          use_github_token: true
+          prompt: |
+            Review this pull request:
+            - Check for code quality issues
+            - Look for potential bugs
+            - Suggest improvements

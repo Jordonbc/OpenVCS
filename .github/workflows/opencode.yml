@@ -1,0 +1,53 @@
+name: opencode
+
+on:
+  issue_comment:
+    types: [created, edited]
+  pull_request_review_comment:
+    types: [created, edited]
+
+jobs:
+  opencode:
+    if: |
+      github.actor == 'Jordonbc' && (
+        startsWith(github.event.comment.body, '/oc') ||
+        contains(github.event.comment.body, '\n/oc') ||
+        startsWith(github.event.comment.body, '/opencode') ||
+        contains(github.event.comment.body, '\n/opencode')
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: primary
+        id: opencode_primary
+        continue-on-error: true
+        # Pinned to an immutable commit for CodeQL (tag: github-v1.2.17)
+        uses: anomalyco/opencode/github@2410593023d2c61f05123c9b0faf189a28dfbeee
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: ${{ vars.OPENCODE_DEFAULT_MODEL }}
+
+      - name: fallback
+        if: steps.opencode_primary.outcome == 'failure'
+        # Pinned to an immutable commit for CodeQL (tag: github-v1.2.17)
+        uses: anomalyco/opencode/github@2410593023d2c61f05123c9b0faf189a28dfbeee
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: ${{ vars.OPENCODE_DEFAULT_MODEL_FALLBACK }}

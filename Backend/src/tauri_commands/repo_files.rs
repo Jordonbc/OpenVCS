@@ -1,3 +1,5 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 use std::collections::HashSet;
 use std::path::{Component, PathBuf};
 
@@ -9,6 +11,14 @@ use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};
 
+/// Validates a repo-relative path and blocks absolute/parent traversal paths.
+///
+/// # Parameters
+/// - `input`: Raw path input.
+///
+/// # Returns
+/// - `Ok(PathBuf)` normalized relative path.
+/// - `Err(String)` when invalid.
 fn safe_relative_path(input: &str) -> Result<PathBuf, String> {
     let candidate = PathBuf::from(input);
     if candidate.as_os_str().is_empty() {
@@ -27,6 +37,14 @@ fn safe_relative_path(input: &str) -> Result<PathBuf, String> {
     Ok(candidate)
 }
 
+/// Normalizes a `.gitignore` entry from a repo-relative path.
+///
+/// # Parameters
+/// - `path`: Raw path input.
+///
+/// # Returns
+/// - `Ok(String)` normalized gitignore entry.
+/// - `Err(String)` when invalid.
 fn normalize_gitignore_entry(path: &str) -> Result<String, String> {
     let rel = safe_relative_path(path)?;
     let mut s = rel.to_string_lossy().replace('\\', "/");
@@ -43,6 +61,15 @@ fn normalize_gitignore_entry(path: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
+/// Adds repository-relative paths to `.gitignore` if not already present.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `paths`: Repository-relative paths to ignore.
+///
+/// # Returns
+/// - `Ok(())` when update succeeds.
+/// - `Err(String)` when validation or file IO fails.
 pub async fn git_add_to_gitignore_paths(
     state: State<'_, AppState>,
     paths: Vec<String>,
@@ -98,6 +125,16 @@ pub async fn git_add_to_gitignore_paths(
 }
 
 #[tauri::command]
+/// Opens a repository file with the host system opener.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+/// - `state`: Shared application state.
+/// - `path`: Repository-relative path to open.
+///
+/// # Returns
+/// - `Ok(())` on success.
+/// - `Err(String)` when no repo is selected, path is invalid, or open fails.
 pub fn open_repo_file<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
@@ -121,6 +158,13 @@ pub fn open_repo_file<R: Runtime>(
         .map_err(|e| format!("Failed to open file: {e}"))
 }
 
+/// Decodes repository file bytes with UTF-16 heuristics fallback.
+///
+/// # Parameters
+/// - `bytes`: Raw file bytes.
+///
+/// # Returns
+/// - Best-effort decoded text.
 fn decode_repo_text(bytes: &[u8]) -> String {
     if bytes.len() >= 2 && bytes.len().is_multiple_of(2) && bytes.contains(&0) {
         let (endianness, start) = if bytes.starts_with(&[0xFF, 0xFE]) {
@@ -165,6 +209,15 @@ fn decode_repo_text(bytes: &[u8]) -> String {
 }
 
 #[tauri::command]
+/// Reads a repository file as text, with UTF-16 fallback decoding.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `path`: Repository-relative file path.
+///
+/// # Returns
+/// - `Ok(String)` decoded text content.
+/// - `Err(String)` when no repo is selected, path is invalid, or read fails.
 pub fn read_repo_file_text(state: State<'_, AppState>, path: String) -> Result<String, String> {
     let repo = state
         .current_repo()
