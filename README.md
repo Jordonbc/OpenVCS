@@ -164,6 +164,10 @@ just tauri-build
 This wraps `cargo tauri build` with `NO_STRIP=true` to avoid AppImage
 linuxdeploy strip failures on newer Linux toolchains.
 
+The Tauri precommands in `Backend/tauri.conf.json` intentionally use a
+cwd-agnostic Node launcher because Tauri may resolve hook execution from a
+nested plugin directory when it discovers `package.json` files under `Backend/`.
+
 ### Optional: Rust‑only build
 
 If you want to verify the Rust workspace compiles independently (without running Tauri):
