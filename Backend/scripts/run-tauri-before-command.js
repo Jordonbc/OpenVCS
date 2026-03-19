@@ -26,7 +26,15 @@ if (dryRun) {
 }
 
 function run(cmd, args, cwd) {
-  const res = spawnSync(cmd, args, { cwd, stdio: 'inherit' });
+  const spawnOpts = { cwd, stdio: 'inherit' };
+  if (
+    process.platform === 'win32' &&
+    (cmd === 'npm' || cmd.toLowerCase().endsWith('.cmd') || cmd.toLowerCase().endsWith('.bat'))
+  ) {
+    spawnOpts.shell = true;
+  }
+
+  const res = spawnSync(cmd, args, spawnOpts);
   if (res.error) {
     console.error(`Failed to run ${cmd}:`, res.error);
     process.exit(res.status || 1);
@@ -43,5 +51,5 @@ if (mode === 'build' && process.env.FRONTEND_SKIP_BUILD === '1') {
   process.exit(0);
 }
 
-const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npmBin = 'npm';
 run(npmBin, ['run', mode], frontendDir);

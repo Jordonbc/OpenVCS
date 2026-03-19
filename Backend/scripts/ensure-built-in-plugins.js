@@ -130,6 +130,18 @@ function getFileMtime(filePath) {
   }
 }
 
+function shouldUseWindowsShell(command) {
+  if (process.platform !== 'win32') {
+    return false;
+  }
+
+  return (
+    command === 'npm' ||
+    command.toLowerCase().endsWith('.cmd') ||
+    command.toLowerCase().endsWith('.bat')
+  );
+}
+
 function nodeModulesFresh(pluginDir) {
   const nodeModulesDir = path.join(pluginDir, 'node_modules');
   if (!fs.existsSync(nodeModulesDir)) return false;
@@ -154,10 +166,14 @@ function ensurePluginDependencies(pluginDir) {
   const hasPackageLock = fs.existsSync(path.join(pluginDir, 'package-lock.json'));
   const installArgs = hasPackageLock ? ['ci'] : ['install'];
   console.log(`Installing built-in plugin dependencies in ${pluginDir}...`);
-  const res = spawnSync(npmExecutable, installArgs, {
+  const spawnOpts = {
     cwd: pluginDir,
     stdio: 'inherit',
-  });
+  };
+  if (shouldUseWindowsShell(npmExecutable)) {
+    spawnOpts.shell = true;
+  }
+  const res = spawnSync(npmExecutable, installArgs, spawnOpts);
   if (res.error) {
     console.error(`Failed to install dependencies for ${pluginDir}:`, res.error);
     process.exit(res.status || 1);
@@ -168,7 +184,11 @@ function ensurePluginDependencies(pluginDir) {
 }
 
 function runCommand(command, args, cwd, label) {
-  const res = spawnSync(command, args, { cwd, stdio: 'inherit' });
+  const spawnOpts = { cwd, stdio: 'inherit' };
+  if (shouldUseWindowsShell(command)) {
+    spawnOpts.shell = true;
+  }
+  const res = spawnSync(command, args, spawnOpts);
   if (res.error) {
     console.error(`Failed to ${label}:`, res.error);
     process.exit(res.status || 1);
