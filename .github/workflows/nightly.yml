@@ -179,9 +179,6 @@ jobs:
       - name: Setup sccache
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
 
-      - name: Install OpenVCS SDK CLI
-        run: cargo install --locked openvcs-sdk --bin cargo-openvcs
-
       - name: Install Linux deps
         if: matrix.platform == 'ubuntu-24.04'
         run: |
