@@ -197,6 +197,16 @@ function ensurePluginPackagingManifest(pluginDir, pluginName) {
     return null;
   }
 
+  if (!existing) {
+    console.log(
+      `Built-in plugin ${pluginName} has no package.json; generating a transient npm packaging manifest.`
+    );
+  } else {
+    console.log(
+      `Built-in plugin ${pluginName} has no npm dist script; generating a transient npm packaging manifest.`
+    );
+  }
+
   const packageJsonPath = path.join(pluginDir, 'package.json');
   const packageLockPath = path.join(pluginDir, 'package-lock.json');
   const nodeModulesPath = path.join(pluginDir, 'node_modules');
