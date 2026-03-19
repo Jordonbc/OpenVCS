@@ -109,6 +109,22 @@ npx openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist
 
 `openvcs dist` runs the build step automatically unless `--no-build` is passed.
 
+## Bundling built-in plugins
+
+The app ships a handful of built-in plugins. Their `.ovcsp` bundles are rebuilt by
+running the helper script from the repository root:
+
+```bash
+node Backend/scripts/ensure-built-in-plugins.js
+```
+
+The script compares source timestamps against the previously packaged bundles,
+installs npm deps if needed, runs `npm run dist` inside each plugin, and copies
+the resulting archives into `target/openvcs/built-in-plugins`. Pass `--force` to
+rebuild all built-in plugins regardless of timestamps (useful for CI or manual
+repackaging). Non-code plugins missing `package.json` are skipped because they
+ship prebuilt archives.
+
 Typical Node plugin author modules now look like:
 
 ```ts

@@ -12,6 +12,8 @@ const pluginBundles = path.join(repoRoot, 'target', 'openvcs', 'built-in-plugins
 const nodeRuntimeDir = path.join(repoRoot, 'target', 'openvcs', 'node-runtime');
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
+const forceRebuild = process.argv.includes('--force');
+
 const skipDirs = new Set(['target', '.git', 'node_modules', 'dist']);
 
 /**
@@ -96,6 +98,19 @@ function findOutdatedPlugins() {
     }
   }
   return outdated;
+}
+
+/**
+ * Lists all plugin directories regardless of build state.
+ *
+ * @returns {string[]} Plugin directory names.
+ */
+function findAllPlugins() {
+  if (!fs.existsSync(pluginSources)) return [];
+  return fs
+    .readdirSync(pluginSources, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
 }
 
 function ensureBundlesDir() {
@@ -187,7 +202,7 @@ function ensurePluginDependencies(pluginDir) {
  * @param {string} pluginDir - Plugin directory path.
  */
 function copyPackagedBundles(pluginName, pluginDir) {
-  fs.mkdirSync(pluginBundles, { recursive: true });
+  ensureBundlesDir();
   const distDir = path.join(pluginDir, 'dist');
   if (!fs.existsSync(distDir)) {
     console.error(`Missing dist directory for ${pluginName}: ${distDir}`);
@@ -221,13 +236,16 @@ function copyPackagedBundles(pluginName, pluginDir) {
 }
 
 function runDistCommand(pluginNames) {
-  console.log(`Built-in plugin bundles need rebuilding: ${pluginNames.join(', ')}`);
+  const header = forceRebuild
+    ? `Forcing rebuild of built-in plugins: ${pluginNames.join(', ')}`
+    : `Built-in plugin bundles need rebuilding: ${pluginNames.join(', ')}`;
+  console.log(header);
   for (const pluginName of pluginNames) {
     const pluginDir = path.join(pluginSources, pluginName);
     const packageJsonPath = path.join(pluginDir, 'package.json');
 
     if (!fs.existsSync(packageJsonPath)) {
-      console.log(`Skipping non-code plugin ${pluginName} (no package.json).`);
+      console.warn(`Skipping non-code plugin ${pluginName} (no package.json).`);
       continue;
     }
 
@@ -253,9 +271,11 @@ ensureBundlesDir();
 ensureNodeRuntimeDir();
 ensureBundledNodeRuntime();
 
-const outdated = findOutdatedPlugins();
-if (outdated.length > 0) {
-  runDistCommand(outdated);
+const targets = forceRebuild ? findAllPlugins() : findOutdatedPlugins();
+if (targets.length > 0) {
+  runDistCommand(targets);
+} else if (forceRebuild) {
+  console.log('Force rebuild requested, but no built-in plugins were found.');
 } else {
   console.log('Built-in plugin bundles are up to date.');
 }
