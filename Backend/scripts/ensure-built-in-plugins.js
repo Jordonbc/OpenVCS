@@ -11,7 +11,6 @@ const pluginSources = path.join(backendDir, 'built-in-plugins');
 const pluginBundles = path.join(repoRoot, 'target', 'openvcs', 'built-in-plugins');
 const nodeRuntimeDir = path.join(repoRoot, 'target', 'openvcs', 'node-runtime');
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const cargoExecutable = process.platform === 'win32' ? 'cargo.exe' : 'cargo';
 
 const skipDirs = new Set(['target', '.git', 'node_modules', 'dist']);
 
@@ -179,18 +178,50 @@ function runCommand(command, args, cwd, label) {
   }
 }
 
-function pluginUsesNpmDist(pluginDir) {
+function readPackageJson(pluginDir) {
   const packageJsonPath = path.join(pluginDir, 'package.json');
   if (!fs.existsSync(packageJsonPath)) {
-    return false;
+    return null;
   }
 
   try {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-    return Boolean(packageJson.scripts && packageJson.scripts.dist);
+    return JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   } catch {
-    return false;
+    return null;
   }
+}
+
+function ensurePluginPackagingManifest(pluginDir, pluginName) {
+  const existing = readPackageJson(pluginDir);
+  if (existing && existing.scripts && existing.scripts.dist) {
+    return null;
+  }
+
+  const packageJsonPath = path.join(pluginDir, 'package.json');
+  const packageLockPath = path.join(pluginDir, 'package-lock.json');
+  const nodeModulesPath = path.join(pluginDir, 'node_modules');
+  const tempPackageJson = {
+    name: `@openvcs/${pluginName.toLowerCase()}-built-in-packager`,
+    private: true,
+    scripts: {
+      dist: 'node ./node_modules/@openvcs/sdk/bin/openvcs.js dist --plugin-dir . --out dist',
+    },
+    devDependencies: {
+      '@openvcs/sdk': '^0.2',
+    },
+  };
+
+  fs.writeFileSync(packageJsonPath, `${JSON.stringify(tempPackageJson, null, 2)}\n`);
+
+  return () => {
+    try {
+      fs.rmSync(packageJsonPath, { force: true });
+      fs.rmSync(packageLockPath, { force: true });
+      fs.rmSync(nodeModulesPath, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup failures in transient packaging files.
+    }
+  };
 }
 
 function copyPluginBundle(pluginDir, pluginName) {
@@ -205,21 +236,15 @@ function copyPluginBundle(pluginDir, pluginName) {
 }
 
 function packagePlugin(pluginDir, pluginName) {
-  if (pluginUsesNpmDist(pluginDir)) {
+  const cleanupPackagingManifest = ensurePluginPackagingManifest(pluginDir, pluginName);
+  try {
     ensurePluginDependencies(pluginDir);
     console.log(`Packaging built-in plugin ${pluginName} via npm run dist...`);
     runCommand(npmExecutable, ['run', 'dist'], pluginDir, `package ${pluginName}`);
     copyPluginBundle(pluginDir, pluginName);
-    return;
+  } finally {
+    cleanupPackagingManifest?.();
   }
-
-  console.log(`Packaging built-in plugin ${pluginName} via cargo openvcs dist...`);
-  runCommand(
-    cargoExecutable,
-    ['openvcs', 'dist', '--plugin-dir', pluginDir, '--out', pluginBundles],
-    backendDir,
-    `package ${pluginName}`
-  );
 }
 
 function runDistCommand(pluginNames) {

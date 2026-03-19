@@ -109,9 +109,10 @@ npx openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist
 
 `openvcs dist` runs the build step automatically unless `--no-build` is passed.
 
-The desktop client's built-in plugin bundler follows the same contract: module
-plugins should provide their own `npm run dist` script, while asset-only theme
-plugins can still be packaged directly with `cargo openvcs dist`.
+The desktop client's built-in plugin bundler follows the same contract: it runs
+`npm install`/`npm ci` as needed and then `npm run dist` for every built-in
+plugin. Plugins that do not ship their own `package.json` get a transient npm
+packaging manifest during the build so the workflow stays npm-only.
 
 Typical Node plugin author modules now look like:
 
