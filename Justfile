@@ -7,7 +7,7 @@ build target="all":
 _build_all: _build_client
 
 _build_plugins:
-  cargo openvcs dist --all --plugin-dir Backend/built-in-plugins --out target/openvcs/built-in-plugins
+  node Backend/scripts/ensure-built-in-plugins.js
 
 _build_client: _build_plugins
   npm --prefix Frontend run build

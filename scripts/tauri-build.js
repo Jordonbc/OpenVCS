@@ -3,6 +3,12 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
+/**
+ * Loads key/value pairs from a dotenv-style file into process.env.
+ * Existing environment values are preserved.
+ *
+ * @param {string} filePath - Path to the dotenv file.
+ */
 function loadLocalEnv(filePath) {
   if (!fs.existsSync(filePath)) return;
   const content = fs.readFileSync(filePath, 'utf8');
@@ -23,6 +29,12 @@ function loadLocalEnv(filePath) {
   }
 }
 
+/**
+ * Normalizes the Tauri signing key into the format expected by TAURI_SIGNING_PRIVATE_KEY.
+ *
+ * @param {string} raw - Raw key content.
+ * @returns {string} Normalized key value.
+ */
 function normalizeSigningKey(raw) {
   let key = raw;
   // Tauri expects TAURI_SIGNING_PRIVATE_KEY to be base64 of the minisign key box text.
@@ -38,6 +50,12 @@ function normalizeSigningKey(raw) {
   return key;
 }
 
+/**
+ * Prompts for sensitive input without echoing typed characters.
+ *
+ * @param {string} question - Prompt text.
+ * @returns {Promise<string>} User-provided value.
+ */
 function promptHidden(question) {
   return new Promise((resolve) => {
     const stdin = process.stdin;
@@ -66,8 +84,19 @@ function promptHidden(question) {
   });
 }
 
+/**
+ * Returns repository and Backend directories based on this script location.
+ *
+ * @returns {{repoRoot: string, backendDir: string}} Build directory paths.
+ */
+function resolvePaths() {
+  const repoRoot = path.resolve(__dirname, '..');
+  const backendDir = path.join(repoRoot, 'Backend');
+  return { repoRoot, backendDir };
+}
+
 async function main() {
-  const repoRoot = process.cwd();
+  const { repoRoot, backendDir } = resolvePaths();
   loadLocalEnv(path.join(repoRoot, '.env.tauri.local'));
 
   if (process.env.TAURI_SIGNING_PRIVATE_KEY_FILE && !process.env.TAURI_SIGNING_PRIVATE_KEY) {
@@ -90,6 +119,7 @@ async function main() {
   process.env.NO_STRIP = process.env.NO_STRIP || 'true';
 
   const child = spawn('cargo', ['tauri', 'build'], {
+    cwd: backendDir,
     stdio: 'inherit',
     env: process.env,
   });

@@ -7,8 +7,6 @@ const { spawnSync } = require('child_process');
 const scriptDir = __dirname;
 const backendDir = path.resolve(scriptDir, '..');
 const repoRoot = path.resolve(backendDir, '..');
-const workspaceRoot = path.resolve(repoRoot, '..');
-const sdkDir = path.join(workspaceRoot, 'SDK');
 const pluginSources = path.join(backendDir, 'built-in-plugins');
 const pluginBundles = path.join(repoRoot, 'target', 'openvcs', 'built-in-plugins');
 const nodeRuntimeDir = path.join(repoRoot, 'target', 'openvcs', 'node-runtime');
@@ -16,6 +14,12 @@ const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 const skipDirs = new Set(['target', '.git', 'node_modules', 'dist']);
 
+/**
+ * Returns the newest file mtime (ms) under a directory, ignoring known build dirs.
+ *
+ * @param {string} dir - Directory to scan.
+ * @returns {number|null} Latest mtime or null when no files are present.
+ */
 function latestSourceTime(dir) {
   let latest = 0;
   let hasFile = false;
@@ -50,6 +54,12 @@ function latestSourceTime(dir) {
   return hasFile ? latest : null;
 }
 
+/**
+ * Resolves the canonical built-in plugin bundle filename from plugin metadata.
+ *
+ * @param {string} name - Plugin source directory name.
+ * @returns {string} Expected `.ovcsp` filename.
+ */
 function bundleFileNameForPlugin(name) {
   const manifestPath = path.join(pluginSources, name, 'openvcs.plugin.json');
   try {
@@ -169,24 +179,65 @@ function ensurePluginDependencies(pluginDir) {
   }
 }
 
+/**
+ * Copies plugin archive(s) created by `npm run dist` into the app bundle output.
+ *
+ * @param {string} pluginName - Plugin directory name.
+ * @param {string} pluginDir - Plugin directory path.
+ */
+function copyPackagedBundles(pluginName, pluginDir) {
+  const distDir = path.join(pluginDir, 'dist');
+  if (!fs.existsSync(distDir)) {
+    console.error(`Missing dist directory for ${pluginName}: ${distDir}`);
+    process.exit(1);
+  }
+
+  const archiveEntries = fs
+    .readdirSync(distDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.ovcsp'));
+
+  if (archiveEntries.length === 0) {
+    console.error(`No .ovcsp bundle produced for ${pluginName} in ${distDir}`);
+    process.exit(1);
+  }
+
+  const preferredName = bundleFileNameForPlugin(pluginName);
+  const preferred = archiveEntries.find((entry) => entry.name === preferredName);
+  const sourceArchive = preferred
+    ? path.join(distDir, preferred.name)
+    : path.join(distDir, archiveEntries[0].name);
+  const destArchive = path.join(pluginBundles, preferredName);
+
+  fs.copyFileSync(sourceArchive, destArchive);
+  console.log(`Built-in plugin bundle copied -> ${destArchive}`);
+}
+
 function runDistCommand(pluginNames) {
   console.log(`Built-in plugin bundles need rebuilding: ${pluginNames.join(', ')}`);
   for (const pluginName of pluginNames) {
     const pluginDir = path.join(pluginSources, pluginName);
+    const packageJsonPath = path.join(pluginDir, 'package.json');
+
+    if (!fs.existsSync(packageJsonPath)) {
+      console.log(`Skipping ${pluginName}: no package.json (non-code plugin).`);
+      continue;
+    }
+
     ensurePluginDependencies(pluginDir);
-    console.log(`Packaging built-in plugin ${pluginName} via SDK CLI...`);
-    const res = spawnSync(
-      npmExecutable,
-      ['--prefix', sdkDir, 'run', 'openvcs', '--', 'dist', '--plugin-dir', pluginDir, '--out', pluginBundles],
-      { cwd: backendDir, stdio: 'inherit' }
-    );
+    console.log(`Packaging built-in plugin ${pluginName} via npm run dist...`);
+    const res = spawnSync(npmExecutable, ['run', 'dist'], {
+      cwd: pluginDir,
+      stdio: 'inherit',
+    });
     if (res.error) {
-      console.error(`Failed to run SDK packager for ${pluginName}:`, res.error);
+      console.error(`Failed to run npm dist for ${pluginName}:`, res.error);
       process.exit(res.status || 1);
     }
     if (res.status !== 0) {
       process.exit(res.status);
     }
+
+    copyPackagedBundles(pluginName, pluginDir);
   }
 }
 
