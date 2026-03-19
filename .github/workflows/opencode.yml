@@ -37,9 +37,9 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_DEFAULT_MODEL }}
+          use_github_token: false
 
       - name: fallback
         if: steps.opencode_primary.outcome == 'failure'
@@ -48,6 +48,6 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_DEFAULT_MODEL_FALLBACK }}
+          use_github_token: false
