@@ -10,7 +10,7 @@ const repoRoot = path.resolve(backendDir, '..');
 const pluginSources = path.join(backendDir, 'built-in-plugins');
 const pluginBundles = path.join(repoRoot, 'target', 'openvcs', 'built-in-plugins');
 const nodeRuntimeDir = path.join(repoRoot, 'target', 'openvcs', 'node-runtime');
-const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npmExecutable = 'npm';
 
 const skipDirs = new Set(['target', '.git', 'node_modules', 'dist']);
 
