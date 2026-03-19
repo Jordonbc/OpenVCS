@@ -68,7 +68,8 @@ function bundleFileNameForPlugin(name) {
     if (pluginId) {
       return `${pluginId}.ovcsp`;
     }
-  } catch {
+  } catch (e) {
+    console.warn(`Failed to read manifest for ${name}:`, e);
     // Fall back to the directory name so the missing/invalid manifest still
     // forces a rebuild attempt and surfaces the real packaging error later.
   }
@@ -186,6 +187,7 @@ function ensurePluginDependencies(pluginDir) {
  * @param {string} pluginDir - Plugin directory path.
  */
 function copyPackagedBundles(pluginName, pluginDir) {
+  fs.mkdirSync(pluginBundles, { recursive: true });
   const distDir = path.join(pluginDir, 'dist');
   if (!fs.existsSync(distDir)) {
     console.error(`Missing dist directory for ${pluginName}: ${distDir}`);
@@ -208,6 +210,12 @@ function copyPackagedBundles(pluginName, pluginDir) {
     : path.join(distDir, archiveEntries[0].name);
   const destArchive = path.join(pluginBundles, preferredName);
 
+  if (archiveEntries.length > 1) {
+    console.warn(
+      `Multiple .ovcsp archives found for ${pluginName}; using ${path.basename(sourceArchive)}.`
+    );
+  }
+
   fs.copyFileSync(sourceArchive, destArchive);
   console.log(`Built-in plugin bundle copied -> ${destArchive}`);
 }
@@ -219,7 +227,9 @@ function runDistCommand(pluginNames) {
     const packageJsonPath = path.join(pluginDir, 'package.json');
 
     if (!fs.existsSync(packageJsonPath)) {
-      console.log(`Skipping ${pluginName}: no package.json (non-code plugin).`);
+      console.warn(
+        `Skipping ${pluginName}: no package.json (non-code plugin; expected to provide prebuilt bundle).`
+      );
       continue;
     }
 
