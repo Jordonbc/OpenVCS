@@ -69,7 +69,7 @@ function bundleFileNameForPlugin(name) {
       return `${pluginId}.ovcsp`;
     }
   } catch (e) {
-    console.warn(`Failed to read manifest for ${name}:`, e);
+    console.debug(`Manifest unavailable for ${name}; using directory-name fallback.`, e);
     // Fall back to the directory name so the missing/invalid manifest still
     // forces a rebuild attempt and surfaces the real packaging error later.
   }
@@ -227,9 +227,7 @@ function runDistCommand(pluginNames) {
     const packageJsonPath = path.join(pluginDir, 'package.json');
 
     if (!fs.existsSync(packageJsonPath)) {
-      console.warn(
-        `Skipping ${pluginName}: no package.json (non-code plugin; expected to provide prebuilt bundle).`
-      );
+      console.log(`Skipping non-code plugin ${pluginName} (no package.json).`);
       continue;
     }
 

@@ -60,6 +60,9 @@ jobs:
         working-directory: Frontend
         run: npm run build
 
+      - name: Build built-in plugins
+        run: node Backend/scripts/ensure-built-in-plugins.js
+
       # ---------- Rust toolchain & deps ----------
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable

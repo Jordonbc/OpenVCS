@@ -90,9 +90,16 @@ function promptHidden(question) {
  * @returns {{repoRoot: string, backendDir: string}} Build directory paths.
  */
 function resolvePaths() {
-  const repoRoot = path.resolve(__dirname, '..');
-  const backendDir = path.join(repoRoot, 'Backend');
-  return { repoRoot, backendDir };
+  const cwdRepoRoot = process.cwd();
+  const cwdBackendDir = path.join(cwdRepoRoot, 'Backend');
+  const cwdTauriConfig = path.join(cwdBackendDir, 'tauri.conf.json');
+  if (fs.existsSync(cwdTauriConfig)) {
+    return { repoRoot: cwdRepoRoot, backendDir: cwdBackendDir };
+  }
+
+  const scriptRepoRoot = path.resolve(__dirname, '..');
+  const scriptBackendDir = path.join(scriptRepoRoot, 'Backend');
+  return { repoRoot: scriptRepoRoot, backendDir: scriptBackendDir };
 }
 
 async function main() {
