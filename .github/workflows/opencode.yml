@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: primary
         id: opencode_primary
