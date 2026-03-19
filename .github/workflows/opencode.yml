@@ -39,7 +39,7 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
         with:
           model: ${{ vars.OPENCODE_DEFAULT_MODEL }}
-          use_github_token: true
+          use_github_token: false
 
       - name: fallback
         if: steps.opencode_primary.outcome == 'failure'
@@ -50,3 +50,4 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
         with:
           model: ${{ vars.OPENCODE_DEFAULT_MODEL_FALLBACK }}
+          use_github_token: false
