@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: primary
         id: opencode_primary
@@ -37,9 +37,9 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_DEFAULT_MODEL }}
+          use_github_token: true
 
       - name: fallback
         if: steps.opencode_primary.outcome == 'failure'
@@ -48,6 +48,5 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_DEFAULT_MODEL_FALLBACK }}
