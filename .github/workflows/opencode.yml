@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: primary
         id: opencode_primary
@@ -40,6 +40,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_DEFAULT_MODEL }}
+          use_github_token: true
 
       - name: fallback
         if: steps.opencode_primary.outcome == 'failure'
@@ -51,3 +52,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_DEFAULT_MODEL_FALLBACK }}
+          use_github_token: true
