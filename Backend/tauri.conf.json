@@ -3,8 +3,8 @@
   "productName": "OpenVCS",
   "identifier": "dev.jordon.openvcs",
   "build": {
-    "beforeDevCommand": "node ../Backend/scripts/run-tauri-before-command.js dev",
-    "beforeBuildCommand": "node scripts/run-tauri-before-command.js build",
+    "beforeDevCommand": "node -e \"const {spawnSync}=require('node:child_process');const fs=require('node:fs');const path=require('node:path');const candidates=['scripts/run-tauri-before-command.js','Backend/scripts/run-tauri-before-command.js','../Backend/scripts/run-tauri-before-command.js','../../scripts/run-tauri-before-command.js'];const script=candidates.map((entry)=>path.resolve(process.cwd(),entry)).find((entry)=>fs.existsSync(entry));if(!script){console.error('Unable to locate Backend/scripts/run-tauri-before-command.js from cwd='+process.cwd());process.exit(1);}const result=spawnSync(process.execPath,[script,'dev'],{stdio:'inherit'});process.exit(result.status ?? 1);\"",
+    "beforeBuildCommand": "node -e \"const {spawnSync}=require('node:child_process');const fs=require('node:fs');const path=require('node:path');const candidates=['scripts/run-tauri-before-command.js','Backend/scripts/run-tauri-before-command.js','../Backend/scripts/run-tauri-before-command.js','../../scripts/run-tauri-before-command.js'];const script=candidates.map((entry)=>path.resolve(process.cwd(),entry)).find((entry)=>fs.existsSync(entry));if(!script){console.error('Unable to locate Backend/scripts/run-tauri-before-command.js from cwd='+process.cwd());process.exit(1);}const result=spawnSync(process.execPath,[script,'build'],{stdio:'inherit'});process.exit(result.status ?? 1);\"",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../Frontend/dist"
   },
