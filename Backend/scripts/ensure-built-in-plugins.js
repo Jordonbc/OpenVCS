@@ -7,12 +7,11 @@ const { spawnSync } = require('child_process');
 const scriptDir = __dirname;
 const backendDir = path.resolve(scriptDir, '..');
 const repoRoot = path.resolve(backendDir, '..');
-const workspaceRoot = path.resolve(repoRoot, '..');
-const sdkDir = path.join(workspaceRoot, 'SDK');
 const pluginSources = path.join(backendDir, 'built-in-plugins');
 const pluginBundles = path.join(repoRoot, 'target', 'openvcs', 'built-in-plugins');
 const nodeRuntimeDir = path.join(repoRoot, 'target', 'openvcs', 'node-runtime');
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const cargoExecutable = process.platform === 'win32' ? 'cargo.exe' : 'cargo';
 
 const skipDirs = new Set(['target', '.git', 'node_modules', 'dist']);
 
@@ -169,24 +168,65 @@ function ensurePluginDependencies(pluginDir) {
   }
 }
 
+function runCommand(command, args, cwd, label) {
+  const res = spawnSync(command, args, { cwd, stdio: 'inherit' });
+  if (res.error) {
+    console.error(`Failed to ${label}:`, res.error);
+    process.exit(res.status || 1);
+  }
+  if (res.status !== 0) {
+    process.exit(res.status);
+  }
+}
+
+function pluginUsesNpmDist(pluginDir) {
+  const packageJsonPath = path.join(pluginDir, 'package.json');
+  if (!fs.existsSync(packageJsonPath)) {
+    return false;
+  }
+
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    return Boolean(packageJson.scripts && packageJson.scripts.dist);
+  } catch {
+    return false;
+  }
+}
+
+function copyPluginBundle(pluginDir, pluginName) {
+  const bundleName = bundleFileNameForPlugin(pluginName);
+  const sourceBundle = path.join(pluginDir, 'dist', bundleName);
+  const destBundle = path.join(pluginBundles, bundleName);
+  if (!fs.existsSync(sourceBundle)) {
+    console.error(`Expected built-in plugin bundle at ${sourceBundle}`);
+    process.exit(1);
+  }
+  fs.copyFileSync(sourceBundle, destBundle);
+}
+
+function packagePlugin(pluginDir, pluginName) {
+  if (pluginUsesNpmDist(pluginDir)) {
+    ensurePluginDependencies(pluginDir);
+    console.log(`Packaging built-in plugin ${pluginName} via npm run dist...`);
+    runCommand(npmExecutable, ['run', 'dist'], pluginDir, `package ${pluginName}`);
+    copyPluginBundle(pluginDir, pluginName);
+    return;
+  }
+
+  console.log(`Packaging built-in plugin ${pluginName} via cargo openvcs dist...`);
+  runCommand(
+    cargoExecutable,
+    ['openvcs', 'dist', '--plugin-dir', pluginDir, '--out', pluginBundles],
+    backendDir,
+    `package ${pluginName}`
+  );
+}
+
 function runDistCommand(pluginNames) {
   console.log(`Built-in plugin bundles need rebuilding: ${pluginNames.join(', ')}`);
   for (const pluginName of pluginNames) {
     const pluginDir = path.join(pluginSources, pluginName);
-    ensurePluginDependencies(pluginDir);
-    console.log(`Packaging built-in plugin ${pluginName} via SDK CLI...`);
-    const res = spawnSync(
-      npmExecutable,
-      ['--prefix', sdkDir, 'run', 'openvcs', '--', 'dist', '--plugin-dir', pluginDir, '--out', pluginBundles],
-      { cwd: backendDir, stdio: 'inherit' }
-    );
-    if (res.error) {
-      console.error(`Failed to run SDK packager for ${pluginName}:`, res.error);
-      process.exit(res.status || 1);
-    }
-    if (res.status !== 0) {
-      process.exit(res.status);
-    }
+    packagePlugin(pluginDir, pluginName);
   }
 }
 
