@@ -94,6 +94,21 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
         );
     }
 
+    // Some Tauri bundle targets (AppImage, RPM, DEB) preserve the source
+    // build-tree path under an `_up_` symlink. Include that nested location
+    // as a fallback so packages built before the resource-mapping fix are
+    // still functional.
+    if let Ok(exe) = env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(
+                dir.join("_up_")
+                    .join("target")
+                    .join("openvcs")
+                    .join(BUILT_IN_PLUGINS_DIR_NAME),
+            );
+        }
+    }
+
     let mut seen = std::collections::HashSet::new();
     let result: Vec<PathBuf> = candidates
         .into_iter()

@@ -46,10 +46,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "../target/openvcs/built-in-plugins",
-      "../target/openvcs/node-runtime"
-    ],
+    "resources": {
+      "../target/openvcs/built-in-plugins": "built-in-plugins",
+      "../target/openvcs/node-runtime": "node-runtime"
+    },
     "licenseFile": "../LICENSE",
     "publisher": "Jordon Brooks",
     "shortDescription": "A simple, cross-platform GUI for Git.",

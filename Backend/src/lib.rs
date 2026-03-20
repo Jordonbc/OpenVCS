@@ -125,7 +125,16 @@ fn resolve_dev_bundled_node_fallback() -> Option<PathBuf> {
         .join("openvcs")
         .join("node-runtime")
         .join(node_name);
-    candidate.is_file().then_some(candidate)
+    if candidate.is_file() {
+        return Some(candidate);
+    }
+    let nested = exe_dir
+        .join("_up_")
+        .join("target")
+        .join("openvcs")
+        .join("node-runtime")
+        .join(node_name);
+    nested.is_file().then_some(nested)
 }
 
 /// Starts the OpenVCS backend runtime and Tauri application.
