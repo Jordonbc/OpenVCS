@@ -9,6 +9,14 @@ function q<T extends HTMLElement>(sel: string, root: ParentNode): T | null {
     return root.querySelector(sel) as T | null;
 }
 
+/** Sets an element's text content and hides it when the value is empty. */
+function setOptionalText(element: HTMLElement | null, value: string): void {
+    if (!element) return;
+
+    element.textContent = value;
+    element.style.display = value ? "" : "none";
+}
+
 /** Opens the About modal and hydrates its build metadata. */
 export async function openAbout(): Promise<void> {
     // Ensure the fragment is injected & visible
@@ -41,10 +49,16 @@ export async function openAbout(): Promise<void> {
             .filter(Boolean)
             .join(", ");
 
-        if (aboutLogo) aboutLogo.src = `${import.meta.env.BASE_URL}OpenVCS-128.png`;
+        if (aboutLogo) {
+            aboutLogo.onerror = () => {
+                aboutLogo.style.display = "none";
+            };
+            aboutLogo.style.display = "block";
+            aboutLogo.src = `${import.meta.env.BASE_URL}OpenVCS-40.png`;
+        }
         if (aboutVersion) aboutVersion.textContent = info?.version ? `v${info.version}` : "";
-        if (aboutBuild)   aboutBuild.textContent   = info?.build ?? "";
-        if (aboutAuthor)  aboutAuthor.textContent  = authors ? `By ${authors}` : "";
+        setOptionalText(aboutBuild, info?.build ?? "");
+        setOptionalText(aboutAuthor, authors ? `By ${authors}` : "");
 
         if (aboutHome) {
             aboutHome.href = info?.homepage || "#";
