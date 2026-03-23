@@ -9,6 +9,7 @@ function q<T extends HTMLElement>(sel: string, root: ParentNode): T | null {
     return root.querySelector(sel) as T | null;
 }
 
+/** Opens the About modal and hydrates its build metadata. */
 export async function openAbout(): Promise<void> {
     // Ensure the fragment is injected & visible
     openModal("about-modal");
@@ -21,6 +22,7 @@ export async function openAbout(): Promise<void> {
             | {
             version?: string;
             build?: string;
+            authors?: string;
             homepage?: string;
             repository?: string;
         }
@@ -28,12 +30,19 @@ export async function openAbout(): Promise<void> {
 
         const aboutVersion  = q<HTMLElement>("#about-version", modal);
         const aboutBuild    = q<HTMLElement>("#about-build", modal);
+        const aboutAuthor   = q<HTMLElement>("#about-author", modal);
         const aboutHome     = q<HTMLAnchorElement>("#about-home", modal);
         const aboutRepo     = q<HTMLAnchorElement>("#about-repo", modal);
         const aboutLicenses = q<HTMLAnchorElement>("#about-licenses", modal);
+        const authors = info?.authors
+            ?.split(":")
+            .map((author) => author.trim())
+            .filter(Boolean)
+            .join(", ");
 
         if (aboutVersion) aboutVersion.textContent = info?.version ? `v${info.version}` : "";
         if (aboutBuild)   aboutBuild.textContent   = info?.build ?? "";
+        if (aboutAuthor)  aboutAuthor.textContent  = authors ? `By ${authors}` : "";
 
         if (aboutHome) {
             aboutHome.href = info?.homepage || "#";
