@@ -4,20 +4,14 @@
 
 use crate::core::{BackendId, Result as VcsResult, Vcs, VcsError};
 use crate::logging::LogTimer;
-use crate::plugin_bundles::{PluginBundleStore, PluginManifest, VcsBackendProvide};
-use crate::plugin_paths::{built_in_plugin_dirs, PLUGIN_MANIFEST_NAME};
+use crate::plugin_bundles::PluginBundleStore;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::runtime_select::create_node_runtime_instance;
 use crate::plugin_runtime::settings_store;
 use crate::plugin_runtime::{vcs_proxy::PluginVcsProxy, PluginRuntimeManager};
 use crate::settings::AppConfig;
 use log::{debug, error, info, trace, warn};
-use std::{
-    collections::BTreeMap,
-    fs,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 const MODULE: &str = "plugin_vcs_backends";
 
@@ -60,84 +54,11 @@ pub struct PluginBackendDescriptor {
     pub plugin_name: Option<String>,
 }
 
-/// Reads a plugin manifest from a plugin directory.
+/// Lists VCS backends currently available from installed plugins.
 ///
-/// # Parameters
-/// - `plugin_dir`: Plugin directory path.
-///
-/// # Returns
-/// - `Some(PluginManifest)` on success.
-/// - `None` on read/parse failure.
-fn load_manifest_from_dir(plugin_dir: &Path) -> Option<PluginManifest> {
-    let manifest_path = plugin_dir.join(PLUGIN_MANIFEST_NAME);
-    trace!(
-        "load_manifest_from_dir: loading from {}",
-        manifest_path.display()
-    );
-
-    let text = fs::read_to_string(&manifest_path).ok()?;
-    let manifest: PluginManifest = serde_json::from_str(&text).ok()?;
-
-    debug!(
-        "load_manifest_from_dir: loaded manifest for plugin '{}'",
-        manifest.id
-    );
-    Some(manifest)
-}
-
-/// Lists manifests from built-in plugin directories.
-///
-/// # Returns
-/// - Directory/manifest pairs for readable built-in plugins.
-fn builtin_plugin_manifests() -> Vec<(PathBuf, PluginManifest)> {
-    let _timer = LogTimer::new(MODULE, "builtin_plugin_manifests");
-    trace!("builtin_plugin_manifests: scanning built-in plugin dirs",);
-
-    let mut out = Vec::new();
-    let dirs = built_in_plugin_dirs();
-    debug!(
-        "builtin_plugin_manifests: found {} built-in plugin directories",
-        dirs.len()
-    );
-
-    for root in dirs {
-        if !root.is_dir() {
-            trace!(
-                "builtin_plugin_manifests: {} is not a directory",
-                root.display()
-            );
-            continue;
-        }
-        let entries = match fs::read_dir(&root) {
-            Ok(entries) => entries,
-            Err(e) => {
-                warn!(
-                    "builtin_plugin_manifests: failed to read {}: {}",
-                    root.display(),
-                    e
-                );
-                continue;
-            }
-        };
-        for entry in entries.flatten() {
-            let plugin_dir = entry.path();
-            if !plugin_dir.is_dir() {
-                continue;
-            }
-            if let Some(manifest) = load_manifest_from_dir(&plugin_dir) {
-                out.push((plugin_dir, manifest));
-            }
-        }
-    }
-
-    debug!(
-        "builtin_plugin_manifests: found {} built-in manifests",
-        out.len()
-    );
-    out
-}
-
-/// Lists VCS backends currently available from installed and built-in plugins.
+/// Built-in plugin bundles are synchronized into the installed plugin store at
+/// startup, so backend discovery must use installed component metadata instead
+/// of treating bundled `.ovcsp` archives as unpacked plugin directories.
 ///
 /// # Returns
 /// - `Ok(Vec<PluginBackendDescriptor>)` containing discovered backend descriptors.
@@ -206,86 +127,6 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
                 plugin_name: p.name.clone(),
             };
             let key = backend_id.as_ref().to_string();
-            map.insert(key, candidate);
-        }
-    }
-
-    for (plugin_dir, manifest) in builtin_plugin_manifests() {
-        let plugin_id = manifest.id.trim();
-        if plugin_id.is_empty() {
-            warn!(
-                "list_plugin_vcs_backends: manifest has empty id at {}",
-                plugin_dir.display()
-            );
-            continue;
-        }
-        if !is_plugin_enabled_in_settings(plugin_id, manifest.default_enabled) {
-            trace!(
-                "list_plugin_vcs_backends: built-in plugin {} is disabled",
-                plugin_id
-            );
-            continue;
-        }
-        let Some(module) = &manifest.module else {
-            trace!(
-                "list_plugin_vcs_backends: built-in plugin {} has no module",
-                plugin_id
-            );
-            continue;
-        };
-        let Some(exec_name) = module
-            .exec
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        else {
-            trace!(
-                "list_plugin_vcs_backends: built-in plugin {} has no exec",
-                plugin_id
-            );
-            continue;
-        };
-        let exec_path = plugin_dir.join("bin").join(exec_name);
-        if !exec_path.is_file() {
-            warn!(
-                "list_plugin_vcs_backends: built-in plugin {} is missing module exec {}",
-                plugin_id,
-                exec_path.display()
-            );
-            continue;
-        }
-
-        debug!(
-            "list_plugin_vcs_backends: processing built-in plugin {} at {}",
-            plugin_id,
-            plugin_dir.display()
-        );
-
-        let plugin_name = manifest.name.clone();
-        for provide in &module.vcs_backends {
-            let (id, label) = match provide {
-                VcsBackendProvide::Id(id) => (id.clone(), None),
-                VcsBackendProvide::Named { id, name } => (id.clone(), name.clone()),
-            };
-            let backend_id = BackendId::from(id.as_str());
-            let key = backend_id.as_ref().to_string();
-            if map.contains_key(&key) {
-                trace!(
-                    "list_plugin_vcs_backends: backend {} already registered",
-                    backend_id
-                );
-                continue;
-            }
-            debug!(
-                "list_plugin_vcs_backends: registering built-in backend '{}' from plugin '{}'",
-                backend_id, plugin_id
-            );
-            let candidate = PluginBackendDescriptor {
-                backend_id: backend_id.clone(),
-                backend_name: label,
-                plugin_id: plugin_id.to_string(),
-                plugin_name: plugin_name.clone(),
-            };
             map.insert(key, candidate);
         }
     }

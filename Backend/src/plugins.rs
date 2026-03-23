@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::plugin_bundles::PluginBundleStore;
-use crate::plugin_paths::{built_in_plugin_dirs, ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME};
+use crate::plugin_paths::{ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME};
 use log::{debug, warn};
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
@@ -217,7 +217,7 @@ impl PluginCache {
         let mut summaries: Vec<PluginSummary> = Vec::new();
         let mut entries: HashMap<String, CachedPlugin> = HashMap::new();
 
-        for (root, origin) in plugin_roots() {
+        for root in installed_plugin_roots() {
             match fs::read_dir(&root) {
                 Ok(iter) => {
                     for entry in iter.flatten() {
@@ -243,7 +243,7 @@ impl PluginCache {
                             let effective_origin = if is_built_in {
                                 PluginOrigin::BuiltIn
                             } else {
-                                origin
+                                PluginOrigin::User
                             };
                             let summary =
                                 manifest_to_summary(&resolved, manifest.clone(), effective_origin);
@@ -286,7 +286,7 @@ impl PluginCache {
             }
         };
 
-        for (root, _) in plugin_roots() {
+        for root in installed_plugin_roots() {
             if let Err(err) = watcher.watch(&root, RecursiveMode::Recursive) {
                 warn!("plugins: failed to watch {}: {}", root.display(), err);
             }
@@ -303,25 +303,23 @@ fn plugin_cache() -> &'static Arc<PluginCache> {
     PLUGIN_CACHE.get_or_init(PluginCache::initialize)
 }
 
-/// Resolves plugin root directories (user + built-in).
+/// Resolves installed plugin root directories.
+///
+/// Built-in bundles are synchronized into the writable plugin store during
+/// startup, so plugin listing and theme discovery should read only from the
+/// installed plugin roots instead of treating bundled `.ovcsp` archives as
+/// unpacked plugin directories.
 ///
 /// # Returns
-/// - Unique list of plugin root paths with origin metadata.
-fn plugin_roots() -> Vec<(PathBuf, PluginOrigin)> {
-    let mut roots: Vec<(PathBuf, PluginOrigin)> = Vec::new();
+/// - Unique list of installed plugin root paths.
+fn installed_plugin_roots() -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = Vec::new();
     let mut seen = HashSet::new();
 
     let dir = plugins_dir();
     ensure_dir(&dir);
     if seen.insert(dir.clone()) {
-        roots.push((dir, PluginOrigin::User));
-    }
-
-    for path in built_in_plugin_dirs() {
-        if !seen.insert(path.clone()) {
-            continue;
-        }
-        roots.push((path, PluginOrigin::BuiltIn));
+        roots.push(dir);
     }
 
     roots
@@ -716,7 +714,7 @@ pub fn plugin_theme_dirs() -> Vec<PluginThemeDir> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
 
-    for (root, _) in plugin_roots() {
+    for root in installed_plugin_roots() {
         let entries = match fs::read_dir(&root) {
             Ok(entries) => entries,
             Err(err) => {

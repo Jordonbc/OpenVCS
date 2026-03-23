@@ -17,6 +17,8 @@ use std::{
 pub const PLUGIN_MANIFEST_NAME: &str = "openvcs.plugin.json";
 /// Directory name used for built-in plugin bundles.
 pub const BUILT_IN_PLUGINS_DIR_NAME: &str = "built-in-plugins";
+/// Directory name used for the bundled Node runtime.
+pub const NODE_RUNTIME_DIR_NAME: &str = "node-runtime";
 
 // If the Tauri runtime resolves a resource directory at startup, we store
 // it here so plugin discovery can include resources embedded in the
@@ -50,6 +52,96 @@ pub fn ensure_dir(path: &Path) {
     }
 }
 
+/// Appends a path when it has not already been recorded.
+///
+/// # Parameters
+/// - `paths`: Candidate path list.
+/// - `path`: Candidate to append.
+///
+/// # Returns
+/// - `()`.
+fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.iter().any(|existing| existing == &path) {
+        paths.push(path);
+    }
+}
+
+/// Adds Linux package resource roots installed under sibling `lib` directories.
+///
+/// Tauri Linux packages commonly install the executable in `.../bin/` and the
+/// mapped resources in `.../lib/<AppName>/`. This helper discovers those app
+/// directories only when they already contain the requested resource directory.
+///
+/// # Parameters
+/// - `paths`: Candidate base directory list.
+/// - `exe_dir`: Directory containing the executable.
+/// - `resource_dir_name`: Resource subdirectory to check for.
+///
+/// # Returns
+/// - `()`.
+#[cfg(target_os = "linux")]
+fn push_linux_package_resource_bases(
+    paths: &mut Vec<PathBuf>,
+    exe_dir: &Path,
+    resource_dir_name: &str,
+) {
+    let Some(prefix_dir) = exe_dir.parent() else {
+        return;
+    };
+
+    for lib_dir_name in ["lib", "lib64"] {
+        let lib_dir = prefix_dir.join(lib_dir_name);
+        let entries = match std::fs::read_dir(&lib_dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let app_dir = entry.path();
+            if !app_dir.is_dir() {
+                continue;
+            }
+            if app_dir.join(resource_dir_name).is_dir() {
+                push_unique_path(paths, app_dir);
+            }
+        }
+    }
+}
+
+/// Returns candidate resource base directories derived from the executable path.
+///
+/// # Parameters
+/// - `resource_dir_name`: Resource directory that should exist under packaged roots.
+///
+/// # Returns
+/// - Candidate base directories that may contain the requested resource.
+fn bundled_resource_base_dirs(resource_dir_name: &str) -> Vec<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if let Ok(exe) = env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            push_unique_path(&mut candidates, dir.join("resources"));
+            push_unique_path(&mut candidates, dir.to_path_buf());
+            if let Some(target_dir) = dir.parent() {
+                push_unique_path(&mut candidates, target_dir.join("openvcs"));
+                #[cfg(target_os = "macos")]
+                push_unique_path(&mut candidates, target_dir.join("Resources"));
+            }
+            #[cfg(target_os = "linux")]
+            push_linux_package_resource_bases(&mut candidates, dir, resource_dir_name);
+            push_unique_path(
+                &mut candidates,
+                dir.join("_up_").join("target").join("openvcs"),
+            );
+        }
+    }
+
+    if let Some(resource_dir) = RESOURCE_DIR.get() {
+        push_unique_path(&mut candidates, resource_dir.clone());
+    }
+
+    candidates
+}
+
 /// Returns discovered built-in plugin directories that currently exist.
 ///
 /// # Returns
@@ -57,28 +149,8 @@ pub fn ensure_dir(path: &Path) {
 pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
 
-    if let Ok(exe) = env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            // Some installers place resources next to the executable, either
-            // in a `resources` subdirectory or directly alongside the exe.
-            candidates.push(dir.join("resources").join(BUILT_IN_PLUGINS_DIR_NAME));
-            candidates.push(dir.join(BUILT_IN_PLUGINS_DIR_NAME));
-            // Dev builds can generate built-in bundles under `target/openvcs/`.
-            if let Some(target_dir) = dir.parent() {
-                candidates.push(target_dir.join("openvcs").join(BUILT_IN_PLUGINS_DIR_NAME));
-            }
-            #[cfg(target_os = "macos")]
-            if let Some(parent) = dir.parent() {
-                candidates.push(parent.join("Resources").join(BUILT_IN_PLUGINS_DIR_NAME));
-            }
-        }
-    }
-
-    // If the Tauri runtime resolved a resource directory at startup, include
-    // its built-in-plugins subdirectory as a candidate. This is set by the
-    // application during `tauri::Builder::setup` via `set_resource_dir`.
-    if let Some(rp) = RESOURCE_DIR.get() {
-        candidates.push(rp.join(BUILT_IN_PLUGINS_DIR_NAME));
+    for base_dir in bundled_resource_base_dirs(BUILT_IN_PLUGINS_DIR_NAME) {
+        push_unique_path(&mut candidates, base_dir.join(BUILT_IN_PLUGINS_DIR_NAME));
     }
 
     // On Windows installers the per-user AppData Local folder is commonly
@@ -87,26 +159,12 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
     // plugins shipped by the installer are discovered.
     #[cfg(target_os = "windows")]
     if let Ok(local_appdata) = env::var("LOCALAPPDATA") {
-        candidates.push(
+        push_unique_path(
+            &mut candidates,
             PathBuf::from(local_appdata)
                 .join("OpenVCS")
                 .join(BUILT_IN_PLUGINS_DIR_NAME),
         );
-    }
-
-    // Some Tauri bundle targets (AppImage, RPM, DEB) preserve the source
-    // build-tree path under an `_up_` symlink. Include that nested location
-    // as a fallback so packages built before the resource-mapping fix are
-    // still functional.
-    if let Ok(exe) = env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            candidates.push(
-                dir.join("_up_")
-                    .join("target")
-                    .join("openvcs")
-                    .join(BUILT_IN_PLUGINS_DIR_NAME),
-            );
-        }
     }
 
     let mut seen = std::collections::HashSet::new();
@@ -143,6 +201,22 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
     result
 }
 
+/// Returns candidate bundled Node executable paths.
+///
+/// # Returns
+/// - Ordered candidate paths for the bundled Node binary.
+pub fn bundled_node_candidate_paths() -> Vec<PathBuf> {
+    let node_name = if cfg!(windows) { "node.exe" } else { "node" };
+    let mut candidates = Vec::new();
+    for base_dir in bundled_resource_base_dirs(NODE_RUNTIME_DIR_NAME) {
+        push_unique_path(
+            &mut candidates,
+            base_dir.join(NODE_RUNTIME_DIR_NAME).join(node_name),
+        );
+    }
+    candidates
+}
+
 /// Set the resolved Tauri resource directory so the plugin discovery can
 /// include resources embedded inside the application bundle. Call this from
 /// the Tauri `setup` callback with `app.path().resolve("built-in-plugins", BaseDirectory::Resource)`.
@@ -172,7 +246,7 @@ pub fn set_node_executable_path(path: PathBuf) {
 ///
 /// # Returns
 /// - `Some(PathBuf)` when a bundled runtime was resolved.
-/// - `None` when host should fall back to `node` on PATH.
+/// - `None` when no bundled runtime has been resolved yet.
 pub fn node_executable_path() -> Option<PathBuf> {
     NODE_EXECUTABLE.get().cloned()
 }
