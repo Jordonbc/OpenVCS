@@ -3,7 +3,7 @@
 //! Path resolution helpers for installed and built-in plugins.
 
 use directories::ProjectDirs;
-use log::{info, trace, warn};
+use log::{info, warn};
 use std::{
     env,
     path::{Path, PathBuf},
@@ -113,7 +113,7 @@ fn push_linux_package_resource_bases(
         let entries = match std::fs::read_dir(&lib_dir) {
             Ok(entries) => entries,
             Err(err) => {
-                trace!(
+                log::trace!(
                     "plugins: skipping Linux package resource root {}: {}",
                     lib_dir.display(),
                     err
@@ -127,7 +127,7 @@ fn push_linux_package_resource_bases(
                 continue;
             }
             if !is_known_linux_package_app_dir(&app_dir) {
-                trace!(
+                log::trace!(
                     "plugins: skipping non-OpenVCS Linux package dir {}",
                     app_dir.display()
                 );
@@ -149,6 +149,8 @@ fn push_linux_package_resource_bases(
 /// - Candidate base directories that may contain the requested resource.
 fn bundled_resource_base_dirs(resource_dir_name: &str) -> Vec<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
+    #[cfg(not(target_os = "linux"))]
+    let _ = resource_dir_name;
 
     if let Ok(exe) = env::current_exe() {
         if let Some(dir) = exe.parent() {
