@@ -17,6 +17,15 @@ function setOptionalText(element: HTMLElement | null, value: string): void {
     element.style.display = value ? "" : "none";
 }
 
+/** Sets an optional link and hides it when no URL is available. */
+function setOptionalLink(element: HTMLAnchorElement | null, href: string): void {
+    if (!element) return;
+
+    element.href = href;
+    element.toggleAttribute("disabled", !href);
+    element.style.display = href ? "" : "none";
+}
+
 /** Opens the About modal and hydrates its build metadata. */
 export async function openAbout(): Promise<void> {
     // Ensure the fragment is injected & visible
@@ -53,28 +62,20 @@ export async function openAbout(): Promise<void> {
             aboutLogo.onerror = () => {
                 aboutLogo.style.display = "none";
             };
-            aboutLogo.style.display = "block";
             aboutLogo.src = `${import.meta.env.BASE_URL}OpenVCS-40.png`;
         }
         if (aboutVersion) aboutVersion.textContent = info?.version ? `v${info.version}` : "";
         setOptionalText(aboutBuild, info?.build ?? "");
         setOptionalText(aboutAuthor, authors ? `By ${authors}` : "");
 
-        if (aboutHome) {
-            aboutHome.href = info?.homepage || "#";
-            aboutHome.toggleAttribute("disabled", !info?.homepage);
-        }
-        if (aboutRepo) {
-            aboutRepo.href = info?.repository || "#";
-            aboutRepo.toggleAttribute("disabled", !info?.repository);
-        }
+        setOptionalLink(aboutHome, info?.homepage || "");
+        setOptionalLink(aboutRepo, info?.repository || "");
 
         if (aboutLicenses) {
             const rawRepo = info?.repository || "";
             const repo = rawRepo.replace(/\.git$/, "").replace(/\/+$/, "");
-            const licenseUrl = repo ? `${repo}/blob/HEAD/LICENSE` : "#";
-            aboutLicenses.href = licenseUrl;
-            aboutLicenses.toggleAttribute("disabled", !repo);
+            const licenseUrl = repo ? `${repo}/blob/HEAD/LICENSE` : "";
+            setOptionalLink(aboutLicenses, licenseUrl);
         }
     } catch {
         notify("Unable to load About");
