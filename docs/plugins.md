@@ -82,8 +82,9 @@ Before a plugin module can start, the installed version must be marked
 Plugin modules run only with the app-bundled Node runtime; OpenVCS does not
 fall back to `node` from system PATH. The backend resolves bundled Node from the
 packaged `node-runtime/` resource, packaged filesystem layouts such as
-`node-runtime/` next to the executable or Linux `lib/<AppName>/node-runtime/`,
-or the generated dev runtime under `target/openvcs/node-runtime/`.
+`node-runtime/` next to the executable or OpenVCS-owned Linux
+`lib/<AppName>/node-runtime/` directories, or the generated dev runtime under
+`target/openvcs/node-runtime/`.
 
 Install only plugins you trust.
 

@@ -44,7 +44,7 @@ Core plugin->host notifications:
 - `host.event_emit`
 - `vcs.event`
 - Plugin runtime requires the app-bundled Node binary (`node-runtime/node` or `node.exe`); no system `node` fallback.
-- The backend resolves bundled Node from the Tauri `node-runtime` resource first, then probes packaged filesystem layouts including executable-adjacent `node-runtime/` and Linux `lib/<AppName>/node-runtime/`, and finally the generated dev path under `target/openvcs/node-runtime/`.
+- The backend resolves bundled Node from the exact Tauri `node-runtime` resource first, then probes packaged filesystem layouts including executable-adjacent `node-runtime/` and OpenVCS-owned Linux `lib/<AppName>/node-runtime/` directories, and finally the generated dev path under `target/openvcs/node-runtime/`.
 
 ## Plugin types
 
@@ -75,8 +75,11 @@ Plugins are installed from `.ovcsp` tar.gz archives. Layout:
 Built-in plugins ship in the bundled `built-in-plugins/` resource directory as
 `.ovcsp` archives too. On startup, the backend synchronizes those built-in
 bundles into the writable installed plugin store before plugin, theme, and VCS
-backend discovery runs. Linux package targets may place those resources under
-`lib/<AppName>/built-in-plugins/` instead of next to the executable.
+backend discovery runs. VCS backend discovery also performs a best-effort
+re-sync before listing installed backends so packaged built-ins still appear if
+startup sync previously failed. Linux package targets may place those resources
+under OpenVCS-owned `lib/<AppName>/built-in-plugins/` directories instead of
+next to the executable.
 
 ## Manifest (`openvcs.plugin.json`)
 

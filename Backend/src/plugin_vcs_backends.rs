@@ -60,6 +60,11 @@ pub struct PluginBackendDescriptor {
 /// startup, so backend discovery must use installed component metadata instead
 /// of treating bundled `.ovcsp` archives as unpacked plugin directories.
 ///
+/// Discovery also performs a best-effort built-in sync before listing
+/// components. This keeps packaged backends visible even if startup sync ran
+/// before bundled resources were fully ready or if the installed store later
+/// needs repair.
+///
 /// # Returns
 /// - `Ok(Vec<PluginBackendDescriptor>)` containing discovered backend descriptors.
 /// - `Err(String)` if installed plugin components cannot be loaded.
@@ -68,6 +73,12 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
     info!("list_plugin_vcs_backends: discovering VCS backends",);
 
     let store = PluginBundleStore::new_default();
+    if let Err(err) = store.sync_built_in_plugins() {
+        warn!(
+            "list_plugin_vcs_backends: built-in sync failed before discovery: {}",
+            err
+        );
+    }
     let plugins = store.list_current_components().map_err(|e| {
         error!("list_plugin_vcs_backends: failed to list components: {}", e);
         e

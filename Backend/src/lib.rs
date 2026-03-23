@@ -158,10 +158,15 @@ pub fn run() {
             }
             if let Ok(node_runtime_dir) = app.path().resolve("node-runtime", BaseDirectory::Resource)
             {
+                crate::plugin_paths::set_node_runtime_resource_dir(node_runtime_dir.clone());
                 if let Some(parent) = node_runtime_dir.parent() {
                     crate::plugin_paths::set_resource_dir(parent.to_path_buf());
                 }
             }
+            // Keep resource lookup state populated before resolving bundled Node
+            // candidates. `bundled_node_candidate_paths()` uses both the generic
+            // RESOURCE_DIR base and the exact Tauri-resolved `node-runtime`
+            // directory captured above, so future refactors must preserve this order.
             let node_candidates = crate::plugin_paths::bundled_node_candidate_paths();
 
             if let Some(bundled_node) = node_candidates.iter().find(|path| path.is_file()) {

@@ -428,7 +428,8 @@ impl PluginBundleStore {
             .map_err(|e| format!("canonicalize {}: {e}", staging_version_dir.display()))?;
 
         // Extract all entries under `<pluginId>/...` into the staging version directory.
-        let mut tar = open_bundle_archive(bundle_path)?;
+        let mut tar = open_bundle_archive(bundle_path)
+            .map_err(|e| format!("open bundle archive {}: {e}", bundle_path.display()))?;
 
         for entry in tar.entries().map_err(|e| format!("read tar: {e}"))? {
             let mut entry = entry.map_err(|e| format!("tar entry: {e}"))?;
@@ -1289,7 +1290,8 @@ fn derive_install_version(manifest: &PluginManifest, bundle_sha256: &str) -> Str
 /// - `Ok((PathBuf, PluginManifest))` manifest path inside archive and manifest payload.
 /// - `Err(String)` on read/parse/validation failure.
 fn locate_manifest_in_bundle(bundle_path: &Path) -> Result<(PathBuf, PluginManifest), String> {
-    let mut tar = open_bundle_archive(bundle_path)?;
+    let mut tar = open_bundle_archive(bundle_path)
+        .map_err(|e| format!("open bundle archive {}: {e}", bundle_path.display()))?;
 
     let mut manifest_path: Option<PathBuf> = None;
     let mut manifest_json: Option<Vec<u8>> = None;

@@ -3,7 +3,7 @@
 //! Path resolution helpers for installed and built-in plugins.
 
 use directories::ProjectDirs;
-use log::{info, warn};
+use log::{info, trace, warn};
 use std::{
     env,
     path::{Path, PathBuf},
@@ -19,11 +19,15 @@ pub const PLUGIN_MANIFEST_NAME: &str = "openvcs.plugin.json";
 pub const BUILT_IN_PLUGINS_DIR_NAME: &str = "built-in-plugins";
 /// Directory name used for the bundled Node runtime.
 pub const NODE_RUNTIME_DIR_NAME: &str = "node-runtime";
+/// Known Linux package directory names owned by OpenVCS.
+#[cfg(target_os = "linux")]
+const LINUX_PACKAGE_APP_DIR_NAMES: [&str; 2] = ["OpenVCS", "openvcs"];
 
 // If the Tauri runtime resolves a resource directory at startup, we store
 // it here so plugin discovery can include resources embedded in the
 // application bundle.
 static RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
+static NODE_RUNTIME_RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
 static NODE_EXECUTABLE: OnceLock<PathBuf> = OnceLock::new();
 static LOGGED_BUILTIN_DIRS: AtomicBool = AtomicBool::new(false);
 
@@ -66,11 +70,26 @@ fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
     }
 }
 
+/// Returns whether a Linux package app directory name belongs to OpenVCS.
+///
+/// # Parameters
+/// - `app_dir`: Candidate packaged app directory.
+///
+/// # Returns
+/// - `true` when the directory name matches an OpenVCS-owned package layout.
+#[cfg(target_os = "linux")]
+fn is_known_linux_package_app_dir(app_dir: &Path) -> bool {
+    app_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| LINUX_PACKAGE_APP_DIR_NAMES.contains(&name))
+}
+
 /// Adds Linux package resource roots installed under sibling `lib` directories.
 ///
-/// Tauri Linux packages commonly install the executable in `.../bin/` and the
-/// mapped resources in `.../lib/<AppName>/`. This helper discovers those app
-/// directories only when they already contain the requested resource directory.
+/// Only OpenVCS-owned app directories are accepted so resource lookup does not
+/// wander into unrelated package trees that happen to contain the same
+/// subdirectory names.
 ///
 /// # Parameters
 /// - `paths`: Candidate base directory list.
@@ -93,11 +112,25 @@ fn push_linux_package_resource_bases(
         let lib_dir = prefix_dir.join(lib_dir_name);
         let entries = match std::fs::read_dir(&lib_dir) {
             Ok(entries) => entries,
-            Err(_) => continue,
+            Err(err) => {
+                trace!(
+                    "plugins: skipping Linux package resource root {}: {}",
+                    lib_dir.display(),
+                    err
+                );
+                continue;
+            }
         };
         for entry in entries.flatten() {
             let app_dir = entry.path();
             if !app_dir.is_dir() {
+                continue;
+            }
+            if !is_known_linux_package_app_dir(&app_dir) {
+                trace!(
+                    "plugins: skipping non-OpenVCS Linux package dir {}",
+                    app_dir.display()
+                );
                 continue;
             }
             if app_dir.join(resource_dir_name).is_dir() {
@@ -208,6 +241,9 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
 pub fn bundled_node_candidate_paths() -> Vec<PathBuf> {
     let node_name = if cfg!(windows) { "node.exe" } else { "node" };
     let mut candidates = Vec::new();
+    if let Some(node_runtime_dir) = NODE_RUNTIME_RESOURCE_DIR.get() {
+        push_unique_path(&mut candidates, node_runtime_dir.join(node_name));
+    }
     for base_dir in bundled_resource_base_dirs(NODE_RUNTIME_DIR_NAME) {
         push_unique_path(
             &mut candidates,
@@ -229,6 +265,21 @@ pub fn bundled_node_candidate_paths() -> Vec<PathBuf> {
 pub fn set_resource_dir(path: PathBuf) {
     // it's fine if this fails to set more than once; first set wins.
     let _ = RESOURCE_DIR.set(path);
+}
+
+/// Sets the exact `node-runtime` resource directory resolved by Tauri.
+///
+/// This is tracked separately from the generic resource base because packaged
+/// builds may resolve built-in plugin bundles and `node-runtime` from different
+/// roots. Callers should provide the resolved `node-runtime` directory itself.
+///
+/// # Parameters
+/// - `path`: Exact runtime directory path resolved by Tauri at runtime.
+///
+/// # Returns
+/// - `()`.
+pub fn set_node_runtime_resource_dir(path: PathBuf) {
+    let _ = NODE_RUNTIME_RESOURCE_DIR.set(path);
 }
 
 /// Sets the resolved bundled Node executable path used by plugin runtime.
