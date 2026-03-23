@@ -43,7 +43,8 @@ Core plugin->host notifications:
 - `host.status_set`
 - `host.event_emit`
 - `vcs.event`
-- Plugin runtime requires the app-bundled Node binary (`node-runtime/node` or `node.exe`); no system `node` fallback. In dev runs, the backend also probes the generated bundled path under `target/openvcs/node-runtime/`.
+- Plugin runtime requires the app-bundled Node binary (`node-runtime/node` or `node.exe`); no system `node` fallback.
+- The backend resolves bundled Node from the exact Tauri `node-runtime` resource first, then probes packaged filesystem layouts including executable-adjacent `node-runtime/` and OpenVCS-owned Linux `lib/<AppName>/node-runtime/` directories, and finally the generated dev path under `target/openvcs/node-runtime/`.
 
 ## Plugin types
 
@@ -58,7 +59,7 @@ Core plugin->host notifications:
 
 ## Bundle format (`.ovcsp`)
 
-Plugins are installed from `.ovcsp` tar.xz archives. Layout:
+Plugins are installed from `.ovcsp` tar.gz archives. Layout:
 
 ```text
 <plugin-id>/
@@ -70,6 +71,15 @@ Plugins are installed from `.ovcsp` tar.xz archives. Layout:
     ...other runtime files
   node_modules/         (optional; pre-bundled npm dependencies)
 ```
+
+Built-in plugins ship in the bundled `built-in-plugins/` resource directory as
+`.ovcsp` archives too. On startup, the backend synchronizes those built-in
+bundles into the writable installed plugin store before plugin, theme, and VCS
+backend discovery runs. VCS backend discovery also performs a best-effort
+re-sync before listing installed backends so packaged built-ins still appear if
+startup sync previously failed. Linux package targets may place those resources
+under OpenVCS-owned `lib/<AppName>/built-in-plugins/` directories instead of
+next to the executable.
 
 ## Manifest (`openvcs.plugin.json`)
 

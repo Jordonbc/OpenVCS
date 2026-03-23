@@ -6,14 +6,17 @@ Plugins may include themes, a Node.js module, or both.
 
 ## Where plugins live
 
-OpenVCS discovers plugins from two places:
+OpenVCS discovers installed plugins from the user plugins directory in the
+OpenVCS config dir: `plugins/`.
 
-- User plugins directory (in the OpenVCS config dir): `plugins/`
-- Built-in plugins directory (bundled with the app): `built-in-plugins/`
+Built-in plugins ship with the app as `.ovcsp` archives in
+`built-in-plugins/`. During startup, OpenVCS synchronizes those bundled archives
+into the installed `plugins/` store before plugin, theme, and VCS backend
+discovery runs.
 
 ## Bundle format (`.ovcsp`)
 
-An `.ovcsp` is a tar.xz archive with this layout:
+An `.ovcsp` is a tar.gz archive with this layout:
 
 ```text
 <plugin-id>/
@@ -77,7 +80,11 @@ Before a plugin module can start, the installed version must be marked
 `approved` in plugin installation metadata.
 
 Plugin modules run only with the app-bundled Node runtime; OpenVCS does not
-fall back to `node` from system PATH.
+fall back to `node` from system PATH. The backend resolves bundled Node from the
+packaged `node-runtime/` resource, packaged filesystem layouts such as
+`node-runtime/` next to the executable or OpenVCS-owned Linux
+`lib/<AppName>/node-runtime/` directories, or the generated dev runtime under
+`target/openvcs/node-runtime/`.
 
 Install only plugins you trust.
 
@@ -108,6 +115,10 @@ npx openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist
 ```
 
 `openvcs dist` runs the build step automatically unless `--no-build` is passed.
+
+If bundled runtime code imports npm packages at execution time, declare those
+packages in `dependencies` rather than `devDependencies` so `openvcs dist`
+includes them in the shipped `node_modules/` tree.
 
 The desktop client's built-in plugin bundler follows the same contract: it runs
 `npm install`/`npm ci` as needed and then `npm run dist` for every built-in

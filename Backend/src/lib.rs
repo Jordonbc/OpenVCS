@@ -6,7 +6,6 @@
 //! plugin discovery, and startup behavior.
 
 use log::warn;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::path::BaseDirectory;
 use tauri::WindowEvent;
@@ -107,36 +106,6 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
     }
 }
 
-/// Resolves a development fallback path for the bundled Node runtime.
-///
-/// In `cargo tauri dev`, the generated runtime is placed under
-/// `target/openvcs/node-runtime`, while Tauri resource resolution can point at
-/// `target/debug/node-runtime`. This helper probes the generated location.
-///
-/// # Returns
-/// - `Some(PathBuf)` when the dev bundled node binary exists.
-/// - `None` when the path cannot be derived or does not exist.
-fn resolve_dev_bundled_node_fallback() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let exe_dir = exe.parent()?;
-    let target_dir = exe_dir.parent()?;
-    let node_name = if cfg!(windows) { "node.exe" } else { "node" };
-    let candidate = target_dir
-        .join("openvcs")
-        .join("node-runtime")
-        .join(node_name);
-    if candidate.is_file() {
-        return Some(candidate);
-    }
-    let nested = exe_dir
-        .join("_up_")
-        .join("target")
-        .join("openvcs")
-        .join("node-runtime")
-        .join(node_name);
-    nested.is_file().then_some(nested)
-}
-
 /// Starts the OpenVCS backend runtime and Tauri application.
 ///
 /// This configures logging, plugin bundle synchronization, startup restore
@@ -187,17 +156,18 @@ pub fn run() {
                     );
                 }
             }
-            let node_name = if cfg!(windows) { "node.exe" } else { "node" };
-            let mut node_candidates: Vec<PathBuf> = Vec::new();
             if let Ok(node_runtime_dir) = app.path().resolve("node-runtime", BaseDirectory::Resource)
             {
-                node_candidates.push(node_runtime_dir.join(node_name));
-            }
-            if let Some(dev_fallback) = resolve_dev_bundled_node_fallback() {
-                if !node_candidates.iter().any(|p| p == &dev_fallback) {
-                    node_candidates.push(dev_fallback);
+                crate::plugin_paths::set_node_runtime_resource_dir(node_runtime_dir.clone());
+                if let Some(parent) = node_runtime_dir.parent() {
+                    crate::plugin_paths::set_resource_dir(parent.to_path_buf());
                 }
             }
+            // Keep resource lookup state populated before resolving bundled Node
+            // candidates. `bundled_node_candidate_paths()` uses both the generic
+            // RESOURCE_DIR base and the exact Tauri-resolved `node-runtime`
+            // directory captured above, so future refactors must preserve this order.
+            let node_candidates = crate::plugin_paths::bundled_node_candidate_paths();
 
             if let Some(bundled_node) = node_candidates.iter().find(|path| path.is_file()) {
                 crate::plugin_paths::set_node_executable_path(bundled_node.to_path_buf());

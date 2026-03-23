@@ -4,17 +4,60 @@
 
 use crate::logging::LogTimer;
 use crate::plugin_paths::{built_in_plugin_dirs, ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME};
+use flate2::read::GzDecoder;
 use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
-use xz2::read::XzDecoder;
 
 const MODULE: &str = "plugin_bundles";
+const GZIP_MAGIC: [u8; 2] = [0x1F, 0x8B];
+
+/// Opens a plugin bundle as a decompressed tar reader.
+///
+/// `.ovcsp` bundles are gzip-compressed tar archives.
+///
+/// # Parameters
+/// - `bundle_path`: Bundle file path.
+///
+/// # Returns
+/// - `Ok(Box<dyn Read>)` with a decompressed tar stream.
+/// - `Err(String)` when the bundle cannot be opened or has an unknown format.
+fn open_bundle_reader(bundle_path: &Path) -> Result<Box<dyn Read>, String> {
+    let mut file =
+        fs::File::open(bundle_path).map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
+    let mut magic = [0u8; 6];
+    let read = file
+        .read(&mut magic)
+        .map_err(|e| format!("read {}: {e}", bundle_path.display()))?;
+    file.seek(SeekFrom::Start(0))
+        .map_err(|e| format!("seek {}: {e}", bundle_path.display()))?;
+
+    if read >= GZIP_MAGIC.len() && magic[..GZIP_MAGIC.len()] == GZIP_MAGIC {
+        return Ok(Box::new(GzDecoder::new(file)));
+    }
+    Err(format!(
+        "unsupported bundle compression in {}",
+        bundle_path.display()
+    ))
+}
+
+/// Opens a plugin bundle as a tar archive.
+///
+/// # Parameters
+/// - `bundle_path`: Bundle file path.
+///
+/// # Returns
+/// - `Ok(tar::Archive<...>)` when the bundle format is supported.
+/// - `Err(String)` when the bundle cannot be decoded.
+fn open_bundle_archive(bundle_path: &Path) -> Result<tar::Archive<Box<dyn Read>>, String> {
+    let reader = open_bundle_reader(bundle_path)?;
+    Ok(tar::Archive::new(reader))
+}
 
 /// Safety and resource limits enforced during bundle extraction.
 #[derive(Debug, Clone, Copy)]
@@ -326,7 +369,7 @@ impl PluginBundleStore {
             &bundle_sha256[..12]
         );
 
-        let (manifest_bundle_path, manifest) = locate_manifest_tar_xz(bundle_path)?;
+        let (manifest_bundle_path, manifest) = locate_manifest_in_bundle(bundle_path)?;
         let plugin_id = manifest.id.trim().to_string();
         if plugin_id.is_empty() {
             error!("install_ovcsp_with_limits: manifest id is empty",);
@@ -385,10 +428,8 @@ impl PluginBundleStore {
             .map_err(|e| format!("canonicalize {}: {e}", staging_version_dir.display()))?;
 
         // Extract all entries under `<pluginId>/...` into the staging version directory.
-        let f = fs::File::open(bundle_path)
-            .map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
-        let decoder = XzDecoder::new(f);
-        let mut tar = tar::Archive::new(decoder);
+        let mut tar = open_bundle_archive(bundle_path)
+            .map_err(|e| format!("open bundle archive {}: {e}", bundle_path.display()))?;
 
         for entry in tar.entries().map_err(|e| format!("read tar: {e}"))? {
             let mut entry = entry.map_err(|e| format!("tar entry: {e}"))?;
@@ -696,7 +737,7 @@ impl PluginBundleStore {
         trace!("ensure_built_in_bundle: {}", bundle_path.display());
 
         let bundle_sha256 = sha256_hex_file(bundle_path)?;
-        let (_manifest_path, manifest) = locate_manifest_tar_xz(bundle_path)?;
+        let (_manifest_path, manifest) = locate_manifest_in_bundle(bundle_path)?;
         let plugin_id = manifest.id.trim();
         if plugin_id.is_empty() {
             error!("ensure_built_in_bundle: bundle manifest id is empty",);
@@ -1171,7 +1212,7 @@ fn read_built_in_plugin_ids() -> HashSet<String> {
     let mut out: HashSet<String> = HashSet::new();
 
     for bundle_path in builtin_bundle_paths() {
-        let (_manifest_path, manifest) = match locate_manifest_tar_xz(&bundle_path) {
+        let (_manifest_path, manifest) = match locate_manifest_in_bundle(&bundle_path) {
             Ok(v) => v,
             Err(err) => {
                 warn!(
@@ -1240,7 +1281,7 @@ fn derive_install_version(manifest: &PluginManifest, bundle_sha256: &str) -> Str
         .unwrap_or_else(|| format!("sha256-{}", &bundle_sha256[..12]))
 }
 
-/// Finds and parses `openvcs.plugin.json` from a tar.xz bundle.
+/// Finds and parses `openvcs.plugin.json` from a plugin bundle archive.
 ///
 /// # Parameters
 /// - `bundle_path`: Bundle file path.
@@ -1248,11 +1289,9 @@ fn derive_install_version(manifest: &PluginManifest, bundle_sha256: &str) -> Str
 /// # Returns
 /// - `Ok((PathBuf, PluginManifest))` manifest path inside archive and manifest payload.
 /// - `Err(String)` on read/parse/validation failure.
-fn locate_manifest_tar_xz(bundle_path: &Path) -> Result<(PathBuf, PluginManifest), String> {
-    let file =
-        fs::File::open(bundle_path).map_err(|e| format!("open {}: {e}", bundle_path.display()))?;
-    let decoder = XzDecoder::new(file);
-    let mut tar = tar::Archive::new(decoder);
+fn locate_manifest_in_bundle(bundle_path: &Path) -> Result<(PathBuf, PluginManifest), String> {
+    let mut tar = open_bundle_archive(bundle_path)
+        .map_err(|e| format!("open bundle archive {}: {e}", bundle_path.display()))?;
 
     let mut manifest_path: Option<PathBuf> = None;
     let mut manifest_json: Option<Vec<u8>> = None;
@@ -1382,9 +1421,9 @@ fn validate_entrypoint(version_dir: &Path, exec: Option<&str>, label: &str) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
+    use flate2::write::GzEncoder;
+    use flate2::Compression;
     use tempfile::tempdir;
-    use xz2::write::XzEncoder;
 
     /// Synthetic tar entry kind used by bundle-construction helpers.
     enum TarEntryKind {
@@ -1406,16 +1445,15 @@ mod tests {
         kind: TarEntryKind,
     }
 
-    /// Builds a tar.xz bundle from synthetic test entries.
+    /// Builds a tar.gz bundle from synthetic test entries.
     ///
     /// # Parameters
     /// - `entries`: Tar entries to include.
     ///
     /// # Returns
-    /// - Encoded tar.xz bytes.
-    fn make_tar_xz_bundle(entries: Vec<TarEntry>) -> Vec<u8> {
-        let cursor = Cursor::new(Vec::<u8>::new());
-        let encoder = XzEncoder::new(cursor, 6);
+    /// - Encoded tar.gz bytes.
+    fn make_tar_gz_bundle(entries: Vec<TarEntry>) -> Vec<u8> {
+        let encoder = GzEncoder::new(Vec::<u8>::new(), Compression::default());
         let mut tar = tar::Builder::new(encoder);
 
         for e in entries {
@@ -1446,17 +1484,17 @@ mod tests {
         }
 
         let encoder = tar.into_inner().unwrap();
-        encoder.finish().unwrap().into_inner()
+        encoder.finish().unwrap()
     }
 
-    /// Builds a minimal raw tar.xz bundle from `(path, bytes)` tuples.
+    /// Builds a minimal raw tar.gz bundle from `(path, bytes)` tuples.
     ///
     /// # Parameters
     /// - `entries`: Raw path/data entries.
     ///
     /// # Returns
-    /// - Encoded tar.xz bytes.
-    fn make_raw_tar_xz_bundle(entries: Vec<(String, Vec<u8>)>) -> Vec<u8> {
+    /// - Encoded tar.gz bytes.
+    fn make_raw_tar_gz_bundle(entries: Vec<(String, Vec<u8>)>) -> Vec<u8> {
         /// Writes an octal tar header field.
         ///
         /// # Parameters
@@ -1524,7 +1562,7 @@ mod tests {
         tar_bytes.resize(tar_bytes.len() + 1024, 0u8);
 
         let mut out = Vec::<u8>::new();
-        let mut enc = XzEncoder::new(&mut out, 6);
+        let mut enc = GzEncoder::new(&mut out, Compression::default());
         enc.write_all(&tar_bytes).unwrap();
         enc.finish().unwrap();
         out
@@ -1576,7 +1614,7 @@ mod tests {
                 kind: TarEntryKind::File,
             });
         }
-        let bundle = make_tar_xz_bundle(entries);
+        let bundle = make_tar_gz_bundle(entries);
 
         let (_tmp, bundle_path) = write_bundle_to_temp(&bundle);
         let store_root = tempdir().unwrap();
@@ -1598,7 +1636,7 @@ mod tests {
     /// # Returns
     /// - `()`.
     fn install_requires_manifest_at_expected_location() {
-        let bundle = make_tar_xz_bundle(vec![TarEntry {
+        let bundle = make_tar_gz_bundle(vec![TarEntry {
             name: "test.plugin/other.json".into(),
             data: b"{}".to_vec(),
             unix_mode: None,
@@ -1619,7 +1657,7 @@ mod tests {
     /// # Returns
     /// - `()`.
     fn install_validates_declared_entrypoints_exist() {
-        let bundle = make_tar_xz_bundle(vec![TarEntry {
+        let bundle = make_tar_gz_bundle(vec![TarEntry {
             name: "test.plugin/openvcs.plugin.json".into(),
             data: basic_manifest(
                 "test.plugin",
@@ -1643,7 +1681,7 @@ mod tests {
     /// # Returns
     /// - `()`.
     fn install_rejects_functions_component() {
-        let bundle = make_tar_xz_bundle(vec![TarEntry {
+        let bundle = make_tar_gz_bundle(vec![TarEntry {
             name: "test.plugin/openvcs.plugin.json".into(),
             data: basic_manifest("test.plugin", ",\"functions\":{\"exec\":\"legacy.mjs\"}"),
             unix_mode: None,
@@ -1662,12 +1700,12 @@ mod tests {
     }
 
     #[test]
-    /// Verifies installer accepts valid tar.xz bundles.
+    /// Verifies installer accepts valid tar.gz bundles.
     ///
     /// # Returns
     /// - `()`.
-    fn install_accepts_tar_xz_bundles() {
-        let bundle = make_tar_xz_bundle(vec![
+    fn install_accepts_tar_gz_bundles() {
+        let bundle = make_tar_gz_bundle(vec![
             TarEntry {
                 name: "test.plugin/openvcs.plugin.json".into(),
                 data: basic_manifest(
@@ -1700,7 +1738,7 @@ mod tests {
     /// # Returns
     /// - `()`.
     fn install_rejects_tar_zipslip_parent_dir() {
-        let bundle = make_raw_tar_xz_bundle(vec![
+        let bundle = make_raw_tar_gz_bundle(vec![
             (
                 "test.plugin/openvcs.plugin.json".into(),
                 basic_manifest("test.plugin", ""),
@@ -1722,7 +1760,7 @@ mod tests {
     /// # Returns
     /// - `()`.
     fn install_rejects_tar_symlink_entries() {
-        let bundle = make_tar_xz_bundle(vec![
+        let bundle = make_tar_gz_bundle(vec![
             TarEntry {
                 name: "test.plugin/openvcs.plugin.json".into(),
                 data: basic_manifest("test.plugin", ""),
@@ -1754,7 +1792,7 @@ mod tests {
     /// - `()`.
     fn install_rejects_tar_suspicious_compression_ratio() {
         let big = vec![0u8; 2 * 1024 * 1024];
-        let bundle = make_tar_xz_bundle(vec![
+        let bundle = make_tar_gz_bundle(vec![
             TarEntry {
                 name: "test.plugin/openvcs.plugin.json".into(),
                 data: basic_manifest("test.plugin", ""),
