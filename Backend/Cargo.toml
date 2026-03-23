@@ -28,7 +28,7 @@ default = []
 tauri = { version = "2.10", features = [] }
 tauri-plugin-opener = "2.5"
 serde = { version = "1", features = ["derive"] }
-notify = "6"
+notify = "8"
 tauri-plugin-dialog = "2.5"
 tauri-plugin-updater = "2.9"
 tokio = { version = "1.50", features = ["io-util", "process", "rt", "sync", "time"] }
