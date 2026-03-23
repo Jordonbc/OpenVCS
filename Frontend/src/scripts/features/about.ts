@@ -28,6 +28,7 @@ export async function openAbout(): Promise<void> {
         }
             | null;
 
+        const aboutLogo     = q<HTMLImageElement>("#about-logo", modal);
         const aboutVersion  = q<HTMLElement>("#about-version", modal);
         const aboutBuild    = q<HTMLElement>("#about-build", modal);
         const aboutAuthor   = q<HTMLElement>("#about-author", modal);
@@ -40,6 +41,7 @@ export async function openAbout(): Promise<void> {
             .filter(Boolean)
             .join(", ");
 
+        if (aboutLogo) aboutLogo.src = `${import.meta.env.BASE_URL}OpenVCS-128.png`;
         if (aboutVersion) aboutVersion.textContent = info?.version ? `v${info.version}` : "";
         if (aboutBuild)   aboutBuild.textContent   = info?.build ?? "";
         if (aboutAuthor)  aboutAuthor.textContent  = authors ? `By ${authors}` : "";
