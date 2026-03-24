@@ -84,6 +84,8 @@ impl ChannelConfig {
             .map(|s| Box::leak(s.to_string().into_boxed_str()) as &str)
             .collect();
         Self {
+            // Box::leak is acceptable here - this is build-time config that lives
+            // only for the duration of the build process, after which memory is reclaimed.
             slug: Box::leak(entry.slug.clone().into_boxed_str()),
             main_binary_name: Box::leak(entry.main_binary_name.clone().into_boxed_str()),
             product_name: Box::leak(entry.product_name.clone().into_boxed_str()),
