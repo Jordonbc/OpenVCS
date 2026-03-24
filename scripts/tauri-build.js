@@ -8,7 +8,7 @@ const { spawn } = require('child_process');
  * Returns normalized desktop channel metadata for Tauri CLI config overrides.
  *
  * @param {string | undefined} raw
- * @returns {{slug: string, productName: string, identifier: string, windowTitle: string, updaterEndpoints: string[]}}
+ * @returns {{slug: string, mainBinaryName: string, productName: string, identifier: string, windowTitle: string, updaterEndpoints: string[]}}
  */
 function resolveChannelConfig(raw) {
   const slug = (raw || 'stable').trim().toLowerCase();
@@ -20,6 +20,7 @@ function resolveChannelConfig(raw) {
   if (slug === 'beta') {
     return {
       slug: 'beta',
+      mainBinaryName: 'openvcs-beta',
       productName: 'OpenVCS Beta',
       identifier: 'dev.jordon.openvcs.beta',
       windowTitle: 'OpenVCS Beta',
@@ -30,6 +31,7 @@ function resolveChannelConfig(raw) {
   if (slug === 'nightly') {
     return {
       slug: 'nightly',
+      mainBinaryName: 'openvcs-nightly',
       productName: 'OpenVCS Nightly',
       identifier: 'dev.jordon.openvcs.nightly',
       windowTitle: 'OpenVCS Nightly',
@@ -39,6 +41,7 @@ function resolveChannelConfig(raw) {
 
   return {
     slug: 'stable',
+    mainBinaryName: 'openvcs',
     productName: 'OpenVCS',
     identifier: 'dev.jordon.openvcs',
     windowTitle: 'OpenVCS',
@@ -50,13 +53,14 @@ function resolveChannelConfig(raw) {
  * Writes a temporary Tauri merge config matching the requested channel.
  *
  * @param {string} repoRoot
- * @param {{productName: string, identifier: string, windowTitle: string, updaterEndpoints: string[]}} channel
+ * @param {{mainBinaryName: string, productName: string, identifier: string, windowTitle: string, updaterEndpoints: string[]}} channel
  * @returns {string}
  */
 function writeChannelConfigOverride(repoRoot, channel) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openvcs-tauri-config-'));
   const configPath = path.join(tmpDir, 'tauri.channel.conf.json');
   const override = {
+    mainBinaryName: channel.mainBinaryName,
     productName: channel.productName,
     identifier: channel.identifier,
     app: {
