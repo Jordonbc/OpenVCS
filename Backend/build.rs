@@ -31,14 +31,14 @@ impl ChannelConfig {
             "beta" => Self {
                 slug: "beta",
                 main_binary_name: "openvcs-beta",
-                product_name: "OpenVCS Beta",
+                product_name: "OpenVCS-Beta",
                 identifier: "dev.jordon.openvcs.beta",
                 window_title: "OpenVCS Beta",
             },
             "nightly" => Self {
                 slug: "nightly",
                 main_binary_name: "openvcs-nightly",
-                product_name: "OpenVCS Nightly",
+                product_name: "OpenVCS-Nightly",
                 identifier: "dev.jordon.openvcs.nightly",
                 window_title: "OpenVCS Nightly",
             },
