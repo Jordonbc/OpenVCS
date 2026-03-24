@@ -15,7 +15,13 @@ function resolveChannelConfig(raw) {
   const metadata = loadChannelMetadata();
   const slug = (raw || 'stable').trim().toLowerCase();
 
-  const entry = metadata.channels[slug] || metadata.channels.stable;
+  let entry = metadata.channels[slug];
+  if (!entry) {
+    if (raw && raw.trim()) {
+      console.warn(`Warning: Unknown channel '${raw}', defaulting to stable`);
+    }
+    entry = metadata.channels.stable;
+  }
 
   return {
     mainBinaryName: entry.mainBinaryName,
