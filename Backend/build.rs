@@ -64,11 +64,17 @@ impl ChannelConfig {
     /// - Beta or nightly metadata for recognized channel names.
     fn from_env_value(raw: &str, metadata: &ChannelMetadata) -> Self {
         let slug = raw.trim().to_ascii_lowercase();
-        match slug.as_str() {
-            "beta" => Self::from_entry(&metadata.channels.beta),
-            "nightly" => Self::from_entry(&metadata.channels.nightly),
-            _ => Self::from_entry(&metadata.channels.stable),
-        }
+        let entry = match slug.as_str() {
+            "beta" => &metadata.channels.beta,
+            "nightly" => &metadata.channels.nightly,
+            _ => {
+                if !raw.trim().is_empty() {
+                    eprintln!("Warning: Unknown channel '{raw}', defaulting to stable");
+                }
+                &metadata.channels.stable
+            }
+        };
+        Self::from_entry(entry)
     }
 
     fn from_entry(entry: &ChannelEntry) -> Self {
