@@ -1,5 +1,5 @@
 name: Beta
-run-name: "OpenVCS Beta • Run #${{ github.run_number }} • Beta@${{ github.sha.substring(0, 7) }}"
+run-name: "OpenVCS Beta • Run #${{ github.run_number }} • Beta@${{ github.sha }}"
 
 on:
   push:
