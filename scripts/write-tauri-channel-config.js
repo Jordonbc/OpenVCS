@@ -20,7 +20,7 @@ function resolveChannelConfig(raw) {
   if (slug === 'beta') {
     return {
       mainBinaryName: 'openvcs-beta',
-      productName: 'OpenVCS Beta',
+      productName: 'OpenVCS-Beta',
       identifier: 'dev.jordon.openvcs.beta',
       windowTitle: 'OpenVCS Beta',
       updaterEndpoints: [betaEndpoint, stableEndpoint],
@@ -30,7 +30,7 @@ function resolveChannelConfig(raw) {
   if (slug === 'nightly') {
     return {
       mainBinaryName: 'openvcs-nightly',
-      productName: 'OpenVCS Nightly',
+      productName: 'OpenVCS-Nightly',
       identifier: 'dev.jordon.openvcs.nightly',
       windowTitle: 'OpenVCS Nightly',
       updaterEndpoints: [nightlyEndpoint, stableEndpoint],
