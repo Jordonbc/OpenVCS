@@ -80,7 +80,12 @@ async function main() {
   const channelProductName = channelNames[channelSlug] || 'OpenVCS';
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openvcs-tauri-config-'));
   const channelConfigPath = path.join(tmpDir, 'tauri.channel.conf.json');
-  writeChannelConfig(channelConfigPath);
+  try {
+    writeChannelConfig(channelConfigPath);
+  } catch (err) {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    throw err;
+  }
 
   if (process.env.TAURI_SIGNING_PRIVATE_KEY_FILE && !process.env.TAURI_SIGNING_PRIVATE_KEY) {
     console.log('Signing: loading key from TAURI_SIGNING_PRIVATE_KEY_FILE');
@@ -109,7 +114,8 @@ async function main() {
 
   child.on('exit', (code, signal) => {
     try {
-      // channelConfigPath is a file inside the temp dir, so dirname removes the temp dir itself
+      // channelConfigPath is a file inside a temp dir (e.g., /tmp/openvcs-tauri-config-XXXXXX/channel.json).
+      // dirname strips the filename to get the temp dir, then we remove it.
       fs.rmSync(path.dirname(channelConfigPath), { recursive: true, force: true });
     } catch {}
     if (signal) process.kill(process.pid, signal);
