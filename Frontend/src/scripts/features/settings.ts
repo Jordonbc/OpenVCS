@@ -790,7 +790,7 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         theme_pack: themePack || DEFAULT_LIGHT_THEME_ID,
         language: get<HTMLSelectElement>('#set-language')?.value,
         default_backend: (get<HTMLSelectElement>('#set-default-backend')?.value || 'git') as any,
-        update_channel: (() => { const v = get<HTMLSelectElement>('#set-update-channel')?.value; return v === 'beta' ? 'nightly' : v; })(),
+        update_channel: get<HTMLSelectElement>('#set-update-channel')?.value || 'stable',
         reopen_last_repos: !!get<HTMLInputElement>('#set-reopen-last')?.checked,
         checks_on_launch: !!get<HTMLInputElement>('#set-checks-on-launch')?.checked,
     };

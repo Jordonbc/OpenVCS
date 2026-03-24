@@ -36,10 +36,12 @@ export async function showUpdateDialog(_data: any) {
     };
 
     const stable = await fetchJson('https://api.github.com/repos/Jordonbc/OpenVCS/releases/latest');
+    const beta = await fetchJson('https://api.github.com/repos/Jordonbc/OpenVCS/releases/tags/openvcs-beta');
     const nightly = await fetchJson('https://api.github.com/repos/Jordonbc/OpenVCS/releases/tags/openvcs-nightly');
 
     const norm = (v: string) => String(v || '').replace(/^v/i, '').trim();
     const stableTag = norm(stable?.tag_name || stable?.name || '');
+    const betaTag = norm(beta?.tag_name || beta?.name || '');
     const nightlyTag = norm(nightly?.tag_name || nightly?.name || '');
 
     const base = (v: string) => norm(v).split('+', 1)[0];
@@ -51,6 +53,13 @@ export async function showUpdateDialog(_data: any) {
 
     if (channel === 'stable') {
       if (newerThanCurrent(stableTag)) { show = true; pick = stable; }
+    } else if (channel === 'beta') {
+      // Beta: pick the most recent by published_at timestamp between beta and stable
+      const sDate = Date.parse(String(stable?.published_at || stable?.created_at || '')) || 0;
+      const bDate = Date.parse(String(beta?.published_at || beta?.created_at || '')) || 0;
+      pick = (bDate > sDate ? beta : stable) || beta || stable;
+      const pickTag = norm(pick?.tag_name || pick?.name || '');
+      show = newerThanCurrent(pickTag);
     } else {
       // Nightly: pick the most recent by published_at timestamp and ensure it's newer than current
       const sDate = Date.parse(String(stable?.published_at || stable?.created_at || '')) || 0;

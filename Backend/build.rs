@@ -138,6 +138,9 @@ fn main() {
     let stable = serde_json::Value::String(
         "https://github.com/Jordonbc/OpenVCS/releases/latest/download/latest.json".into(),
     );
+    let beta = serde_json::Value::String(
+        "https://github.com/Jordonbc/OpenVCS/releases/download/openvcs-beta/latest.json".into(),
+    );
     let nightly = serde_json::Value::String(
         "https://github.com/Jordonbc/OpenVCS/releases/download/openvcs-nightly/latest.json".into(),
     );
@@ -146,10 +149,10 @@ fn main() {
     if let Some(plugins) = json.get_mut("plugins") {
         if let Some(updater) = plugins.get_mut("updater") {
             let endpoints = match chan.as_str() {
+                // Beta: check beta first, then stable
+                "beta" => serde_json::Value::Array(vec![beta.clone(), stable.clone()]),
                 // Nightly: check nightly first, then stable
-                "nightly" | "beta" => {
-                    serde_json::Value::Array(vec![nightly.clone(), stable.clone()])
-                }
+                "nightly" => serde_json::Value::Array(vec![nightly.clone(), stable.clone()]),
                 // Stable: stable only
                 _ => serde_json::Value::Array(vec![stable.clone()]),
             };
