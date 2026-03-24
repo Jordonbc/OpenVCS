@@ -7,6 +7,8 @@ use std::{env, fs, path::PathBuf, process::Command};
 struct ChannelConfig {
     /// Normalized channel slug used across build and runtime.
     slug: &'static str,
+    /// Binary and bundle stem without spaces.
+    main_binary_name: &'static str,
     /// Human-facing desktop product name.
     product_name: &'static str,
     /// Tauri bundle identifier.
@@ -28,18 +30,21 @@ impl ChannelConfig {
         match raw.trim().to_ascii_lowercase().as_str() {
             "beta" => Self {
                 slug: "beta",
+                main_binary_name: "openvcs-beta",
                 product_name: "OpenVCS Beta",
                 identifier: "dev.jordon.openvcs.beta",
                 window_title: "OpenVCS Beta",
             },
             "nightly" => Self {
                 slug: "nightly",
+                main_binary_name: "openvcs-nightly",
                 product_name: "OpenVCS Nightly",
                 identifier: "dev.jordon.openvcs.nightly",
                 window_title: "OpenVCS Nightly",
             },
             _ => Self {
                 slug: "stable",
+                main_binary_name: "openvcs",
                 product_name: "OpenVCS",
                 identifier: "dev.jordon.openvcs",
                 window_title: "OpenVCS",
@@ -213,6 +218,7 @@ fn main() {
         }
     }
 
+    json["mainBinaryName"] = serde_json::Value::String(channel.main_binary_name.into());
     json["productName"] = serde_json::Value::String(channel.product_name.into());
     json["identifier"] = serde_json::Value::String(channel.identifier.into());
     if let Some(app) = json.get_mut("app") {
