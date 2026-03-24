@@ -21,7 +21,7 @@ env:
   # Scheduled runs should always build from Dev. Manual runs should build from the selected branch.
   TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'Dev' }}
   # Flatpak is enabled in CI.
-  OPENVCS_ENABLE_FLATPAK: '0'
+  OPENVCS_ENABLE_FLATPAK: ${{ vars.ENABLE_FLATPAK }}
 
 jobs:
   check-changes:
@@ -83,8 +83,8 @@ jobs:
       actions: write       # use GitHub Actions cache (rust-cache / sccache)
     env:
       RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: 'true'
-      SCCACHE_CACHE_SIZE: '2G'
+      SCCACHE_GHA_ENABLED: ${{ vars.SSCCACHE_GHA_ENABLED }}
+      SCCACHE_CACHE_SIZE: ${{ vars.SSCCACHE_SIZE }}
     strategy:
       fail-fast: false
       matrix:
