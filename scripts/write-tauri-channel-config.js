@@ -4,54 +4,28 @@
 const fs = require('fs');
 const path = require('path');
 
-/**
- * Returns normalized desktop channel metadata for Tauri CLI config overrides.
- *
- * @param {string | undefined} raw
- * @returns {{mainBinaryName: string, productName: string, identifier: string, windowTitle: string, updaterEndpoints: string[]}}
- */
+const CHANNEL_METADATA_PATH = path.resolve(__dirname, '../channel-metadata.json');
+
+function loadChannelMetadata() {
+  const data = fs.readFileSync(CHANNEL_METADATA_PATH, 'utf8');
+  return JSON.parse(data);
+}
+
 function resolveChannelConfig(raw) {
+  const metadata = loadChannelMetadata();
   const slug = (raw || 'stable').trim().toLowerCase();
-  const repo = process.env.OPENVCS_REPO || 'https://github.com/Jordonbc/OpenVCS';
-  const stableEndpoint = `${repo}/releases/latest/download/latest.json`;
-  const betaEndpoint = `${repo}/releases/download/openvcs-beta/latest.json`;
-  const nightlyEndpoint = `${repo}/releases/download/openvcs-nightly/latest.json`;
 
-  if (slug === 'beta') {
-    return {
-      mainBinaryName: 'openvcs-beta',
-      productName: 'OpenVCS-Beta',
-      identifier: 'dev.jordon.openvcs.beta',
-      windowTitle: 'OpenVCS Beta',
-      updaterEndpoints: [betaEndpoint, stableEndpoint],
-    };
-  }
-
-  if (slug === 'nightly') {
-    return {
-      mainBinaryName: 'openvcs-nightly',
-      productName: 'OpenVCS-Nightly',
-      identifier: 'dev.jordon.openvcs.nightly',
-      windowTitle: 'OpenVCS Nightly',
-      updaterEndpoints: [nightlyEndpoint, stableEndpoint],
-    };
-  }
+  const entry = metadata.channels[slug] || metadata.channels.stable;
 
   return {
-    mainBinaryName: 'openvcs',
-    productName: 'OpenVCS',
-    identifier: 'dev.jordon.openvcs',
-    windowTitle: 'OpenVCS',
-    updaterEndpoints: [stableEndpoint],
+    mainBinaryName: entry.mainBinaryName,
+    productName: entry.productName,
+    identifier: entry.identifier,
+    windowTitle: entry.windowTitle,
+    updaterEndpoints: entry.updaterEndpoints,
   };
 }
 
-/**
- * Writes a Tauri merge config matching the requested channel.
- *
- * @param {string} outputPath
- * @returns {void}
- */
 function writeChannelConfig(outputPath) {
   const channel = resolveChannelConfig(process.env.OPENVCS_UPDATE_CHANNEL);
   const override = {
@@ -76,11 +50,6 @@ function writeChannelConfig(outputPath) {
   fs.writeFileSync(outputPath, JSON.stringify(override, null, 2));
 }
 
-/**
- * CLI entry point.
- *
- * @returns {void}
- */
 function main() {
   const outputPath = process.argv[2];
   if (!outputPath) {
@@ -93,6 +62,8 @@ function main() {
 
 module.exports = {
   writeChannelConfig,
+  resolveChannelConfig,
+  loadChannelMetadata,
 };
 
 if (require.main === module) {

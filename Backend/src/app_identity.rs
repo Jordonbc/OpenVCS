@@ -40,8 +40,7 @@ impl AppChannel {
     ///
     /// # Returns
     /// - Application name for `ProjectDirs`.
-    pub fn persistence_name(self) -> &'static str {
-        let _ = self;
+    pub fn persistence_name() -> &'static str {
         "OpenVCS"
     }
 }
@@ -63,7 +62,7 @@ pub fn current_channel() -> AppChannel {
 /// - `Some(ProjectDirs)` when the platform exposes standard app directories.
 /// - `None` when no platform-specific directories are available.
 pub fn project_dirs() -> Option<ProjectDirs> {
-    ProjectDirs::from("dev", "OpenVCS", current_channel().persistence_name())
+    ProjectDirs::from("dev", "OpenVCS", AppChannel::persistence_name())
 }
 
 #[cfg(test)]
@@ -94,8 +93,6 @@ mod tests {
     /// Verifies all channels keep the shared legacy persistence root.
     #[test]
     fn exposes_persistence_names() {
-        assert_eq!(AppChannel::Stable.persistence_name(), "OpenVCS");
-        assert_eq!(AppChannel::Beta.persistence_name(), "OpenVCS");
-        assert_eq!(AppChannel::Nightly.persistence_name(), "OpenVCS");
+        assert_eq!(AppChannel::persistence_name(), "OpenVCS");
     }
 }
