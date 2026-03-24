@@ -3,7 +3,7 @@ run-name: "OpenVCS Beta • Run #${{ github.run_number }} • Beta@${{ github.sh
 
 on:
   push:
-    branches: [ beta ]
+    branches: [ Beta ]
   workflow_dispatch:
     inputs:
       force:
@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  TARGET_REF: beta
+  TARGET_REF: Beta
 
 jobs:
   check-changes:
