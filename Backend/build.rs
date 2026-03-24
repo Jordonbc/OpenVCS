@@ -260,10 +260,18 @@ fn main() {
         pkg_version.clone()
     } else {
         let branch_ident = sanitize_semver_ident(&branch);
-        format!(
-            "{pkg_version}+git.{branch_ident}.{hash}{}",
+        let channel_suffix = match chan.as_str() {
+            "beta" => "-beta",
+            "nightly" => "-nightly",
+            _ => "",
+        };
+        let suffix = format!(
+            "+git.{}{}{}",
+            branch_ident,
+            hash,
             if dirty { ".dirty" } else { "" }
-        )
+        );
+        format!("{}{}{}", pkg_version, channel_suffix, suffix)
     };
 
     println!("cargo:rustc-env=OPENVCS_VERSION={}", version);
