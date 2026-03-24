@@ -132,6 +132,11 @@ jobs:
       - name: Cargo clippy
         run: cargo clippy --all-targets -- -D warnings
 
+      - name: Write channel Tauri config override
+        env:
+          OPENVCS_UPDATE_CHANNEL: stable
+        run: node scripts/write-tauri-channel-config.js "${{ runner.temp }}/tauri.channel.conf.json"
+
       # ---------- Build & publish with Tauri action ----------
       - name: Build and create GitHub Release (draft)
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # action-v0.6.2
@@ -155,7 +160,7 @@ jobs:
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
+          args: ${{ format('{0} --config {1}/tauri.channel.conf.json', matrix.args, runner.temp) }}
           includeDebug: false   # default; set true if you want debug archives too
           # bundles: ''           # e.g. 'deb,appimage,msi,nsis' if you want to restrict output
 

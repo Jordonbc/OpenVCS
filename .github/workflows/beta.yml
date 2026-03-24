@@ -105,6 +105,11 @@ jobs:
               if (e.status !== 422) throw e;
             }
 
+      - name: Write channel Tauri config override
+        env:
+          OPENVCS_UPDATE_CHANNEL: beta
+        run: node scripts/write-tauri-channel-config.js "${{ runner.temp }}/tauri.channel.conf.json"
+
       - name: Build and publish Beta prerelease
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # action-v0.6.2
         env:
@@ -124,5 +129,4 @@ jobs:
             Runner: ${{ runner.os }} • Run #${{ github.run_number }}
           releaseDraft: true
           prerelease: true
-          args: ${{ matrix.args }}
-
+          args: ${{ format('{0} --config {1}/tauri.channel.conf.json', matrix.args, runner.temp) }}

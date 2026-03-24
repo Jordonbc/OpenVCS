@@ -163,10 +163,14 @@ cargo tauri dev
 
 ```bash
 just tauri-build
+just tauri-build beta
 ```
 
 This wraps `cargo tauri build` with `NO_STRIP=true` to avoid AppImage
 linuxdeploy strip failures on newer Linux toolchains.
+
+`just build`, `just build stable`, `just build beta`, and `just build nightly`
+use the same channel-aware Tauri build flow.
 
 The Tauri precommands in `Backend/tauri.conf.json` intentionally set an
 explicit hook `cwd` to `Backend/` so Tauri does not resolve them from nested
