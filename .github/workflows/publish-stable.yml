@@ -160,7 +160,7 @@ jobs:
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false
-          args: ${{ format('{0} --config {1}/tauri.channel.conf.json', matrix.args, runner.temp) }}
+          args: ${{ format('{0} --config {1}/tauri.channel.conf.json', matrix.args || '', runner.temp) }}
           includeDebug: false   # default; set true if you want debug archives too
           # bundles: ''           # e.g. 'deb,appimage,msi,nsis' if you want to restrict output
 

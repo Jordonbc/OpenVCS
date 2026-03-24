@@ -245,4 +245,4 @@ jobs:
             ${{ steps.meta.outputs.changelog }}
           releaseDraft: false
           prerelease: true
-          args: ${{ format('{0} --config {1}/tauri.channel.conf.json', matrix.args, runner.temp) }}
+          args: ${{ format('{0} --config {1}/tauri.channel.conf.json', matrix.args || '', runner.temp) }}
