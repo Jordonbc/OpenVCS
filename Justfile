@@ -6,10 +6,7 @@ build target="all":
 
 _build_all: _build_client
 
-_build_plugins:
-  cargo openvcs dist --all --plugin-dir Backend/built-in-plugins --out target/openvcs/built-in-plugins
-
-_build_client: _build_plugins
+_build_client:
   npm --prefix Frontend run build
   cargo build
 
