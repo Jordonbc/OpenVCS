@@ -134,22 +134,30 @@ fn main() {
     // Compute channel based on environment; default to stable
     let chan = env::var("OPENVCS_UPDATE_CHANNEL").unwrap_or_else(|_| "stable".into());
 
-    // Locations
-    let stable = serde_json::Value::String(
-        "https://github.com/Jordonbc/OpenVCS/releases/latest/download/latest.json".into(),
-    );
-    let nightly = serde_json::Value::String(
-        "https://github.com/Jordonbc/OpenVCS/releases/download/openvcs-nightly/latest.json".into(),
-    );
+    // Repository URL (can be overridden via env var for forks)
+    let repo =
+        env::var("OPENVCS_REPO").unwrap_or_else(|_| "https://github.com/Jordonbc/OpenVCS".into());
+
+    // Build update URLs from repository
+    let stable =
+        serde_json::Value::String(format!("{}/releases/latest/download/latest.json", repo));
+    let beta = serde_json::Value::String(format!(
+        "{}/releases/download/openvcs-beta/latest.json",
+        repo
+    ));
+    let nightly = serde_json::Value::String(format!(
+        "{}/releases/download/openvcs-nightly/latest.json",
+        repo
+    ));
 
     // Navigate: plugins.updater.endpoints
     if let Some(plugins) = json.get_mut("plugins") {
         if let Some(updater) = plugins.get_mut("updater") {
             let endpoints = match chan.as_str() {
+                // Beta: check beta first, then stable
+                "beta" => serde_json::Value::Array(vec![beta.clone(), stable.clone()]),
                 // Nightly: check nightly first, then stable
-                "nightly" | "beta" => {
-                    serde_json::Value::Array(vec![nightly.clone(), stable.clone()])
-                }
+                "nightly" => serde_json::Value::Array(vec![nightly.clone(), stable.clone()]),
                 // Stable: stable only
                 _ => serde_json::Value::Array(vec![stable.clone()]),
             };
@@ -200,6 +208,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=OPENVCS_UPDATE_CHANNEL");
     println!("cargo:rerun-if-env-changed=OPENVCS_FLATPAK");
     println!("cargo:rerun-if-env-changed=OPENVCS_OFFICIAL_RELEASE");
+    println!("cargo:rerun-if-env-changed=OPENVCS_REPO");
 
     // Export a GIT_DESCRIBE string for About dialog and diagnostics
     let describe = Command::new("git")
@@ -257,10 +266,18 @@ fn main() {
         pkg_version.clone()
     } else {
         let branch_ident = sanitize_semver_ident(&branch);
-        format!(
-            "{pkg_version}+git.{branch_ident}.{hash}{}",
+        let channel_suffix = match chan.as_str() {
+            "beta" => "-beta",
+            "nightly" => "-nightly",
+            _ => "",
+        };
+        let suffix = format!(
+            "+git.{}{}{}",
+            branch_ident,
+            hash,
             if dirty { ".dirty" } else { "" }
-        )
+        );
+        format!("{}{}{}", pkg_version, channel_suffix, suffix)
     };
 
     println!("cargo:rustc-env=OPENVCS_VERSION={}", version);

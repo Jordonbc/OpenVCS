@@ -1,0 +1,128 @@
+name: Beta
+run-name: "OpenVCS Beta • Run #${{ github.run_number }} • Beta@${{ steps.meta.outputs.short_sha }}"
+
+on:
+  push:
+    branches: [ Beta ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  TARGET_REF: Beta
+  RUSTC_WRAPPER: sccache
+  SCCACHE_GHA_ENABLED: ${{ vars.SSCCACHE_GHA_ENABLED }}
+  SCCACHE_CACHE_SIZE: ${{ vars.SSCCACHE_SIZE }}
+
+jobs:
+  beta:
+    name: Build & publish Beta
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-24.04
+            args: ''
+          - platform: windows-latest
+            args: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout target ref
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ env.TARGET_REF }}
+          fetch-depth: 0
+          submodules: recursive
+          lfs: true
+
+      - name: Compute metadata (date, short SHA)
+        id: meta
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const date = new Date().toISOString().slice(0, 10);
+            const short = context.sha.substring(0, 7);
+            core.setOutput('short_sha', short);
+            core.setOutput('date', date);
+
+      - name: Setup Node
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: Frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: Frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: Frontend
+        run: npm run build
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@5d458579430fc14a04a08a1e7d3694f545e91ce6 # stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+
+      - name: Install Linux deps
+        if: matrix.platform == 'ubuntu-24.04'
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          cache-on-failure: true
+
+      - name: Cargo fmt (check)
+        run: cargo fmt --all -- --check
+
+      - name: Cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Remove existing 'openvcs-beta' release & tag
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+            const tag   = 'openvcs-beta';
+            const releases = await github.paginate(github.rest.repos.listReleases, { owner, repo, per_page: 100 });
+            const rel = releases.find(r => r.tag_name === tag);
+            if (rel) await github.rest.repos.deleteRelease({ owner, repo, release_id: rel.id });
+            try {
+              await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
+            } catch (e) {
+              if (e.status !== 422) throw e;
+            }
+
+      - name: Build and publish Beta prerelease
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # action-v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FRONTEND_SKIP_BUILD: '1'
+          OPENVCS_UPDATE_CHANNEL: beta
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: Backend
+          tagName: openvcs-beta
+          releaseName: "OpenVCS Beta ${{ steps.meta.outputs.date }} (${{ env.TARGET_REF }}@${{ steps.meta.outputs.short_sha }})"
+          releaseBody: |
+            Beta build from `${{ env.TARGET_REF }}`.
+            Date (UTC): ${{ steps.meta.outputs.date }}
+            Commit: ${{ github.sha }} (${{ env.TARGET_REF }}@${{ steps.meta.outputs.short_sha }})
+            Runner: ${{ runner.os }} • Run #${{ github.run_number }}
+          releaseDraft: true
+          prerelease: true
+          args: ${{ matrix.args }}
+

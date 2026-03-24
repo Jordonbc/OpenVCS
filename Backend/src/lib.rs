@@ -327,6 +327,7 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::ssh_key_candidates,
         tauri_commands::ssh_add_key,
         tauri_commands::updater_install_now,
+        tauri_commands::get_update_status,
         tauri_commands::open_repo_dotfile,
         tauri_commands::open_docs,
         tauri_commands::open_output_log_window,
