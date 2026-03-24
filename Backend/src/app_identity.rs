@@ -33,16 +33,16 @@ impl AppChannel {
         }
     }
 
-    /// Returns the user-facing desktop product name for this channel.
+    /// Returns the filesystem app name used for persistence.
+    ///
+    /// All desktop channels intentionally share the historical `OpenVCS`
+    /// directory so builds keep using the same config and plugin roots.
     ///
     /// # Returns
-    /// - Product name used by bundles and channel-specific docs.
-    pub fn product_name(self) -> &'static str {
-        match self {
-            Self::Stable => "OpenVCS",
-            Self::Beta => "OpenVCS Beta",
-            Self::Nightly => "OpenVCS Nightly",
-        }
+    /// - Application name for `ProjectDirs`.
+    pub fn persistence_name(self) -> &'static str {
+        let _ = self;
+        "OpenVCS"
     }
 }
 
@@ -56,15 +56,14 @@ pub fn current_channel() -> AppChannel {
 
 /// Returns channel-aware project directories for app config and data.
 ///
-/// Stable builds preserve the legacy `OpenVCS` application name so existing
-/// users keep the same config and data roots. Beta and nightly use their
-/// distinct product names so they can coexist with stable.
+/// All desktop channels preserve the legacy `OpenVCS` application name so
+/// existing users keep the same config and data roots.
 ///
 /// # Returns
 /// - `Some(ProjectDirs)` when the platform exposes standard app directories.
 /// - `None` when no platform-specific directories are available.
 pub fn project_dirs() -> Option<ProjectDirs> {
-    ProjectDirs::from("dev", "OpenVCS", current_channel().product_name())
+    ProjectDirs::from("dev", "OpenVCS", current_channel().persistence_name())
 }
 
 #[cfg(test)]
@@ -92,11 +91,11 @@ mod tests {
         assert_eq!(AppChannel::from_build_channel("BETA"), AppChannel::Beta);
     }
 
-    /// Verifies each channel exposes the expected desktop product name.
+    /// Verifies all channels keep the shared legacy persistence root.
     #[test]
-    fn exposes_product_names() {
-        assert_eq!(AppChannel::Stable.product_name(), "OpenVCS");
-        assert_eq!(AppChannel::Beta.product_name(), "OpenVCS Beta");
-        assert_eq!(AppChannel::Nightly.product_name(), "OpenVCS Nightly");
+    fn exposes_persistence_names() {
+        assert_eq!(AppChannel::Stable.persistence_name(), "OpenVCS");
+        assert_eq!(AppChannel::Beta.persistence_name(), "OpenVCS");
+        assert_eq!(AppChannel::Nightly.persistence_name(), "OpenVCS");
     }
 }
