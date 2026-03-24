@@ -28,7 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh 
 
 The script targets Linux, leaves existing configuration untouched, and can be re-run to pull the newest release.
 
-Stable desktop builds keep the legacy `OpenVCS` app identity and reuse the existing config and plugin directories.
+Desktop builds keep using the legacy shared `OpenVCS` config and plugin directories.
 
 **Install pre-release (nightly):**
 
