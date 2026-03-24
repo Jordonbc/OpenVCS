@@ -41,7 +41,6 @@ export async function showUpdateDialog(_data: any) {
 
     const norm = (v: string) => String(v || '').replace(/^v/i, '').trim();
     const stableTag = norm(stable?.tag_name || stable?.name || '');
-    const betaTag = norm(beta?.tag_name || beta?.name || '');
     const nightlyTag = norm(nightly?.tag_name || nightly?.name || '');
 
     const base = (v: string) => norm(v).split('+', 1)[0];
