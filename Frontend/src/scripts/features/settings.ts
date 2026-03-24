@@ -927,8 +927,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elLang  = get<HTMLSelectElement>('#set-language'); if (elLang) elLang.value = toKebab(cfg.general?.language);
     await refreshDefaultBackendOptions(m, cfg);
     const elChan  = get<HTMLSelectElement>('#set-update-channel'); if (elChan) {
-        const v = toKebab(cfg.general?.update_channel);
-        elChan.value = (v === 'beta') ? 'nightly' : v;
+        elChan.value = toKebab(cfg.general?.update_channel);
     }
     const elReo   = get<HTMLInputElement>('#set-reopen-last'); if (elReo) elReo.checked = !!cfg.general?.reopen_last_repos;
     const elChk   = get<HTMLInputElement>('#set-checks-on-launch'); if (elChk) elChk.checked = !!cfg.general?.checks_on_launch;
