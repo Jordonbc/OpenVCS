@@ -1,7 +1,81 @@
 #!/usr/bin/env node
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
+
+/**
+ * Returns normalized desktop channel metadata for Tauri CLI config overrides.
+ *
+ * @param {string | undefined} raw
+ * @returns {{slug: string, productName: string, identifier: string, windowTitle: string, updaterEndpoints: string[]}}
+ */
+function resolveChannelConfig(raw) {
+  const slug = (raw || 'stable').trim().toLowerCase();
+  const repo = process.env.OPENVCS_REPO || 'https://github.com/Jordonbc/OpenVCS';
+  const stableEndpoint = `${repo}/releases/latest/download/latest.json`;
+  const betaEndpoint = `${repo}/releases/download/openvcs-beta/latest.json`;
+  const nightlyEndpoint = `${repo}/releases/download/openvcs-nightly/latest.json`;
+
+  if (slug === 'beta') {
+    return {
+      slug: 'beta',
+      productName: 'OpenVCS Beta',
+      identifier: 'dev.jordon.openvcs.beta',
+      windowTitle: 'OpenVCS Beta',
+      updaterEndpoints: [betaEndpoint, stableEndpoint],
+    };
+  }
+
+  if (slug === 'nightly') {
+    return {
+      slug: 'nightly',
+      productName: 'OpenVCS Nightly',
+      identifier: 'dev.jordon.openvcs.nightly',
+      windowTitle: 'OpenVCS Nightly',
+      updaterEndpoints: [nightlyEndpoint, stableEndpoint],
+    };
+  }
+
+  return {
+    slug: 'stable',
+    productName: 'OpenVCS',
+    identifier: 'dev.jordon.openvcs',
+    windowTitle: 'OpenVCS',
+    updaterEndpoints: [stableEndpoint],
+  };
+}
+
+/**
+ * Writes a temporary Tauri merge config matching the requested channel.
+ *
+ * @param {string} repoRoot
+ * @param {{productName: string, identifier: string, windowTitle: string, updaterEndpoints: string[]}} channel
+ * @returns {string}
+ */
+function writeChannelConfigOverride(repoRoot, channel) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openvcs-tauri-config-'));
+  const configPath = path.join(tmpDir, 'tauri.channel.conf.json');
+  const override = {
+    productName: channel.productName,
+    identifier: channel.identifier,
+    app: {
+      windows: [
+        {
+          title: channel.windowTitle,
+        },
+      ],
+    },
+    plugins: {
+      updater: {
+        endpoints: channel.updaterEndpoints,
+      },
+    },
+  };
+
+  fs.writeFileSync(configPath, JSON.stringify(override, null, 2));
+  return configPath;
+}
 
 function loadLocalEnv(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -69,6 +143,8 @@ function promptHidden(question) {
 async function main() {
   const repoRoot = process.cwd();
   loadLocalEnv(path.join(repoRoot, '.env.tauri.local'));
+  const channel = resolveChannelConfig(process.env.OPENVCS_UPDATE_CHANNEL);
+  const channelConfigPath = writeChannelConfigOverride(repoRoot, channel);
 
   if (process.env.TAURI_SIGNING_PRIVATE_KEY_FILE && !process.env.TAURI_SIGNING_PRIVATE_KEY) {
     console.log('Signing: loading key from TAURI_SIGNING_PRIVATE_KEY_FILE');
@@ -88,13 +164,17 @@ async function main() {
   }
 
   process.env.NO_STRIP = process.env.NO_STRIP || 'true';
+  console.log(`Tauri channel: ${channel.slug} (${channel.productName})`);
 
-  const child = spawn('cargo', ['tauri', 'build'], {
+  const child = spawn('cargo', ['tauri', 'build', '--config', channelConfigPath], {
     stdio: 'inherit',
     env: process.env,
   });
 
   child.on('exit', (code, signal) => {
+    try {
+      fs.rmSync(path.dirname(channelConfigPath), { recursive: true, force: true });
+    } catch {}
     if (signal) process.kill(process.pid, signal);
     process.exit(code ?? 1);
   });
