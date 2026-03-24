@@ -2,6 +2,52 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::{env, fs, path::PathBuf, process::Command};
 
+/// Channel-specific metadata used for generated desktop bundles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ChannelConfig {
+    /// Normalized channel slug used across build and runtime.
+    slug: &'static str,
+    /// Human-facing desktop product name.
+    product_name: &'static str,
+    /// Tauri bundle identifier.
+    identifier: &'static str,
+    /// Main window title.
+    window_title: &'static str,
+}
+
+impl ChannelConfig {
+    /// Resolves normalized channel metadata from an arbitrary environment value.
+    ///
+    /// # Parameters
+    /// - `raw`: Raw environment value.
+    ///
+    /// # Returns
+    /// - Stable metadata when the input is missing or unknown.
+    /// - Beta or nightly metadata for recognized channel names.
+    fn from_env_value(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "beta" => Self {
+                slug: "beta",
+                product_name: "OpenVCS Beta",
+                identifier: "dev.jordon.openvcs.beta",
+                window_title: "OpenVCS Beta",
+            },
+            "nightly" => Self {
+                slug: "nightly",
+                product_name: "OpenVCS Nightly",
+                identifier: "dev.jordon.openvcs.nightly",
+                window_title: "OpenVCS Nightly",
+            },
+            _ => Self {
+                slug: "stable",
+                product_name: "OpenVCS",
+                identifier: "dev.jordon.openvcs",
+                window_title: "OpenVCS",
+            },
+        }
+    }
+}
+
 /// Returns whether the build is running for Flatpak packaging.
 fn is_flatpak_build() -> bool {
     matches!(
@@ -131,8 +177,10 @@ fn main() {
     let data = fs::read_to_string(&base).expect("read tauri.conf.json");
     let mut json: serde_json::Value = serde_json::from_str(&data).expect("parse tauri.conf.json");
 
-    // Compute channel based on environment; default to stable
-    let chan = env::var("OPENVCS_UPDATE_CHANNEL").unwrap_or_else(|_| "stable".into());
+    // Compute channel based on environment; default to stable.
+    let channel = ChannelConfig::from_env_value(
+        &env::var("OPENVCS_UPDATE_CHANNEL").unwrap_or_else(|_| "stable".into()),
+    );
 
     // Repository URL (can be overridden via env var for forks)
     let repo =
@@ -153,7 +201,7 @@ fn main() {
     // Navigate: plugins.updater.endpoints
     if let Some(plugins) = json.get_mut("plugins") {
         if let Some(updater) = plugins.get_mut("updater") {
-            let endpoints = match chan.as_str() {
+            let endpoints = match channel.slug {
                 // Beta: check beta first, then stable
                 "beta" => serde_json::Value::Array(vec![beta.clone(), stable.clone()]),
                 // Nightly: check nightly first, then stable
@@ -162,6 +210,19 @@ fn main() {
                 _ => serde_json::Value::Array(vec![stable.clone()]),
             };
             updater["endpoints"] = endpoints;
+        }
+    }
+
+    json["productName"] = serde_json::Value::String(channel.product_name.into());
+    json["identifier"] = serde_json::Value::String(channel.identifier.into());
+    if let Some(app) = json.get_mut("app") {
+        if let Some(windows) = app
+            .get_mut("windows")
+            .and_then(|value| value.as_array_mut())
+        {
+            if let Some(main_window) = windows.first_mut() {
+                main_window["title"] = serde_json::Value::String(channel.window_title.into());
+            }
         }
     }
 
@@ -196,6 +257,7 @@ fn main() {
     // Provide the generated config via inline JSON env var (must be single-line)
     let inline = serde_json::to_string(&json).unwrap();
     println!("cargo:rustc-env=TAURI_CONFIG={}", inline);
+    println!("cargo:rustc-env=OPENVCS_APP_CHANNEL={}", channel.slug);
 
     // Also persist a copy alongside OUT_DIR for debugging (non-fatal if it fails)
     if let Ok(out_dir) = env::var("OUT_DIR") {
@@ -266,7 +328,7 @@ fn main() {
         pkg_version.clone()
     } else {
         let branch_ident = sanitize_semver_ident(&branch);
-        let channel_suffix = match chan.as_str() {
+        let channel_suffix = match channel.slug {
             "beta" => "-beta",
             "nightly" => "-nightly",
             _ => "",

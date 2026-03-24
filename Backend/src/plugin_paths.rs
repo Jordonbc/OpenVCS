@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Path resolution helpers for installed and built-in plugins.
 
-use directories::ProjectDirs;
 use log::{info, warn};
 use std::{
     env,
@@ -36,7 +35,7 @@ static LOGGED_BUILTIN_DIRS: AtomicBool = AtomicBool::new(false);
 /// # Returns
 /// - The absolute config-directory path used to store installed plugins.
 pub fn plugins_dir() -> PathBuf {
-    if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
+    if let Some(pd) = crate::app_identity::project_dirs() {
         pd.config_dir().join("plugins")
     } else {
         PathBuf::from("plugins")

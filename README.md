@@ -28,6 +28,8 @@ curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh 
 
 The script targets Linux, leaves existing configuration untouched, and can be re-run to pull the newest release.
 
+Stable desktop builds keep the legacy `OpenVCS` app identity and reuse the existing config and plugin directories.
+
 **Install pre-release (nightly):**
 
 ```bash
@@ -41,6 +43,8 @@ curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh 
 ```
 
 Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
+
+Pre-release AppImage installs use a separate launcher and install path when the selected release is branded as beta or nightly, so they can coexist with stable on the same machine.
 
 ---
 

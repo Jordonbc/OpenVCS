@@ -13,7 +13,6 @@ use crate::plugin_runtime::PluginRuntimeManager;
 use crate::repo::Repo;
 use crate::repo_settings::RepoConfig;
 use crate::settings::AppConfig;
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 /// Default number of recent repositories stored when settings are missing or invalid.
@@ -287,7 +286,7 @@ struct RecentFileEntry {
 /// # Returns
 /// - Recents file path.
 fn recents_file_path() -> PathBuf {
-    if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
+    if let Some(pd) = crate::app_identity::project_dirs() {
         pd.data_dir().join("recents.json")
     } else {
         PathBuf::from("recents.json")

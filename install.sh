@@ -13,17 +13,20 @@ REPO_OWNER="Jordonbc"
 REPO_NAME="OpenVCS"
 
 INSTALL_DIR="${HOME}/Applications"
-TARGET_BASENAME="openvcs.AppImage"
-TARGET_PATH="${INSTALL_DIR%/}/${TARGET_BASENAME}"
-
 DESKTOP_DIR="${HOME}/.local/share/applications"
-DESKTOP_PATH="${DESKTOP_DIR}/openvcs.desktop"
 ICON_NAME="openvcs"
 ICON_SOURCE_PATH="docs/images/logos/OpenVCS-256.png"
 ICON_URL_BRANCH="Dev"
 ICON_THEME_DIR="${HOME}/.local/share/icons/hicolor"
 ICON_TARGET_DIR="${ICON_THEME_DIR}/256x256/apps"
 ICON_PATH="${ICON_TARGET_DIR}/${ICON_NAME}.png"
+
+APP_VARIANT="stable"
+APP_DISPLAY_NAME="OpenVCS"
+TARGET_BASENAME="openvcs.AppImage"
+DESKTOP_BASENAME="openvcs.desktop"
+TARGET_PATH="${INSTALL_DIR%/}/${TARGET_BASENAME}"
+DESKTOP_PATH="${DESKTOP_DIR}/${DESKTOP_BASENAME}"
 
 # --- State ---
 INCLUDE_PRERELEASE=false
@@ -101,6 +104,65 @@ refresh_desktop_entries() {
     kbuildsycoca5 --noincremental >/dev/null 2>&1 || true
   elif command -v kbuildsycoca4 >/dev/null 2>&1; then
     kbuildsycoca4 >/dev/null 2>&1 || true
+  fi
+}
+
+set_install_variant() { # $1: stable|beta|nightly|prerelease
+  case "$1" in
+    beta)
+      APP_VARIANT="beta"
+      APP_DISPLAY_NAME="OpenVCS Beta"
+      TARGET_BASENAME="openvcs-beta.AppImage"
+      DESKTOP_BASENAME="openvcs-beta.desktop"
+      ;;
+    nightly)
+      APP_VARIANT="nightly"
+      APP_DISPLAY_NAME="OpenVCS Nightly"
+      TARGET_BASENAME="openvcs-nightly.AppImage"
+      DESKTOP_BASENAME="openvcs-nightly.desktop"
+      ;;
+    prerelease)
+      APP_VARIANT="prerelease"
+      APP_DISPLAY_NAME="OpenVCS Pre-release"
+      TARGET_BASENAME="openvcs-prerelease.AppImage"
+      DESKTOP_BASENAME="openvcs-prerelease.desktop"
+      ;;
+    *)
+      APP_VARIANT="stable"
+      APP_DISPLAY_NAME="OpenVCS"
+      TARGET_BASENAME="openvcs.AppImage"
+      DESKTOP_BASENAME="openvcs.desktop"
+      ;;
+  esac
+
+  TARGET_PATH="${INSTALL_DIR%/}/${TARGET_BASENAME}"
+  DESKTOP_PATH="${DESKTOP_DIR}/${DESKTOP_BASENAME}"
+}
+
+detect_release_variant() { # $1: release tag, $2: asset name
+  local combined
+  combined="${1,,} ${2,,}"
+
+  case "$combined" in
+    *nightly*) printf 'nightly' ;;
+    *beta*) printf 'beta' ;;
+    *stable*|*openvcs-v*) printf 'stable' ;;
+    *)
+      if $INCLUDE_PRERELEASE; then
+        printf 'prerelease'
+      else
+        printf 'stable'
+      fi
+      ;;
+  esac
+}
+
+remove_file_if_present() { # $1: path, $2: label
+  if [[ -f "$1" ]]; then
+    echo "Removing $2: $1"
+    rm "$1"
+  else
+    echo "No $2 found at $1"
   fi
 }
 
@@ -190,20 +252,12 @@ trap 'if $INTERACTIVE_MODE; then show_error "Installation failed. Check network 
 
 # --- Uninstall mode ---
 if $UNINSTALL; then
-  echo "Uninstalling OpenVCS..."
-  if [[ -f "${TARGET_PATH}" ]]; then
-    echo "Removing AppImage: ${TARGET_PATH}"
-    rm "${TARGET_PATH}"
-  else
-    echo "No AppImage found at ${TARGET_PATH}"
-  fi
-
-  if [[ -f "${DESKTOP_PATH}" ]]; then
-    echo "Removing desktop entry: ${DESKTOP_PATH}"
-    rm "${DESKTOP_PATH}"
-  else
-    echo "No desktop entry found at ${DESKTOP_PATH}"
-  fi
+  echo "Uninstalling OpenVCS variants..."
+  for variant in stable beta nightly prerelease; do
+    set_install_variant "$variant"
+    remove_file_if_present "${TARGET_PATH}" "${APP_DISPLAY_NAME} AppImage"
+    remove_file_if_present "${DESKTOP_PATH}" "${APP_DISPLAY_NAME} desktop entry"
+  done
 
   if [[ -f "${ICON_PATH}" ]]; then
     echo "Removing icon: ${ICON_PATH}"
@@ -217,9 +271,9 @@ if $UNINSTALL; then
 
   refresh_desktop_entries
 
-  echo "✅ OpenVCS uninstalled."
+  echo "✅ OpenVCS variants uninstalled."
   if $INTERACTIVE_MODE; then
-    show_info "✅ OpenVCS was uninstalled."
+    show_info "✅ OpenVCS variants were uninstalled."
   fi
   exit 0
 fi
@@ -294,6 +348,9 @@ fi
 echo "Selected release tag: ${RELEASE_TAG:-unknown}"
 $INCLUDE_PRERELEASE && echo "(including pre-releases)"
 
+set_install_variant "$(detect_release_variant "${RELEASE_TAG:-}" "${ASSET_NAME:-}")"
+echo "Installing variant: ${APP_DISPLAY_NAME}"
+
 # --- Download safely (atomic on same filesystem) ---
 TMP_FILE="$(mktemp --tmpdir="${INSTALL_DIR}" ".openvcs.XXXXXXXX")"
 trap '[[ -f "${TMP_FILE:-}" ]] && rm "${TMP_FILE}"' EXIT
@@ -314,7 +371,7 @@ echo "Writing desktop entry: ${DESKTOP_PATH}"
 cat > "${DESKTOP_PATH}" <<EOF
 [Desktop Entry]
 Type=Application
-Name=OpenVCS
+Name=${APP_DISPLAY_NAME}
 Comment=Cross-platform Git GUI
 Exec="${TARGET_PATH}"
 Icon=openvcs
@@ -338,5 +395,5 @@ echo "  $(basename "$0") --uninstall"
 
 # --- Final feedback if interactive ---
 if $INTERACTIVE_MODE; then
-  show_info "✅ OpenVCS installed successfully!\n\nLocation:\n${TARGET_PATH}"
+  show_info "✅ ${APP_DISPLAY_NAME} installed successfully!\n\nLocation:\n${TARGET_PATH}"
 fi

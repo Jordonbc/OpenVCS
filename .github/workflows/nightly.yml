@@ -20,8 +20,6 @@ permissions:
 env:
   # Scheduled runs should always build from Dev. Manual runs should build from the selected branch.
   TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'Dev' }}
-  # Flatpak is enabled in CI.
-  OPENVCS_ENABLE_FLATPAK: ${{ vars.ENABLE_FLATPAK }}
 
 jobs:
   check-changes:
@@ -187,42 +185,6 @@ jobs:
           sudo apt-get install -y libappindicator3-dev librsvg2-dev patchelf
           sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
 
-      # ---------- Flatpak (Linux only; artifact) ----------
-      - name: Install Flatpak tooling
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
-        run: |
-          set -euxo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream elfutils
-          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49
-          # Cargo/rustc must come from the Flatpak SDK environment (not the host toolchain).
-          # Try common branches to avoid coupling this workflow to the host runner image.
-          flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//25.08 \
-            || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//24.08 \
-            || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable
-
-      - name: Verify Flatpak manifest exists
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
-        run: |
-          set -euxo pipefail
-          ls -la packaging/flatpak
-          test -f packaging/flatpak/io.github.jordonbc.OpenVCS.yml
-
-      - name: Build Flatpak bundle
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
-        run: |
-          set -euxo pipefail
-          flatpak-builder --user --force-clean --repo=repo build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml
-          flatpak build-bundle repo OpenVCS.flatpak io.github.jordonbc.OpenVCS
-
-      - name: Upload Flatpak bundle (artifact)
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: OpenVCS-flatpak-nightly
-          path: OpenVCS.flatpak
-
       # ---------- Cache ----------
       - name: Rust cache
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -279,9 +241,3 @@ jobs:
           releaseDraft: false
           prerelease: true
           args: ${{ matrix.args }}
-
-      - name: Upload Flatpak bundle to GitHub Release
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload openvcs-nightly OpenVCS.flatpak --clobber
