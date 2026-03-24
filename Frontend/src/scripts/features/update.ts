@@ -4,6 +4,14 @@ import { TAURI } from '../lib/tauri';
 import { openModal, closeModal } from '../ui/modals';
 import { notify } from '../lib/notify';
 
+const GITHUB_OWNER = 'Jordonbc';
+const GITHUB_REPO = 'OpenVCS';
+
+const API_BASE = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}`;
+const URL_STABLE = `${API_BASE}/releases/latest`;
+const URL_BETA = `${API_BASE}/repos/tags/openvcs-beta`;
+const URL_NIGHTLY = `${API_BASE}/repos/tags/openvcs-nightly`;
+
 export function wireUpdate() {
   const modal = document.getElementById('update-modal') as HTMLElement | null;
   if (!modal || (modal as any).__wired) return;
@@ -32,16 +40,22 @@ export async function showUpdateDialog(_data: any) {
     const current = String(about?.version || '').trim();
 
     const fetchJson = async (url: string) => {
-      const r = await fetch(url, { cache: 'no-store' }); return r.ok ? r.json() : null;
+      try {
+        const r = await fetch(url, { cache: 'no-store' });
+        return r.ok ? r.json() : null;
+      } catch {
+        return null;
+      }
     };
 
-    const stable = await fetchJson('https://api.github.com/repos/Jordonbc/OpenVCS/releases/latest');
-    const beta = await fetchJson('https://api.github.com/repos/Jordonbc/OpenVCS/releases/tags/openvcs-beta');
-    const nightly = await fetchJson('https://api.github.com/repos/Jordonbc/OpenVCS/releases/tags/openvcs-nightly');
+    const [stable, beta, nightly] = await Promise.all([
+      fetchJson(URL_STABLE),
+      fetchJson(URL_BETA),
+      fetchJson(URL_NIGHTLY),
+    ]);
 
     const norm = (v: string) => String(v || '').replace(/^v/i, '').trim();
     const stableTag = norm(stable?.tag_name || stable?.name || '');
-    const betaTag = norm(beta?.tag_name || beta?.name || '');
     const nightlyTag = norm(nightly?.tag_name || nightly?.name || '');
 
     const base = (v: string) => norm(v).split('+', 1)[0];
