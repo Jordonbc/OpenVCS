@@ -74,8 +74,8 @@ async function main() {
   const channelSlug = (process.env.OPENVCS_UPDATE_CHANNEL || 'stable').trim().toLowerCase();
   const channelNames = {
     stable: 'OpenVCS',
-    beta: 'OpenVCS Beta',
-    nightly: 'OpenVCS Nightly',
+    beta: 'OpenVCS-Beta',
+    nightly: 'OpenVCS-Nightly',
   };
   const channelProductName = channelNames[channelSlug] || 'OpenVCS';
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openvcs-tauri-config-'));
