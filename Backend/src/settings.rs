@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Global application configuration types and persistence helpers.
 
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{fs, io};
@@ -669,7 +668,7 @@ impl AppConfig {
     /// # Returns
     /// - Filesystem path to the global OpenVCS config file.
     pub fn path() -> PathBuf {
-        if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
+        if let Some(pd) = crate::app_identity::project_dirs() {
             pd.config_dir().join("openvcs.conf")
         } else {
             PathBuf::from("openvcs.conf")

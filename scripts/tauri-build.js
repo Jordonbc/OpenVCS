@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
+const { writeChannelConfig } = require('./write-tauri-channel-config.js');
 
 function loadLocalEnv(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -69,6 +71,21 @@ function promptHidden(question) {
 async function main() {
   const repoRoot = process.cwd();
   loadLocalEnv(path.join(repoRoot, '.env.tauri.local'));
+  const channelSlug = (process.env.OPENVCS_UPDATE_CHANNEL || 'stable').trim().toLowerCase();
+  const channelNames = {
+    stable: 'OpenVCS',
+    beta: 'OpenVCS-Beta',
+    nightly: 'OpenVCS-Nightly',
+  };
+  const channelProductName = channelNames[channelSlug] || 'OpenVCS';
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openvcs-tauri-config-'));
+  const channelConfigPath = path.join(tmpDir, 'tauri.channel.conf.json');
+  try {
+    writeChannelConfig(channelConfigPath);
+  } catch (err) {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    throw err;
+  }
 
   if (process.env.TAURI_SIGNING_PRIVATE_KEY_FILE && !process.env.TAURI_SIGNING_PRIVATE_KEY) {
     console.log('Signing: loading key from TAURI_SIGNING_PRIVATE_KEY_FILE');
@@ -88,13 +105,19 @@ async function main() {
   }
 
   process.env.NO_STRIP = process.env.NO_STRIP || 'true';
+  console.log(`Tauri channel: ${channelSlug} (${channelProductName})`);
 
-  const child = spawn('cargo', ['tauri', 'build'], {
+  const child = spawn('cargo', ['tauri', 'build', '--config', channelConfigPath], {
     stdio: 'inherit',
     env: process.env,
   });
 
   child.on('exit', (code, signal) => {
+    try {
+      // channelConfigPath is /tmp/openvcs-tauri-config-XXXXXX/tauri.channel.conf.json
+      // dirname gives us /tmp/openvcs-tauri-config-XXXXXX which we then remove
+      fs.rmSync(path.dirname(channelConfigPath), { recursive: true, force: true });
+    } catch {}
     if (signal) process.kill(process.pid, signal);
     process.exit(code ?? 1);
   });

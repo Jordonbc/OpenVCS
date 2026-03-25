@@ -28,6 +28,8 @@ curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh 
 
 The script targets Linux, leaves existing configuration untouched, and can be re-run to pull the newest release.
 
+Desktop builds keep using the legacy shared `OpenVCS` config and plugin directories.
+
 **Install pre-release (nightly):**
 
 ```bash
@@ -41,6 +43,8 @@ curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh 
 ```
 
 Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
+
+Pre-release AppImage installs use a separate launcher and install path when the selected release is branded as beta or nightly, so they can coexist with stable on the same machine.
 
 ---
 
@@ -159,10 +163,14 @@ cargo tauri dev
 
 ```bash
 just tauri-build
+just tauri-build beta
 ```
 
 This wraps `cargo tauri build` with `NO_STRIP=true` to avoid AppImage
 linuxdeploy strip failures on newer Linux toolchains.
+
+`just build`, `just build stable`, `just build beta`, and `just build nightly`
+use the same channel-aware Tauri build flow.
 
 The Tauri precommands in `Backend/tauri.conf.json` intentionally set an
 explicit hook `cwd` to `Backend/` so Tauri does not resolve them from nested

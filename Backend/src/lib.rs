@@ -14,6 +14,7 @@ use tauri_plugin_updater::UpdaterExt;
 
 use crate::core::BackendId;
 
+mod app_identity;
 mod core;
 mod logging;
 mod output_log;
