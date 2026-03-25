@@ -114,8 +114,8 @@ async function main() {
 
   child.on('exit', (code, signal) => {
     try {
-      // channelConfigPath is a file inside a temp dir (e.g., /tmp/openvcs-tauri-config-XXXXXX/channel.json).
-      // dirname strips the filename to get the temp dir, then we remove it.
+      // channelConfigPath is /tmp/openvcs-tauri-config-XXXXXX/tauri.channel.conf.json
+      // dirname gives us /tmp/openvcs-tauri-config-XXXXXX which we then remove
       fs.rmSync(path.dirname(channelConfigPath), { recursive: true, force: true });
     } catch {}
     if (signal) process.kill(process.pid, signal);
