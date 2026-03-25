@@ -1,6 +1,100 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+use serde::Deserialize;
 use std::{env, fs, path::PathBuf, process::Command};
+
+fn load_channel_metadata() -> ChannelMetadata {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let config_path = manifest_dir.join("../channel-metadata.json");
+    let data = fs::read_to_string(&config_path).expect("read channel-metadata.json");
+    serde_json::from_str(&data).expect("parse channel-metadata.json")
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ChannelMetadata {
+    channels: Channels,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct Channels {
+    stable: ChannelEntry,
+    beta: ChannelEntry,
+    nightly: ChannelEntry,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ChannelEntry {
+    slug: String,
+    #[serde(rename = "mainBinaryName")]
+    main_binary_name: String,
+    #[serde(rename = "productName")]
+    product_name: String,
+    identifier: String,
+    #[serde(rename = "windowTitle")]
+    window_title: String,
+    #[serde(rename = "updaterEndpoints")]
+    updater_endpoints: Vec<String>,
+}
+
+/// Channel-specific metadata used for generated desktop bundles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ChannelConfig {
+    /// Normalized channel slug used across build and runtime.
+    slug: &'static str,
+    /// Binary and bundle stem without spaces.
+    main_binary_name: &'static str,
+    /// Human-facing desktop product name.
+    product_name: &'static str,
+    /// Tauri bundle identifier.
+    identifier: &'static str,
+    /// Main window title.
+    window_title: &'static str,
+    /// Updater endpoint URLs.
+    updater_endpoints: &'static [&'static str],
+}
+
+impl ChannelConfig {
+    /// Resolves normalized channel metadata from an arbitrary environment value.
+    ///
+    /// # Parameters
+    /// - `raw`: Raw environment value.
+    ///
+    /// # Returns
+    /// - Stable metadata when the input is missing or unknown.
+    /// - Beta or nightly metadata for recognized channel names.
+    fn from_env_value(raw: &str, metadata: &ChannelMetadata) -> Self {
+        let slug = raw.trim().to_ascii_lowercase();
+        let entry = match slug.as_str() {
+            "beta" => &metadata.channels.beta,
+            "nightly" => &metadata.channels.nightly,
+            _ => {
+                if !raw.trim().is_empty() {
+                    eprintln!("Warning: Unknown channel '{raw}', defaulting to stable");
+                }
+                &metadata.channels.stable
+            }
+        };
+        Self::from_entry(entry)
+    }
+
+    fn from_entry(entry: &ChannelEntry) -> Self {
+        let endpoints: Vec<&'static str> = entry
+            .updater_endpoints
+            .iter()
+            .map(|s| Box::leak(s.to_string().into_boxed_str()) as &str)
+            .collect();
+        Self {
+            // Box::leak is acceptable here - this is a build script that runs once.
+            // Memory is leaked for the program duration but that's fine for a build script.
+            slug: Box::leak(entry.slug.clone().into_boxed_str()),
+            main_binary_name: Box::leak(entry.main_binary_name.clone().into_boxed_str()),
+            product_name: Box::leak(entry.product_name.clone().into_boxed_str()),
+            identifier: Box::leak(entry.identifier.clone().into_boxed_str()),
+            window_title: Box::leak(entry.window_title.clone().into_boxed_str()),
+            updater_endpoints: Box::leak(endpoints.into_boxed_slice()),
+        }
+    }
+}
 
 /// Returns whether the build is running for Flatpak packaging.
 fn is_flatpak_build() -> bool {
@@ -131,37 +225,36 @@ fn main() {
     let data = fs::read_to_string(&base).expect("read tauri.conf.json");
     let mut json: serde_json::Value = serde_json::from_str(&data).expect("parse tauri.conf.json");
 
-    // Compute channel based on environment; default to stable
-    let chan = env::var("OPENVCS_UPDATE_CHANNEL").unwrap_or_else(|_| "stable".into());
-
-    // Repository URL (can be overridden via env var for forks)
-    let repo =
-        env::var("OPENVCS_REPO").unwrap_or_else(|_| "https://github.com/Jordonbc/OpenVCS".into());
-
-    // Build update URLs from repository
-    let stable =
-        serde_json::Value::String(format!("{}/releases/latest/download/latest.json", repo));
-    let beta = serde_json::Value::String(format!(
-        "{}/releases/download/openvcs-beta/latest.json",
-        repo
-    ));
-    let nightly = serde_json::Value::String(format!(
-        "{}/releases/download/openvcs-nightly/latest.json",
-        repo
-    ));
+    // Compute channel based on environment; default to stable.
+    let channel_metadata = load_channel_metadata();
+    let channel = ChannelConfig::from_env_value(
+        &env::var("OPENVCS_UPDATE_CHANNEL").unwrap_or_else(|_| "stable".into()),
+        &channel_metadata,
+    );
 
     // Navigate: plugins.updater.endpoints
     if let Some(plugins) = json.get_mut("plugins") {
         if let Some(updater) = plugins.get_mut("updater") {
-            let endpoints = match chan.as_str() {
-                // Beta: check beta first, then stable
-                "beta" => serde_json::Value::Array(vec![beta.clone(), stable.clone()]),
-                // Nightly: check nightly first, then stable
-                "nightly" => serde_json::Value::Array(vec![nightly.clone(), stable.clone()]),
-                // Stable: stable only
-                _ => serde_json::Value::Array(vec![stable.clone()]),
-            };
-            updater["endpoints"] = endpoints;
+            let endpoints: Vec<serde_json::Value> = channel
+                .updater_endpoints
+                .iter()
+                .map(|s| serde_json::Value::String((*s).to_string()))
+                .collect();
+            updater["endpoints"] = serde_json::Value::Array(endpoints);
+        }
+    }
+
+    json["mainBinaryName"] = serde_json::Value::String(channel.main_binary_name.into());
+    json["productName"] = serde_json::Value::String(channel.product_name.into());
+    json["identifier"] = serde_json::Value::String(channel.identifier.into());
+    if let Some(app) = json.get_mut("app") {
+        if let Some(windows) = app
+            .get_mut("windows")
+            .and_then(|value| value.as_array_mut())
+        {
+            if let Some(main_window) = windows.first_mut() {
+                main_window["title"] = serde_json::Value::String(channel.window_title.into());
+            }
         }
     }
 
@@ -196,6 +289,7 @@ fn main() {
     // Provide the generated config via inline JSON env var (must be single-line)
     let inline = serde_json::to_string(&json).unwrap();
     println!("cargo:rustc-env=TAURI_CONFIG={}", inline);
+    println!("cargo:rustc-env=OPENVCS_APP_CHANNEL={}", channel.slug);
 
     // Also persist a copy alongside OUT_DIR for debugging (non-fatal if it fails)
     if let Ok(out_dir) = env::var("OUT_DIR") {
@@ -205,6 +299,8 @@ fn main() {
 
     // Re-run if the base config changes
     println!("cargo:rerun-if-changed={}", base.display());
+    let config_path = manifest_dir.join("../channel-metadata.json");
+    println!("cargo:rerun-if-changed={}", config_path.display());
     println!("cargo:rerun-if-env-changed=OPENVCS_UPDATE_CHANNEL");
     println!("cargo:rerun-if-env-changed=OPENVCS_FLATPAK");
     println!("cargo:rerun-if-env-changed=OPENVCS_OFFICIAL_RELEASE");
@@ -266,7 +362,7 @@ fn main() {
         pkg_version.clone()
     } else {
         let branch_ident = sanitize_semver_ident(&branch);
-        let channel_suffix = match chan.as_str() {
+        let channel_suffix = match channel.slug {
             "beta" => "-beta",
             "nightly" => "-nightly",
             _ => "",

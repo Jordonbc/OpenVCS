@@ -21,6 +21,7 @@ flatpak run io.github.jordonbc.OpenVCS
 
 ## Notes
 
+- Flatpak packaging remains stable-only and intentionally keeps the plain `OpenVCS` app identity.
 - The manifest expects the frontend to already be built at `Frontend/dist`.
 - It exports `OPENVCS_FLATPAK=1` so `Backend/build.rs` disables the in-app updater (Flatpak apps update via Flatpak).
 - It uses `org.freedesktop.Sdk.Extension.rust-stable` for `cargo`/`rustc` and `org.freedesktop.Sdk.Extension.node20` for `npm` inside the Flatpak build environment.
