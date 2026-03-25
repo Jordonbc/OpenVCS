@@ -144,8 +144,8 @@ detect_release_variant() { # $1: release tag, $2: asset name
   combined="${1,,} ${2,,}"
 
   case "$combined" in
-    *nightly*) printf 'nightly' ;;
-    *beta*) printf 'beta' ;;
+    *nightly*|*openvcs-nightly*) printf 'nightly' ;;
+    *beta*|*openvcs-beta*) printf 'beta' ;;
     *)
       if $INCLUDE_PRERELEASE; then
         printf 'prerelease'
