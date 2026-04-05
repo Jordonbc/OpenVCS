@@ -219,7 +219,9 @@ if ! $INCLUDE_PRERELEASE && ! $UNINSTALL && [[ "$#" -eq 0 ]]; then
       ;;
     dialog)
       CHOICE="$(dialog --title "OpenVCS Installer" --radiolist "Choose action" 12 64 3 \
-        "stable" 1 ON "prerelease" 2 OFF "uninstall" 3 OFF 3>&1 1>&2 2>&3)" || RC=$?
+        "stable" "Install latest stable" ON \
+        "prerelease" "Install latest pre-release" OFF \
+        "uninstall" "Uninstall OpenVCS" OFF 3>&1 1>&2 2>&3)" || RC=$?
       clear
       (( RC != 0 )) && cancel_exit
       ;;
