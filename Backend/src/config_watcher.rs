@@ -9,9 +9,18 @@ use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use parking_lot::Mutex;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 use tauri::Manager;
 
 static CONFIG_WATCHER: OnceLock<Mutex<Option<RecommendedWatcher>>> = OnceLock::new();
+static CONFIG_RELOAD_STATE: OnceLock<Mutex<ConfigReloadState>> = OnceLock::new();
+const CONFIG_RELOAD_DEBOUNCE: Duration = Duration::from_millis(250);
+
+/// In-memory watcher debounce and serialization state.
+struct ConfigReloadState {
+    last_started_at: Option<Instant>,
+    in_progress: bool,
+}
 
 /// Starts the process-wide config watcher when it is not already running.
 ///
@@ -40,6 +49,9 @@ pub fn start_config_watcher<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) 
                 if !event_targets_config(&event.paths, &callback_config_path) {
                     return;
                 }
+                let Some(_guard) = begin_config_reload() else {
+                    return;
+                };
 
                 let state = callback_handle.state::<AppState>();
                 let next = AppConfig::load_or_default();
@@ -93,6 +105,45 @@ pub fn start_config_watcher<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) 
     }
 
     *watcher_slot.lock() = Some(watcher);
+}
+
+/// Marks the start of a config reload when debounce and serialization allow it.
+///
+/// # Returns
+/// - `Some(ConfigReloadGuard)` when reload work should proceed.
+/// - `None` when a recent or in-progress reload should suppress this event.
+fn begin_config_reload() -> Option<ConfigReloadGuard> {
+    let state = CONFIG_RELOAD_STATE.get_or_init(|| {
+        Mutex::new(ConfigReloadState {
+            last_started_at: None,
+            in_progress: false,
+        })
+    });
+    let mut state = state.lock();
+    let now = Instant::now();
+    if state.in_progress {
+        return None;
+    }
+    if state
+        .last_started_at
+        .is_some_and(|last| now.duration_since(last) < CONFIG_RELOAD_DEBOUNCE)
+    {
+        return None;
+    }
+    state.in_progress = true;
+    state.last_started_at = Some(now);
+    Some(ConfigReloadGuard)
+}
+
+/// Resets the in-progress watcher state when a reload finishes.
+struct ConfigReloadGuard;
+
+impl Drop for ConfigReloadGuard {
+    fn drop(&mut self) {
+        if let Some(state) = CONFIG_RELOAD_STATE.get() {
+            state.lock().in_progress = false;
+        }
+    }
 }
 
 /// Returns whether an event path list targets the OpenVCS config file.
