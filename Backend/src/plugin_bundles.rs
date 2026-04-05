@@ -15,8 +15,26 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 const MODULE: &str = "plugin_bundles";
+const INVALID_PLUGIN_ID: &str = "plugin id is empty";
 /// File name used for plugin source metadata.
 pub const PLUGIN_SOURCE_METADATA_NAME: &str = "source.json";
+
+/// Normalizes a plugin id for comparisons and map keys.
+///
+/// # Parameters
+/// - `plugin_id`: Raw plugin id string.
+///
+/// # Returns
+/// - `Ok(String)` lowercase normalized plugin id.
+/// - `Err(String)` when the id is empty.
+pub fn normalize_plugin_id(plugin_id: &str) -> Result<String, String> {
+    let normalized = plugin_id.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        Err(INVALID_PLUGIN_ID.to_string())
+    } else {
+        Ok(normalized)
+    }
+}
 
 /// Legacy approval state recorded for an installed plugin version.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -492,7 +510,7 @@ impl PluginBundleStore {
             if metadata.managed_by.trim() != managed_by {
                 continue;
             }
-            if desired_ids.contains(&plugin_id.trim().to_ascii_lowercase()) {
+            if desired_ids.contains(&normalize_plugin_id(plugin_id)?) {
                 continue;
             }
             fs::remove_dir_all(&path).map_err(|e| format!("remove {}: {e}", path.display()))?;
@@ -514,7 +532,7 @@ impl PluginBundleStore {
         for plugin_dir in &plugin_dirs {
             match self.ensure_built_in_plugin_dir(plugin_dir) {
                 Ok(installed) => {
-                    desired_ids.insert(installed.plugin_id.trim().to_ascii_lowercase());
+                    desired_ids.insert(normalize_plugin_id(&installed.plugin_id)?);
                 }
                 Err(err) => {
                     let message = format!("{}: {}", plugin_dir.display(), err);
@@ -550,7 +568,7 @@ impl PluginBundleStore {
         if id.is_empty() {
             return Err("plugin id is empty".to_string());
         }
-        let lower = id.to_ascii_lowercase();
+        let lower = normalize_plugin_id(id)?;
         if built_in_plugin_ids().contains(&lower) {
             return Err("built-in plugins cannot be removed".to_string());
         }
@@ -592,7 +610,7 @@ impl PluginBundleStore {
     pub fn get_current_dir(&self, plugin_id: &str) -> Result<Option<PathBuf>, String> {
         let id = plugin_id.trim();
         if id.is_empty() {
-            return Err("plugin id is empty".to_string());
+            return Err(INVALID_PLUGIN_ID.to_string());
         }
         let plugin_dir = self.root.join(id);
         let current_path = plugin_dir.join("current.json");
@@ -812,7 +830,9 @@ fn read_built_in_plugin_ids() -> HashSet<String> {
         };
         let id = manifest.id.trim();
         if !id.is_empty() {
-            out.insert(id.to_ascii_lowercase());
+            if let Ok(normalized) = normalize_plugin_id(id) {
+                out.insert(normalized);
+            }
         }
     }
     out
