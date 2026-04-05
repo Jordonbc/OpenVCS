@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Config-driven plugin source resolution and synchronization.
 
-use crate::plugin_bundles::{InstalledPluginSourceMetadata, PluginBundleStore};
+use crate::plugin_bundles::{
+    normalize_plugin_id, InstalledPluginSourceMetadata, PluginBundleStore,
+};
 use crate::settings::AppConfig;
 use flate2::read::GzDecoder;
 use log::{debug, info, warn};
@@ -53,7 +55,7 @@ pub fn sync_configured_plugins(cfg: &AppConfig) -> Result<(), String> {
 
         match sync_plugin_source(&store, trimmed, &base_dir) {
             Ok(installed) => {
-                desired_ids.insert(installed.plugin_id.trim().to_ascii_lowercase());
+                desired_ids.insert(normalize_plugin_id(&installed.plugin_id)?);
             }
             Err(err) => {
                 let message = format!("{}: {}", trimmed, err);
@@ -252,17 +254,17 @@ fn extract_plugin_archive(archive_path: &Path, out_dir: &Path) -> Result<(), Str
 /// - `Err(String)` when the path is unsafe.
 fn sanitize_archive_path(raw: &str) -> Result<PathBuf, String> {
     if raw.contains('\0') {
-        return Err("archive entry contains NUL".to_string());
+        return Err(format!("invalid archive entry path: {raw}"));
     }
     let normalized = raw.replace('\\', "/");
     if normalized.starts_with('/') {
-        return Err(format!("archive entry has an absolute path: {raw}"));
+        return Err(format!("invalid archive entry path: {raw}"));
     }
     let path = Path::new(&normalized);
     for component in path.components() {
         match component {
             Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
-                return Err(format!("archive entry escapes package root: {raw}"));
+                return Err(format!("invalid archive entry path: {raw}"));
             }
             _ => {}
         }
