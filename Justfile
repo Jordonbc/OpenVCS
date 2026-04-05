@@ -20,9 +20,9 @@ _build_usage:
   @exit 2
 
 test:
-  cargo test --workspace || true
-  cd Frontend && npm exec tsc -- -p tsconfig.json --noEmit || true
-  cd Frontend && npx vitest run || true
+  cargo test --workspace
+  cd Frontend && npm exec tsc -- -p tsconfig.json --noEmit
+  cd Frontend && npx vitest run
 
 tauri-build channel="stable":
   FRONTEND_SKIP_BUILD=1 NO_STRIP=true OPENVCS_UPDATE_CHANNEL={{channel}} node scripts/tauri-build.js
