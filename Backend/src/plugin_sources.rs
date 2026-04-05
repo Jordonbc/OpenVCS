@@ -163,6 +163,7 @@ fn resolve_local_plugin_path(spec: &str, base_dir: &Path) -> Option<PathBuf> {
 /// - `Ok(PathBuf)` absolute tarball path.
 /// - `Err(String)` when `npm pack` fails.
 fn pack_plugin_source(source: &Path, workdir: &Path) -> Result<PathBuf, String> {
+    ensure_npm_available()?;
     let source_arg = source.to_string_lossy().to_string();
     let output = Command::new(npm_executable())
         .args(["pack", "--json", &source_arg])
@@ -255,22 +256,34 @@ fn extract_plugin_archive(archive_path: &Path, out_dir: &Path) -> Result<(), Str
 /// - `Err(String)` when the path is unsafe.
 fn sanitize_archive_path(raw: &str) -> Result<PathBuf, String> {
     if raw.contains('\0') {
-        return Err(format!("invalid archive entry path: {raw}"));
+        return Err(archive_entry_path_error("contains NUL byte", raw));
     }
     let normalized = raw.replace('\\', "/");
     if normalized.starts_with('/') {
-        return Err(format!("invalid archive entry path: {raw}"));
+        return Err(archive_entry_path_error("is absolute", raw));
     }
     let path = Path::new(&normalized);
     for component in path.components() {
         match component {
             Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
-                return Err(format!("invalid archive entry path: {raw}"));
+                return Err(archive_entry_path_error("escapes package root", raw));
             }
             _ => {}
         }
     }
     Ok(path.to_path_buf())
+}
+
+/// Formats a consistent archive path validation error.
+///
+/// # Parameters
+/// - `reason`: Short reason for rejection.
+/// - `raw`: Raw entry path.
+///
+/// # Returns
+/// - Human-readable error string.
+fn archive_entry_path_error(reason: &str, raw: &str) -> String {
+    format!("invalid archive entry path ({reason}): {raw}")
 }
 
 /// Installs runtime npm dependencies into a prepared plugin directory.
@@ -282,6 +295,7 @@ fn sanitize_archive_path(raw: &str) -> Result<PathBuf, String> {
 /// - `Ok(())` when dependency installation succeeds or is not needed.
 /// - `Err(String)` when npm fails.
 fn install_plugin_runtime_dependencies(prepared_dir: &Path) -> Result<(), String> {
+    ensure_npm_available()?;
     let package_json = prepared_dir.join("package.json");
     if !package_json.is_file() || !package_has_runtime_dependencies(&package_json)? {
         return Ok(());
