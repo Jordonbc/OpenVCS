@@ -33,7 +33,8 @@ struct NpmPackResult {
 /// - `Ok(())` when all configured plugins are synchronized.
 /// - `Err(String)` when one or more plugin sources fail.
 pub fn sync_configured_plugins(cfg: &AppConfig) -> Result<(), String> {
-    ensure_npm_available()?;
+    let npm_version = ensure_npm_available()?;
+    debug!("{}: using npm {}", MODULE, npm_version);
     let store = PluginBundleStore::new_default();
     let base_dir = AppConfig::path()
         .parent()
@@ -211,7 +212,7 @@ fn extract_plugin_archive(archive_path: &Path, out_dir: &Path) -> Result<(), Str
         let safe_path = sanitize_archive_path(&raw_path.to_string_lossy())?;
         let mut components = safe_path.components();
         let Some(Component::Normal(prefix)) = components.next() else {
-            continue;
+            return Err("npm pack archive must contain a top-level package/ directory".to_string());
         };
         if prefix != "package" {
             return Err("npm pack archive must contain a top-level package/ directory".to_string());
@@ -369,33 +370,41 @@ fn npm_executable() -> &'static str {
     }
 }
 
-/// Returns whether the npm executable is available on the current PATH.
-///
-/// # Returns
-/// - `true` when `npm --version` succeeds.
-/// - `false` otherwise.
-fn is_npm_available() -> bool {
-    Command::new(npm_executable())
-        .arg("--version")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
-}
-
 /// Ensures npm is available before plugin source sync begins.
 ///
 /// # Returns
 /// - `Ok(())` when npm is available.
 /// - `Err(String)` when npm is missing or not executable.
-fn ensure_npm_available() -> Result<(), String> {
-    if is_npm_available() {
-        Ok(())
-    } else {
+fn ensure_npm_available() -> Result<String, String> {
+    let version = npm_version()?;
+    if version.trim().is_empty() {
         Err(format!(
-            "npm is required to sync configured plugins, but '{}' is not available on PATH",
+            "npm is required to sync configured plugins, but '{}' did not report a version",
             npm_executable()
         ))
+    } else {
+        Ok(version)
     }
+}
+
+/// Returns the installed npm version string.
+///
+/// # Returns
+/// - `Ok(String)` npm version reported by `npm --version`.
+/// - `Err(String)` when npm is unavailable or the output cannot be read.
+fn npm_version() -> Result<String, String> {
+    let output = Command::new(npm_executable())
+        .arg("--version")
+        .output()
+        .map_err(|e| format!("run {} --version: {e}", npm_executable()))?;
+    if !output.status.success() {
+        return Err(command_error_message("npm --version", &output.stderr));
+    }
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if version.is_empty() {
+        return Err(format!("{} did not report a version", npm_executable()));
+    }
+    Ok(version)
 }
 
 /// Formats stderr output from a failed child process.
