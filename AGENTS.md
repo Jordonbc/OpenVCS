@@ -159,10 +159,6 @@
 - Use descriptive test names: `it('finds elements by selector')`
 - Use `beforeEach` to reset DOM state in DOM tests
 
-## ExecPlans
-
-- For multi-component features or refactors, create/update an ExecPlan (`Client/PLANS.md`). Outline design, component impacts, and how the plugin runtime is exercised.
-
 ## Testing guidelines
 
 - Run `just test` before PRs; frontend-only work should at least cover `npm --prefix Frontend exec tsc -- -p tsconfig.json --noEmit` and `npm --prefix Frontend test`.
