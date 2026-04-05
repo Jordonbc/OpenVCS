@@ -8,7 +8,7 @@ use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Wrapper for the `package.json.openvcs` manifest section.
+/// Wrapper for the `openvcs` section inside `package.json`.
 #[derive(Debug, Deserialize)]
 struct OpenvcsPackageManifest<T> {
     openvcs: T,
@@ -37,7 +37,7 @@ pub fn has_package_manifest(plugin_dir: &Path) -> bool {
     package_manifest_path(plugin_dir).is_file()
 }
 
-/// Reads the `package.json.openvcs` manifest section from a plugin directory.
+/// Reads `package.json` from a plugin directory and returns its `openvcs` section.
 ///
 /// # Parameters
 /// - `plugin_dir`: Plugin directory path.
