@@ -33,6 +33,7 @@ struct NpmPackResult {
 /// - `Ok(())` when all configured plugins are synchronized.
 /// - `Err(String)` when one or more plugin sources fail.
 pub fn sync_configured_plugins(cfg: &AppConfig) -> Result<(), String> {
+    ensure_npm_available()?;
     let store = PluginBundleStore::new_default();
     let base_dir = AppConfig::path()
         .parent()
@@ -351,6 +352,35 @@ fn npm_executable() -> &'static str {
         "npm.cmd"
     } else {
         "npm"
+    }
+}
+
+/// Returns whether the npm executable is available on the current PATH.
+///
+/// # Returns
+/// - `true` when `npm --version` succeeds.
+/// - `false` otherwise.
+fn is_npm_available() -> bool {
+    Command::new(npm_executable())
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+/// Ensures npm is available before plugin source sync begins.
+///
+/// # Returns
+/// - `Ok(())` when npm is available.
+/// - `Err(String)` when npm is missing or not executable.
+fn ensure_npm_available() -> Result<(), String> {
+    if is_npm_available() {
+        Ok(())
+    } else {
+        Err(format!(
+            "npm is required to sync configured plugins, but '{}' is not available on PATH",
+            npm_executable()
+        ))
     }
 }
 
