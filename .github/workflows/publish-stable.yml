@@ -33,7 +33,6 @@ jobs:
         with:
           lfs: true
           fetch-depth: 0
-          submodules: recursive
 
       - name: Compute version tag
         id: version

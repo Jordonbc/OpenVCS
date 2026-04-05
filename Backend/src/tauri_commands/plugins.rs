@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::core::settings::{SettingKv, SettingValue};
 use crate::core::ui::{Menu, UiElement};
-use crate::plugin_bundles::{
-    ApprovalState, InstalledPlugin, InstalledPluginIndex, PluginBundleStore,
-};
+use crate::plugin_bundles::{InstalledPluginIndex, PluginBundleStore};
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::settings_store;
 use crate::plugins;
@@ -12,7 +10,7 @@ use crate::state::AppState;
 use log::{debug, error, info, trace, warn};
 use serde_json::Value;
 use std::sync::Arc;
-use tauri::{Runtime, State, Window};
+use tauri::State;
 
 /// JSON-friendly plugin setting entry payload.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -106,45 +104,30 @@ pub fn load_plugin(id: String) -> Result<plugins::PluginPayload, String> {
 }
 
 #[tauri::command]
-/// Installs an `.ovcsp` plugin bundle.
-///
-/// # Parameters
-/// - `window`: Calling window handle.
-/// - `bundle_path`: Filesystem path to the bundle.
-///
-/// # Returns
-/// - `Ok(InstalledPlugin)` with install metadata.
-/// - `Err(String)` when installation fails.
-pub async fn install_ovcsp<R: Runtime>(
-    _window: Window<R>,
-    state: State<'_, AppState>,
-    bundle_path: String,
-) -> Result<InstalledPlugin, String> {
-    let store = PluginBundleStore::new_default();
-    let installed = store.install_ovcsp(std::path::Path::new(bundle_path.trim()))?;
-
-    info!(
-        "plugin: installed '{}' v{}",
-        installed.plugin_id, installed.version
-    );
-
-    if matches!(installed.approval, ApprovalState::Approved { .. }) {
-        if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {
-            warn!("plugins: runtime sync after install failed: {}", err);
-        }
-    }
-
-    Ok(installed)
-}
-
-#[tauri::command]
-/// Lists installed plugin bundle indices.
+/// Lists installed plugin indices.
 ///
 /// # Returns
 /// - `Ok(Vec<InstalledPluginIndex>)` on success.
 /// - `Err(String)` when listing fails.
-pub fn list_installed_bundles() -> Result<Vec<InstalledPluginIndex>, String> {
+pub fn list_installed_plugins() -> Result<Vec<InstalledPluginIndex>, String> {
     PluginBundleStore::new_default().list_installed()
+}
+
+#[tauri::command]
+/// Reloads plugin config from disk, synchronizes configured sources, and refreshes runtimes.
+///
+/// # Parameters
+/// - `state`: Application state.
+///
+/// # Returns
+/// - `Ok(())` when config reload and sync succeed.
+/// - `Err(String)` when config persistence or plugin sync fails.
+pub fn sync_configured_plugins(state: State<'_, AppState>) -> Result<(), String> {
+    let cfg = crate::settings::AppConfig::load_or_default();
+    state.set_config(cfg.clone())?;
+    PluginBundleStore::new_default().sync_built_in_plugins()?;
+    crate::plugin_sources::sync_configured_plugins(&cfg)?;
+    state.plugin_runtime().sync_plugin_runtime_with_config(&cfg)
 }
 
 #[tauri::command]

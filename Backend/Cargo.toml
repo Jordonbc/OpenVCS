@@ -51,6 +51,6 @@ hex = "0.4"
 os_pipe = "1.2"
 base64 = "0.22"
 thiserror = "2"
+tempfile = "3"
 
 [dev-dependencies]
-tempfile = "3"

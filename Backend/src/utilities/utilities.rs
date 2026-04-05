@@ -129,7 +129,7 @@ pub async fn browse_file_async<R: tauri::Runtime>(
     let (tx, rx) = tokio::sync::oneshot::channel::<Option<String>>();
     let mut builder = tauri_plugin_dialog::FileDialogBuilder::new(dialog).set_title(title);
     if !extensions.is_empty() {
-        builder = builder.add_filter("Plugin bundle", extensions);
+        builder = builder.add_filter("Files", extensions);
     }
     builder.pick_file(move |res| {
         let _ = tx.send(res.map(|p| p.to_string()));

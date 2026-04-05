@@ -34,7 +34,6 @@ jobs:
         with:
           ref: ${{ env.TARGET_REF }}
           fetch-depth: 0
-          submodules: recursive
           lfs: true
 
       - name: Compute metadata (date, short SHA)
