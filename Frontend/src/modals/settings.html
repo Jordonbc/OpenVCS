@@ -240,7 +240,7 @@
                     <div class="group">
                         <h4 class="settings-section-title">Installed Plugins</h4>
                         <div class="muted" style="font-size:.9rem">
-                            Plugins can add themes, UI actions, and hooks. Disabling a plugin prevents its code from running and hides any themes it provides.
+                            Plugins are synced from the built-in plugin config and your `openvcs.conf` `plugin = [...]` entries. Disabling a plugin prevents its code from running and hides any themes it provides.
                         </div>
                     </div>
                     <div class="group">
@@ -248,7 +248,7 @@
                             <div class="plugins-left" aria-label="Installed plugins list">
                                 <div class="plugins-toolbar">
                                     <input id="plugins-search" type="search" placeholder="Search plugins… (use @author and #tag)" aria-label="Search installed plugins" />
-                                    <button class="tbtn" id="plugins-install-bundle" type="button">Install .ovcsp…</button>
+                                    <button class="tbtn" id="plugins-sync-config" type="button">Reload Config</button>
                                     <button class="tbtn" id="plugins-enable-all" type="button">Enable all</button>
                                     <button class="tbtn" id="plugins-disable-all" type="button">Disable all</button>
                                 </div>

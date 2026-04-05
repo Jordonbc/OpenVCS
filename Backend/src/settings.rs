@@ -15,9 +15,12 @@ fn default_true() -> bool {
 }
 
 /// Root global settings document persisted as TOML.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppConfig {
     pub schema_version: u32,
+    /// Opencode-style plugin source entries resolved from npm specs or local paths.
+    #[serde(default)]
+    pub plugin: Vec<String>,
     #[serde(default)]
     pub general: General,
     #[serde(default)]
@@ -52,6 +55,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             schema_version: 1,
+            plugin: Default::default(),
             general: Default::default(),
             git: Default::default(),
             credentials: Default::default(),
@@ -321,7 +325,7 @@ impl Default for Integrations {
     }
 }
 
-/// Plugin enable/disable overrides.
+/// Plugin source and enable/disable settings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Plugins {
     /// Plugin ids that are installed but disabled.
@@ -780,6 +784,18 @@ impl AppConfig {
         self.lfs.concurrency = self.lfs.concurrency.clamp(1, 16);
 
         // Performance
+
+        // Plugin source list
+        {
+            let mut seen = std::collections::HashSet::new();
+            self.plugin = self
+                .plugin
+                .iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .filter(|s| seen.insert(s.clone()))
+                .collect();
+        }
 
         // Plugins
         {

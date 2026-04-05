@@ -61,6 +61,7 @@ export interface AppPrefs {
 
 /** Represents global settings loaded from the backend. */
 export interface GlobalSettings {
+    plugin?: string[];
     general?: {
         theme?: 'system'|'dark'|'light';
         theme_pack?: string;

@@ -37,7 +37,6 @@ jobs:
         with:
           ref: ${{ env.TARGET_REF }}
           fetch-depth: 0   # we need history and tags
-          submodules: recursive
           lfs: false
 
       - name: Fetch tags
@@ -98,7 +97,6 @@ jobs:
         with:
           ref: ${{ env.TARGET_REF }}
           fetch-depth: 0
-          submodules: recursive
           lfs: true
 
       - name: Compute metadata (date, short SHA, compare, changelog)

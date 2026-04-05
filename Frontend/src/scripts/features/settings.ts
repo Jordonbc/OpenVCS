@@ -1010,48 +1010,25 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     const detailEl = modal.querySelector<HTMLElement>('#plugins-detail');
     const groupLabelEl = modal.querySelector<HTMLElement>('#plugins-group-label');
     const searchEl = modal.querySelector<HTMLInputElement>('#plugins-search');
-    const installBundleBtn = modal.querySelector<HTMLButtonElement>('#plugins-install-bundle');
+    const syncConfigBtn = modal.querySelector<HTMLButtonElement>('#plugins-sync-config');
     const enableAllBtn = modal.querySelector<HTMLButtonElement>('#plugins-enable-all');
     const disableAllBtn = modal.querySelector<HTMLButtonElement>('#plugins-disable-all');
 
-    if (!pane || !listEl || !detailEl || !groupLabelEl || !searchEl || !installBundleBtn || !enableAllBtn || !disableAllBtn) return;
+    if (!pane || !listEl || !detailEl || !groupLabelEl || !searchEl || !syncConfigBtn || !enableAllBtn || !disableAllBtn) return;
 
     // This settings pane can be initialized multiple times during navigation/rerender.
     // Avoid stacking duplicate click handlers which would open many dialogs.
-    if (!(installBundleBtn as any).dataset?.bound) {
-        (installBundleBtn as any).dataset.bound = '1';
-        installBundleBtn.addEventListener('click', async () => {
+    if (!(syncConfigBtn as any).dataset?.bound) {
+        (syncConfigBtn as any).dataset.bound = '1';
+        syncConfigBtn.addEventListener('click', async () => {
             if (!TAURI.has) return;
             try {
-                const bundlePath = await TAURI.invoke<string | null>('browse_file', { purpose: 'install_plugin' });
-                if (!bundlePath) return;
-
-                const installed = await TAURI.invoke<any>('install_ovcsp', { bundlePath });
-                notify(`Installed ${installed?.plugin_id || 'plugin'} ${installed?.version || ''}`.trim());
-
-                const pluginId = String(installed?.plugin_id || '').trim();
-                const version = String(installed?.version || '').trim();
-                if (pluginId && version) {
-                    const trusted = await confirmBool(
-                        'Trust this plugin and allow it to run?\n\n'
-                        + 'Only approve plugins from sources you trust.'
-                    );
-                    await TAURI.invoke('set_plugin_approval', {
-                        pluginId,
-                        version,
-                        approved: trusted,
-                    });
-                    if (trusted) {
-                        notify('Plugin approved');
-                    } else {
-                        notify('Plugin installed but not approved to run');
-                    }
-                }
-
+                await TAURI.invoke('sync_configured_plugins');
+                notify('Reloaded plugin config');
                 await reloadPluginSummaries();
             } catch (err) {
                 const msg = String(err || '').trim();
-                notify(msg ? `Install failed: ${msg}` : 'Install failed');
+                notify(msg ? `Plugin sync failed: ${msg}` : 'Plugin sync failed');
             }
         });
     }
@@ -1363,6 +1340,9 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         const version = String(plugin.version || '').trim();
         const author = String(plugin.author || '').trim();
         const category = String(plugin.category || '').trim();
+        const source = String(plugin.source || '').trim();
+        const sourceKind = String(plugin.source_kind || '').trim();
+        const sourceSpec = String(plugin.source_spec || '').trim();
         const tags = Array.isArray(plugin.tags)
             ? plugin.tags.map((t) => String(t || '').trim()).filter(Boolean)
             : [];
@@ -1419,6 +1399,8 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
         const kvRows: Array<[string, string]> = [];
         if (category) kvRows.push(['Category', category]);
+        if (source) kvRows.push(['Source', sourceKind ? `${source} (${sourceKind})` : source]);
+        if (sourceSpec) kvRows.push(['Specifier', sourceSpec]);
         if (tags.length) kvRows.push(['Tags', tags.join(', ')]);
         if (author) kvRows.push(['Author', author]);
         if (version) kvRows.push(['Version', version]);

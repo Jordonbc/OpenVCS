@@ -15,6 +15,8 @@ export interface PluginSummary {
     version?: string;
     author?: string;
     source?: 'built-in' | 'user' | string;
+    source_kind?: string;
+    source_spec?: string;
     entry?: string;
     default_enabled?: boolean;
     theme_dirs?: number;
