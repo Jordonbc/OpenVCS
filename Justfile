@@ -40,4 +40,4 @@ build-flatpak install="":
 fix:
   cargo fmt --all
   cargo clippy --fix --all-targets --all-features --allow-dirty --allow-staged
-  cd Frontend && npm exec tsc -- -p tsconfig.json --noEmit || true
+  cd Frontend && npm exec tsc -- -p tsconfig.json --noEmit
