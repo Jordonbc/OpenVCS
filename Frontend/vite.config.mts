@@ -38,6 +38,6 @@ export default defineConfig({
         emptyOutDir: true,
     },
     optimizeDeps: {
-        esbuildOptions: { target: "es2022" },
+        rolldownOptions: { target: "es2022" },
     },
 });
