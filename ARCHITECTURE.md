@@ -31,7 +31,7 @@ Backend:
 - `Backend/src/state.rs`: app config, repo state, recents, output log.
 - `Backend/src/repo.rs`: repository handle wrapper around `Arc<dyn Vcs>`.
 - `Backend/src/plugin_vcs_backends.rs`: backend discovery and open logic.
-- `Backend/src/plugin_bundles.rs`: `.ovcsp` install/index/runtime resolution.
+- `Backend/src/plugin_bundles.rs`: installed-plugin indexing, source metadata, and runtime resolution.
 - `Backend/src/plugin_runtime/node_instance.rs`: plugin process lifecycle and JSON-RPC calls.
 - `Backend/src/plugin_runtime/vcs_proxy.rs`: `Vcs` trait proxy over plugin RPC.
 - `Backend/src/plugins.rs`: plugin discovery/manifest summarization for UI.
@@ -58,7 +58,7 @@ Backend:
 - State lifecycle:
   Startup config load, optional reopen-last-repo, runtime config updates.
 - Plugin lifecycle:
-  Built-in/user plugin discovery, install/uninstall, and approval gating.
+  Built-in/user plugin discovery, config-driven sync, install/uninstall, and approval gating.
 - Reliability:
   RPC timeout handling, respawn backoff, and auto-disable after repeated crashes.
 - UX:

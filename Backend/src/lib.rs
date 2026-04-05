@@ -15,12 +15,15 @@ use tauri_plugin_updater::UpdaterExt;
 use crate::core::BackendId;
 
 mod app_identity;
+mod config_watcher;
 mod core;
 mod logging;
 mod output_log;
 mod plugin_bundles;
+mod plugin_manifest;
 mod plugin_paths;
 mod plugin_runtime;
+mod plugin_sources;
 mod plugin_vcs_backends;
 mod plugins;
 mod repo;
@@ -109,7 +112,7 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
 
 /// Starts the OpenVCS backend runtime and Tauri application.
 ///
-/// This configures logging, plugin bundle synchronization, startup restore
+/// This configures logging, plugin synchronization, startup restore
 /// behavior, update checks, and all IPC handlers exposed to the frontend.
 ///
 /// # Returns
@@ -188,9 +191,13 @@ pub fn run() {
             }
             let store = crate::plugin_bundles::PluginBundleStore::new_default();
             if let Err(err) = store.sync_built_in_plugins() {
-                warn!("plugins: failed to sync built-in bundles: {}", err);
+                warn!("plugins: failed to sync built-in plugins: {}", err);
             }
             let state = app.state::<state::AppState>();
+            crate::config_watcher::start_config_watcher(app.handle().clone());
+            if let Err(err) = crate::plugin_sources::sync_configured_plugins(&state.config()) {
+                warn!("plugins: failed to sync configured plugins: {}", err);
+            }
             if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {
                 warn!("plugins: failed to sync runtime on startup: {}", err);
             }
@@ -309,8 +316,8 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::list_plugins,
         tauri_commands::list_plugin_start_failures,
         tauri_commands::load_plugin,
-        tauri_commands::install_ovcsp,
-        tauri_commands::list_installed_bundles,
+        tauri_commands::list_installed_plugins,
+        tauri_commands::sync_configured_plugins,
         tauri_commands::uninstall_plugin,
         tauri_commands::set_plugin_enabled,
         tauri_commands::set_plugin_approval,

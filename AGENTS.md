@@ -2,8 +2,8 @@
 
 ## Project structure & module organization
 
-- `Backend/`: Rust + Tauri backend (`src/`), commands (`src/tauri_commands/`), plugin runtime (`src/plugin_runtime/`), and bundled plugin support (`src/plugin_runtime`, `scripts/`).
-- `Backend/built-in-plugins/`: local copies of bundled plugins (do not edit their code unless explicitly requested; update submodule pointers instead).
+- `Backend/`: Rust + Tauri backend (`src/`), commands (`src/tauri_commands/`), plugin runtime (`src/plugin_runtime/`), and config-driven plugin sync support (`scripts/`).
+- `openvcs.plugins.json`: built-in plugin source list used to materialize shipped plugins during client builds.
 - `Frontend/`: TypeScript + Vite UI code (`src/scripts/`, `src/styles/`, `src/modals/`), with Vitest tests colocated as `*.test.ts` files.
 - `docs/`: UX docs, plugin architecture notes, and plugin/theme packaging guides referenced by contributors.
 - `packaging/flatpak/`: Flatpak manifests and Flatpak-specific build notes.
@@ -12,8 +12,8 @@
 ## Build, test, and development commands
 
 ### Full builds
-- `just build` (or `just build client|plugins`): builds the backend, frontend, and plugin bundles from the workspace Justfile.
-- `just tauri-build`: production Tauri build wrapper (AppImage/Flatpak). `git submodule update --init --recursive` is required before building bundled plugins.
+- `just build` (or `just build client|plugins`): builds the backend, frontend, and materialized built-in plugins from the workspace Justfile.
+- `just tauri-build`: production Tauri build wrapper (AppImage/Flatpak).
 
 ### Running tests
 
@@ -51,7 +51,7 @@
 
 ## Plugin runtime & host expectations
 
-- Plugin components live under `Backend/built-in-plugins/` and follow the manifest format in `openvcs.plugin.json`. Built-in bundles ship with the AppImage/Flatpak and are also built by the SDK (`openvcs build` + `openvcs dist`).
+- Plugin components are ordinary npm packages declared by config. Built-ins are listed in `openvcs.plugins.json` and materialized into `target/openvcs/built-in-plugins/<plugin-id>/` before packaging.
 - The backend loads plugin modules as Node.js runtime scripts (`*.mjs|*.js|*.cjs`) via `Backend/src/plugin_runtime/node_instance.rs`.
 - The canonical host/plugin contract is JSON-RPC over stdio with method names in `Backend/src/plugin_runtime/protocol.rs`.
 - When changing host APIs or runtime behavior, update protocol constants and runtime logic in `Backend/src/plugin_runtime`.
@@ -159,10 +159,6 @@
 - Use descriptive test names: `it('finds elements by selector')`
 - Use `beforeEach` to reset DOM state in DOM tests
 
-## ExecPlans
-
-- For multi-component features or refactors, create/update an ExecPlan (`Client/PLANS.md`). Outline design, component impacts, and how the plugin runtime is exercised.
-
 ## Testing guidelines
 
 - Run `just test` before PRs; frontend-only work should at least cover `npm --prefix Frontend exec tsc -- -p tsconfig.json --noEmit` and `npm --prefix Frontend test`.
@@ -172,7 +168,7 @@
 
 - Use short, imperative commit subjects (optionally scoped, e.g., `backend: refresh plugin runtime config`). Keep changelist focused; avoid mixing UI and backend refactors unless necessary.
 - PRs should target the `Dev` branch, include a summary, issue links, commands/tests run, and highlight architecture implications (host API/protocol changes and security decisions).
-- Do not modify plugin code inside submodules unless explicitly asked; treat submodule updates as pointer bumps after upstream changes.
+- Keep built-in plugin source paths in `openvcs.plugins.json` aligned with the actual plugin packages that should ship with the client.
 - Keep this AGENTS (and other module-level copies you rely on) current whenever workflows, tooling, or responsibilities change so future contributors can find accurate guidance.
 
 ## Security & configuration notes

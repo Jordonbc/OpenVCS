@@ -1,6 +1,6 @@
 [package]
 name = "openvcs"
-version = "0.2.1"
+version = "0.2.2"
 description = "OpenVCS: a lightweight, highly customizable Git GUI built on Rust & Tauri"
 authors = ["Jordon Brooks"]
 homepage = "https://bbgames.dev"
@@ -46,11 +46,11 @@ zip = "8.3"
 tar = "0.4"
 flate2 = "1"
 shlex = "1.2"
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 os_pipe = "1.2"
 base64 = "0.22"
 thiserror = "2"
+tempfile = "3"
 
 [dev-dependencies]
-tempfile = "3"

@@ -847,8 +847,13 @@ mod tests {
             }
         });
         fs::write(
-            plugin_dir.join("openvcs.plugin.json"),
-            serde_json::to_vec_pretty(&manifest).expect("serialize manifest"),
+            plugin_dir.join("package.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "name": plugin_id,
+                "version": "1.0.0",
+                "openvcs": manifest,
+            }))
+            .expect("serialize manifest"),
         )
         .expect("write manifest");
 
@@ -899,8 +904,13 @@ mod tests {
             "default_enabled": default_enabled
         });
         fs::write(
-            plugin_dir.join("openvcs.plugin.json"),
-            serde_json::to_vec_pretty(&manifest).expect("serialize manifest"),
+            plugin_dir.join("package.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "name": plugin_id,
+                "version": "1.0.0",
+                "openvcs": manifest,
+            }))
+            .expect("serialize manifest"),
         )
         .expect("write manifest");
 
@@ -955,8 +965,13 @@ mod tests {
             }
         });
         fs::write(
-            plugin_dir.join("openvcs.plugin.json"),
-            serde_json::to_vec_pretty(&manifest).expect("serialize manifest"),
+            plugin_dir.join("package.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "name": plugin_id,
+                "version": "1.0.0",
+                "openvcs": manifest,
+            }))
+            .expect("serialize manifest"),
         )
         .expect("write manifest");
 

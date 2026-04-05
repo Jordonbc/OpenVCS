@@ -27,7 +27,7 @@ OpenVCS client is split into three main runtime concerns:
 
 1. UI layer (`Frontend/src/scripts/`): renders state and invokes backend commands.
 2. Host layer (`Backend/src/`): owns app state, command handling, and orchestration.
-3. Plugin modules (`.ovcsp` bundles): out-of-process Node.js modules used by backend/plugin runtime.
+3. Plugin modules (config-synchronized npm or local packages): out-of-process Node.js modules used by backend/plugin runtime.
 
 Primary request flow:
 
