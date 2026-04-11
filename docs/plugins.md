@@ -40,6 +40,10 @@ Relative user paths are resolved from the directory that contains
   plugins into the writable installed plugin store.
 - While the app is running, edits to `openvcs.conf` are watched and re-synced
   automatically.
+- Plugin store writes are serialized so built-in sync, config reloads, and
+  backend discovery do not race while replacing the same installed plugin.
+- Plugin action payloads are forwarded back to the runtime, and any plugin
+  modal returned by an action is re-rendered in the host UI.
 - The Settings > Plugins pane can still reload config manually.
 
 Config-managed plugins are auto-approved because adding them to config is the

@@ -11,7 +11,7 @@ import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
     bindLayoutActionState
 } from './ui/layout';
-import { initMenubar } from './ui/menubar';
+import { clearPluginMenubarMenus, initMenubar, refreshPluginMenubarMenus } from './ui/menubar';
 import { closeAllModals } from './ui/modals';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
 import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash } from './features/repo';
@@ -25,13 +25,13 @@ import { initSshHostkeyPrompt } from './features/sshHostkey';
 import { initSshAuthPrompt } from './features/sshAuth';
 import { initOutputLogViewIfRequested } from './features/outputLog';
 import { DEFAULT_LIGHT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
-import { initPlugins, runHook, runPluginAction } from './plugins';
+import { initPlugins, invokePluginAction, runHook, runPluginAction } from './plugins';
 import { openSwitchDrawer, closeSwitchDrawer, registerDrawerActions } from './features/repoSwitchDrawer';
 
 const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
 
 // Title bar actions
-const fetchBtn = qs<HTMLButtonElement>('#fetch-btn');
+    const fetchBtn = qs<HTMLButtonElement>('#fetch-btn');
 const fetchCaret = qs<HTMLButtonElement>('#fetch-caret');
 const fetchPop = qs<HTMLElement>('#fetch-pop');
 const fetchList = qs<HTMLElement>('#fetch-list');
@@ -39,9 +39,21 @@ const pushBtn  = qs<HTMLButtonElement>('#push-btn');
 const cloneBtn = qs<HTMLButtonElement>('#clone-btn');
 const repoSwitch = qs<HTMLButtonElement>('#repo-switch');
 const commitBtn = qs<HTMLButtonElement>('#commit-btn');
-const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
-let fetchCloseTimer: number | null = null;
-const FETCH_CLOSE_MS = 130;
+    const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
+    let fetchCloseTimer: number | null = null;
+    let pluginMenuRefreshTimer: number | null = null;
+    const FETCH_CLOSE_MS = 130;
+
+    /** Schedules a delayed plugin menubar refresh to avoid repo-open races. */
+    function schedulePluginMenuRefresh(delayMs = 250) {
+        if (pluginMenuRefreshTimer !== null) {
+            window.clearTimeout(pluginMenuRefreshTimer);
+        }
+        pluginMenuRefreshTimer = window.setTimeout(() => {
+            pluginMenuRefreshTimer = null;
+            refreshPluginMenubarMenus().catch(() => {});
+        }, delayMs);
+    }
 
 /** Closes the Fetch/Pull popover, optionally with a short close animation. */
 function closeFetchPopover() {
@@ -332,7 +344,7 @@ async function boot() {
         try { window.open(WIKI_URL, '_blank', 'noopener'); } catch (e) { console.error('Unable to open docs:', e); notify('Unable to open docs'); }
     }
 
-    async function runMenuAction(id?: string | null) {
+    async function runMenuAction(id?: string | null, payload?: { pluginId?: string; actionId?: string } | null) {
         switch (id) {
             case 'clone_repo': console.log('Action: clone_repo'); openSheet('clone'); break;
             case 'add_repo':   console.log('Action: add_repo'); openSheet('add'); break;
@@ -367,6 +379,19 @@ async function boot() {
                     if (!hasUpdate) notify('Already up to date');
                 } catch (e) { console.error('Update check failed:', e); notify('Update check failed'); }
                 break;
+            case '__plugin_menu_action__': {
+                if (!TAURI.has) { notify('Plugin actions are available in the desktop app'); break; }
+                const pluginId = String(payload?.pluginId || '').trim();
+                const actionId = String(payload?.actionId || '').trim();
+                if (!pluginId || !actionId) break;
+                try {
+                    await invokePluginAction(pluginId, actionId);
+                } catch (e) {
+                    console.error(`Plugin menu action failed: ${pluginId}/${actionId}`, e);
+                    notify('Plugin action failed');
+                }
+                break;
+            }
             case 'exit': if (TAURI.has) { TAURI.invoke('exit_app', {}).catch(() => {}); } break;
             default: {
                 if (!id) break;
@@ -424,6 +449,8 @@ async function boot() {
     hydrateStash();
 
     initMenubar(runMenuAction);
+    refreshPluginMenubarMenus().catch(() => {});
+    schedulePluginMenuRefresh(400);
 
     TAURI.listen?.('menu', async ({ payload: id }) => {
         const resolved = typeof id === 'string' ? id : String(id ?? '');
@@ -474,6 +501,8 @@ async function boot() {
         // Broadcast app-level event so branch UI and actions can sync
         window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
         refreshRepoActions();
+        await refreshPluginMenubarMenus().catch(() => {});
+        schedulePluginMenuRefresh();
     });
 
   // If backend reopened a repo before the webview was ready, sync initial state.
@@ -490,6 +519,8 @@ async function boot() {
         window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
         refreshRepoActions();
         updateFetchUI();
+        await refreshPluginMenubarMenus().catch(() => {});
+        schedulePluginMenuRefresh();
       })
       .catch(() => {});
   }
@@ -589,6 +620,7 @@ async function boot() {
     window.addEventListener('app:status-updated', updateFetchUI);
     window.addEventListener('app:branches-updated', updateFetchUI);
     window.addEventListener('app:repo-selected', updateFetchUI);
+    window.addEventListener('app:repo-will-switch', clearPluginMenubarMenus);
 
     // fetch popover interactions
     fetchList?.addEventListener('click', (e) => {

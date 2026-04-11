@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::plugin_bundles::{InstalledPluginComponents, PluginBundleStore};
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
+use crate::plugin_runtime::node_instance::NodePluginRuntimeInstance;
 use crate::plugin_runtime::runtime_select::create_runtime_instance;
 use crate::plugin_runtime::spawn::SpawnConfig;
 use crate::settings::AppConfig;
@@ -431,6 +432,44 @@ impl PluginRuntimeManager {
                     spec.plugin_id
                 )
             })
+    }
+
+    /// Registers an already-started Node runtime for a workspace-confined plugin.
+    ///
+    /// # Parameters
+    /// - `plugin_id`: Plugin identifier.
+    /// - `allowed_workspace_root`: Optional workspace root associated with the runtime.
+    /// - `runtime`: Running Node runtime instance to track.
+    ///
+    /// # Returns
+    /// - `Ok(())` when the runtime is tracked.
+    /// - `Err(String)` when plugin resolution fails.
+    pub fn track_node_runtime_for_workspace(
+        &self,
+        plugin_id: &str,
+        allowed_workspace_root: Option<PathBuf>,
+        runtime: Arc<NodePluginRuntimeInstance>,
+    ) -> Result<(), String> {
+        let spec = self.resolve_module_runtime_spec(plugin_id, allowed_workspace_root)?;
+        let mut lock = self.processes.lock();
+
+        let runtime_to_stop = lock
+            .get(&spec.key)
+            .map(|existing| Arc::clone(&existing.runtime));
+        if let Some(existing) = runtime_to_stop {
+            existing.stop();
+            lock.remove(&spec.key);
+        }
+
+        lock.insert(
+            spec.key,
+            RunningPlugin {
+                runtime,
+                workspace_root: spec.spawn.allowed_workspace_root,
+            },
+        );
+
+        Ok(())
     }
 
     /// Resolves spawn configuration for a VCS backend plugin within a workspace root.

@@ -848,8 +848,11 @@ impl PluginRuntimeInstance for NodePluginRuntimeInstance {
     }
 
     /// Calls `plugin.handle-action`.
-    fn handle_action(&self, id: &str) -> Result<(), String> {
-        self.rpc_call_unit(Methods::PLUGIN_HANDLE_ACTION, json!({ "id": id }))
+    fn handle_action(&self, id: &str, payload: Value) -> Result<Value, String> {
+        self.rpc_call(
+            Methods::PLUGIN_HANDLE_ACTION,
+            json!({ "action_id": id, "payload": payload }),
+        )
     }
 
     /// Calls `plugin.settings-defaults`.

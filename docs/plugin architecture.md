@@ -30,6 +30,15 @@ Core host-to-plugin method groups:
 - `plugin.*`: lifecycle, menus, and settings hooks
 - `vcs.*`: backend operations for repository workflows
 
+`plugin.handle_action` requests carry the selected action as `action_id` and an
+optional `payload` object. Plugin handlers may return a modal definition object
+to reopen a plugin modal after the action completes.
+
+When a plugin runtime is active, plugin-contributed menu definitions whose ids
+match built-in top-level menus such as `repository` are projected into the main
+menubar. For VCS backend plugins, these items therefore appear only after the
+repository-scoped runtime has started.
+
 Core plugin-to-host notifications:
 
 - `host.log`

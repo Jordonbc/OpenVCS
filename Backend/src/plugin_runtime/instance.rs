@@ -3,6 +3,7 @@
 use crate::core::models::OnEvent;
 use crate::core::settings::SettingKv;
 use crate::core::ui::Menu;
+use serde_json::Value;
 
 /// Runtime instance abstraction used by the plugin runtime manager.
 pub trait PluginRuntimeInstance: Send + Sync {
@@ -15,8 +16,8 @@ pub trait PluginRuntimeInstance: Send + Sync {
     }
 
     /// Invokes a plugin action by id.
-    fn handle_action(&self, _id: &str) -> Result<(), String> {
-        Ok(())
+    fn handle_action(&self, _id: &str, _payload: Value) -> Result<Value, String> {
+        Ok(Value::Null)
     }
 
     /// Returns plugin settings defaults.

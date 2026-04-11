@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 const MODULE: &str = "plugin_bundles";
 const INVALID_PLUGIN_ID: &str = "plugin id is empty";
@@ -392,6 +392,7 @@ impl PluginBundleStore {
         let bundle_sha256 = sha256_hex_directory(source_dir)?;
         let version = derive_install_version(&manifest, &bundle_sha256);
         let requested_capabilities = normalize_capabilities(manifest.capabilities.clone());
+        let _lock = acquire_plugin_store_write_lock()?;
         let plugin_dir = self.root.join(&plugin_id);
 
         if let Some(installed) = self.get_current_installed(&plugin_id)? {
@@ -489,6 +490,7 @@ impl PluginBundleStore {
         managed_by: &str,
         desired_ids: &HashSet<String>,
     ) -> Result<(), String> {
+        let _lock = acquire_plugin_store_write_lock()?;
         if !self.root.is_dir() {
             return Ok(());
         }
@@ -568,6 +570,7 @@ impl PluginBundleStore {
         if id.is_empty() {
             return Err("plugin id is empty".to_string());
         }
+        let _lock = acquire_plugin_store_write_lock()?;
         let lower = normalize_plugin_id(id)?;
         if built_in_plugin_ids().contains(&lower) {
             return Err("built-in plugins cannot be removed".to_string());
@@ -807,6 +810,19 @@ impl PluginBundleStore {
 }
 
 static BUILT_IN_PLUGIN_IDS: OnceLock<HashSet<String>> = OnceLock::new();
+static PLUGIN_STORE_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+/// Returns the shared lock used to serialize plugin store mutations.
+fn plugin_store_write_lock() -> &'static Mutex<()> {
+    PLUGIN_STORE_WRITE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// Acquires the shared plugin store write lock.
+fn acquire_plugin_store_write_lock() -> Result<MutexGuard<'static, ()>, String> {
+    plugin_store_write_lock()
+        .lock()
+        .map_err(|_| "plugin store write lock is poisoned".to_string())
+}
 
 /// Returns the set of built-in plugin identifiers normalized to lowercase.
 pub fn built_in_plugin_ids() -> &'static HashSet<String> {
