@@ -44,6 +44,9 @@ Relative user paths are resolved from the directory that contains
   backend discovery do not race while replacing the same installed plugin.
 - Plugin action payloads are forwarded back to the runtime, and any plugin
   modal returned by an action is re-rendered in the host UI.
+- Plugin modals can nest `horizontal-box`, `vertical-box`, and `grid` content
+  items so plugin authors can keep related controls on the same row or in the
+  same multi-column section.
 - The Settings > Plugins pane can still reload config manually.
 
 Config-managed plugins are auto-approved because adding them to config is the

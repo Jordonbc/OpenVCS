@@ -34,6 +34,15 @@ Core host-to-plugin method groups:
 optional `payload` object. Plugin handlers may return a modal definition object
 to reopen a plugin modal after the action completes.
 
+Plugin modal definitions support nested layout containers as content items:
+
+- `horizontal-box`
+- `vertical-box`
+- `grid`
+
+The host renders these containers recursively, so plugin authors can group fields
+and buttons into horizontal rows, vertical stacks, and multi-column grids.
+
 When a plugin runtime is active, plugin-contributed menu definitions whose ids
 match built-in top-level menus such as `repository` are projected into the main
 menubar. For VCS backend plugins, these items therefore appear only after the
@@ -109,6 +118,9 @@ The host currently consumes these manifest fields from `package.json.openvcs`:
 - Non-VCS module runtimes are started and stopped according to enabled state.
 - VCS backend plugin runtimes are repo-scoped and start when opening a
   repository through that backend.
+- Closing the main window tears down config watchers and active plugin
+  runtimes so `cargo tauri dev` exits promptly instead of leaving the backend
+  process alive.
 
 ## Security Model
 

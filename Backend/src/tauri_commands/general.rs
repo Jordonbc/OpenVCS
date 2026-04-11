@@ -441,7 +441,8 @@ pub fn open_docs<R: Runtime>(window: Window<R>) -> Result<(), String> {
 ///
 /// # Returns
 /// - `Ok(())`.
-pub fn exit_app<R: Runtime>(window: Window<R>) -> Result<(), String> {
+pub fn exit_app<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
+    state.plugin_runtime().stop_all_plugins();
     window.app_handle().exit(0);
     Ok(())
 }

@@ -5,9 +5,9 @@ use crate::core::ui::{Menu, UiElement};
 use crate::plugin_bundles::{InstalledPluginIndex, PluginBundleStore};
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::settings_store;
-use crate::tauri_commands::shared::current_repo_or_err;
 use crate::plugins;
 use crate::state::AppState;
+use crate::tauri_commands::shared::current_repo_or_err;
 use log::{debug, error, info, trace, warn};
 use serde_json::Value;
 use std::sync::Arc;
@@ -449,14 +449,11 @@ pub fn invoke_plugin_action(
         plugin_id.trim(),
         action_id.trim()
     );
-    let runtime =
-        state
-            .plugin_runtime()
-            .runtime_for_workspace_with_config(
-                &cfg,
-                plugin_id.trim(),
-                Some(repo.inner().workdir().to_path_buf()),
-            )?;
+    let runtime = state.plugin_runtime().runtime_for_workspace_with_config(
+        &cfg,
+        plugin_id.trim(),
+        Some(repo.inner().workdir().to_path_buf()),
+    )?;
     let result = runtime.handle_action(action_id.trim(), payload.unwrap_or(Value::Null));
     if let Ok(ref value) = result {
         info!(
