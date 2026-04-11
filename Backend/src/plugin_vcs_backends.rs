@@ -253,8 +253,8 @@ pub fn open_repo_via_plugin_vcs_backend(
         desc.plugin_id
     );
 
-    let spawn = runtime_manager
-        .vcs_spawn_for_workspace_with_config(cfg, &desc.plugin_id, workspace_root)
+    let runtime = runtime_manager
+        .vcs_spawn_for_workspace_with_config(cfg, &desc.plugin_id, workspace_root.clone())
         .map_err(|e| {
             error!(
                 "open_repo_via_plugin_vcs_backend: failed to resolve spawn for plugin {}: {}",
@@ -266,7 +266,7 @@ pub fn open_repo_via_plugin_vcs_backend(
             }
         })?;
 
-    let runtime = create_node_runtime_instance(spawn).map_err(|e| {
+    let runtime = create_node_runtime_instance(runtime).map_err(|e| {
         error!(
             "open_repo_via_plugin_vcs_backend: failed to create runtime for plugin {}: {}",
             desc.plugin_id, e
@@ -281,6 +281,17 @@ pub fn open_repo_via_plugin_vcs_backend(
         backend: backend_id.clone(),
         msg: e,
     })?;
+
+    if let Err(e) = runtime_manager.track_node_runtime_for_workspace(
+        &desc.plugin_id,
+        Some(workspace_root),
+        Arc::clone(&runtime),
+    ) {
+        error!(
+            "open_repo_via_plugin_vcs_backend: failed to track runtime for plugin {}: {}",
+            desc.plugin_id, e
+        );
+    }
 
     debug!("open_repo_via_plugin_vcs_backend: opening via plugin proxy",);
 

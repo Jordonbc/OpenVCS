@@ -527,6 +527,41 @@ impl NodePluginRuntimeInstance {
         }
     }
 
+    /// Stops the child process with optional graceful deinitialization.
+    ///
+    /// # Parameters
+    /// - `graceful`: When `true`, request plugin deinitialization before killing the child.
+    fn stop_process(&self, graceful: bool) {
+        if graceful {
+            self.close_vcs_session();
+        } else {
+            *self.vcs_session_id.lock() = None;
+        }
+
+        let process = self.process.lock().take();
+        if let Some(mut process) = process {
+            *process.shutdown_flag.lock() = true;
+
+            if graceful {
+                let _ = process.call::<Value>(
+                    Methods::PLUGIN_DEINIT,
+                    Value::Object(serde_json::Map::new()),
+                    self.spawn.plugin_id.as_str(),
+                    &mut |method, params| {
+                        self.handle_notification(method, params);
+                        Ok(())
+                    },
+                    Some(DEFAULT_RPC_TIMEOUT_SECS),
+                );
+            }
+
+            let _ = process.child.kill();
+            let _ = process.child.wait();
+        }
+
+        *self.vcs_session_id.lock() = None;
+    }
+
     /// Calls `vcs.open` and stores active session id.
     ///
     /// # Parameters
@@ -848,8 +883,11 @@ impl PluginRuntimeInstance for NodePluginRuntimeInstance {
     }
 
     /// Calls `plugin.handle-action`.
-    fn handle_action(&self, id: &str) -> Result<(), String> {
-        self.rpc_call_unit(Methods::PLUGIN_HANDLE_ACTION, json!({ "id": id }))
+    fn handle_action(&self, id: &str, payload: Value) -> Result<Value, String> {
+        self.rpc_call(
+            Methods::PLUGIN_HANDLE_ACTION,
+            json!({ "action_id": id, "payload": payload }),
+        )
     }
 
     /// Calls `plugin.settings-defaults`.
@@ -899,26 +937,7 @@ impl PluginRuntimeInstance for NodePluginRuntimeInstance {
 
     /// Stops the runtime and clears local session state.
     fn stop(&self) {
-        self.close_vcs_session();
-
-        let process = self.process.lock().take();
-        if let Some(mut process) = process {
-            *process.shutdown_flag.lock() = true;
-            let _ = process.call::<Value>(
-                Methods::PLUGIN_DEINIT,
-                Value::Object(serde_json::Map::new()),
-                self.spawn.plugin_id.as_str(),
-                &mut |method, params| {
-                    self.handle_notification(method, params);
-                    Ok(())
-                },
-                Some(DEFAULT_RPC_TIMEOUT_SECS),
-            );
-
-            let _ = process.child.kill();
-            let _ = process.child.wait();
-        }
-        *self.vcs_session_id.lock() = None;
+        self.stop_process(true);
     }
 }
 

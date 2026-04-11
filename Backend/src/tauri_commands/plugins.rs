@@ -7,6 +7,7 @@ use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::settings_store;
 use crate::plugins;
 use crate::state::AppState;
+use crate::tauri_commands::shared::current_repo_or_err;
 use log::{debug, error, info, trace, warn};
 use serde_json::Value;
 use std::sync::Arc;
@@ -306,6 +307,7 @@ pub fn set_plugin_approval(
 pub fn list_plugin_menus(state: State<'_, AppState>) -> Result<Vec<PluginMenuPayload>, String> {
     let cfg = state.config();
     let mut collected: Vec<(String, Menu)> = Vec::new();
+    info!("list_plugin_menus: scanning plugins for menu entries");
 
     for summary in plugins::list_plugins() {
         let plugin_id = summary.id.trim().to_string();
@@ -353,6 +355,12 @@ pub fn list_plugin_menus(state: State<'_, AppState>) -> Result<Vec<PluginMenuPay
             }
         };
 
+        info!(
+            "list_plugin_menus: plugin {} returned {} menu(s)",
+            plugin_id,
+            menus.len()
+        );
+
         for menu in menus {
             collected.push((plugin_id.clone(), menu));
         }
@@ -383,6 +391,8 @@ pub fn list_plugin_menus(state: State<'_, AppState>) -> Result<Vec<PluginMenuPay
         .into_iter()
         .map(|(plugin_id, menu)| menu_to_payload(&plugin_id, menu))
         .collect::<Vec<_>>();
+
+    info!("list_plugin_menus: returning {} menu payload(s)", out.len());
 
     Ok(out)
 }
@@ -420,22 +430,40 @@ fn menu_to_payload(plugin_id: &str, menu: Menu) -> PluginMenuPayload {
 /// - `state`: Application state.
 /// - `plugin_id`: Plugin id.
 /// - `action_id`: Action id from `get-menus`.
+/// - `payload`: Optional action payload forwarded to the plugin.
 ///
 /// # Returns
-/// - `Ok(())` when action succeeds.
+/// - `Ok(Value)` when action succeeds.
 /// - `Err(String)` when runtime/action invocation fails.
 #[tauri::command]
 pub fn invoke_plugin_action(
     state: State<'_, AppState>,
     plugin_id: String,
     action_id: String,
-) -> Result<(), String> {
+    payload: Option<Value>,
+) -> Result<Value, String> {
     let cfg = state.config();
-    let runtime =
-        state
-            .plugin_runtime()
-            .runtime_for_workspace_with_config(&cfg, plugin_id.trim(), None)?;
-    runtime.handle_action(action_id.trim())
+    let repo = current_repo_or_err(&state)?;
+    info!(
+        "invoke_plugin_action: plugin={}, action={}",
+        plugin_id.trim(),
+        action_id.trim()
+    );
+    let runtime = state.plugin_runtime().runtime_for_workspace_with_config(
+        &cfg,
+        plugin_id.trim(),
+        Some(repo.inner().workdir().to_path_buf()),
+    )?;
+    let result = runtime.handle_action(action_id.trim(), payload.unwrap_or(Value::Null));
+    if let Ok(ref value) = result {
+        info!(
+            "invoke_plugin_action: plugin={}, action={} returned {}",
+            plugin_id.trim(),
+            action_id.trim(),
+            if value.is_null() { "null" } else { "value" }
+        );
+    }
+    result
 }
 
 /// Returns plugin settings schema with effective values.

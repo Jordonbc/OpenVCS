@@ -7,7 +7,7 @@ import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
 import { setTheme } from '../ui/layout';
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
-import { reloadPlugins } from '../plugins';
+import { invokePluginAction, reloadPlugins } from '../plugins';
 import type { PluginSummary } from '../plugins';
 import { applyPluginSettingsSections } from '../plugins';
 import type { GlobalSettings, ThemeSummary } from '../types';
@@ -557,7 +557,7 @@ export function wireSettings() {
             const actionId = btn.dataset.pluginAction || '';
             if (!pluginId || !actionId) return;
             try {
-                await TAURI.invoke('invoke_plugin_action', { pluginId, actionId });
+                await invokePluginAction(pluginId, actionId);
             } catch (err) {
                 console.error('Failed to invoke plugin action', err);
                 notify('Plugin action failed');
