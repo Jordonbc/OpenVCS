@@ -1,6 +1,6 @@
 {
   "plugin": [
-    "../Git",
+    "@openvcs/git-plugin@nightly",
     "@openvcs/official-themes@nightly"
   ]
 }
