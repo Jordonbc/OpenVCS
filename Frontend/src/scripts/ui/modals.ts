@@ -19,6 +19,8 @@ import { wireRenameBranch } from "../features/renameBranch";
 import cherryPickHtml from "@modals/cherry-pick.html?raw";
 import { wireCherryPick } from "../features/cherryPick";
 import deleteBranchHtml from "@modals/delete-branch.html?raw";
+import confirmHtml from "@modals/confirm.html?raw";
+import { wireConfirmModal } from "../features/confirmModal";
 import { wireDeleteBranchConfirm } from "../features/deleteBranchConfirm";
 import setUpstreamHtml from "@modals/set-upstream.html?raw";
 import { wireSetUpstream } from "../features/setUpstream";
@@ -44,6 +46,7 @@ const FRAGMENTS: Record<string, string> = {
     "new-branch-modal": newBranchHtml,
     "rename-branch-modal": renameBranchHtml,
     "cherry-pick-modal": cherryPickHtml,
+    "confirm-modal": confirmHtml,
     "delete-branch-modal": deleteBranchHtml,
     "set-upstream-modal": setUpstreamHtml,
     "update-modal": updateHtml,
@@ -53,7 +56,10 @@ const FRAGMENTS: Record<string, string> = {
 };
 
 const loaded = new Set<string>();
-const root = qs<HTMLElement>("#modals-root");
+/** Returns the modal root where lazily-hydrated fragments are injected. */
+function getRoot(): HTMLElement | null {
+    return qs<HTMLElement>('#modals-root');
+}
 
 // scroll lock counter (supports multiple modals)
 let openCount = 0;
@@ -90,6 +96,7 @@ export function hydrate(id: string): void {
         loaded.add(id);
         return;
     }
+    const root = getRoot();
     if (!root || loaded.has(id)) return;
 
     const html = FRAGMENTS[id];
@@ -110,6 +117,7 @@ export function hydrate(id: string): void {
     if (id === "new-branch-modal") wireNewBranch();
     if (id === "rename-branch-modal") wireRenameBranch();
     if (id === "cherry-pick-modal") wireCherryPick();
+    if (id === "confirm-modal") wireConfirmModal();
     if (id === "delete-branch-modal") wireDeleteBranchConfirm();
     if (id === "set-upstream-modal") wireSetUpstream();
     if (id === "update-modal") wireUpdate();
