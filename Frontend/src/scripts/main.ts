@@ -42,9 +42,12 @@ const commitBtn = qs<HTMLButtonElement>('#commit-btn');
     const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
     let fetchCloseTimer: number | null = null;
     let pluginMenuRefreshTimer: number | null = null;
+    /** Matches the fetch popover close animation so the element hides after the transition finishes. */
     const FETCH_CLOSE_MS = 130;
+    /** Gives repo-open plugin state time to settle before rebuilding contributed menubar items. */
+    const PLUGIN_MENU_REFRESH_SETTLE_MS = 400;
 
-    /** Schedules a delayed plugin menubar refresh to avoid repo-open races. */
+    /** Schedules a delayed plugin menubar refresh to avoid repo-open races while plugin state settles. */
     function schedulePluginMenuRefresh(delayMs = 250) {
         if (pluginMenuRefreshTimer !== null) {
             window.clearTimeout(pluginMenuRefreshTimer);
@@ -452,7 +455,7 @@ async function boot() {
 
     initMenubar(runMenuAction);
     refreshPluginMenubarMenus().catch(() => {});
-    schedulePluginMenuRefresh(400);
+    schedulePluginMenuRefresh(PLUGIN_MENU_REFRESH_SETTLE_MS);
 
     TAURI.listen?.('menu', async ({ payload: id }) => {
         const resolved = typeof id === 'string' ? id : String(id ?? '');
