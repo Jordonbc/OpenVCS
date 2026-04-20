@@ -87,8 +87,9 @@ export function confirmWithModal(opts: ConfirmModalOptions): Promise<boolean> {
   modal?.setContent?.(opts);
 
   return new Promise<boolean>((resolve) => {
-    resolvePending(false);
+    const previousResolve = pendingResolve;
     pendingResolve = resolve;
+    previousResolve?.(false);
     openModal('confirm-modal');
   });
 }
