@@ -27,3 +27,4 @@ dist-ssr
 /Backend/icons/ios
 /Core
 .env.tauri.local
+.opencode/

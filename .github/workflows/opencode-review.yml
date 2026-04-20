@@ -26,20 +26,15 @@ jobs:
         env:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          #GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL }}
-          use_github_token: true
+          #use_github_token: true
           prompt: |
             Review this pull request:
             - Check for code quality issues
             - Look for potential bugs
             - Suggest improvements
-            - Leave feedback as comments only
-            - Do not edit any files
-            - Do not use write, edit, or patch tools
-            - Do not create commits or push changes
-            - Keep the working tree unchanged
 
       - name: fallback
         if: steps.review_primary.outcome == 'failure'
@@ -47,17 +42,12 @@ jobs:
         env:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          #GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL_FALLBACK }}
-          use_github_token: true
+          #use_github_token: true
           prompt: |
             Review this pull request:
             - Check for code quality issues
             - Look for potential bugs
             - Suggest improvements
-            - Leave feedback as comments only
-            - Do not edit any files
-            - Do not use write, edit, or patch tools
-            - Do not create commits or push changes
-            - Keep the working tree unchanged
