@@ -1,21 +1,26 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { confirmBool } from './confirm';
 
-const originalConfirm = window.confirm;
+let originalConfirmDescriptor: PropertyDescriptor | undefined;
+
+/** Snapshots the current global confirm descriptor before each test. */
+beforeEach(() => {
+  originalConfirmDescriptor = Object.getOwnPropertyDescriptor(window, 'confirm');
+});
 
 /** Restores the original global confirm implementation after each test. */
 afterEach(() => {
   document.body.innerHTML = '';
   vi.restoreAllMocks();
-  Object.defineProperty(window, 'confirm', {
-    configurable: true,
-    writable: true,
-    value: originalConfirm,
-  });
+  if (originalConfirmDescriptor) {
+    Object.defineProperty(window, 'confirm', originalConfirmDescriptor);
+    return;
+  }
+  Reflect.deleteProperty(window as unknown as Record<string, unknown>, 'confirm');
 });
 
 describe('confirmBool', () => {
