@@ -35,6 +35,11 @@ jobs:
             - Check for code quality issues
             - Look for potential bugs
             - Suggest improvements
+            - Leave feedback as comments only
+            - Do not edit any files
+            - Do not use write, edit, or patch tools
+            - Do not create commits or push changes
+            - Keep the working tree unchanged
 
       - name: fallback
         if: steps.review_primary.outcome == 'failure'
@@ -51,3 +56,8 @@ jobs:
             - Check for code quality issues
             - Look for potential bugs
             - Suggest improvements
+            - Leave feedback as comments only
+            - Do not edit any files
+            - Do not use write, edit, or patch tools
+            - Do not create commits or push changes
+            - Keep the working tree unchanged
