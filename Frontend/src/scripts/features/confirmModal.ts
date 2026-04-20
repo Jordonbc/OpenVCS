@@ -40,16 +40,7 @@ export function wireConfirmModal() {
   const cancelBtn = modal.querySelector<HTMLButtonElement>('#confirm-modal-cancel-btn');
   const confirmBtn = modal.querySelector<HTMLButtonElement>('#confirm-modal-confirm-btn');
 
-  modal.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement;
-    const wantsClose = target.classList?.contains('backdrop') || !!target.closest('[data-close]');
-    if (wantsClose) resolvePending(false);
-  });
-
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    const current = getModal();
-    if (!current || current.getAttribute('aria-hidden') !== 'false') return;
+  modal.addEventListener('modal:closed', () => {
     resolvePending(false);
   });
 
