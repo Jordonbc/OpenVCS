@@ -281,7 +281,7 @@ impl PluginCache {
             }
         }
 
-        summaries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        summaries.sort_by_key(|a| a.name.to_lowercase());
         let mut data = self.data.write().unwrap();
         data.list = summaries;
         data.entries = entries;

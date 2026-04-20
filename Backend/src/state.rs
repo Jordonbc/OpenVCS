@@ -311,10 +311,8 @@ fn load_recents_from_disk() -> Result<Vec<PathBuf>, String> {
     if let Ok(serde_json::Value::Array(items)) = serde_json::from_str::<serde_json::Value>(&data) {
         for it in items {
             match it {
-                serde_json::Value::String(s) => {
-                    if !s.trim().is_empty() {
-                        out.push(PathBuf::from(s));
-                    }
+                serde_json::Value::String(s) if !s.trim().is_empty() => {
+                    out.push(PathBuf::from(s));
                 }
                 serde_json::Value::Object(map) => {
                     if let Some(serde_json::Value::String(s)) = map.get("path") {

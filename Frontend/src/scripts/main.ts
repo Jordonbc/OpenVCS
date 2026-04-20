@@ -14,7 +14,7 @@ import {
 import { clearPluginMenubarMenus, initMenubar, refreshPluginMenubarMenus } from './ui/menubar';
 import { closeAllModals } from './ui/modals';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
-import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash } from './features/repo';
+import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash, yieldToPaint } from './features/repo';
 import { bindBranchUI } from './features/branches';
 import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
@@ -42,9 +42,12 @@ const commitBtn = qs<HTMLButtonElement>('#commit-btn');
     const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
     let fetchCloseTimer: number | null = null;
     let pluginMenuRefreshTimer: number | null = null;
+    /** Matches the fetch popover close animation so the element hides after the transition finishes. */
     const FETCH_CLOSE_MS = 130;
+    /** Gives repo-open plugin state time to settle before rebuilding contributed menubar items. */
+    const PLUGIN_MENU_REFRESH_SETTLE_MS = 400;
 
-    /** Schedules a delayed plugin menubar refresh to avoid repo-open races. */
+    /** Schedules a delayed plugin menubar refresh to avoid repo-open races while plugin state settles. */
     function schedulePluginMenuRefresh(delayMs = 250) {
         if (pluginMenuRefreshTimer !== null) {
             window.clearTimeout(pluginMenuRefreshTimer);
@@ -184,7 +187,8 @@ async function boot() {
                 await TAURI.invoke('git_fetch', {});
                 notify('Fetched');
                 if (hydrate) {
-                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                    await yieldToPaint();
+                    void Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 }
                 success = true;
             } catch {
@@ -207,7 +211,8 @@ async function boot() {
                 await TAURI.invoke('git_fetch_all', {});
                 notify('Fetched all remotes');
                 if (hydrate) {
-                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                    await yieldToPaint();
+                    void Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 }
                 success = true;
             } catch {
@@ -450,7 +455,7 @@ async function boot() {
 
     initMenubar(runMenuAction);
     refreshPluginMenubarMenus().catch(() => {});
-    schedulePluginMenuRefresh(400);
+    schedulePluginMenuRefresh(PLUGIN_MENU_REFRESH_SETTLE_MS);
 
     TAURI.listen?.('menu', async ({ payload: id }) => {
         const resolved = typeof id === 'string' ? id : String(id ?? '');
@@ -461,6 +466,7 @@ async function boot() {
     // Global busy indicator for any Git activity
     (function(){
         let busyTimer: any = null;
+        let busyFrame: number | null = null;
         const setBusy = (msg: string, showSpinner = true) => {
             const s = document.getElementById('status');
             if (!s) return;
@@ -474,13 +480,20 @@ async function boot() {
                 s.textContent = 'Ready';
             }, 1500);
         };
+        const queueBusyUpdate = () => {
+            if (busyFrame !== null) return;
+            busyFrame = window.requestAnimationFrame(() => {
+                busyFrame = null;
+                const focused = document.visibilityState === 'visible' && document.hasFocus();
+                setBusy('Working…', focused);
+            });
+        };
         TAURI.listen?.('git-progress', ({ payload }) => {
             // Don't spam the footer with raw git output; keep it generic.
             void payload;
             // Avoid spinner-driven repaint churn for passive/background progress.
             // Explicit user actions already set busy state via their own controllers.
-            const focused = document.visibilityState === 'visible' && document.hasFocus();
-            setBusy('Working…', focused);
+            queueBusyUpdate();
         });
     })();
 

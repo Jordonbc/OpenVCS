@@ -1,6 +1,8 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+import { confirmWithModal } from '../features/confirmModal';
+
 /**
  * Attempts to coerce arbitrary confirm-return payloads into a boolean.
  *
@@ -29,18 +31,35 @@ function coerceConfirmResult(value: unknown): boolean {
 /**
  * Shows a confirmation prompt and returns a normalized boolean result.
  *
- * Supports both synchronous browser `window.confirm` and Promise-returning
- * confirm implementations exposed by embedded runtimes.
+ * Prefers the shared in-app confirmation modal when the modal host is mounted,
+ * then falls back to browser `window.confirm` for runtimes that do not render
+ * the main modal shell.
  *
  * @param message - Prompt text shown to the user.
  * @returns `true` when the user confirms; otherwise `false`.
  */
 export async function confirmBool(message: string): Promise<boolean> {
+  const modalRoot = document.getElementById('modals-root');
+  if (modalRoot) {
+    try {
+      return await confirmWithModal({
+        title: 'Confirm action',
+        message,
+        hint: 'This cannot be undone.',
+        confirmLabel: 'Confirm',
+        cancelLabel: 'Cancel',
+        danger: true,
+      });
+    } catch {
+      // Fall through to browser confirm when modal rendering is unavailable.
+    }
+  }
+
   const confirmFn = (window as any).confirm;
   if (typeof confirmFn !== 'function') return false;
 
   try {
-    const maybe = confirmFn(message) as unknown;
+    const maybe = Reflect.apply(confirmFn, window, [message]) as unknown;
     if (maybe && typeof (maybe as PromiseLike<unknown>).then === 'function') {
       const resolved = await (maybe as PromiseLike<unknown>);
       return coerceConfirmResult(resolved);
