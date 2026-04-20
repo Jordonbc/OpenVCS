@@ -197,7 +197,7 @@ fn decode_repo_text(bytes: &[u8]) -> String {
             i += 2;
         }
         let mut out = String::new();
-        for ch in std::char::decode_utf16(u16s.into_iter()) {
+        for ch in std::char::decode_utf16(u16s) {
             match ch {
                 Ok(c) => out.push(c),
                 Err(_) => return String::from_utf8_lossy(bytes).to_string(),

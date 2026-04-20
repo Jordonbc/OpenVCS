@@ -26,10 +26,10 @@ jobs:
         env:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          #GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL }}
-          use_github_token: true
+          #use_github_token: true
           prompt: |
             Review this pull request:
             - Check for code quality issues
@@ -42,10 +42,10 @@ jobs:
         env:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          #GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL_FALLBACK }}
-          use_github_token: true
+          #use_github_token: true
           prompt: |
             Review this pull request:
             - Check for code quality issues

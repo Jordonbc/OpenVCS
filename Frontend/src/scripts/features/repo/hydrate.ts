@@ -5,6 +5,24 @@ import { state, prefs } from '../../state/state';
 import { renderList } from './list';
 import { autoOpenFirstConflict } from '../conflicts';
 
+/**
+ * Yields control long enough for the browser to paint pending UI updates.
+ *
+ * This keeps the webview responsive before expensive repo refresh work starts.
+ *
+ * @returns A promise that resolves on the next paint opportunity.
+ */
+export function yieldToPaint(): Promise<void> {
+    return new Promise((resolve) => {
+        if (document.visibilityState === 'visible') {
+            window.requestAnimationFrame(() => resolve());
+            return;
+        }
+
+        window.setTimeout(() => resolve(), 0);
+    });
+}
+
 function normalizeFiles(files: any[]): any[] {
     return [...files].sort((a, b) => String(a?.path || '').localeCompare(String(b?.path || '')));
 }
@@ -38,6 +56,7 @@ let lastStatusSignature = '';
 export async function hydrateBranches(): Promise<boolean> {
     if (!TAURI.has) return false;
     try {
+        await yieldToPaint();
         const list = await TAURI.invoke<any[]>('git_list_branches');
         const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status').catch(() => ({ detached: false } as any));
         const has = Array.isArray(list) && list.length > 0;
@@ -63,6 +82,7 @@ export async function hydrateBranches(): Promise<boolean> {
 export async function hydrateStatus() {
     if (!TAURI.has) return;
     try {
+        await yieldToPaint();
         const result = await TAURI.invoke<{ files: any[]; ahead?: number; behind?: number }>('git_status');
         const nextFiles = Array.isArray(result?.files) ? (result.files as any) : [];
         let nextMergeInProgress = false;
@@ -130,6 +150,7 @@ export async function hydrateStatus() {
 export async function hydrateCommits() {
     if (!TAURI.has) return;
     try {
+        await yieldToPaint();
         const list = await TAURI.invoke<any[]>('git_log', { limit: 100 });
         state.hasRepo = true;
         const baseCommits = Array.isArray(list) ? (list as any) : [];
@@ -189,6 +210,7 @@ export async function hydrateCommits() {
 export async function hydrateStash() {
     if (!TAURI.has) return;
     try {
+        await yieldToPaint();
         const list = await TAURI.invoke<any[]>('git_stash_list');
         (state as any).stash = Array.isArray(list) ? (list as any) : [];
         if (prefs.tab === 'stash') renderList();
