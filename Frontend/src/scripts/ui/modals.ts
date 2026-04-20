@@ -72,6 +72,22 @@ function unlockScroll() {
     if (openCount === 0) document.body.style.overflow = "";
 }
 
+/** Updates a modal's hidden state and emits lifecycle events when visibility changes. */
+function setModalHidden(el: HTMLElement, hidden: boolean) {
+    const wasHidden = el.getAttribute("aria-hidden") !== "false";
+    const nextHidden = hidden ? "true" : "false";
+    if (el.getAttribute("aria-hidden") !== nextHidden) {
+        el.setAttribute("aria-hidden", nextHidden);
+    }
+    if (!hidden && wasHidden) {
+        el.dispatchEvent(new CustomEvent("modal:opened"));
+    }
+    if (hidden && !wasHidden) {
+        el.dispatchEvent(new CustomEvent("modal:closed"));
+    }
+    return wasHidden;
+}
+
 function closeWithAnimation(id: string, el: HTMLElement) {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduceMotion) {
@@ -141,8 +157,8 @@ export function openModal(id: string): void {
         window.clearTimeout(existing);
         (el as any).__animatedCloseTimer = undefined;
     }
-    el.setAttribute("aria-hidden", "false");
-    lockScroll();
+    const wasHidden = setModalHidden(el, false);
+    if (wasHidden) lockScroll();
     refreshOverlayScrollbarsFor(el);
 
     // Click-to-close once
@@ -161,7 +177,7 @@ export function closeModal(id: string): void {
     const el = document.getElementById(id);
     if (!el) return;
     if (el.getAttribute("aria-hidden") !== "true") {
-        el.setAttribute("aria-hidden", "true");
+        setModalHidden(el, true);
         unlockScroll();
     }
 }
@@ -177,7 +193,7 @@ export function closeAllModals(): void {
             (el as any).__animatedCloseTimer = undefined;
         }
         el.classList.remove("is-closing");
-        el.setAttribute("aria-hidden", "true");
+        setModalHidden(el, true);
     }
     openCount = 0;
     document.body.style.overflow = "";
