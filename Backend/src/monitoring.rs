@@ -87,9 +87,8 @@ fn build_backend_monitoring_guard(cfg: &AppConfig) -> Option<sentry::ClientInitG
         return None;
     }
 
-    let dsn = normalize_env_value(std::env::var(BACKEND_SENTRY_DSN_ENV).ok()).or_else(|| {
-        normalize_env_value(BACKEND_SENTRY_DSN_BUILT.map(str::to_string))
-    });
+    let dsn = normalize_env_value(std::env::var(BACKEND_SENTRY_DSN_ENV).ok())
+        .or_else(|| normalize_env_value(BACKEND_SENTRY_DSN_BUILT.map(str::to_string)));
     let Some(dsn) = dsn else {
         log::info!(
             "monitoring: backend Sentry disabled because {BACKEND_SENTRY_DSN_ENV} is unset and no build-time fallback was embedded"
