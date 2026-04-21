@@ -126,6 +126,7 @@ impl AppState {
         next.validate();
         next.save().map_err(|e| e.to_string())?;
         apply_git_ssh_env(&next);
+        crate::monitoring::sync_backend_monitoring(&next);
         *self.config.write() = next;
         self.enforce_recents_limit_and_persist();
         Ok(())

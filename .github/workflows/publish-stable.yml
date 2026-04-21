@@ -57,6 +57,12 @@ jobs:
 
       - name: Build frontend
         working-directory: Frontend
+        env:
+          VITE_SENTRY_ENVIRONMENT: stable
+          VITE_SENTRY_RELEASE: ${{ steps.version.outputs.tag }}
+          SENTRY_AUTH_TOKEN: ${{ matrix.platform == 'ubuntu-24.04' && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_ORG: ${{ matrix.platform == 'ubuntu-24.04' && secrets.SENTRY_ORG || '' }}
+          SENTRY_PROJECT: ${{ matrix.platform == 'ubuntu-24.04' && secrets.SENTRY_PROJECT || '' }}
         run: npm run build
 
       # ---------- Rust toolchain & deps ----------
@@ -144,6 +150,8 @@ jobs:
           # We already built the Frontend; tell Backend/Tauri to skip any beforeBuildCommand
           FRONTEND_SKIP_BUILD: '1'
           OPENVCS_UPDATE_CHANNEL: stable
+          OPENVCS_SENTRY_DSN: ${{ secrets.OPENVCS_SENTRY_DSN }}
+          OPENVCS_SENTRY_ENVIRONMENT: stable
           # Stable production builds should report the plain package version (not git metadata).
           OPENVCS_OFFICIAL_RELEASE: '1'
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}

@@ -16,6 +16,7 @@
     "preview": "vite preview --strictPort --port 1420"
   },
   "devDependencies": {
+    "@sentry/vite-plugin": "^4.5.0",
     "@types/node": "^25.6.0",
     "jsdom": "^29.0.2",
     "typescript": "^6.0.3",

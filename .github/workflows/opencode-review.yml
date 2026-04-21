@@ -37,7 +37,7 @@ jobs:
             - Suggest improvements
 
       - name: fallback
-        if: steps.review_primary.outcome == 'failure'
+        if: ${{ steps.review_primary.outcome == 'failure' }}
         uses: anomalyco/opencode/github@2410593023d2c61f05123c9b0faf189a28dfbeee
         env:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}

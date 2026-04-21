@@ -1,7 +1,24 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+use dotenvy::from_path_iter;
 use serde::Deserialize;
 use std::{env, fs, path::PathBuf, process::Command};
+
+/// Loads `Client/.env` into the build environment without overriding existing vars.
+fn load_local_dotenv(manifest_dir: &std::path::Path) {
+    let dotenv_path = manifest_dir.join("../.env");
+    println!("cargo:rerun-if-changed={}", dotenv_path.display());
+
+    let Ok(iter) = from_path_iter(&dotenv_path) else {
+        return;
+    };
+
+    for (key, value) in iter.flatten() {
+        if env::var_os(&key).is_none() {
+            env::set_var(key, value);
+        }
+    }
+}
 
 fn load_channel_metadata() -> ChannelMetadata {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
@@ -220,6 +237,7 @@ fn ensure_generated_node_runtime_resource_dir(manifest_dir: &std::path::Path) {
 fn main() {
     // Base config path (in the Backend crate)
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    load_local_dotenv(&manifest_dir);
     let base = manifest_dir.join("tauri.conf.json");
 
     let data = fs::read_to_string(&base).expect("read tauri.conf.json");
@@ -378,6 +396,12 @@ fn main() {
 
     println!("cargo:rustc-env=OPENVCS_VERSION={}", version);
     println!("cargo:rustc-env=OPENVCS_BUILD={}", build_id);
+    if let Ok(value) = env::var("OPENVCS_SENTRY_DSN") {
+        println!("cargo:rustc-env=OPENVCS_SENTRY_DSN_BUILT={}", value);
+    }
+    if let Ok(value) = env::var("OPENVCS_SENTRY_ENVIRONMENT") {
+        println!("cargo:rustc-env=OPENVCS_SENTRY_ENVIRONMENT_BUILT={}", value);
+    }
 
     ensure_generated_builtins_resource_dir(&manifest_dir);
     ensure_generated_node_runtime_resource_dir(&manifest_dir);

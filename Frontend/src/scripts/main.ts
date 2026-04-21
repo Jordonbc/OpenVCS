@@ -1,7 +1,9 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import './lib/logger';
+import { syncFrontendMonitoring } from './lib/monitoring';
 import { TAURI } from './lib/tauri';
+import type { GlobalSettings } from './types';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
 import { setStatus } from './lib/status';
@@ -97,6 +99,9 @@ function forceCloseTransientUi() {
 
 /** Boots the frontend shell, wires handlers, and hydrates initial state. */
 async function boot() {
+    const cfg = await loadInitialGlobalSettings();
+    await syncFrontendMonitoring(cfg);
+
     // If launched as the Output Log window, render that view and skip the main app UI.
     if (await initOutputLogViewIfRequested()) return;
     initOverlayScrollbarsFor(document);
@@ -104,10 +109,9 @@ async function boot() {
     await initPlugins();
     // theme & basic layout
     // Prefer native settings for theme; fall back to current in-memory default
-    if (TAURI.has) {
+    if (cfg) {
         (async () => {
             try {
-                const cfg = await TAURI.invoke<any>('get_global_settings');
                 const themeMode = cfg?.general?.theme as ('dark'|'light'|'system'|undefined);
                 const modeForPack = themeMode ?? 'system';
                 const themePack = String(cfg?.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
@@ -661,6 +665,19 @@ async function boot() {
         if (e.key !== 'Escape') return;
         if (fetchPop && !fetchPop.hidden) closeFetchPopover();
     });
+}
+
+/** Loads persisted global settings for bootstrap-time features such as theming and monitoring. */
+async function loadInitialGlobalSettings(): Promise<GlobalSettings | null> {
+    if (!TAURI.has) {
+        return null;
+    }
+
+    try {
+        return await TAURI.invoke<GlobalSettings>('get_global_settings');
+    } catch {
+        return null;
+    }
 }
 
 boot();

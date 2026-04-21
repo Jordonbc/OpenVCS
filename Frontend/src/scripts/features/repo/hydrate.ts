@@ -53,6 +53,18 @@ function buildStatusSignature(input: {
 
 let lastStatusSignature = '';
 
+/** Returns a richer log message for common repository hydration failures. */
+function describeHydrationFailure(operation: string, error: unknown): string {
+    const message = String(error || '').trim();
+    if (message === 'No repository selected') {
+        return `${operation} skipped: no repository selected; check whether a VCS backend is available and whether a repository was reopened successfully`;
+    }
+    if (message.includes('no longer available')) {
+        return `${operation} failed: active backend is no longer available; reopen the repository or re-enable the backend plugin`;
+    }
+    return `${operation} failed ${message}`.trim();
+}
+
 export async function hydrateBranches(): Promise<boolean> {
     if (!TAURI.has) return false;
     try {
@@ -74,7 +86,7 @@ export async function hydrateBranches(): Promise<boolean> {
         }
         return false;
     } catch (e) {
-        console.warn('hydrateBranches failed', e);
+        console.warn(describeHydrationFailure('hydrateBranches', e), e);
         return false;
     }
 }
@@ -135,7 +147,7 @@ export async function hydrateStatus() {
         void autoOpenFirstConflict(state.files as any);
         window.dispatchEvent(new CustomEvent('app:status-updated'));
     } catch (e) {
-        console.warn('hydrateStatus failed', e);
+        console.warn(describeHydrationFailure('hydrateStatus', e), e);
         state.files = [];
         state.mergeInProgress = false;
         state.seenConflicts = new Set<string>();
@@ -202,7 +214,7 @@ export async function hydrateCommits() {
         }
         if (prefs.tab === 'history') renderList();
     } catch (e) {
-        console.warn('hydrateCommits failed', e);
+        console.warn(describeHydrationFailure('hydrateCommits', e), e);
         state.commits = [];
     }
 }
@@ -215,7 +227,7 @@ export async function hydrateStash() {
         (state as any).stash = Array.isArray(list) ? (list as any) : [];
         if (prefs.tab === 'stash') renderList();
     } catch (e) {
-        console.warn('hydrateStash failed', e);
+        console.warn(describeHydrationFailure('hydrateStash', e), e);
         (state as any).stash = [];
     }
 }
