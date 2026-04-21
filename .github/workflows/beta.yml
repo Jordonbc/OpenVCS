@@ -59,6 +59,12 @@ jobs:
 
       - name: Build frontend
         working-directory: Frontend
+        env:
+          VITE_SENTRY_ENVIRONMENT: beta
+          VITE_SENTRY_RELEASE: openvcs-beta-${{ steps.meta.outputs.short_sha }}
+          SENTRY_AUTH_TOKEN: ${{ matrix.platform == 'ubuntu-24.04' && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_ORG: ${{ matrix.platform == 'ubuntu-24.04' && secrets.SENTRY_ORG || '' }}
+          SENTRY_PROJECT: ${{ matrix.platform == 'ubuntu-24.04' && secrets.SENTRY_PROJECT || '' }}
         run: npm run build
 
       - name: Install Rust (stable)
@@ -115,6 +121,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FRONTEND_SKIP_BUILD: '1'
           OPENVCS_UPDATE_CHANNEL: beta
+          OPENVCS_SENTRY_DSN: ${{ secrets.OPENVCS_SENTRY_DSN }}
+          OPENVCS_SENTRY_ENVIRONMENT: beta
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_PRIVATE_KEY_PASSWORD }}
         with:

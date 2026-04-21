@@ -1,11 +1,13 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { TAURI } from '../lib/tauri';
+import { syncFrontendMonitoring } from '../lib/monitoring';
 import { openModal, closeModal } from '../ui/modals';
 import { toKebab } from '../lib/dom';
 import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
 import { setTheme } from '../ui/layout';
+import { collectGeneralSettings, loadGeneralSettingsIntoForm } from './settingsGeneral';
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
 import { invokePluginAction, reloadPlugins } from '../plugins';
 import type { PluginSummary } from '../plugins';
@@ -690,6 +692,7 @@ export function wireSettings() {
 
             if (TAURI.has) {
                 await TAURI.invoke('set_global_settings', { cfg: next });
+                await syncFrontendMonitoring(next);
             }
 
             modal.dataset.currentCfg = JSON.stringify(next);
@@ -752,7 +755,7 @@ export function wireSettings() {
                 reopen_last_repos: true,
                 checks_on_launch: true,
                 telemetry: false,
-                crash_reports: false,
+                crash_reports: true,
             };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
@@ -762,6 +765,7 @@ export function wireSettings() {
             cur.plugins = { disabled: [], enabled: [] };
 
             await TAURI.invoke('set_global_settings', { cfg: cur });
+            await syncFrontendMonitoring(cur);
             applyAnimationPreference(cur.performance?.animations);
             await loadSettingsIntoForm(modal);
             setTheme('system');
@@ -780,20 +784,7 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
 
     const o: GlobalSettings = { ...base };
 
-    const autoTheme = !!get<HTMLInputElement>('#set-theme-auto')?.checked;
-    const themePack = get<HTMLSelectElement>('#set-theme')?.value || DEFAULT_LIGHT_THEME_ID;
-    const theme = autoTheme ? 'system' : modeForTheme(themePack);
-
-    o.general = {
-        ...o.general,
-        theme,
-        theme_pack: themePack || DEFAULT_LIGHT_THEME_ID,
-        language: get<HTMLSelectElement>('#set-language')?.value,
-        default_backend: (get<HTMLSelectElement>('#set-default-backend')?.value || 'git') as any,
-        update_channel: get<HTMLSelectElement>('#set-update-channel')?.value || 'stable',
-        reopen_last_repos: !!get<HTMLInputElement>('#set-reopen-last')?.checked,
-        checks_on_launch: !!get<HTMLInputElement>('#set-checks-on-launch')?.checked,
-    };
+    o.general = collectGeneralSettings(root, o, modeForTheme);
 
     o.diff = {
         ...o.diff,
@@ -903,35 +894,8 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
 
     await loadPluginsIntoForm(m, cfg);
 
-    const themeSel = get<HTMLSelectElement>('#set-theme');
-    const elAuto = get<HTMLInputElement>('#set-theme-auto');
-    const themePref = (cfg.general?.theme || 'system') as 'system'|'light'|'dark';
-
-    if (elAuto) elAuto.checked = themePref === 'system';
-
-    if (themeSel) {
-        let desiredId = String(cfg.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
-        if (desiredId.trim().toLowerCase() === DEFAULT_THEME_ID) {
-            desiredId = themePref === 'dark' ? DEFAULT_DARK_THEME_ID : DEFAULT_LIGHT_THEME_ID;
-        }
-        await rebuildThemePackOptions(themeSel, {
-            desiredId,
-            forceReload: true,
-        });
-        themeSel.disabled = themePref === 'system';
-        if (themePref === 'system') {
-            themeSel.value = getActiveThemeId() || themeSel.value;
-        }
-    }
-
-    const elLang  = get<HTMLSelectElement>('#set-language'); if (elLang) elLang.value = toKebab(cfg.general?.language);
-    await refreshDefaultBackendOptions(m, cfg);
-    const elChan  = get<HTMLSelectElement>('#set-update-channel'); if (elChan) {
-        elChan.value = toKebab(cfg.general?.update_channel);
-    }
-    const elReo   = get<HTMLInputElement>('#set-reopen-last'); if (elReo) elReo.checked = !!cfg.general?.reopen_last_repos;
-    const elChk   = get<HTMLInputElement>('#set-checks-on-launch'); if (elChk) elChk.checked = !!cfg.general?.checks_on_launch;
-    const elRl    = get<HTMLInputElement>('#set-recents-limit'); if (elRl) elRl.value = String(cfg.ux?.recents_limit ?? 10);
+    await loadGeneralSettingsIntoForm(m, cfg, toKebab, refreshDefaultBackendOptions, rebuildThemePackOptions);
+    const elRl = get<HTMLInputElement>('#set-recents-limit'); if (elRl) elRl.value = String(cfg.ux?.recents_limit ?? 10);
 
     const elTw = get<HTMLInputElement>('#set-tab-width'); if (elTw) elTw.value = String(cfg.diff?.tab_width ?? 0);
     const elIw = get<HTMLSelectElement>('#set-ignore-whitespace'); if (elIw) elIw.value = toKebab(cfg.diff?.ignore_whitespace);
@@ -996,7 +960,12 @@ async function refreshDefaultBackendOptions(modal: HTMLElement, cfg: GlobalSetti
     }
 
     el.disabled = backends.length === 0;
-    if (!backends.length) return;
+    if (!backends.length) {
+        console.warn(
+            'settings: no VCS backends are currently available; default backend selection is disabled',
+        );
+        return;
+    }
     if (desired && backends.some(([id]) => id === desired)) {
         el.value = desired;
     } else {

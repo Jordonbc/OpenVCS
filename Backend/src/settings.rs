@@ -85,13 +85,13 @@ pub struct General {
     pub default_backend: String,
     #[serde(default)]
     pub update_channel: UpdateChannel,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub reopen_last_repos: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub checks_on_launch: bool,
     #[serde(default)]
     pub telemetry: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub crash_reports: bool,
 }
 impl Default for General {
@@ -109,7 +109,7 @@ impl Default for General {
             reopen_last_repos: true,
             checks_on_launch: true,
             telemetry: false,
-            crash_reports: false,
+            crash_reports: true,
         }
     }
 }
