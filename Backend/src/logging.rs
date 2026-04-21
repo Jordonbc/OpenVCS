@@ -1,12 +1,12 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::settings::{AppConfig, LogLevel};
+use sentry_log::{LogFilter, SentryLogger};
 use std::fs::{self, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
-use sentry_log::{LogFilter, SentryLogger};
 use time::{OffsetDateTime, UtcOffset};
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
