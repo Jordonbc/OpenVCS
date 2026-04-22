@@ -25,8 +25,11 @@ if (dryRun) {
   process.exit(0);
 }
 
-function run(cmd, args, cwd) {
+function run(cmd, args, cwd, env) {
   const spawnOpts = { cwd, stdio: 'inherit' };
+  if (env) {
+    spawnOpts.env = { ...process.env, ...env };
+  }
   if (
     process.platform === 'win32' &&
     (cmd === 'npm' || cmd.toLowerCase().endsWith('.cmd') || cmd.toLowerCase().endsWith('.bat'))
@@ -44,7 +47,10 @@ function run(cmd, args, cwd) {
   }
 }
 
-run(process.execPath, [ensureScript], backendDir);
+const ensureEnv = mode === 'dev' && !process.env.OPENVCS_UPDATE_CHANNEL
+  ? { OPENVCS_UPDATE_CHANNEL: 'dev' }
+  : null;
+run(process.execPath, [ensureScript], backendDir, ensureEnv);
 
 if (mode === 'build' && process.env.FRONTEND_SKIP_BUILD === '1') {
   console.log('FRONTEND_SKIP_BUILD=1; skipping Frontend build step.');

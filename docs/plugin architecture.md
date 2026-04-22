@@ -71,8 +71,30 @@ system `node` executable.
 Instead, OpenVCS resolves config-declared plugin sources into the writable local
 plugin store before discovery runs:
 
-- Built-in source list: `Client/openvcs.plugins.json`
+- Built-in source list: `Client/openvcs.plugins.json` (channel-first)
 - User source list: top-level `plugin = [...]` in `openvcs.conf`
+
+The built-in config uses a channel-first schema:
+
+```json
+{
+  "stable": ["@openvcs/git-plugin@latest", "@openvcs/official-themes@latest"],
+  "beta": ["@openvcs/git-plugin@beta", "@openvcs/official-themes@beta"],
+  "dev": ["@openvcs/git-plugin@edge", "@openvcs/official-themes@nightly"]
+}
+```
+
+The active channel is determined by `OPENVCS_UPDATE_CHANNEL`:
+- `stable` - production releases
+- `beta` - beta builds
+- `dev` - development builds
+- `nightly` - alias for `dev`
+- unset/unknown values default to `stable`
+
+For local development, create `openvcs.plugins.local.json` in the Client directory
+to override the channel list (gitignored). If the file defines the active
+channel key, that list fully replaces the committed channel list, including an
+empty array.
 
 The resolver accepts:
 
@@ -84,7 +106,7 @@ contents and then installs runtime dependencies into the local plugin root when
 needed. Local path plugins therefore behave like npm packages and should define
 their published files and `prepack` behavior accordingly.
 
-## Installed Plugin Layout
+## Installed Layout
 
 After sync, the backend operates only on local installed plugin directories:
 

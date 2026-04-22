@@ -174,9 +174,10 @@ use the same channel-aware Tauri build flow.
 
 The Tauri precommands in `Backend/tauri.conf.json` intentionally set an
 explicit hook `cwd` to `Backend/` so Tauri does not resolve them from nested
-plugin directories, and built-in plugins are materialized from
-`openvcs.plugins.json` into `target/openvcs/built-in-plugins/` before the app is
-built.
+plugin directories, and built-in plugins are materialized from the
+channel-aware `openvcs.plugins.json` into `target/openvcs/built-in-plugins/`
+before the app is built. Local development can optionally override the active
+channel list with `openvcs.plugins.local.json`.
 
 ### Optional: Rust‑only build
 

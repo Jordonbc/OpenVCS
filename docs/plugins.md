@@ -8,10 +8,45 @@ directory under the app config directory.
 
 ## Source Of Truth
 
-OpenVCS reads two plugin source lists with the same entry shape:
+OpenVCS reads two plugin source lists:
 
-- Built-in plugins: `Client/openvcs.plugins.json`
+- Built-in plugins: `Client/openvcs.plugins.json` (channel-first)
 - User plugins: the top-level `plugin = [...]` array in `openvcs.conf`
+
+## Channel-Based Built-in Config
+
+Built-in plugins use a channel-first schema that maps release channels to plugin
+specifier arrays:
+
+```json
+{
+  "stable": ["@openvcs/git-plugin@latest", "@openvcs/official-themes@latest"],
+  "beta": ["@openvcs/git-plugin@beta", "@openvcs/official-themes@beta"],
+  "dev": ["@openvcs/git-plugin@edge", "@openvcs/official-themes@nightly"]
+}
+```
+
+The active channel is determined by the `OPENVCS_UPDATE_CHANNEL` environment
+variable:
+
+- `stable` - production releases
+- `beta` - beta builds  
+- `dev` - development builds
+- `nightly` - alias for `dev`
+- unset/unknown values default to `stable`
+
+### Local Override
+
+For local development, create `openvcs.plugins.local.json` in the Client directory
+with the same shape to override the channel-specific plugin list. This is useful
+for testing different plugin versions without modifying the main config.
+
+If the local file defines the active channel key, that channel list fully
+replaces the committed list, including an empty array.
+
+The local override file is ignored by git (see `.gitignore`).
+
+## User Plugin Config
 
 Example user config:
 
