@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::core::settings::{SettingKv, SettingValue};
-use crate::core::ui::{Menu, UiElement};
+use crate::core::ui::{Menu, MenuSurface, UiElement};
 use crate::plugin_bundles::{InstalledPluginIndex, PluginBundleStore};
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::settings_store;
@@ -63,6 +63,8 @@ pub struct PluginMenuPayload {
     pub id: String,
     /// User-visible label.
     pub label: String,
+    /// Render target surface.
+    pub surface: MenuSurface,
     /// Renderable menu elements.
     pub elements: Vec<Value>,
 }
@@ -420,6 +422,7 @@ fn menu_to_payload(plugin_id: &str, menu: Menu) -> PluginMenuPayload {
         plugin_id: plugin_id.to_string(),
         id: menu.id,
         label: menu.label,
+        surface: menu.surface,
         elements,
     }
 }

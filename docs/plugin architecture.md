@@ -48,6 +48,13 @@ match built-in top-level menus such as `repository` are projected into the main
 menubar. For VCS backend plugins, these items therefore appear only after the
 repository-scoped runtime has started.
 
+Menu surfaces can be explicitly targeted using the `surface` option:
+
+- `getOrCreateMenu('repository', 'Repository', { surface: 'menubar' })` - renders in the top menubar
+- `getOrCreateMenu('my-settings', 'My Settings', { surface: 'settings' })` - renders in the Settings modal
+
+The `surface` option is required. Plugin authors must explicitly specify where their menus should appear.
+
 Core plugin-to-host notifications:
 
 - `host.log`

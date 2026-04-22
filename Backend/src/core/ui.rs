@@ -5,6 +5,16 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Menu surface target for rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MenuSurface {
+    /// Menu appears in the main menubar.
+    Menubar,
+    /// Menu appears in the settings modal.
+    Settings,
+}
+
 /// Menu descriptor contributed by a plugin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Menu {
@@ -15,6 +25,8 @@ pub struct Menu {
     /// Optional display ordering hint.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub order: Option<u32>,
+    /// Required render target surface ('menubar' or 'settings').
+    pub surface: MenuSurface,
     /// Renderable UI elements under the menu.
     pub elements: Vec<UiElement>,
 }

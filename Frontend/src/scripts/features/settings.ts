@@ -21,6 +21,7 @@ interface PluginMenuPayload {
     plugin_id: string;
     id: string;
     label: string;
+    surface: 'menubar' | 'settings';
     elements: Array<{
         type: 'text' | 'button' | string;
         id?: string;
@@ -300,6 +301,10 @@ async function renderPluginMenus(modal: HTMLElement): Promise<void> {
     };
 
     for (const menu of menus) {
+        // Only render settings-surface menus in the settings modal.
+        const surface = String(menu.surface || 'menubar').toLowerCase();
+        if (surface !== 'settings') continue;
+
         const section = pluginSectionId(menu.plugin_id, menu.id);
         const navLi = document.createElement('li');
         navLi.dataset.pluginMenu = 'true';
