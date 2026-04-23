@@ -29,7 +29,7 @@ jobs:
           #GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL }}
-          #use_github_token: true
+          use_github_token: false
           prompt: |
             Review this pull request:
             - Check for code quality issues
@@ -45,7 +45,7 @@ jobs:
           #GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL_FALLBACK }}
-          #use_github_token: true
+          use_github_token: false
           prompt: |
             Review this pull request:
             - Check for code quality issues
