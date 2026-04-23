@@ -125,10 +125,6 @@ pub async fn commit_selected<R: Runtime>(
 
     async_runtime::spawn_blocking(move || {
         let on = progress_bridge(app);
-        on(VcsEvent::Info {
-            msg: "Staging selected files…".into(),
-        });
-
         let (name, email) = repo
             .inner()
             .get_identity()
@@ -145,6 +141,16 @@ pub async fn commit_selected<R: Runtime>(
             .unwrap_or_else(|| ("OpenVCS".into(), "openvcs@example".into()));
 
         let paths: Vec<PathBuf> = files.into_iter().map(PathBuf::from).collect();
+
+        on(VcsEvent::Info {
+            msg: "Staging selected files…".into(),
+        });
+        repo.inner()
+            .stage_paths(&paths)
+            .map_err(|e| {
+                error!("stage_paths failed: {e}");
+                e.to_string()
+            })?;
 
         on(VcsEvent::Info {
             msg: "Writing commit…".into(),
@@ -312,7 +318,16 @@ pub async fn commit_patch_and_files<R: Runtime>(
                 .commit_index(&message, &name, &email)
                 .map_err(|e| e.to_string())?
         } else {
-            let paths: Vec<PathBuf> = files.into_iter().map(PathBuf::from).collect();
+            let paths: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
+            on(VcsEvent::Info {
+                msg: "Staging selected files…".into(),
+            });
+            repo.inner()
+                .stage_paths(&paths)
+                .map_err(|e| {
+                    error!("stage_paths failed: {e}");
+                    e.to_string()
+                })?;
             repo.inner()
                 .commit(&message, &name, &email, &paths)
                 .map_err(|e| e.to_string())?

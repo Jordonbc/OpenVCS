@@ -63,6 +63,10 @@ Core plugin-to-host notifications:
 - `host.event_emit`
 - `vcs.event`
 
+Selected-file commit flows stage repository-relative paths into the index with
+`vcs.stage_paths` before issuing `vcs.commit`. Plugins implementing selected-path
+commits should therefore support both RPCs consistently.
+
 Plugin runtime requires the app-bundled Node binary; there is no fallback to a
 system `node` executable.
 

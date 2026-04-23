@@ -732,6 +732,12 @@ impl NodePluginRuntimeInstance {
         self.rpc_call_unit(Methods::VCS_STAGE_PATCH, params)
     }
 
+    /// Calls `vcs.stage-paths`.
+    pub fn vcs_stage_paths(&self, paths: &[String]) -> Result<(), String> {
+        let params = self.session_params(json!({ "paths": paths }))?;
+        self.rpc_call_unit(Methods::VCS_STAGE_PATHS, params)
+    }
+
     /// Calls `vcs.discard-paths`.
     pub fn vcs_discard_paths(&self, paths: &[String]) -> Result<(), String> {
         let params = self.session_params(json!({ "paths": paths }))?;
