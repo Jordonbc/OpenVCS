@@ -1,14 +1,28 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::settings::{AppConfig, LogLevel};
+use sentry_log::{LogFilter, SentryLogger};
 use std::fs::{self, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 use time::{OffsetDateTime, UtcOffset};
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
 static ACTIVE_LOG_FILE: OnceLock<Arc<Mutex<std::fs::File>>> = OnceLock::new();
+static SENTRY_LOG_FORWARDING_ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// Updates whether backend log records should be forwarded into Sentry.
+///
+/// # Parameters
+/// - `enabled`: `true` when a backend Sentry client is active and crash reporting is allowed.
+///
+/// # Returns
+/// - `()`.
+pub fn set_sentry_log_forwarding_enabled(enabled: bool) {
+    SENTRY_LOG_FORWARDING_ENABLED.store(enabled, Ordering::Relaxed);
+}
 
 /// RAII timer that logs operation duration on drop.
 ///
@@ -100,26 +114,6 @@ pub fn clear_active_log_file() -> Result<(), String> {
         .map_err(|_| "log file lock poisoned".to_string())?;
     f.set_len(0).map_err(|e| e.to_string())?;
     f.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-    f.flush().map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-/// Writes a line directly to the active log file.
-///
-/// # Parameters
-/// - `line`: The line to write (without trailing newline).
-///
-/// # Returns
-/// - `Ok(())` if the line was written.
-/// - `Err(String)` if writing fails or log file not initialized.
-pub fn write_to_log(line: &str) -> Result<(), String> {
-    let Some(file) = ACTIVE_LOG_FILE.get() else {
-        return Ok(());
-    };
-    let mut f = file
-        .lock()
-        .map_err(|_| "log file lock poisoned".to_string())?;
-    writeln!(f, "{}", line).map_err(|e| e.to_string())?;
     f.flush().map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -363,13 +357,44 @@ pub fn init() {
             console: console_logger,
             file,
         };
-        let _ = log::set_boxed_logger(Box::new(dual));
+        let sentry_logger = build_sentry_logger(dual);
+        let _ = log::set_boxed_logger(Box::new(sentry_logger));
         log::set_max_level(log::LevelFilter::Trace);
     } else {
         // Fallback to console-only
-        let _ = log::set_boxed_logger(Box::new(console_logger));
+        let sentry_logger = build_sentry_logger(console_logger);
+        let _ = log::set_boxed_logger(Box::new(sentry_logger));
         log::set_max_level(log::LevelFilter::Trace);
     }
+}
+
+/// Wraps an existing backend logger so selected records are also forwarded to Sentry.
+///
+/// Error-level records become Sentry events and logs, warn-level records become
+/// breadcrumbs and logs, and info-level records become breadcrumbs. Local
+/// console/file logging always continues through the wrapped destination logger.
+///
+/// # Parameters
+/// - `destination`: Existing logger that should continue receiving all records.
+///
+/// # Returns
+/// - A `SentryLogger` forwarding selected records to Sentry.
+fn build_sentry_logger<L>(destination: L) -> SentryLogger<L>
+where
+    L: log::Log + Send + Sync + 'static,
+{
+    SentryLogger::with_dest(destination).filter(|metadata| {
+        if !SENTRY_LOG_FORWARDING_ENABLED.load(Ordering::Relaxed) {
+            return LogFilter::Ignore;
+        }
+
+        match metadata.level() {
+            log::Level::Error => LogFilter::Event | LogFilter::Log,
+            log::Level::Warn => LogFilter::Breadcrumb | LogFilter::Log,
+            log::Level::Info => LogFilter::Breadcrumb,
+            log::Level::Debug | log::Level::Trace => LogFilter::Ignore,
+        }
+    })
 }
 
 /// Rotates existing active log into a timestamped zip archive.

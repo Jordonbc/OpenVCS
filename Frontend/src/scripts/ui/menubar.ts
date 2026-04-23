@@ -11,6 +11,7 @@ interface PluginMenuPayload {
     plugin_id: string;
     id: string;
     label: string;
+    surface: 'menubar' | 'settings';
     elements: Array<{
         type: 'text' | 'button' | string;
         id?: string;
@@ -57,6 +58,10 @@ export async function refreshPluginMenubarMenus(): Promise<void> {
     }
 
     for (const menu of Array.isArray(menus) ? menus : []) {
+        // Only render menubar-surface menus in the menubar.
+        const surface = String(menu.surface || 'menubar').toLowerCase();
+        if (surface !== 'menubar') continue;
+
         const menuId = String(menu?.id || '').trim();
         const list = getMenuList(menuId);
         if (!menuId || !list) continue;

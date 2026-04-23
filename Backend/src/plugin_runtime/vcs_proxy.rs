@@ -241,6 +241,16 @@ impl Vcs for PluginVcsProxy {
             .map_err(|e| self.map_runtime_error(e))
     }
 
+    fn stage_paths(&self, paths: &[PathBuf]) -> VcsResult<()> {
+        let paths = paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        self.runtime
+            .vcs_stage_paths(&paths)
+            .map_err(|e| self.map_runtime_error(e))
+    }
+
     fn discard_paths(&self, paths: &[PathBuf]) -> VcsResult<()> {
         let paths = paths
             .iter()

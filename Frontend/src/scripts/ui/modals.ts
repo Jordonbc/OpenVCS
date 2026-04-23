@@ -19,6 +19,8 @@ import { wireRenameBranch } from "../features/renameBranch";
 import cherryPickHtml from "@modals/cherry-pick.html?raw";
 import { wireCherryPick } from "../features/cherryPick";
 import deleteBranchHtml from "@modals/delete-branch.html?raw";
+import confirmHtml from "@modals/confirm.html?raw";
+import { wireConfirmModal } from "../features/confirmModal";
 import { wireDeleteBranchConfirm } from "../features/deleteBranchConfirm";
 import setUpstreamHtml from "@modals/set-upstream.html?raw";
 import { wireSetUpstream } from "../features/setUpstream";
@@ -44,6 +46,7 @@ const FRAGMENTS: Record<string, string> = {
     "new-branch-modal": newBranchHtml,
     "rename-branch-modal": renameBranchHtml,
     "cherry-pick-modal": cherryPickHtml,
+    "confirm-modal": confirmHtml,
     "delete-branch-modal": deleteBranchHtml,
     "set-upstream-modal": setUpstreamHtml,
     "update-modal": updateHtml,
@@ -53,7 +56,10 @@ const FRAGMENTS: Record<string, string> = {
 };
 
 const loaded = new Set<string>();
-const root = qs<HTMLElement>("#modals-root");
+/** Returns the modal root where lazily-hydrated fragments are injected. */
+function getRoot(): HTMLElement | null {
+    return qs<HTMLElement>('#modals-root');
+}
 
 // scroll lock counter (supports multiple modals)
 let openCount = 0;
@@ -64,6 +70,22 @@ function lockScroll() {
 function unlockScroll() {
     openCount = Math.max(0, openCount - 1);
     if (openCount === 0) document.body.style.overflow = "";
+}
+
+/** Updates a modal's hidden state and emits lifecycle events when visibility changes. */
+function setModalHidden(el: HTMLElement, hidden: boolean) {
+    const wasHidden = el.getAttribute("aria-hidden") !== "false";
+    const nextHidden = hidden ? "true" : "false";
+    if (el.getAttribute("aria-hidden") !== nextHidden) {
+        el.setAttribute("aria-hidden", nextHidden);
+    }
+    if (!hidden && wasHidden) {
+        el.dispatchEvent(new CustomEvent("modal:opened"));
+    }
+    if (hidden && !wasHidden) {
+        el.dispatchEvent(new CustomEvent("modal:closed"));
+    }
+    return wasHidden;
 }
 
 function closeWithAnimation(id: string, el: HTMLElement) {
@@ -90,6 +112,7 @@ export function hydrate(id: string): void {
         loaded.add(id);
         return;
     }
+    const root = getRoot();
     if (!root || loaded.has(id)) return;
 
     const html = FRAGMENTS[id];
@@ -110,6 +133,7 @@ export function hydrate(id: string): void {
     if (id === "new-branch-modal") wireNewBranch();
     if (id === "rename-branch-modal") wireRenameBranch();
     if (id === "cherry-pick-modal") wireCherryPick();
+    if (id === "confirm-modal") wireConfirmModal();
     if (id === "delete-branch-modal") wireDeleteBranchConfirm();
     if (id === "set-upstream-modal") wireSetUpstream();
     if (id === "update-modal") wireUpdate();
@@ -133,8 +157,8 @@ export function openModal(id: string): void {
         window.clearTimeout(existing);
         (el as any).__animatedCloseTimer = undefined;
     }
-    el.setAttribute("aria-hidden", "false");
-    lockScroll();
+    const wasHidden = setModalHidden(el, false);
+    if (wasHidden) lockScroll();
     refreshOverlayScrollbarsFor(el);
 
     // Click-to-close once
@@ -153,7 +177,7 @@ export function closeModal(id: string): void {
     const el = document.getElementById(id);
     if (!el) return;
     if (el.getAttribute("aria-hidden") !== "true") {
-        el.setAttribute("aria-hidden", "true");
+        setModalHidden(el, true);
         unlockScroll();
     }
 }
@@ -169,7 +193,7 @@ export function closeAllModals(): void {
             (el as any).__animatedCloseTimer = undefined;
         }
         el.classList.remove("is-closing");
-        el.setAttribute("aria-hidden", "true");
+        setModalHidden(el, true);
     }
     openCount = 0;
     document.body.style.overflow = "";

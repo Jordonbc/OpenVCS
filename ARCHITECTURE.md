@@ -57,6 +57,17 @@ Backend:
 
 - State lifecycle:
   Startup config load, optional reopen-last-repo, runtime config updates.
+- Monitoring:
+  Optional Sentry reporting is initialized separately in `Backend/src/monitoring.rs` and
+  `Frontend/src/scripts/lib/monitoring.ts`, with backend/frontend events gated by
+  `general.crash_reports`. The frontend captures errors and relays them to a
+  backend-owned Sentry client over Tauri IPC, while backend Sentry uses runtime
+  process env values with a build-time embedded fallback for packaged builds.
+  Recent frontend console output is retained as breadcrumbs and attached to
+  frontend monitoring events. Backend Rust `log` records are bridged into
+  Sentry without replacing the existing console/file logger: `error!` records
+  produce Sentry events, `warn!` records become breadcrumbs/logs, and `info!`
+  records become breadcrumbs when crash reporting is enabled.
 - Plugin lifecycle:
   Built-in/user plugin discovery, config-driven sync, install/uninstall, and approval gating.
 - Reliability:

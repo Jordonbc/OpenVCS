@@ -97,20 +97,13 @@ pub fn log_frontend_message(state: tauri::State<'_, AppState>, level: String, me
         _ => (OutputLevel::Info, log::Level::Info),
     };
 
-    // Write directly to stderr with [FRONTEND] tag
-    let now = time::OffsetDateTime::now_utc();
-    let timestamp = format!(
-        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-        now.year(),
-        now.month() as u8,
-        now.day(),
-        now.hour(),
-        now.minute(),
-        now.second()
-    );
-    let log_line = format!("{} {:5} [FRONTEND]: {}", timestamp, log_level, message);
-    eprintln!("{}", log_line);
-    let _ = crate::logging::write_to_log(&log_line);
+    let args = format_args!("{}", message);
+    let record = log::Record::builder()
+        .args(args)
+        .level(log_level)
+        .target("frontend")
+        .build();
+    log::logger().log(&record);
 
     let entry = OutputLogEntry::new(
         std::time::SystemTime::now()

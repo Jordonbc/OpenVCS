@@ -63,9 +63,15 @@ pub(crate) fn progress_bridge<R: Runtime>(app: AppHandle<R>) -> OnEvent {
 /// - `Ok(Arc<Repo>)` for the active repository.
 /// - `Err(String)` when no repo is selected or backend is unavailable.
 pub(crate) fn current_repo_or_err(state: &State<'_, AppState>) -> Result<Arc<Repo>, String> {
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
+    let repo = match state.current_repo() {
+        Some(repo) => repo,
+        None => {
+            log::warn!(
+                "repo command aborted: no repository selected; possible causes include no VCS backend available, reopen/startup failure, or the active repo being cleared"
+            );
+            return Err("No repository selected".to_string());
+        }
+    };
 
     let backend_id = repo.id();
     let is_available = plugin_vcs_backends::has_plugin_vcs_backend(&backend_id);
@@ -73,6 +79,10 @@ pub(crate) fn current_repo_or_err(state: &State<'_, AppState>) -> Result<Arc<Rep
     if !is_available {
         // If the backend disappears (e.g. plugin disabled), prevent further operations on a stale handle.
         state.clear_current_repo();
+        log::error!(
+            "repo command aborted: backend '{}' is no longer available; plugin may be disabled or missing",
+            backend_id.as_ref()
+        );
         return Err(format!(
             "Backend `{}` is no longer available (plugin disabled?). Reopen the repository.",
             backend_id.as_ref()

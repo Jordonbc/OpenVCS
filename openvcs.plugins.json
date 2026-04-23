@@ -1,6 +1,14 @@
 {
-  "plugin": [
-    "@openvcs/git-plugin@nightly",
+  "stable": [
+    "@openvcs/git-plugin@latest",
+    "@openvcs/official-themes@latest"
+  ],
+  "beta": [
+    "@openvcs/git-plugin@beta",
+    "@openvcs/official-themes@beta"
+  ],
+  "dev": [
+    "@openvcs/git-plugin@edge",
     "@openvcs/official-themes@nightly"
   ]
 }

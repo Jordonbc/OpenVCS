@@ -1,7 +1,9 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import './lib/logger';
+import { syncFrontendMonitoring } from './lib/monitoring';
 import { TAURI } from './lib/tauri';
+import type { GlobalSettings } from './types';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
 import { setStatus } from './lib/status';
@@ -14,7 +16,7 @@ import {
 import { clearPluginMenubarMenus, initMenubar, refreshPluginMenubarMenus } from './ui/menubar';
 import { closeAllModals } from './ui/modals';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
-import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash } from './features/repo';
+import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash, yieldToPaint } from './features/repo';
 import { bindBranchUI } from './features/branches';
 import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
@@ -42,9 +44,12 @@ const commitBtn = qs<HTMLButtonElement>('#commit-btn');
     const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
     let fetchCloseTimer: number | null = null;
     let pluginMenuRefreshTimer: number | null = null;
+    /** Matches the fetch popover close animation so the element hides after the transition finishes. */
     const FETCH_CLOSE_MS = 130;
+    /** Gives repo-open plugin state time to settle before rebuilding contributed menubar items. */
+    const PLUGIN_MENU_REFRESH_SETTLE_MS = 400;
 
-    /** Schedules a delayed plugin menubar refresh to avoid repo-open races. */
+    /** Schedules a delayed plugin menubar refresh to avoid repo-open races while plugin state settles. */
     function schedulePluginMenuRefresh(delayMs = 250) {
         if (pluginMenuRefreshTimer !== null) {
             window.clearTimeout(pluginMenuRefreshTimer);
@@ -94,6 +99,9 @@ function forceCloseTransientUi() {
 
 /** Boots the frontend shell, wires handlers, and hydrates initial state. */
 async function boot() {
+    const cfg = await loadInitialGlobalSettings();
+    await syncFrontendMonitoring(cfg);
+
     // If launched as the Output Log window, render that view and skip the main app UI.
     if (await initOutputLogViewIfRequested()) return;
     initOverlayScrollbarsFor(document);
@@ -101,10 +109,9 @@ async function boot() {
     await initPlugins();
     // theme & basic layout
     // Prefer native settings for theme; fall back to current in-memory default
-    if (TAURI.has) {
+    if (cfg) {
         (async () => {
             try {
-                const cfg = await TAURI.invoke<any>('get_global_settings');
                 const themeMode = cfg?.general?.theme as ('dark'|'light'|'system'|undefined);
                 const modeForPack = themeMode ?? 'system';
                 const themePack = String(cfg?.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
@@ -184,7 +191,8 @@ async function boot() {
                 await TAURI.invoke('git_fetch', {});
                 notify('Fetched');
                 if (hydrate) {
-                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                    await yieldToPaint();
+                    void Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 }
                 success = true;
             } catch {
@@ -207,7 +215,8 @@ async function boot() {
                 await TAURI.invoke('git_fetch_all', {});
                 notify('Fetched all remotes');
                 if (hydrate) {
-                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                    await yieldToPaint();
+                    void Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 }
                 success = true;
             } catch {
@@ -381,14 +390,22 @@ async function boot() {
                 break;
             case '__plugin_menu_action__': {
                 if (!TAURI.has) { notify('Plugin actions are available in the desktop app'); break; }
-                const pluginId = String(payload?.pluginId || '').trim();
-                const actionId = String(payload?.actionId || '').trim();
-                if (!pluginId || !actionId) break;
+                const pluginId = typeof payload?.pluginId === 'string' ? payload.pluginId.trim() : '';
+                const actionId = typeof payload?.actionId === 'string' ? payload.actionId.trim() : '';
+                if (!pluginId || !actionId) {
+                    console.warn(`Plugin menu action skipped: missing pluginId (${!!pluginId}) or actionId (${!!actionId})`);
+                    notify(!pluginId && !actionId
+                        ? 'Plugin action is missing plugin and action IDs'
+                        : !pluginId
+                            ? 'Plugin action missing plugin ID'
+                            : `Plugin action missing action for "${pluginId}"`);
+                    break;
+                }
                 try {
                     await invokePluginAction(pluginId, actionId);
                 } catch (e) {
                     console.error(`Plugin menu action failed: ${pluginId}/${actionId}`, e);
-                    notify('Plugin action failed');
+                    notify(`Plugin action for "${pluginId}" failed`);
                 }
                 break;
             }
@@ -450,7 +467,7 @@ async function boot() {
 
     initMenubar(runMenuAction);
     refreshPluginMenubarMenus().catch(() => {});
-    schedulePluginMenuRefresh(400);
+    schedulePluginMenuRefresh(PLUGIN_MENU_REFRESH_SETTLE_MS);
 
     TAURI.listen?.('menu', async ({ payload: id }) => {
         const resolved = typeof id === 'string' ? id : String(id ?? '');
@@ -461,6 +478,7 @@ async function boot() {
     // Global busy indicator for any Git activity
     (function(){
         let busyTimer: any = null;
+        let busyFrame: number | null = null;
         const setBusy = (msg: string, showSpinner = true) => {
             const s = document.getElementById('status');
             if (!s) return;
@@ -474,13 +492,20 @@ async function boot() {
                 s.textContent = 'Ready';
             }, 1500);
         };
+        const queueBusyUpdate = () => {
+            if (busyFrame !== null) return;
+            busyFrame = window.requestAnimationFrame(() => {
+                busyFrame = null;
+                const focused = document.visibilityState === 'visible' && document.hasFocus();
+                setBusy('Working…', focused);
+            });
+        };
         TAURI.listen?.('git-progress', ({ payload }) => {
             // Don't spam the footer with raw git output; keep it generic.
             void payload;
             // Avoid spinner-driven repaint churn for passive/background progress.
             // Explicit user actions already set busy state via their own controllers.
-            const focused = document.visibilityState === 'visible' && document.hasFocus();
-            setBusy('Working…', focused);
+            queueBusyUpdate();
         });
     })();
 
@@ -648,6 +673,19 @@ async function boot() {
         if (e.key !== 'Escape') return;
         if (fetchPop && !fetchPop.hidden) closeFetchPopover();
     });
+}
+
+/** Loads persisted global settings for bootstrap-time features such as theming and monitoring. */
+async function loadInitialGlobalSettings(): Promise<GlobalSettings | null> {
+    if (!TAURI.has) {
+        return null;
+    }
+
+    try {
+        return await TAURI.invoke<GlobalSettings>('get_global_settings');
+    } catch {
+        return null;
+    }
 }
 
 boot();

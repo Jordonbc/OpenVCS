@@ -101,7 +101,7 @@ jobs:
 
       - name: Compute metadata (date, short SHA, compare, changelog)
         id: meta
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const date = new Date().toISOString().slice(0, 10); // UTC date
@@ -152,7 +152,7 @@ jobs:
 
       # ---------- Frontend ----------
       - name: Setup Node
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -164,6 +164,12 @@ jobs:
 
       - name: Build frontend
         working-directory: Frontend
+        env:
+          VITE_SENTRY_ENVIRONMENT: nightly
+          VITE_SENTRY_RELEASE: openvcs-nightly-${{ steps.meta.outputs.short_sha }}
+          SENTRY_AUTH_TOKEN: ${{ matrix.platform == 'ubuntu-24.04' && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_ORG: ${{ matrix.platform == 'ubuntu-24.04' && secrets.SENTRY_ORG || '' }}
+          SENTRY_PROJECT: ${{ matrix.platform == 'ubuntu-24.04' && secrets.SENTRY_PROJECT || '' }}
         run: npm run build
 
       # ---------- Rust & platform deps ----------
@@ -197,7 +203,7 @@ jobs:
 
       # ---------- Reset rolling tag (optional but keeps things tidy) ----------
       - name: Remove existing 'openvcs-nightly' release & tag (if any)
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const owner = context.repo.owner;
@@ -224,6 +230,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FRONTEND_SKIP_BUILD: '1'
           OPENVCS_UPDATE_CHANNEL: nightly
+          OPENVCS_SENTRY_DSN: ${{ secrets.OPENVCS_SENTRY_DSN }}
+          OPENVCS_SENTRY_ENVIRONMENT: nightly
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_PRIVATE_KEY_PASSWORD }}
         with:

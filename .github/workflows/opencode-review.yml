@@ -26,10 +26,10 @@ jobs:
         env:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          #GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL }}
-          use_github_token: true
+          use_github_token: false
           prompt: |
             Review this pull request:
             - Check for code quality issues
@@ -37,15 +37,15 @@ jobs:
             - Suggest improvements
 
       - name: fallback
-        if: steps.review_primary.outcome == 'failure'
+        if: ${{ steps.review_primary.outcome == 'failure' }}
         uses: anomalyco/opencode/github@2410593023d2c61f05123c9b0faf189a28dfbeee
         env:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          #GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL_FALLBACK }}
-          use_github_token: true
+          use_github_token: false
           prompt: |
             Review this pull request:
             - Check for code quality issues

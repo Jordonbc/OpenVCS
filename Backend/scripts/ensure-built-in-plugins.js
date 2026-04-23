@@ -9,6 +9,7 @@ const scriptDir = __dirname;
 const backendDir = path.resolve(scriptDir, '..');
 const clientDir = path.resolve(backendDir, '..');
 const builtInConfigPath = path.join(clientDir, 'openvcs.plugins.json');
+const localConfigPath = path.join(clientDir, 'openvcs.plugins.local.json');
 const builtInOutputDir = path.join(clientDir, 'target', 'openvcs', 'built-in-plugins');
 const nodeRuntimeDir = path.join(clientDir, 'target', 'openvcs', 'node-runtime');
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -79,11 +80,76 @@ function ensureBundledNodeRuntime() {
   console.log(`Bundled node runtime -> ${dest}`);
 }
 
+/**
+ * Determines the active update channel from environment variable.
+ * Supports stable/beta/dev and maps nightly->dev.
+ * Defaults to stable when unset.
+ */
+function getActiveChannel() {
+  const channel = (process.env.OPENVCS_UPDATE_CHANNEL || '').trim().toLowerCase();
+  if (channel === 'nightly') {
+    return 'dev';
+  }
+  if (channel === 'stable' || channel === 'beta' || channel === 'dev') {
+    return channel;
+  }
+  return 'stable';
+}
+
+/**
+ * Reads the built-in plugin config and extracts specs for the active channel.
+ * Falls back to stable if channel array is missing.
+ */
 function readBuiltInConfig() {
   const raw = fs.readFileSync(builtInConfigPath, 'utf8');
   const parsed = JSON.parse(raw);
-  const entries = Array.isArray(parsed?.plugin) ? parsed.plugin : [];
+  const channel = getActiveChannel();
+
+  // Try the channel-specific array first, fall back to stable
+  let entries = [];
+  if (Array.isArray(parsed?.[channel])) {
+    entries = parsed[channel];
+  } else if (Array.isArray(parsed?.stable)) {
+    console.warn(`Channel '${channel}' not found in config, falling back to 'stable'`);
+    entries = parsed.stable;
+  }
+
   return entries.map((value) => String(value || '').trim()).filter(Boolean);
+}
+
+/**
+ * Reads local override config and returns the channel-specific override when present.
+ * Returns null when no override applies for the active channel.
+ */
+function readLocalOverrideConfig() {
+  if (!fs.existsSync(localConfigPath)) {
+    return null;
+  }
+
+  const raw = fs.readFileSync(localConfigPath, 'utf8');
+  const parsed = JSON.parse(raw);
+  const channel = getActiveChannel();
+
+  if (!Object.prototype.hasOwnProperty.call(parsed || {}, channel)) {
+    return null;
+  }
+
+  const entries = Array.isArray(parsed?.[channel]) ? parsed[channel] : [];
+  return entries.map((value) => String(value || '').trim()).filter(Boolean);
+}
+
+/**
+ * Determines which plugin specs to use: local override takes priority
+ * when present for the active channel, otherwise uses main config.
+ */
+function resolvePluginSpecs() {
+  const localSpecs = readLocalOverrideConfig();
+  if (localSpecs !== null) {
+    const channel = getActiveChannel();
+    console.log(`Using local override for channel '${channel}' (${localSpecs.length} plugins)`);
+    return localSpecs;
+  }
+  return readBuiltInConfig();
 }
 
 function resolveLocalSource(spec) {
@@ -224,8 +290,9 @@ function rebuildBuiltInPlugins() {
   fs.rmSync(builtInOutputDir, { recursive: true, force: true });
   ensureDirectory(builtInOutputDir);
 
-  const specs = readBuiltInConfig();
-  console.log(`Syncing ${specs.length} built-in plugins from ${builtInConfigPath}`);
+  const specs = resolvePluginSpecs();
+  const channel = getActiveChannel();
+  console.log(`Syncing ${specs.length} built-in plugins for channel '${channel}' from ${builtInConfigPath}`);
 
   for (const spec of specs) {
     const { tempRoot, packageDir, pluginId } = stageBuiltInPlugin(spec);

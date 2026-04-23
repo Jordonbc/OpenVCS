@@ -14,6 +14,7 @@
 @import "./modal/repo-settings.css";
 @import "./output-log.css";
 @import "./modal/new-branch.css";
+@import "./modal/confirm.css";
 @import "./modal/stash-confirm.css";
 @import "./modal/merge.css";
 @import "./modal/ssh-keys.css";
