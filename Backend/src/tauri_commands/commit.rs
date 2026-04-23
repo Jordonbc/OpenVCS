@@ -145,12 +145,10 @@ pub async fn commit_selected<R: Runtime>(
         on(VcsEvent::Info {
             msg: "Staging selected files…".into(),
         });
-        repo.inner()
-            .stage_paths(&paths)
-            .map_err(|e| {
-                error!("stage_paths failed: {e}");
-                e.to_string()
-            })?;
+        repo.inner().stage_paths(&paths).map_err(|e| {
+            error!("stage_paths failed: {e}");
+            e.to_string()
+        })?;
 
         on(VcsEvent::Info {
             msg: "Writing commit…".into(),
@@ -322,12 +320,10 @@ pub async fn commit_patch_and_files<R: Runtime>(
             on(VcsEvent::Info {
                 msg: "Staging selected files…".into(),
             });
-            repo.inner()
-                .stage_paths(&paths)
-                .map_err(|e| {
-                    error!("stage_paths failed: {e}");
-                    e.to_string()
-                })?;
+            repo.inner().stage_paths(&paths).map_err(|e| {
+                error!("stage_paths failed: {e}");
+                e.to_string()
+            })?;
             repo.inner()
                 .commit(&message, &name, &email, &paths)
                 .map_err(|e| e.to_string())?

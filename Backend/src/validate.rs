@@ -1,6 +1,15 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::path::Path;
+use std::sync::LazyLock;
+
+/// Regex pattern for scp-like Git URLs.
+static SCP_LIKE_RE: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"^[\w.-]+@[\w.-]+:[\w./-]+\.git$").unwrap());
+
+/// Regex pattern for Windows absolute paths.
+static WIN_ABS_RE: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"^[A-Za-z]:[\\/]").unwrap());
 
 #[derive(serde::Serialize)]
 pub struct Validation {
@@ -51,8 +60,7 @@ fn is_probably_git_url(u: &str) -> bool {
         return true;
     }
     // scp-like: git@host:org/repo.git
-    let scp_like = regex::Regex::new(r"^[\w.-]+@[\w.-]+:[\w./-]+\.git$").unwrap();
-    if scp_like.is_match(u) {
+    if SCP_LIKE_RE.is_match(u) {
         return true;
     }
     false
@@ -76,8 +84,7 @@ fn looks_like_path(s: &str) -> bool {
         return true;
     }
     // Windows drive letter absolute, e.g. C:\...
-    let win_abs = regex::Regex::new(r"^[A-Za-z]:[\\/]").unwrap();
-    win_abs.is_match(s)
+    WIN_ABS_RE.is_match(s)
 }
 
 /// Validates whether a string looks like a supported Git URL.

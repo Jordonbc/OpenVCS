@@ -38,9 +38,23 @@ mod validate;
 mod workarounds;
 
 /// Loads `Client/.env` for local development without overwriting existing env vars.
+///
+/// Missing .env file is silently ignored. Malformed or unreadable .env files
+/// are reported with context for debugging before structured logging is ready.
 fn load_local_dotenv() {
     let dotenv_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.env");
-    let _ = dotenvy::from_path(&dotenv_path);
+
+    match dotenvy::from_path(&dotenv_path) {
+        Ok(_) => {}
+        Err(dotenvy::Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => {
+            eprintln!(
+                "warning: failed to load local .env from {}: {}",
+                dotenv_path.display(),
+                err
+            );
+        }
+    }
 }
 
 /// Selects preferred backend from settings or first available plugin backend.

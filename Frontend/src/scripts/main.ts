@@ -390,14 +390,22 @@ async function boot() {
                 break;
             case '__plugin_menu_action__': {
                 if (!TAURI.has) { notify('Plugin actions are available in the desktop app'); break; }
-                const pluginId = String(payload?.pluginId || '').trim();
-                const actionId = String(payload?.actionId || '').trim();
-                if (!pluginId || !actionId) break;
+                const pluginId = typeof payload?.pluginId === 'string' ? payload.pluginId.trim() : '';
+                const actionId = typeof payload?.actionId === 'string' ? payload.actionId.trim() : '';
+                if (!pluginId || !actionId) {
+                    console.warn(`Plugin menu action skipped: missing pluginId (${!!pluginId}) or actionId (${!!actionId})`);
+                    notify(!pluginId && !actionId
+                        ? 'Plugin action is missing plugin and action IDs'
+                        : !pluginId
+                            ? 'Plugin action missing plugin ID'
+                            : `Plugin action missing action for "${pluginId}"`);
+                    break;
+                }
                 try {
                     await invokePluginAction(pluginId, actionId);
                 } catch (e) {
                     console.error(`Plugin menu action failed: ${pluginId}/${actionId}`, e);
-                    notify('Plugin action failed');
+                    notify(`Plugin action for "${pluginId}" failed`);
                 }
                 break;
             }
