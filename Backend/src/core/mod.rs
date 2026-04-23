@@ -97,6 +97,8 @@ pub trait Vcs: Send + Sync {
 
     /// Stages changes represented by a textual patch.
     fn stage_patch(&self, patch: &str) -> Result<()>;
+    /// Stages explicit paths to the index.
+    fn stage_paths(&self, paths: &[PathBuf]) -> Result<()>;
     /// Discards changes for the provided repository-relative paths.
     fn discard_paths(&self, paths: &[PathBuf]) -> Result<()>;
     /// Applies a patch in reverse to revert its changes.
