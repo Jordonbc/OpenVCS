@@ -35,6 +35,7 @@ jobs:
             - Check for code quality issues
             - Look for potential bugs
             - Suggest improvements
+            - If you make any code edits, run 'cd Client && just test' to verify they compile and pass tests before committing.
 
       - name: fallback
         if: ${{ steps.review_primary.outcome == 'failure' }}
@@ -51,3 +52,4 @@ jobs:
             - Check for code quality issues
             - Look for potential bugs
             - Suggest improvements
+            - If you make any code edits, run 'cd Client && just test' to verify they compile and pass tests before committing.
