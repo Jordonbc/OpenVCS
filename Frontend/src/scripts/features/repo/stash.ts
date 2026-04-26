@@ -77,7 +77,6 @@ export function renderStashList(query: string): boolean {
             const items: CtxItem[] = [];
             items.push({ label: 'Apply stash', action: async () => {
                 try {
-                    
                     await TAURI.invoke('git_stash_apply', { selector: target });
                     notify('Applied stash');
                     await Promise.allSettled([hydrateStatus(), hydrateStash()]);
@@ -88,7 +87,6 @@ export function renderStashList(query: string): boolean {
                 const ok = await confirmBool(`Delete ${target}? This cannot be undone.`);
                 if (!ok) return;
                 try {
-                    
                     await TAURI.invoke('git_stash_drop', { selector: target });
                     notify('Deleted stash');
                     if (state.currentStash === target) state.currentStash = '';
@@ -193,7 +191,6 @@ function wireStashFooterButtons(container: HTMLElement) {
         const selector = getActiveStashSelector();
         if (!selector) return;
         try {
-            
             await TAURI.invoke('git_stash_apply', { selector });
             notify('Applied stash');
             await Promise.allSettled([hydrateStatus(), hydrateStash()]);
@@ -206,7 +203,6 @@ function wireStashFooterButtons(container: HTMLElement) {
         const selector = getActiveStashSelector();
         if (!selector) return;
         try {
-            
             await TAURI.invoke('git_stash_pop', { selector });
             notify('Popped stash');
             await Promise.allSettled([hydrateStatus(), hydrateStash()]);
@@ -221,7 +217,6 @@ function wireStashFooterButtons(container: HTMLElement) {
         const ok = await confirmBool(`Drop ${selector}? This cannot be undone.`);
         if (!ok) return;
         try {
-            
             await TAURI.invoke('git_stash_drop', { selector });
             notify('Dropped stash');
             state.currentStash = '';
