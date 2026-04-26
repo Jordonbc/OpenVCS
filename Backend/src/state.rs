@@ -134,14 +134,6 @@ impl AppState {
 
     /* -------- repo config -------- */
 
-    /// Returns a snapshot of repository-local settings.
-    ///
-    /// # Returns
-    /// - A cloned [`RepoConfig`] for the current repository context.
-    pub fn repo_config(&self) -> RepoConfig {
-        self.repo_config.read().clone()
-    }
-
     /// Replaces repository-local settings kept in memory.
     ///
     /// # Parameters
