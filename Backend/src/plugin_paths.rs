@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Path resolution helpers for installed and built-in plugins.
 
-use directories::ProjectDirs;
 use log::{info, warn};
 use std::{
     env,
@@ -13,8 +12,8 @@ use std::{
     },
 };
 
-/// File name expected for plugin manifests.
-pub const PLUGIN_MANIFEST_NAME: &str = "openvcs.plugin.json";
+/// File name expected for plugin package manifests.
+pub const PLUGIN_PACKAGE_NAME: &str = "package.json";
 /// Directory name used for built-in plugin bundles.
 pub const BUILT_IN_PLUGINS_DIR_NAME: &str = "built-in-plugins";
 /// Directory name used for the bundled Node runtime.
@@ -36,7 +35,7 @@ static LOGGED_BUILTIN_DIRS: AtomicBool = AtomicBool::new(false);
 /// # Returns
 /// - The absolute config-directory path used to store installed plugins.
 pub fn plugins_dir() -> PathBuf {
-    if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
+    if let Some(pd) = crate::app_identity::project_dirs() {
         pd.config_dir().join("plugins")
     } else {
         PathBuf::from("plugins")
@@ -180,12 +179,12 @@ fn bundled_resource_base_dirs(resource_dir_name: &str) -> Vec<PathBuf> {
 /// Returns discovered built-in plugin directories that currently exist.
 ///
 /// # Returns
-/// - Existing filesystem directories searched for built-in plugins.
+/// - Existing built-in plugin directories containing `package.json`.
 pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
-    let mut candidates: Vec<PathBuf> = Vec::new();
+    let mut roots: Vec<PathBuf> = Vec::new();
 
     for base_dir in bundled_resource_base_dirs(BUILT_IN_PLUGINS_DIR_NAME) {
-        push_unique_path(&mut candidates, base_dir.join(BUILT_IN_PLUGINS_DIR_NAME));
+        push_unique_path(&mut roots, base_dir.join(BUILT_IN_PLUGINS_DIR_NAME));
     }
 
     // On Windows installers the per-user AppData Local folder is commonly
@@ -195,7 +194,7 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
     #[cfg(target_os = "windows")]
     if let Ok(local_appdata) = env::var("LOCALAPPDATA") {
         push_unique_path(
-            &mut candidates,
+            &mut roots,
             PathBuf::from(local_appdata)
                 .join("OpenVCS")
                 .join(BUILT_IN_PLUGINS_DIR_NAME),
@@ -203,13 +202,29 @@ pub fn built_in_plugin_dirs() -> Vec<PathBuf> {
     }
 
     let mut seen = std::collections::HashSet::new();
-    let result: Vec<PathBuf> = candidates
+    let result: Vec<PathBuf> = roots
         .into_iter()
+        .filter(|root| root.is_dir())
+        .flat_map(|root| {
+            let entries = match std::fs::read_dir(&root) {
+                Ok(entries) => entries,
+                Err(err) => {
+                    log::trace!(
+                        "plugins: skipping built-in plugin root {}: {}",
+                        root.display(),
+                        err
+                    );
+                    return Vec::new();
+                }
+            };
+            entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| path.is_dir() && path.join(PLUGIN_PACKAGE_NAME).is_file())
+                .collect::<Vec<_>>()
+        })
         .filter_map(|path| {
-            if !seen.insert(path.clone()) {
-                return None;
-            }
-            if path.is_dir() {
+            if seen.insert(path.clone()) {
                 Some(path)
             } else {
                 None

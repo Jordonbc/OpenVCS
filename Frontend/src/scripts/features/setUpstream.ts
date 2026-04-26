@@ -28,10 +28,6 @@ export function wireSetUpstream() {
     const upstream = (selectEl?.value || "").trim();
     if (!branch || !upstream) return;
     try {
-      if (!TAURI.has) {
-        notify("Set upstream requires the desktop app");
-        return;
-      }
       await TAURI.invoke("git_set_upstream", { branch, upstream });
       notify(`Tracking '${upstream}'`);
       closeModal("set-upstream-modal");

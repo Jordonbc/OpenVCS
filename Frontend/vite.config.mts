@@ -1,10 +1,17 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
 /// <reference types="node" />
 
-// vite.config.ts
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig } from "vite";
 import { fileURLToPath, URL } from "node:url";
 
 const host = process.env.TAURI_DEV_HOST;
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN?.trim();
+const sentryOrg = process.env.SENTRY_ORG?.trim();
+const sentryProject = process.env.SENTRY_PROJECT?.trim();
+const sentryRelease = process.env.VITE_SENTRY_RELEASE?.trim();
+const shouldUploadSourceMaps = Boolean(sentryAuthToken && sentryOrg && sentryProject && sentryRelease);
 
 export default defineConfig({
     base: "./", // critical for packaged Tauri paths
@@ -36,8 +43,27 @@ export default defineConfig({
         target: "es2022",
         outDir: "dist",
         emptyOutDir: true,
+        sourcemap: shouldUploadSourceMaps ? "hidden" : false,
     },
     optimizeDeps: {
-        esbuildOptions: { target: "es2022" },
+        include: [],
     },
+    plugins: shouldUploadSourceMaps
+        ? [
+              sentryVitePlugin({
+                  authToken: sentryAuthToken,
+                  org: sentryOrg,
+                  project: sentryProject,
+                  release: {
+                      name: sentryRelease,
+                      create: true,
+                      finalize: true,
+                  },
+                  sourcemaps: {
+                      assets: "./dist/**",
+                  },
+                  telemetry: false,
+              }),
+          ]
+        : [],
 });

@@ -330,7 +330,7 @@ pub fn list_themes() -> Vec<ThemeSummary> {
         }
     }
 
-    summaries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    summaries.sort_by_key(|a| a.name.to_lowercase());
 
     let mut out = Vec::with_capacity(summaries.len() + 1);
     out.push(default_theme_summary());

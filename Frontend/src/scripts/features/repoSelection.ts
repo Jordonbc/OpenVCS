@@ -8,7 +8,6 @@ import { state } from '../state/state';
 type RepoSummary = { path: string; current_branch: string; branches: { name: string }[] };
 
 export async function refreshRepoSummary() {
-    if (!TAURI.has) return;
     try {
         const info = await TAURI.invoke<RepoSummary>('get_repo_summary');
         state.branch = (info as any).current_branch || '';

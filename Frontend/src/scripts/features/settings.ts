@@ -1,13 +1,15 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { TAURI } from '../lib/tauri';
+import { TAURI, isTauriRuntimeAvailable } from '../lib/tauri';
+import { syncFrontendMonitoring } from '../lib/monitoring';
 import { openModal, closeModal } from '../ui/modals';
 import { toKebab } from '../lib/dom';
 import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
 import { setTheme } from '../ui/layout';
+import { collectGeneralSettings, loadGeneralSettingsIntoForm } from './settingsGeneral';
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
-import { reloadPlugins } from '../plugins';
+import { invokePluginAction, reloadPlugins } from '../plugins';
 import type { PluginSummary } from '../plugins';
 import { applyPluginSettingsSections } from '../plugins';
 import type { GlobalSettings, ThemeSummary } from '../types';
@@ -19,6 +21,7 @@ interface PluginMenuPayload {
     plugin_id: string;
     id: string;
     label: string;
+    surface: 'menubar' | 'settings';
     elements: Array<{
         type: 'text' | 'button' | string;
         id?: string;
@@ -244,7 +247,6 @@ async function renderPluginMenus(modal: HTMLElement): Promise<void> {
         .querySelectorAll<HTMLElement>('.panel-form[data-plugin-menu="true"]')
         .forEach((node) => node.remove());
 
-    if (!TAURI.has) return;
     let menus: PluginMenuPayload[] = [];
     let pluginSummaries: PluginSummary[] = [];
     try {
@@ -298,6 +300,10 @@ async function renderPluginMenus(modal: HTMLElement): Promise<void> {
     };
 
     for (const menu of menus) {
+        // Only render settings-surface menus in the settings modal.
+        const surface = String(menu.surface || 'menubar').toLowerCase();
+        if (surface !== 'settings') continue;
+
         const section = pluginSectionId(menu.plugin_id, menu.id);
         const navLi = document.createElement('li');
         navLi.dataset.pluginMenu = 'true';
@@ -422,10 +428,9 @@ export function openSettings(section?: string){
 
     // Prevent a "double-click to refresh" feel where the user opens the Theme dropdown
     // before the async settings/theme list has finished loading.
-    if (TAURI.has) {
-        modal.setAttribute('aria-busy', 'true');
-        const setThemeAuto = modal.querySelector<HTMLInputElement>('#set-theme-auto');
-        const setThemeSel = modal.querySelector<HTMLSelectElement>('#set-theme');
+    modal.setAttribute('aria-busy', 'true');
+    const setThemeAuto = modal.querySelector<HTMLInputElement>('#set-theme-auto');
+    const setThemeSel = modal.querySelector<HTMLSelectElement>('#set-theme');
         if (setThemeAuto) setThemeAuto.disabled = true;
         if (setThemeSel) {
             setThemeSel.disabled = true;
@@ -435,7 +440,6 @@ export function openSettings(section?: string){
             opt.textContent = 'Loading…';
             setThemeSel.appendChild(opt);
         }
-    }
 
     loadSettingsIntoForm(modal)
         .catch(console.error)
@@ -552,12 +556,12 @@ export function wireSettings() {
 
         panels.addEventListener('click', async (e) => {
             const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-plugin-action][data-plugin-id]');
-            if (!btn || !TAURI.has) return;
+            if (!btn) return;
             const pluginId = btn.dataset.pluginId || '';
             const actionId = btn.dataset.pluginAction || '';
             if (!pluginId || !actionId) return;
             try {
-                await TAURI.invoke('invoke_plugin_action', { pluginId, actionId });
+                await invokePluginAction(pluginId, actionId);
             } catch (err) {
                 console.error('Failed to invoke plugin action', err);
                 notify('Plugin action failed');
@@ -671,7 +675,6 @@ export function wireSettings() {
         try {
             const activePanel = modal.querySelector<HTMLElement>('#settings-panels .panel-form:not(.hidden)');
             if (activePanel?.getAttribute('data-plugin-settings') === 'true') {
-                if (!TAURI.has) return;
                 const pluginId = String(activePanel.dataset.pluginId || '').trim();
                 if (!pluginId) {
                     notify('Failed to save plugin settings');
@@ -688,9 +691,8 @@ export function wireSettings() {
 
             const next = collectSettingsFromForm(modal);
 
-            if (TAURI.has) {
-                await TAURI.invoke('set_global_settings', { cfg: next });
-            }
+            await TAURI.invoke('set_global_settings', { cfg: next });
+            await syncFrontendMonitoring(next);
 
             modal.dataset.currentCfg = JSON.stringify(next);
 
@@ -725,7 +727,6 @@ export function wireSettings() {
         try {
             const activePanel = modal.querySelector<HTMLElement>('#settings-panels .panel-form:not(.hidden)');
             if (activePanel?.getAttribute('data-plugin-settings') === 'true') {
-                if (!TAURI.has) return;
                 const pluginId = String(activePanel.dataset.pluginId || '').trim();
                 const section = String(activePanel.getAttribute('data-panel') || '').trim();
                 if (!pluginId) {
@@ -740,7 +741,6 @@ export function wireSettings() {
                 return;
             }
 
-            if (!TAURI.has) return;
             const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
 
             cur.general = {
@@ -752,7 +752,7 @@ export function wireSettings() {
                 reopen_last_repos: true,
                 checks_on_launch: true,
                 telemetry: false,
-                crash_reports: false,
+                crash_reports: true,
             };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
@@ -762,6 +762,7 @@ export function wireSettings() {
             cur.plugins = { disabled: [], enabled: [] };
 
             await TAURI.invoke('set_global_settings', { cfg: cur });
+            await syncFrontendMonitoring(cur);
             applyAnimationPreference(cur.performance?.animations);
             await loadSettingsIntoForm(modal);
             setTheme('system');
@@ -780,20 +781,7 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
 
     const o: GlobalSettings = { ...base };
 
-    const autoTheme = !!get<HTMLInputElement>('#set-theme-auto')?.checked;
-    const themePack = get<HTMLSelectElement>('#set-theme')?.value || DEFAULT_LIGHT_THEME_ID;
-    const theme = autoTheme ? 'system' : modeForTheme(themePack);
-
-    o.general = {
-        ...o.general,
-        theme,
-        theme_pack: themePack || DEFAULT_LIGHT_THEME_ID,
-        language: get<HTMLSelectElement>('#set-language')?.value,
-        default_backend: (get<HTMLSelectElement>('#set-default-backend')?.value || 'git') as any,
-        update_channel: (() => { const v = get<HTMLSelectElement>('#set-update-channel')?.value; return v === 'beta' ? 'nightly' : v; })(),
-        reopen_last_repos: !!get<HTMLInputElement>('#set-reopen-last')?.checked,
-        checks_on_launch: !!get<HTMLInputElement>('#set-checks-on-launch')?.checked,
-    };
+    o.general = collectGeneralSettings(root, o, modeForTheme);
 
     o.diff = {
         ...o.diff,
@@ -896,43 +884,18 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const m = root || (document.getElementById('settings-modal') as HTMLElement | null);
     if (!m) return;
     const get = <T extends HTMLElement = HTMLElement>(sel: string) => m.querySelector<T>(sel);
-    const cfg = TAURI.has ? await TAURI.invoke<GlobalSettings>('get_global_settings') : null;
+    let cfg: GlobalSettings | null = null;
+    try {
+        cfg = await TAURI.invoke<GlobalSettings>('get_global_settings');
+    } catch { /* ignore */ }
     if (!cfg) return;
 
     m.dataset.currentCfg = JSON.stringify(cfg);
 
     await loadPluginsIntoForm(m, cfg);
 
-    const themeSel = get<HTMLSelectElement>('#set-theme');
-    const elAuto = get<HTMLInputElement>('#set-theme-auto');
-    const themePref = (cfg.general?.theme || 'system') as 'system'|'light'|'dark';
-
-    if (elAuto) elAuto.checked = themePref === 'system';
-
-    if (themeSel) {
-        let desiredId = String(cfg.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
-        if (desiredId.trim().toLowerCase() === DEFAULT_THEME_ID) {
-            desiredId = themePref === 'dark' ? DEFAULT_DARK_THEME_ID : DEFAULT_LIGHT_THEME_ID;
-        }
-        await rebuildThemePackOptions(themeSel, {
-            desiredId,
-            forceReload: true,
-        });
-        themeSel.disabled = themePref === 'system';
-        if (themePref === 'system') {
-            themeSel.value = getActiveThemeId() || themeSel.value;
-        }
-    }
-
-    const elLang  = get<HTMLSelectElement>('#set-language'); if (elLang) elLang.value = toKebab(cfg.general?.language);
-    await refreshDefaultBackendOptions(m, cfg);
-    const elChan  = get<HTMLSelectElement>('#set-update-channel'); if (elChan) {
-        const v = toKebab(cfg.general?.update_channel);
-        elChan.value = (v === 'beta') ? 'nightly' : v;
-    }
-    const elReo   = get<HTMLInputElement>('#set-reopen-last'); if (elReo) elReo.checked = !!cfg.general?.reopen_last_repos;
-    const elChk   = get<HTMLInputElement>('#set-checks-on-launch'); if (elChk) elChk.checked = !!cfg.general?.checks_on_launch;
-    const elRl    = get<HTMLInputElement>('#set-recents-limit'); if (elRl) elRl.value = String(cfg.ux?.recents_limit ?? 10);
+    await loadGeneralSettingsIntoForm(m, cfg, toKebab, refreshDefaultBackendOptions, rebuildThemePackOptions);
+    const elRl = get<HTMLInputElement>('#set-recents-limit'); if (elRl) elRl.value = String(cfg.ux?.recents_limit ?? 10);
 
     const elTw = get<HTMLInputElement>('#set-tab-width'); if (elTw) elTw.value = String(cfg.diff?.tab_width ?? 0);
     const elIw = get<HTMLSelectElement>('#set-ignore-whitespace'); if (elIw) elIw.value = toKebab(cfg.diff?.ignore_whitespace);
@@ -978,11 +941,9 @@ async function refreshDefaultBackendOptions(modal: HTMLElement, cfg: GlobalSetti
     const desired = String(cfg.general?.default_backend || '').trim();
 
     let available: Array<[string, string]> = [];
-    if (TAURI.has) {
-        try {
-            available = await TAURI.invoke<Array<[string, string]>>('list_vcs_backends_cmd');
-        } catch {}
-    }
+    try {
+        available = await TAURI.invoke<Array<[string, string]>>('list_vcs_backends_cmd');
+    } catch {}
 
     const backends = (Array.isArray(available) ? available : [])
         .map(([id, name]) => [String(id || '').trim(), String(name || '').trim()] as const)
@@ -997,7 +958,12 @@ async function refreshDefaultBackendOptions(modal: HTMLElement, cfg: GlobalSetti
     }
 
     el.disabled = backends.length === 0;
-    if (!backends.length) return;
+    if (!backends.length) {
+        console.warn(
+            'settings: no VCS backends are currently available; default backend selection is disabled',
+        );
+        return;
+    }
     if (desired && backends.some(([id]) => id === desired)) {
         el.value = desired;
     } else {
@@ -1011,48 +977,24 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     const detailEl = modal.querySelector<HTMLElement>('#plugins-detail');
     const groupLabelEl = modal.querySelector<HTMLElement>('#plugins-group-label');
     const searchEl = modal.querySelector<HTMLInputElement>('#plugins-search');
-    const installBundleBtn = modal.querySelector<HTMLButtonElement>('#plugins-install-bundle');
+    const syncConfigBtn = modal.querySelector<HTMLButtonElement>('#plugins-sync-config');
     const enableAllBtn = modal.querySelector<HTMLButtonElement>('#plugins-enable-all');
     const disableAllBtn = modal.querySelector<HTMLButtonElement>('#plugins-disable-all');
 
-    if (!pane || !listEl || !detailEl || !groupLabelEl || !searchEl || !installBundleBtn || !enableAllBtn || !disableAllBtn) return;
+    if (!pane || !listEl || !detailEl || !groupLabelEl || !searchEl || !syncConfigBtn || !enableAllBtn || !disableAllBtn) return;
 
     // This settings pane can be initialized multiple times during navigation/rerender.
     // Avoid stacking duplicate click handlers which would open many dialogs.
-    if (!(installBundleBtn as any).dataset?.bound) {
-        (installBundleBtn as any).dataset.bound = '1';
-        installBundleBtn.addEventListener('click', async () => {
-            if (!TAURI.has) return;
+    if (!(syncConfigBtn as any).dataset?.bound) {
+        (syncConfigBtn as any).dataset.bound = '1';
+        syncConfigBtn.addEventListener('click', async () => {
             try {
-                const bundlePath = await TAURI.invoke<string | null>('browse_file', { purpose: 'install_plugin' });
-                if (!bundlePath) return;
-
-                const installed = await TAURI.invoke<any>('install_ovcsp', { bundlePath });
-                notify(`Installed ${installed?.plugin_id || 'plugin'} ${installed?.version || ''}`.trim());
-
-                const pluginId = String(installed?.plugin_id || '').trim();
-                const version = String(installed?.version || '').trim();
-                if (pluginId && version) {
-                    const trusted = await confirmBool(
-                        'Trust this plugin and allow it to run?\n\n'
-                        + 'Only approve plugins from sources you trust.'
-                    );
-                    await TAURI.invoke('set_plugin_approval', {
-                        pluginId,
-                        version,
-                        approved: trusted,
-                    });
-                    if (trusted) {
-                        notify('Plugin approved');
-                    } else {
-                        notify('Plugin installed but not approved to run');
-                    }
-                }
-
+                await TAURI.invoke('sync_configured_plugins');
+                notify('Reloaded plugin config');
                 await reloadPluginSummaries();
             } catch (err) {
                 const msg = String(err || '').trim();
-                notify(msg ? `Install failed: ${msg}` : 'Install failed');
+                notify(msg ? `Plugin sync failed: ${msg}` : 'Plugin sync failed');
             }
         });
     }
@@ -1232,7 +1174,7 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     detailEl.classList.add('empty');
     detailEl.textContent = 'Select a plugin to view details.';
 
-    if (!TAURI.has) {
+    if (!isTauriRuntimeAvailable()) {
         groupLabelEl.textContent = 'Installed (0 of 0 enabled)';
         listEl.replaceChildren();
         return;
@@ -1289,10 +1231,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     state.query = String(searchEl.value || '').trim();
 
     const syncStartFailures = async (): Promise<void> => {
-        if (!TAURI.has) {
-            state.errorToggleById.clear();
-            return;
-        }
         try {
             const failed = await TAURI.invoke<string[]>('list_plugin_start_failures');
             state.errorToggleById = new Set(
@@ -1364,6 +1302,9 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
         const version = String(plugin.version || '').trim();
         const author = String(plugin.author || '').trim();
         const category = String(plugin.category || '').trim();
+        const source = String(plugin.source || '').trim();
+        const sourceKind = String(plugin.source_kind || '').trim();
+        const sourceSpec = String(plugin.source_spec || '').trim();
         const tags = Array.isArray(plugin.tags)
             ? plugin.tags.map((t) => String(t || '').trim()).filter(Boolean)
             : [];
@@ -1420,6 +1361,8 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
 
         const kvRows: Array<[string, string]> = [];
         if (category) kvRows.push(['Category', category]);
+        if (source) kvRows.push(['Source', sourceKind ? `${source} (${sourceKind})` : source]);
+        if (sourceSpec) kvRows.push(['Specifier', sourceSpec]);
         if (tags.length) kvRows.push(['Tags', tags.join(', ')]);
         if (author) kvRows.push(['Author', author]);
         if (version) kvRows.push(['Version', version]);
@@ -1564,7 +1507,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     };
 
     async function reloadPluginSummaries(): Promise<void> {
-        if (!TAURI.has) return;
         let list: PluginSummary[] = [];
         try {
             list = await TAURI.invoke<PluginSummary[]>('list_plugins');
@@ -1586,7 +1528,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     renderList();
 
     const persistPluginsDisabled = async () => {
-        if (!TAURI.has) return;
         try {
             const cur = await TAURI.invoke<GlobalSettings>('get_global_settings');
             let next: GlobalSettings = { ...(cur || {}) };
@@ -1625,7 +1566,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
     };
 
     const persistSinglePluginToggle = async (pluginId: string, enabled: boolean) => {
-        if (!TAURI.has) return;
         const idLower = pluginId.trim().toLowerCase();
         try {
             const activeSection = String(
@@ -1778,10 +1718,6 @@ async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings) {
             if (!plugin) return;
             const label = String(plugin.name || plugin.id || 'plugin');
             if (!(await confirmBool(`Remove ${label}? This will delete the plugin bundle.`))) return;
-            if (!TAURI.has) {
-                notify('Plugin removal is only available in the desktop app.');
-                return;
-            }
             try {
                 await TAURI.invoke('uninstall_plugin', { pluginId: id });
                 notify(`Removed ${label}`);

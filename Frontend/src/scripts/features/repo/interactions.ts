@@ -204,8 +204,11 @@ export function toggleSelectAll(on: boolean, visible: FileStatus[]) {
 export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     ev.preventDefault();
     const x = ev.clientX, y = ev.clientY;
-    const selectedPaths = Array.from(state.selectedFiles || []).filter(Boolean);
-    const clickedInSelection = !!f.path && (state.selectedFiles?.has(f.path) ?? false);
+    const selectedPaths = Array.from(state.selectedFiles || [])
+        .map((path) => path.trim())
+        .filter(Boolean);
+    const clickedPath = (f.path || '').trim();
+    const clickedInSelection = !!clickedPath && (state.selectedFiles?.has(clickedPath) ?? false);
     const explicitMultiSelection =
         clickedInSelection &&
         selectedPaths.length > 1 &&
@@ -217,11 +220,12 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     const items: CtxItem[] = [];
     /** Opens the stash modal pre-filled for the provided paths. */
     const openStashForPaths = (paths: string[], defaultMessage: string) => {
-        if (!paths.length) return;
+        const normalizedPaths = paths.map((path) => path.trim()).filter(Boolean);
+        if (!normalizedPaths.length) return;
         openStashConfirm({
             defaultMessage,
             includeUntracked: false,
-            paths,
+            paths: normalizedPaths,
             onSuccess: async () => {
                 await Promise.allSettled([hydrateStatus(), hydrateStash()]);
                 renderListCallback?.();
@@ -230,11 +234,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     };
 
     items.push({ label: 'Open with default application', action: async () => {
-        if (!TAURI.has) {
-            notify('Open is available in the desktop app');
-            return;
-        }
-        const target = (hasSingleSelection ? selectedPaths[0] : f.path) || '';
+        const target = (hasSingleSelection ? selectedPaths[0] : clickedPath) || '';
         if (!target) return;
         try {
             await TAURI.invoke('open_repo_file', { path: target });
@@ -249,17 +249,15 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             openStashForPaths(selectedPaths.slice(), 'WIP selection');
         }});
     }
-    const singleTarget = hasSingleSelection ? selectedPaths[0] : f.path;
-    const defaultMsg = `WIP ${singleTarget}`;
-    items.push({ label: 'Create stash for this file…', action: () => {
-        openStashForPaths([singleTarget], defaultMsg);
-    }});
+    const singleTarget = (hasSingleSelection ? selectedPaths[0] : clickedPath) || '';
+    if (singleTarget) {
+        const defaultMsg = `WIP ${singleTarget}`;
+        items.push({ label: 'Create stash for this file…', action: () => {
+            openStashForPaths([singleTarget], defaultMsg);
+        }});
+    }
     items.push({ label: '---' });
     items.push({ label: 'Add to .gitignore', action: async () => {
-        if (!TAURI.has) {
-            notify('Ignore is available in the desktop app');
-            return;
-        }
         const targets = (explicitMultiSelection ? selectedPaths.slice() : [f.path]).filter(Boolean);
         if (!targets.length) return;
         const label = targets.length > 1 ? `${targets.length} files` : targets[0];
@@ -276,7 +274,6 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     items.push({ label: '---' });
     if (explicitMultiSelection) {
         items.push({ label: 'Discard all selected', action: async () => {
-            if (!TAURI.has) return;
             const paths = selectedPaths.slice();
             const ok = await confirmBool(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
             if (!ok) return;
@@ -285,7 +282,6 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         }});
     }
     items.push({ label: 'Discard changes', action: async () => {
-        if (!TAURI.has) return;
         const ok = await confirmBool(`Discard all changes in \n${f.path}? This cannot be undone.`);
         if (!ok) return;
         try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }

@@ -31,7 +31,7 @@ export function wireRenameBranch() {
     const newName = (nameEl?.value || '').trim();
     if (!oldName || !newName || oldName === newName) return;
     try {
-      if (TAURI.has) await TAURI.invoke('git_rename_branch', { old_name: oldName, new_name: newName });
+      await TAURI.invoke('git_rename_branch', { old_name: oldName, new_name: newName });
       notify(`Renamed '${oldName}' → '${newName}'`);
       // Ask the rest of the app to refresh branch UI
       window.dispatchEvent(new CustomEvent('app:repo-selected'));

@@ -1,7 +1,10 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-use crate::plugin_bundles::PluginBundleStore;
-use crate::plugin_paths::{ensure_dir, plugins_dir, PLUGIN_MANIFEST_NAME};
+use crate::plugin_bundles::{
+    read_plugin_source_metadata, InstalledPluginSourceMetadata, PluginBundleStore,
+};
+use crate::plugin_manifest::{has_package_manifest, read_openvcs_manifest};
+use crate::plugin_paths::{ensure_dir, plugins_dir};
 use log::{debug, warn};
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
@@ -47,6 +50,10 @@ pub struct PluginSummary {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon_data_url: Option<String>,
     pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_spec: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -159,6 +166,7 @@ struct CachedPlugin {
     resolved: PathBuf,
     manifest: RawPluginManifest,
     origin: PluginOrigin,
+    source_metadata: Option<InstalledPluginSourceMetadata>,
 }
 
 #[derive(Default)]
@@ -188,12 +196,21 @@ impl PluginCache {
 
     fn list(&self) -> Vec<PluginSummary> {
         self.ensure_fresh();
-        self.data.read().unwrap().list.clone()
+        self.data
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .list
+            .clone()
     }
 
     fn load_cached_plugin(&self, id: &str) -> Option<CachedPlugin> {
         self.ensure_fresh();
-        self.data.read().unwrap().entries.get(id).cloned()
+        self.data
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .entries
+            .get(id)
+            .cloned()
     }
 
     fn mark_dirty(&self) {
@@ -202,7 +219,10 @@ impl PluginCache {
 
     fn ensure_fresh(&self) {
         let needs_reload = self.dirty.swap(false, Ordering::SeqCst) || {
-            let data = self.data.read().unwrap();
+            let data = self
+                .data
+                .read()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             !data.loaded
         };
         if needs_reload {
@@ -240,13 +260,22 @@ impl PluginCache {
                                 continue;
                             }
 
-                            let effective_origin = if is_built_in {
+                            let source_metadata = read_plugin_source_metadata(&path);
+                            let effective_origin = if source_metadata
+                                .as_ref()
+                                .is_some_and(|metadata| metadata.managed_by.trim() == "built-in")
+                                || is_built_in
+                            {
                                 PluginOrigin::BuiltIn
                             } else {
                                 PluginOrigin::User
                             };
-                            let summary =
-                                manifest_to_summary(&resolved, manifest.clone(), effective_origin);
+                            let summary = manifest_to_summary(
+                                &resolved,
+                                manifest.clone(),
+                                effective_origin,
+                                source_metadata.as_ref(),
+                            );
                             summaries.push(summary);
                             entries.insert(
                                 norm,
@@ -254,6 +283,7 @@ impl PluginCache {
                                     resolved: resolved.clone(),
                                     manifest,
                                     origin: effective_origin,
+                                    source_metadata,
                                 },
                             );
                         }
@@ -263,8 +293,11 @@ impl PluginCache {
             }
         }
 
-        summaries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-        let mut data = self.data.write().unwrap();
+        summaries.sort_by_key(|a| a.name.to_lowercase());
+        let mut data = self
+            .data
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         data.list = summaries;
         data.entries = entries;
         data.loaded = true;
@@ -292,7 +325,10 @@ impl PluginCache {
             }
         }
 
-        let mut guard = self.watcher.lock().unwrap();
+        let mut guard = self
+            .watcher
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         *guard = Some(watcher);
     }
 }
@@ -305,10 +341,10 @@ fn plugin_cache() -> &'static Arc<PluginCache> {
 
 /// Resolves installed plugin root directories.
 ///
-/// Built-in bundles are synchronized into the writable plugin store during
-/// startup, so plugin listing and theme discovery should read only from the
-/// installed plugin roots instead of treating bundled `.ovcsp` archives as
-/// unpacked plugin directories.
+/// Built-in and user-configured plugins are synchronized into the writable
+/// plugin store during startup, so plugin listing and theme discovery should
+/// read only from the installed plugin roots instead of treating config sources
+/// as runtime directories.
 ///
 /// # Returns
 /// - Unique list of installed plugin root paths.
@@ -334,8 +370,7 @@ fn installed_plugin_roots() -> Vec<PathBuf> {
 /// - `Some(PathBuf)` resolved plugin content directory.
 /// - `None` when unresolved.
 fn resolve_plugin_dir(path: &Path) -> Option<PathBuf> {
-    let direct = path.join(PLUGIN_MANIFEST_NAME);
-    if direct.is_file() {
+    if has_package_manifest(path) {
         return Some(path.to_path_buf());
     }
 
@@ -350,8 +385,7 @@ fn resolve_plugin_dir(path: &Path) -> Option<PathBuf> {
         return None;
     }
     let version_dir = path.join(ver);
-    let manifest = version_dir.join(PLUGIN_MANIFEST_NAME);
-    if manifest.is_file() {
+    if has_package_manifest(&version_dir) {
         Some(version_dir)
     } else {
         None
@@ -368,21 +402,7 @@ fn resolve_plugin_dir(path: &Path) -> Option<PathBuf> {
 /// - `Err(String)` when missing or invalid.
 fn read_manifest_from_directory(path: &Path) -> Result<(PathBuf, RawPluginManifest), String> {
     let resolved = resolve_plugin_dir(path).unwrap_or_else(|| path.to_path_buf());
-    let manifest_path = resolved.join(PLUGIN_MANIFEST_NAME);
-    let text = match fs::read_to_string(&manifest_path) {
-        Ok(text) => text,
-        Err(err) => {
-            if err.kind() == std::io::ErrorKind::NotFound {
-                return Err(format!(
-                    "plugin {} is missing {PLUGIN_MANIFEST_NAME}",
-                    resolved.display()
-                ));
-            }
-            return Err(format!("read {}: {}", manifest_path.display(), err));
-        }
-    };
-
-    let manifest: RawPluginManifest = serde_json::from_str(&text)
+    let manifest: RawPluginManifest = read_openvcs_manifest(&resolved)
         .map_err(|err| format!("parse plugin manifest in {}: {}", resolved.display(), err))?;
     if manifest.id.trim().is_empty() {
         return Err(format!("plugin {} has an empty id", resolved.display()));
@@ -583,6 +603,7 @@ fn manifest_to_summary(
     plugin_dir: &Path,
     manifest: RawPluginManifest,
     source: PluginOrigin,
+    source_metadata: Option<&InstalledPluginSourceMetadata>,
 ) -> PluginSummary {
     let theme_dirs = discover_theme_dirs(plugin_dir).len() as u32;
     let icon_data_url = icon_data_url(plugin_dir);
@@ -599,6 +620,8 @@ fn manifest_to_summary(
         theme_dirs,
         icon_data_url,
         source: source.as_str().to_string(),
+        source_kind: source_metadata.and_then(|metadata| clean_opt(Some(metadata.kind.clone()))),
+        source_spec: source_metadata.and_then(|metadata| clean_opt(Some(metadata.spec.clone()))),
     }
 }
 
@@ -682,7 +705,12 @@ pub fn load_plugin(id: &str) -> Result<PluginPayload, String> {
         .load_cached_plugin(&normalized)
         .ok_or_else(|| format!("plugin `{}` not found", requested))?;
 
-    let summary = manifest_to_summary(&cached.resolved, cached.manifest.clone(), cached.origin);
+    let summary = manifest_to_summary(
+        &cached.resolved,
+        cached.manifest.clone(),
+        cached.origin,
+        cached.source_metadata.as_ref(),
+    );
     let entry_path = clean_opt(cached.manifest.entry.clone());
     let entry_code = entry_path.and_then(|entry| {
         let target = cached.resolved.join(entry.trim());

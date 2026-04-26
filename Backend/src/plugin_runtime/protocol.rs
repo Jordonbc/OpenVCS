@@ -94,6 +94,8 @@ impl Methods {
     pub const VCS_WRITE_MERGE_RESULT: &'static str = "vcs.write_merge_result";
     /// Stages a text patch.
     pub const VCS_STAGE_PATCH: &'static str = "vcs.stage_patch";
+    /// Stages explicit paths to the index.
+    pub const VCS_STAGE_PATHS: &'static str = "vcs.stage_paths";
     /// Discards path changes.
     pub const VCS_DISCARD_PATHS: &'static str = "vcs.discard_paths";
     /// Applies reverse patch.

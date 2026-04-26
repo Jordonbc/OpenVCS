@@ -1,7 +1,105 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-type MenuAction = (id: string) => void | Promise<void>;
+
+import { TAURI, isTauriRuntimeAvailable } from '../lib/tauri';
+
+type MenuAction = (id: string, payload?: { pluginId?: string; actionId?: string }) => void | Promise<void>;
 const MENU_CLOSE_MS = 130;
+const PLUGIN_MENU_ACTION_ID = '__plugin_menu_action__';
+
+interface PluginMenuPayload {
+    plugin_id: string;
+    id: string;
+    label: string;
+    surface: 'menubar' | 'settings';
+    elements: Array<{
+        type: 'text' | 'button' | string;
+        id?: string;
+        content?: string;
+        label?: string;
+    }>;
+}
+
+/** Returns the DOM list element for a top-level menubar menu id. */
+function getMenuList(menuId: string): HTMLElement | null {
+    return document.querySelector<HTMLElement>(`.menu[data-menu="${String(menuId || '').trim()}"] .menu-list`);
+}
+
+/** Returns whether a menu already exposes a specific action id. */
+function menuHasAction(list: HTMLElement, actionId: string): boolean {
+    const target = String(actionId || '').trim();
+    if (!target) return false;
+
+    return Array.from(list.querySelectorAll<HTMLElement>('[data-action]')).some((entry) => {
+        const existingAction = String(entry.dataset.action || '').trim();
+        const existingPluginAction = String(entry.dataset.pluginAction || '').trim();
+        return existingAction === target || existingPluginAction === target;
+    });
+}
+
+/** Removes previously injected plugin menu nodes from the menubar. */
+export function clearPluginMenubarMenus(): void {
+    document
+        .querySelectorAll<HTMLElement>('[data-plugin-menubar="true"]')
+        .forEach((node) => node.remove());
+}
+
+/** Renders active plugin-contributed menu entries into matching top-level menus. */
+export async function refreshPluginMenubarMenus(): Promise<void> {
+    clearPluginMenubarMenus();
+
+    if (!isTauriRuntimeAvailable()) return;
+
+    let menus: PluginMenuPayload[] = [];
+    try {
+        menus = await TAURI.invoke<PluginMenuPayload[]>('list_plugin_menus');
+    } catch {
+        return;
+    }
+
+    for (const menu of Array.isArray(menus) ? menus : []) {
+        // Only render menubar-surface menus in the menubar.
+        const surface = String(menu.surface || 'menubar').toLowerCase();
+        if (surface !== 'menubar') continue;
+
+        const menuId = String(menu?.id || '').trim();
+        const list = getMenuList(menuId);
+        if (!menuId || !list) continue;
+
+        const entries = Array.isArray(menu.elements) ? menu.elements : [];
+        const buttonEntries = entries.filter((entry) => {
+            if (String(entry?.type || '').trim() !== 'button') {
+                return false;
+            }
+
+            const actionId = String(entry?.id || '').trim();
+            return !!actionId && !menuHasAction(list, actionId);
+        });
+        if (buttonEntries.length === 0) continue;
+
+        const separator = document.createElement('div');
+        separator.className = 'menu-sep';
+        separator.setAttribute('role', 'separator');
+        separator.dataset.pluginMenubar = 'true';
+        list.appendChild(separator);
+
+        for (const entry of buttonEntries) {
+            const actionId = String(entry?.id || '').trim();
+            const label = String(entry?.label || '').trim();
+            if (!actionId || !label) continue;
+
+            const button = document.createElement('button');
+            button.className = 'menu-item';
+            button.setAttribute('role', 'menuitem');
+            button.dataset.action = PLUGIN_MENU_ACTION_ID;
+            button.dataset.pluginId = String(menu.plugin_id || '').trim();
+            button.dataset.pluginAction = actionId;
+            button.dataset.pluginMenubar = 'true';
+            button.textContent = label;
+            list.appendChild(button);
+        }
+    }
+}
 
 export function initMenubar(onAction: MenuAction) {
     const root = document.querySelector<HTMLElement>('.menubar');
@@ -80,7 +178,13 @@ export function initMenubar(onAction: MenuAction) {
         const item = target.closest<HTMLElement>('.menu-list [data-action]');
         if (item) {
             const id = item.getAttribute('data-action');
+            const pluginId = item.dataset.pluginId;
+            const pluginAction = item.dataset.pluginAction;
             closeMenus();
+            if (id === PLUGIN_MENU_ACTION_ID && pluginId && pluginAction) {
+                Promise.resolve(onAction(id, { pluginId, actionId: pluginAction })).catch(() => {});
+                return;
+            }
             if (id) Promise.resolve(onAction(id)).catch(() => {});
             return;
         }

@@ -1,0 +1,22 @@
+<!-- Shared confirmation modal -->
+<div class="modal" id="confirm-modal" aria-hidden="true">
+  <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title">
+    <div class="sheet-head">
+      <div>
+        <h3 id="confirm-modal-title" style="margin:0">Confirm action</h3>
+        <p class="hint" id="confirm-modal-hint" style="margin:.25rem 0 0;">This cannot be undone.</p>
+      </div>
+      <button class="tbtn" data-close type="button" aria-label="Close">✕</button>
+    </div>
+
+    <div class="sheet-body">
+      <div class="modal-note" id="confirm-modal-message"></div>
+    </div>
+
+    <div class="sheet-actions">
+      <button class="tbtn" id="confirm-modal-cancel-btn" data-close type="button">Cancel</button>
+      <button class="tbtn danger" id="confirm-modal-confirm-btn" type="button">Confirm</button>
+    </div>
+  </div>
+  <div class="backdrop" data-close></div>
+</div>

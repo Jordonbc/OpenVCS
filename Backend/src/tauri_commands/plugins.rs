@@ -1,18 +1,17 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::core::settings::{SettingKv, SettingValue};
-use crate::core::ui::{Menu, UiElement};
-use crate::plugin_bundles::{
-    ApprovalState, InstalledPlugin, InstalledPluginIndex, PluginBundleStore,
-};
+use crate::core::ui::{Menu, MenuSurface, UiElement};
+use crate::plugin_bundles::{InstalledPluginIndex, PluginBundleStore};
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::settings_store;
 use crate::plugins;
 use crate::state::AppState;
+use crate::tauri_commands::shared::current_repo_or_err;
 use log::{debug, error, info, trace, warn};
 use serde_json::Value;
 use std::sync::Arc;
-use tauri::{Runtime, State, Window};
+use tauri::State;
 
 /// JSON-friendly plugin setting entry payload.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -64,6 +63,8 @@ pub struct PluginMenuPayload {
     pub id: String,
     /// User-visible label.
     pub label: String,
+    /// Render target surface.
+    pub surface: MenuSurface,
     /// Renderable menu elements.
     pub elements: Vec<Value>,
 }
@@ -106,45 +107,30 @@ pub fn load_plugin(id: String) -> Result<plugins::PluginPayload, String> {
 }
 
 #[tauri::command]
-/// Installs an `.ovcsp` plugin bundle.
-///
-/// # Parameters
-/// - `window`: Calling window handle.
-/// - `bundle_path`: Filesystem path to the bundle.
-///
-/// # Returns
-/// - `Ok(InstalledPlugin)` with install metadata.
-/// - `Err(String)` when installation fails.
-pub async fn install_ovcsp<R: Runtime>(
-    _window: Window<R>,
-    state: State<'_, AppState>,
-    bundle_path: String,
-) -> Result<InstalledPlugin, String> {
-    let store = PluginBundleStore::new_default();
-    let installed = store.install_ovcsp(std::path::Path::new(bundle_path.trim()))?;
-
-    info!(
-        "plugin: installed '{}' v{}",
-        installed.plugin_id, installed.version
-    );
-
-    if matches!(installed.approval, ApprovalState::Approved { .. }) {
-        if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {
-            warn!("plugins: runtime sync after install failed: {}", err);
-        }
-    }
-
-    Ok(installed)
-}
-
-#[tauri::command]
-/// Lists installed plugin bundle indices.
+/// Lists installed plugin indices.
 ///
 /// # Returns
 /// - `Ok(Vec<InstalledPluginIndex>)` on success.
 /// - `Err(String)` when listing fails.
-pub fn list_installed_bundles() -> Result<Vec<InstalledPluginIndex>, String> {
+pub fn list_installed_plugins() -> Result<Vec<InstalledPluginIndex>, String> {
     PluginBundleStore::new_default().list_installed()
+}
+
+#[tauri::command]
+/// Reloads plugin config from disk, synchronizes configured sources, and refreshes runtimes.
+///
+/// # Parameters
+/// - `state`: Application state.
+///
+/// # Returns
+/// - `Ok(())` when config reload and sync succeed.
+/// - `Err(String)` when config persistence or plugin sync fails.
+pub fn sync_configured_plugins(state: State<'_, AppState>) -> Result<(), String> {
+    let cfg = crate::settings::AppConfig::load_or_default();
+    state.set_config(cfg.clone())?;
+    PluginBundleStore::new_default().sync_built_in_plugins()?;
+    crate::plugin_sources::sync_configured_plugins(&cfg)?;
+    state.plugin_runtime().sync_plugin_runtime_with_config(&cfg)
 }
 
 #[tauri::command]
@@ -323,6 +309,7 @@ pub fn set_plugin_approval(
 pub fn list_plugin_menus(state: State<'_, AppState>) -> Result<Vec<PluginMenuPayload>, String> {
     let cfg = state.config();
     let mut collected: Vec<(String, Menu)> = Vec::new();
+    info!("list_plugin_menus: scanning plugins for menu entries");
 
     for summary in plugins::list_plugins() {
         let plugin_id = summary.id.trim().to_string();
@@ -370,6 +357,12 @@ pub fn list_plugin_menus(state: State<'_, AppState>) -> Result<Vec<PluginMenuPay
             }
         };
 
+        info!(
+            "list_plugin_menus: plugin {} returned {} menu(s)",
+            plugin_id,
+            menus.len()
+        );
+
         for menu in menus {
             collected.push((plugin_id.clone(), menu));
         }
@@ -401,6 +394,8 @@ pub fn list_plugin_menus(state: State<'_, AppState>) -> Result<Vec<PluginMenuPay
         .map(|(plugin_id, menu)| menu_to_payload(&plugin_id, menu))
         .collect::<Vec<_>>();
 
+    info!("list_plugin_menus: returning {} menu payload(s)", out.len());
+
     Ok(out)
 }
 
@@ -427,6 +422,7 @@ fn menu_to_payload(plugin_id: &str, menu: Menu) -> PluginMenuPayload {
         plugin_id: plugin_id.to_string(),
         id: menu.id,
         label: menu.label,
+        surface: menu.surface,
         elements,
     }
 }
@@ -437,22 +433,40 @@ fn menu_to_payload(plugin_id: &str, menu: Menu) -> PluginMenuPayload {
 /// - `state`: Application state.
 /// - `plugin_id`: Plugin id.
 /// - `action_id`: Action id from `get-menus`.
+/// - `payload`: Optional action payload forwarded to the plugin.
 ///
 /// # Returns
-/// - `Ok(())` when action succeeds.
+/// - `Ok(Value)` when action succeeds.
 /// - `Err(String)` when runtime/action invocation fails.
 #[tauri::command]
 pub fn invoke_plugin_action(
     state: State<'_, AppState>,
     plugin_id: String,
     action_id: String,
-) -> Result<(), String> {
+    payload: Option<Value>,
+) -> Result<Value, String> {
     let cfg = state.config();
-    let runtime =
-        state
-            .plugin_runtime()
-            .runtime_for_workspace_with_config(&cfg, plugin_id.trim(), None)?;
-    runtime.handle_action(action_id.trim())
+    let repo = current_repo_or_err(&state)?;
+    info!(
+        "invoke_plugin_action: plugin={}, action={}",
+        plugin_id.trim(),
+        action_id.trim()
+    );
+    let runtime = state.plugin_runtime().runtime_for_workspace_with_config(
+        &cfg,
+        plugin_id.trim(),
+        Some(repo.inner().workdir().to_path_buf()),
+    )?;
+    let result = runtime.handle_action(action_id.trim(), payload.unwrap_or(Value::Null));
+    if let Ok(ref value) = result {
+        info!(
+            "invoke_plugin_action: plugin={}, action={} returned {}",
+            plugin_id.trim(),
+            action_id.trim(),
+            if value.is_null() { "null" } else { "value" }
+        );
+    }
+    result
 }
 
 /// Returns plugin settings schema with effective values.

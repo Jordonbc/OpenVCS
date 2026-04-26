@@ -31,7 +31,7 @@ Backend:
 - `Backend/src/state.rs`: app config, repo state, recents, output log.
 - `Backend/src/repo.rs`: repository handle wrapper around `Arc<dyn Vcs>`.
 - `Backend/src/plugin_vcs_backends.rs`: backend discovery and open logic.
-- `Backend/src/plugin_bundles.rs`: `.ovcsp` install/index/runtime resolution.
+- `Backend/src/plugin_bundles.rs`: installed-plugin indexing, source metadata, and runtime resolution.
 - `Backend/src/plugin_runtime/node_instance.rs`: plugin process lifecycle and JSON-RPC calls.
 - `Backend/src/plugin_runtime/vcs_proxy.rs`: `Vcs` trait proxy over plugin RPC.
 - `Backend/src/plugins.rs`: plugin discovery/manifest summarization for UI.
@@ -57,8 +57,19 @@ Backend:
 
 - State lifecycle:
   Startup config load, optional reopen-last-repo, runtime config updates.
+- Monitoring:
+  Optional Sentry reporting is initialized separately in `Backend/src/monitoring.rs` and
+  `Frontend/src/scripts/lib/monitoring.ts`, with backend/frontend events gated by
+  `general.crash_reports`. The frontend captures errors and relays them to a
+  backend-owned Sentry client over Tauri IPC, while backend Sentry uses runtime
+  process env values with a build-time embedded fallback for packaged builds.
+  Recent frontend console output is retained as breadcrumbs and attached to
+  frontend monitoring events. Backend Rust `log` records are bridged into
+  Sentry without replacing the existing console/file logger: `error!` records
+  produce Sentry events, `warn!` records become breadcrumbs/logs, and `info!`
+  records become breadcrumbs when crash reporting is enabled.
 - Plugin lifecycle:
-  Built-in/user plugin discovery, install/uninstall, and approval gating.
+  Built-in/user plugin discovery, config-driven sync, install/uninstall, and approval gating.
 - Reliability:
   RPC timeout handling, respawn backoff, and auto-disable after repeated crashes.
 - UX:

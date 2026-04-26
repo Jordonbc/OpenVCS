@@ -1,0 +1,10 @@
+/* src/styles/modal/confirm.css */
+
+#confirm-modal .dialog.sheet {
+  width: clamp(420px, 92vw, 520px);
+  max-height: min(70vh, 360px);
+}
+
+#confirm-modal #confirm-modal-message {
+  white-space: pre-wrap;
+}

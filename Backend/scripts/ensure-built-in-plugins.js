@@ -1,96 +1,54 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
 const scriptDir = __dirname;
 const backendDir = path.resolve(scriptDir, '..');
-const repoRoot = path.resolve(backendDir, '..');
-const pluginSources = path.join(backendDir, 'built-in-plugins');
-const pluginBundles = path.join(repoRoot, 'target', 'openvcs', 'built-in-plugins');
-const nodeRuntimeDir = path.join(repoRoot, 'target', 'openvcs', 'node-runtime');
-const npmExecutable = 'npm';
+const clientDir = path.resolve(backendDir, '..');
+const builtInConfigPath = path.join(clientDir, 'openvcs.plugins.json');
+const localConfigPath = path.join(clientDir, 'openvcs.plugins.local.json');
+const builtInOutputDir = path.join(clientDir, 'target', 'openvcs', 'built-in-plugins');
+const nodeRuntimeDir = path.join(clientDir, 'target', 'openvcs', 'node-runtime');
+const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
-const skipDirs = new Set(['target', '.git', 'node_modules', 'dist']);
-
-function latestSourceTime(dir) {
-  let latest = 0;
-  let hasFile = false;
-  const stack = [dir];
-  while (stack.length) {
-    const current = stack.pop();
-    let entries;
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      const name = entry.name;
-      const full = path.join(current, name);
-      if (entry.isDirectory()) {
-        if (skipDirs.has(name)) continue;
-        stack.push(full);
-        continue;
-      }
-      let stat;
-      try {
-        stat = fs.statSync(full);
-      } catch {
-        continue;
-      }
-      if (!stat.isFile()) continue;
-      hasFile = true;
-      latest = Math.max(latest, stat.mtimeMs);
-    }
+function shouldUseWindowsShell(command) {
+  if (process.platform !== 'win32') {
+    return false;
   }
-  return hasFile ? latest : null;
+
+  return (
+    command === 'npm' ||
+    command === 'npm.cmd' ||
+    command.toLowerCase().endsWith('.cmd') ||
+    command.toLowerCase().endsWith('.bat')
+  );
 }
 
-function bundleFileNameForPlugin(name) {
-  const manifestPath = path.join(pluginSources, name, 'openvcs.plugin.json');
-  try {
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    const pluginId = typeof manifest.id === 'string' ? manifest.id.trim() : '';
-    if (pluginId) {
-      return `${pluginId}.ovcsp`;
-    }
-  } catch {
-    // Fall back to the directory name so the missing/invalid manifest still
-    // forces a rebuild attempt and surfaces the real packaging error later.
+function runCommand(command, args, cwd, label) {
+  const spawnOpts = { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] };
+  if (shouldUseWindowsShell(command)) {
+    spawnOpts.shell = true;
   }
-  return `${name}.ovcsp`;
-}
-
-function pluginOutdated(name) {
-  const bundlePath = path.join(pluginBundles, bundleFileNameForPlugin(name));
-  if (!fs.existsSync(bundlePath)) return true;
-  const bundleStat = fs.statSync(bundlePath);
-  const srcPath = path.join(pluginSources, name);
-  const srcTime = latestSourceTime(srcPath);
-  return srcTime === null || srcTime > bundleStat.mtimeMs;
-}
-
-function findOutdatedPlugins() {
-  if (!fs.existsSync(pluginSources)) return [];
-  const entries = fs.readdirSync(pluginSources, { withFileTypes: true });
-  const outdated = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    if (pluginOutdated(entry.name)) {
-      outdated.push(entry.name);
-    }
+  const result = spawnSync(command, args, spawnOpts);
+  if (result.error) {
+    throw new Error(`Failed to ${label}: ${result.error.message}`);
   }
-  return outdated;
+  if (result.status !== 0) {
+    const stderr = String(result.stderr || '').trim();
+    throw new Error(stderr ? `Failed to ${label}: ${stderr}` : `Failed to ${label}`);
+  }
+  return result;
 }
 
-function ensureBundlesDir() {
-  fs.mkdirSync(pluginBundles, { recursive: true });
+function ensureDirectory(dirPath) {
+  fs.mkdirSync(dirPath, { recursive: true });
 }
 
 function ensureNodeRuntimeDir() {
-  fs.mkdirSync(nodeRuntimeDir, { recursive: true });
+  ensureDirectory(nodeRuntimeDir);
 }
 
 function ensureBundledNodeRuntime() {
@@ -122,24 +80,98 @@ function ensureBundledNodeRuntime() {
   console.log(`Bundled node runtime -> ${dest}`);
 }
 
+/**
+ * Determines the active update channel from environment variable.
+ * Supports stable/beta/dev and maps nightly->dev.
+ * Defaults to stable when unset.
+ */
+function getActiveChannel() {
+  const channel = (process.env.OPENVCS_UPDATE_CHANNEL || '').trim().toLowerCase();
+  if (channel === 'nightly') {
+    return 'dev';
+  }
+  if (channel === 'stable' || channel === 'beta' || channel === 'dev') {
+    return channel;
+  }
+  return 'stable';
+}
+
+/**
+ * Reads the built-in plugin config and extracts specs for the active channel.
+ * Falls back to stable if channel array is missing.
+ */
+function readBuiltInConfig() {
+  const raw = fs.readFileSync(builtInConfigPath, 'utf8');
+  const parsed = JSON.parse(raw);
+  const channel = getActiveChannel();
+
+  // Try the channel-specific array first, fall back to stable
+  let entries = [];
+  if (Array.isArray(parsed?.[channel])) {
+    entries = parsed[channel];
+  } else if (Array.isArray(parsed?.stable)) {
+    console.warn(`Channel '${channel}' not found in config, falling back to 'stable'`);
+    entries = parsed.stable;
+  }
+
+  return entries.map((value) => String(value || '').trim()).filter(Boolean);
+}
+
+/**
+ * Reads local override config and returns the channel-specific override when present.
+ * Returns null when no override applies for the active channel.
+ */
+function readLocalOverrideConfig() {
+  if (!fs.existsSync(localConfigPath)) {
+    return null;
+  }
+
+  const raw = fs.readFileSync(localConfigPath, 'utf8');
+  const parsed = JSON.parse(raw);
+  const channel = getActiveChannel();
+
+  if (!Object.prototype.hasOwnProperty.call(parsed || {}, channel)) {
+    return null;
+  }
+
+  const entries = Array.isArray(parsed?.[channel]) ? parsed[channel] : [];
+  return entries.map((value) => String(value || '').trim()).filter(Boolean);
+}
+
+/**
+ * Determines which plugin specs to use: local override takes priority
+ * when present for the active channel, otherwise uses main config.
+ */
+function resolvePluginSpecs() {
+  const localSpecs = readLocalOverrideConfig();
+  if (localSpecs !== null) {
+    const channel = getActiveChannel();
+    console.log(`Using local override for channel '${channel}' (${localSpecs.length} plugins)`);
+    return localSpecs;
+  }
+  return readBuiltInConfig();
+}
+
+function resolveLocalSource(spec) {
+  if (!spec) return null;
+  let candidate = spec;
+  if (candidate.startsWith('~/')) {
+    candidate = path.join(os.homedir(), candidate.slice(2));
+  }
+  const absolute = path.isAbsolute(candidate)
+    ? candidate
+    : path.resolve(clientDir, candidate);
+  return fs.existsSync(absolute) && fs.statSync(absolute).isDirectory()
+    ? absolute
+    : null;
+}
+
 function getFileMtime(filePath) {
   try {
     return fs.statSync(filePath).mtimeMs;
   } catch {
     return 0;
   }
-}
-
-function shouldUseWindowsShell(command) {
-  if (process.platform !== 'win32') {
-    return false;
-  }
-
-  return (
-    command === 'npm' ||
-    command.toLowerCase().endsWith('.cmd') ||
-    command.toLowerCase().endsWith('.bat')
-  );
 }
 
 function nodeModulesFresh(pluginDir) {
@@ -153,10 +185,10 @@ function nodeModulesFresh(pluginDir) {
   return true;
 }
 
-function ensurePluginDependencies(pluginDir) {
+function ensureSourceDependencies(pluginDir) {
   const packageJsonPath = path.join(pluginDir, 'package.json');
   if (!fs.existsSync(packageJsonPath)) {
-    return;
+    throw new Error(`Built-in plugin source is missing package.json: ${pluginDir}`);
   }
 
   if (nodeModulesFresh(pluginDir)) {
@@ -165,133 +197,115 @@ function ensurePluginDependencies(pluginDir) {
 
   const hasPackageLock = fs.existsSync(path.join(pluginDir, 'package-lock.json'));
   const installArgs = hasPackageLock ? ['ci'] : ['install'];
-  console.log(`Installing built-in plugin dependencies in ${pluginDir}...`);
-  const spawnOpts = {
-    cwd: pluginDir,
-    stdio: 'inherit',
-  };
-  if (shouldUseWindowsShell(npmExecutable)) {
-    spawnOpts.shell = true;
-  }
-  const res = spawnSync(npmExecutable, installArgs, spawnOpts);
-  if (res.error) {
-    console.error(`Failed to install dependencies for ${pluginDir}:`, res.error);
-    process.exit(res.status || 1);
-  }
-  if (res.status !== 0) {
-    process.exit(res.status);
-  }
+  console.log(`Installing built-in source dependencies in ${pluginDir}...`);
+  runCommand(npmExecutable, installArgs, pluginDir, `install dependencies for ${pluginDir}`);
 }
 
-function runCommand(command, args, cwd, label) {
-  const spawnOpts = { cwd, stdio: 'inherit' };
-  if (shouldUseWindowsShell(command)) {
-    spawnOpts.shell = true;
+function npmPack(sourceSpec, workdir) {
+  const result = runCommand(npmExecutable, ['pack', '--json', sourceSpec], workdir, `pack ${sourceSpec}`);
+  const stdout = String(result.stdout || '');
+  const jsonStart = stdout.indexOf('[');
+  const parsed = JSON.parse(jsonStart >= 0 ? stdout.slice(jsonStart) : '[]');
+  const filename = String(parsed?.[parsed.length - 1]?.filename || '').trim();
+  if (!filename) {
+    throw new Error(`npm pack did not report an output file for ${sourceSpec}`);
   }
-  const res = spawnSync(command, args, spawnOpts);
-  if (res.error) {
-    console.error(`Failed to ${label}:`, res.error);
-    process.exit(res.status || 1);
-  }
-  if (res.status !== 0) {
-    process.exit(res.status);
-  }
+  return path.join(workdir, filename);
 }
 
-function readPackageJson(pluginDir) {
+function extractTarball(archivePath, workdir) {
+  runCommand('tar', ['-xzf', archivePath], workdir, `extract ${archivePath}`);
+  const packageDir = path.join(workdir, 'package');
+  if (!fs.existsSync(packageDir) || !fs.statSync(packageDir).isDirectory()) {
+    throw new Error(`npm pack archive did not extract a package/ directory: ${archivePath}`);
+  }
+  return packageDir;
+}
+
+function packageHasRuntimeDependencies(pluginDir) {
   const packageJsonPath = path.join(pluginDir, 'package.json');
   if (!fs.existsSync(packageJsonPath)) {
-    return null;
+    return false;
   }
-
-  try {
-    return JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-  } catch {
-    return null;
-  }
+  const parsed = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  const dependencies = parsed?.dependencies;
+  const optionalDependencies = parsed?.optionalDependencies;
+  return (dependencies && Object.keys(dependencies).length > 0)
+    || (optionalDependencies && Object.keys(optionalDependencies).length > 0);
 }
 
-function ensurePluginPackagingManifest(pluginDir, pluginName) {
-  const existing = readPackageJson(pluginDir);
-  if (existing && existing.scripts && existing.scripts.dist) {
-    return null;
+function installRuntimeDependencies(pluginDir) {
+  if (!packageHasRuntimeDependencies(pluginDir)) {
+    return;
   }
 
-  if (!existing) {
-    console.log(
-      `Built-in plugin ${pluginName} has no package.json; generating a transient npm packaging manifest.`
-    );
-  } else {
-    console.log(
-      `Built-in plugin ${pluginName} has no npm dist script; generating a transient npm packaging manifest.`
-    );
-  }
+  runCommand(
+    npmExecutable,
+    ['install', '--omit=dev', '--ignore-scripts', '--no-package-lock', '--no-bin-links', '--no-audit', '--no-fund'],
+    pluginDir,
+    `install runtime dependencies for ${pluginDir}`,
+  );
+}
 
-  const packageJsonPath = path.join(pluginDir, 'package.json');
-  const packageLockPath = path.join(pluginDir, 'package-lock.json');
-  const nodeModulesPath = path.join(pluginDir, 'node_modules');
-  const tempPackageJson = {
-    name: `@openvcs/${pluginName.toLowerCase()}-built-in-packager`,
-    private: true,
-    scripts: {
-      dist: 'node ./node_modules/@openvcs/sdk/bin/openvcs.js dist --plugin-dir . --out dist',
-    },
-    devDependencies: {
-      '@openvcs/sdk': '^0.2',
-    },
+function readPluginManifest(pluginDir) {
+  const manifestPath = path.join(pluginDir, 'package.json');
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(`Prepared plugin is missing package.json: ${pluginDir}`);
+  }
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')).openvcs;
+  const pluginId = String(manifest?.id || '').trim();
+  if (!pluginId) {
+    throw new Error(`Prepared plugin has an empty openvcs.id: ${pluginDir}`);
+  }
+  return { manifest, pluginId };
+}
+
+function writeSourceMetadata(pluginDir, sourceKind, spec) {
+  const metadataPath = path.join(pluginDir, 'source.json');
+  const payload = {
+    managed_by: 'built-in',
+    kind: sourceKind,
+    spec,
   };
+  fs.writeFileSync(metadataPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
 
-  fs.writeFileSync(packageJsonPath, `${JSON.stringify(tempPackageJson, null, 2)}\n`);
+function stageBuiltInPlugin(spec) {
+  const localSource = resolveLocalSource(spec);
+  if (localSource) {
+    ensureSourceDependencies(localSource);
+  }
 
-  return () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openvcs-built-in-'));
+  const tarballPath = npmPack(localSource || spec, tempRoot);
+  const packageDir = extractTarball(tarballPath, tempRoot);
+  installRuntimeDependencies(packageDir);
+  const { pluginId } = readPluginManifest(packageDir);
+  writeSourceMetadata(packageDir, localSource ? 'path' : 'npm', spec);
+  return { tempRoot, packageDir, pluginId };
+}
+
+function rebuildBuiltInPlugins() {
+  ensureDirectory(builtInOutputDir);
+  fs.rmSync(builtInOutputDir, { recursive: true, force: true });
+  ensureDirectory(builtInOutputDir);
+
+  const specs = resolvePluginSpecs();
+  const channel = getActiveChannel();
+  console.log(`Syncing ${specs.length} built-in plugins for channel '${channel}' from ${builtInConfigPath}`);
+
+  for (const spec of specs) {
+    const { tempRoot, packageDir, pluginId } = stageBuiltInPlugin(spec);
     try {
-      fs.rmSync(packageJsonPath, { force: true });
-      fs.rmSync(packageLockPath, { force: true });
-      fs.rmSync(nodeModulesPath, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup failures in transient packaging files.
+      const destDir = path.join(builtInOutputDir, pluginId);
+      fs.cpSync(packageDir, destDir, { recursive: true, force: true });
+      console.log(`Built-in plugin ${pluginId} -> ${destDir}`);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
     }
-  };
-}
-
-function copyPluginBundle(pluginDir, pluginName) {
-  const bundleName = bundleFileNameForPlugin(pluginName);
-  const sourceBundle = path.join(pluginDir, 'dist', bundleName);
-  const destBundle = path.join(pluginBundles, bundleName);
-  if (!fs.existsSync(sourceBundle)) {
-    console.error(`Expected built-in plugin bundle at ${sourceBundle}`);
-    process.exit(1);
-  }
-  fs.copyFileSync(sourceBundle, destBundle);
-}
-
-function packagePlugin(pluginDir, pluginName) {
-  const cleanupPackagingManifest = ensurePluginPackagingManifest(pluginDir, pluginName);
-  try {
-    ensurePluginDependencies(pluginDir);
-    console.log(`Packaging built-in plugin ${pluginName} via npm run dist...`);
-    runCommand(npmExecutable, ['run', 'dist'], pluginDir, `package ${pluginName}`);
-    copyPluginBundle(pluginDir, pluginName);
-  } finally {
-    cleanupPackagingManifest?.();
   }
 }
 
-function runDistCommand(pluginNames) {
-  console.log(`Built-in plugin bundles need rebuilding: ${pluginNames.join(', ')}`);
-  for (const pluginName of pluginNames) {
-    const pluginDir = path.join(pluginSources, pluginName);
-    packagePlugin(pluginDir, pluginName);
-  }
-}
-
-ensureBundlesDir();
 ensureNodeRuntimeDir();
 ensureBundledNodeRuntime();
-
-const outdated = findOutdatedPlugins();
-if (outdated.length > 0) {
-  runDistCommand(outdated);
-} else {
-  console.log('Built-in plugin bundles are up to date.');
-}
+rebuildBuiltInPlugins();

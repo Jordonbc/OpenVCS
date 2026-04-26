@@ -5,11 +5,10 @@
     "moduleResolution": "Bundler",
     "skipLibCheck": true,
     "strict": true,
-    "baseUrl": "./src",
     "paths": {
-      "@/*": ["*"],
-      "@scripts/*": ["scripts/*"],
-      "@modals/*": ["modals/*"]
+      "@/*": ["./src/*"],
+      "@scripts/*": ["./src/scripts/*"],
+      "@modals/*": ["./src/modals/*"]
     },
     "types": ["vite/client", "vitest/globals"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],

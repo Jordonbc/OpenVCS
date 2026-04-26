@@ -1,7 +1,9 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import './lib/logger';
-import { TAURI } from './lib/tauri';
+import { syncFrontendMonitoring } from './lib/monitoring';
+import { TAURI, assertDesktopRuntime, isTauriRuntimeAvailable } from './lib/tauri';
+import type { GlobalSettings } from './types';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
 import { setStatus } from './lib/status';
@@ -11,10 +13,10 @@ import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
     bindLayoutActionState
 } from './ui/layout';
-import { initMenubar } from './ui/menubar';
+import { clearPluginMenubarMenus, initMenubar, refreshPluginMenubarMenus } from './ui/menubar';
 import { closeAllModals } from './ui/modals';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
-import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash } from './features/repo';
+import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash, yieldToPaint } from './features/repo';
 import { bindBranchUI } from './features/branches';
 import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
@@ -25,13 +27,13 @@ import { initSshHostkeyPrompt } from './features/sshHostkey';
 import { initSshAuthPrompt } from './features/sshAuth';
 import { initOutputLogViewIfRequested } from './features/outputLog';
 import { DEFAULT_LIGHT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
-import { initPlugins, runHook, runPluginAction } from './plugins';
+import { initPlugins, invokePluginAction, runHook, runPluginAction } from './plugins';
 import { openSwitchDrawer, closeSwitchDrawer, registerDrawerActions } from './features/repoSwitchDrawer';
 
 const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
 
 // Title bar actions
-const fetchBtn = qs<HTMLButtonElement>('#fetch-btn');
+    const fetchBtn = qs<HTMLButtonElement>('#fetch-btn');
 const fetchCaret = qs<HTMLButtonElement>('#fetch-caret');
 const fetchPop = qs<HTMLElement>('#fetch-pop');
 const fetchList = qs<HTMLElement>('#fetch-list');
@@ -39,9 +41,24 @@ const pushBtn  = qs<HTMLButtonElement>('#push-btn');
 const cloneBtn = qs<HTMLButtonElement>('#clone-btn');
 const repoSwitch = qs<HTMLButtonElement>('#repo-switch');
 const commitBtn = qs<HTMLButtonElement>('#commit-btn');
-const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
-let fetchCloseTimer: number | null = null;
-const FETCH_CLOSE_MS = 130;
+    const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
+    let fetchCloseTimer: number | null = null;
+    let pluginMenuRefreshTimer: number | null = null;
+    /** Matches the fetch popover close animation so the element hides after the transition finishes. */
+    const FETCH_CLOSE_MS = 130;
+    /** Gives repo-open plugin state time to settle before rebuilding contributed menubar items. */
+    const PLUGIN_MENU_REFRESH_SETTLE_MS = 400;
+
+    /** Schedules a delayed plugin menubar refresh to avoid repo-open races while plugin state settles. */
+    function schedulePluginMenuRefresh(delayMs = 250) {
+        if (pluginMenuRefreshTimer !== null) {
+            window.clearTimeout(pluginMenuRefreshTimer);
+        }
+        pluginMenuRefreshTimer = window.setTimeout(() => {
+            pluginMenuRefreshTimer = null;
+            refreshPluginMenubarMenus().catch(() => {});
+        }, delayMs);
+    }
 
 /** Closes the Fetch/Pull popover, optionally with a short close animation. */
 function closeFetchPopover() {
@@ -82,6 +99,10 @@ function forceCloseTransientUi() {
 
 /** Boots the frontend shell, wires handlers, and hydrates initial state. */
 async function boot() {
+    assertDesktopRuntime();
+    const cfg = await loadInitialGlobalSettings();
+    await syncFrontendMonitoring(cfg);
+
     // If launched as the Output Log window, render that view and skip the main app UI.
     if (await initOutputLogViewIfRequested()) return;
     initOverlayScrollbarsFor(document);
@@ -89,10 +110,9 @@ async function boot() {
     await initPlugins();
     // theme & basic layout
     // Prefer native settings for theme; fall back to current in-memory default
-    if (TAURI.has) {
+    if (cfg) {
         (async () => {
             try {
-                const cfg = await TAURI.invoke<any>('get_global_settings');
                 const themeMode = cfg?.general?.theme as ('dark'|'light'|'system'|undefined);
                 const modeForPack = themeMode ?? 'system';
                 const themePack = String(cfg?.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
@@ -162,7 +182,7 @@ async function boot() {
     }
 
     async function fetchCurrentRemoteOnly(options: { hydrate?: boolean; status?: ReturnType<typeof statusController>; keepBusy?: boolean } = {}) {
-        if (!TAURI.has) return false;
+        if (!isTauriRuntimeAvailable()) return false;
         return runFetch(async () => {
             const { hydrate = true, status, keepBusy = false } = options;
             const ctl = status ?? statusController();
@@ -172,7 +192,8 @@ async function boot() {
                 await TAURI.invoke('git_fetch', {});
                 notify('Fetched');
                 if (hydrate) {
-                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                    await yieldToPaint();
+                    void Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 }
                 success = true;
             } catch {
@@ -185,7 +206,7 @@ async function boot() {
     }
 
     async function fetchAllRemotesOnly(options: { hydrate?: boolean; status?: ReturnType<typeof statusController>; keepBusy?: boolean } = {}) {
-        if (!TAURI.has) return false;
+        if (!isTauriRuntimeAvailable()) return false;
         return runFetch(async () => {
             const { hydrate = true, status, keepBusy = false } = options;
             const ctl = status ?? statusController();
@@ -195,7 +216,8 @@ async function boot() {
                 await TAURI.invoke('git_fetch_all', {});
                 notify('Fetched all remotes');
                 if (hydrate) {
-                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                    await yieldToPaint();
+                    void Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 }
                 success = true;
             } catch {
@@ -256,7 +278,6 @@ async function boot() {
     }
 
     async function fetchAndPull() {
-        if (!TAURI.has) return;
         const ctl = statusController();
         const fetched = await fetchCurrentRemoteOnly({ hydrate: false, status: ctl, keepBusy: true });
         if (!fetched) { ctl.clearBusy(); return; }
@@ -317,7 +338,7 @@ async function boot() {
                 notify(pre.reason || 'Push cancelled');
                 return;
             }
-            if (TAURI.has) { setBusy('Pushing…'); await TAURI.invoke('git_push', {}); }
+            setBusy('Pushing…'); await TAURI.invoke('git_push', {});
             await runHook('onPush', hookData);
             notify('Pushed');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
@@ -326,13 +347,11 @@ async function boot() {
     }
 
     async function openDocs() {
-        if (TAURI.has) {
-            try { await TAURI.invoke('open_docs', {}); return; } catch { /* fall back */ }
-        }
+        try { await TAURI.invoke('open_docs', {}); } catch { /* fall back */ }
         try { window.open(WIKI_URL, '_blank', 'noopener'); } catch (e) { console.error('Unable to open docs:', e); notify('Unable to open docs'); }
     }
 
-    async function runMenuAction(id?: string | null) {
+    async function runMenuAction(id?: string | null, payload?: { pluginId?: string; actionId?: string } | null) {
         switch (id) {
             case 'clone_repo': console.log('Action: clone_repo'); openSheet('clone'); break;
             case 'add_repo':   console.log('Action: add_repo'); openSheet('add'); break;
@@ -343,7 +362,6 @@ async function boot() {
             case 'docs': console.log('Action: docs'); await openDocs(); break;
             case 'show-output-log':
                 console.log('Action: show-output-log');
-                if (!TAURI.has) { notify('Output Log is available in the desktop app'); break; }
                 try { await TAURI.invoke('open_output_log_window', {}); }
                 catch (e) { console.error('Failed to open Output Log:', e); notify('Failed to open Output Log'); }
                 break;
@@ -353,7 +371,6 @@ async function boot() {
             case 'repo-edit-gitignore':
             case 'repo-edit-gitattributes': {
                 console.log('Action:', id);
-                if (!TAURI.has) { notify('Open this in the desktop app to edit repository files'); break; }
                 const name = id === 'repo-edit-gitignore' ? '.gitignore' : '.gitattributes';
                 try { await TAURI.invoke('open_repo_dotfile', { name }); }
                 catch (e) { console.error(`Could not open ${name}:`, e); notify(`Could not open ${name}`); }
@@ -361,13 +378,32 @@ async function boot() {
             }
             case 'lfs-settings': openSettings('lfs'); break;
             case 'check_updates':
-                if (!TAURI.has) { notify('Update checks are available in the desktop app'); break; }
                 try {
                     const hasUpdate = await TAURI.invoke<boolean>('check_for_updates', {});
                     if (!hasUpdate) notify('Already up to date');
                 } catch (e) { console.error('Update check failed:', e); notify('Update check failed'); }
                 break;
-            case 'exit': if (TAURI.has) { TAURI.invoke('exit_app', {}).catch(() => {}); } break;
+            case '__plugin_menu_action__': {
+                const pluginId = typeof payload?.pluginId === 'string' ? payload.pluginId.trim() : '';
+                const actionId = typeof payload?.actionId === 'string' ? payload.actionId.trim() : '';
+                if (!pluginId || !actionId) {
+                    console.warn(`Plugin menu action skipped: missing pluginId (${!!pluginId}) or actionId (${!!actionId})`);
+                    notify(!pluginId && !actionId
+                        ? 'Plugin action is missing plugin and action IDs'
+                        : !pluginId
+                            ? 'Plugin action missing plugin ID'
+                            : `Plugin action missing action for "${pluginId}"`);
+                    break;
+                }
+                try {
+                    await invokePluginAction(pluginId, actionId);
+                } catch (e) {
+                    console.error(`Plugin menu action failed: ${pluginId}/${actionId}`, e);
+                    notify(`Plugin action for "${pluginId}" failed`);
+                }
+                break;
+            }
+            case 'exit': TAURI.invoke('exit_app', {}).catch(() => {}); break;
             default: {
                 if (!id) break;
                 const handled = await runPluginAction(id);
@@ -402,7 +438,6 @@ async function boot() {
         };
         const clearBusy = () => { if (statusEl) statusEl.classList.remove('busy'); };
         try {
-            if (!TAURI.has) return;
             setBusy('Undoing…');
             await TAURI.invoke('git_undo_since_push', {});
             notify('Undid unpushed commits');
@@ -424,6 +459,8 @@ async function boot() {
     hydrateStash();
 
     initMenubar(runMenuAction);
+    refreshPluginMenubarMenus().catch(() => {});
+    schedulePluginMenuRefresh(PLUGIN_MENU_REFRESH_SETTLE_MS);
 
     TAURI.listen?.('menu', async ({ payload: id }) => {
         const resolved = typeof id === 'string' ? id : String(id ?? '');
@@ -434,6 +471,7 @@ async function boot() {
     // Global busy indicator for any Git activity
     (function(){
         let busyTimer: any = null;
+        let busyFrame: number | null = null;
         const setBusy = (msg: string, showSpinner = true) => {
             const s = document.getElementById('status');
             if (!s) return;
@@ -447,13 +485,20 @@ async function boot() {
                 s.textContent = 'Ready';
             }, 1500);
         };
+        const queueBusyUpdate = () => {
+            if (busyFrame !== null) return;
+            busyFrame = window.requestAnimationFrame(() => {
+                busyFrame = null;
+                const focused = document.visibilityState === 'visible' && document.hasFocus();
+                setBusy('Working…', focused);
+            });
+        };
         TAURI.listen?.('git-progress', ({ payload }) => {
             // Don't spam the footer with raw git output; keep it generic.
             void payload;
             // Avoid spinner-driven repaint churn for passive/background progress.
             // Explicit user actions already set busy state via their own controllers.
-            const focused = document.visibilityState === 'visible' && document.hasFocus();
-            setBusy('Working…', focused);
+            queueBusyUpdate();
         });
     })();
 
@@ -474,11 +519,12 @@ async function boot() {
         // Broadcast app-level event so branch UI and actions can sync
         window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
         refreshRepoActions();
+        await refreshPluginMenubarMenus().catch(() => {});
+        schedulePluginMenuRefresh();
     });
 
   // If backend reopened a repo before the webview was ready, sync initial state.
-  if (TAURI.has) {
-    TAURI.invoke<string | null>('current_repo_path')
+  TAURI.invoke<string | null>('current_repo_path')
       .then(async (p) => {
         const path = (p || '').trim();
         if (!path) return;
@@ -490,9 +536,10 @@ async function boot() {
         window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
         refreshRepoActions();
         updateFetchUI();
+        await refreshPluginMenubarMenus().catch(() => {});
+        schedulePluginMenuRefresh();
       })
       .catch(() => {});
-  }
 
   // backend status updates (footer)
   TAURI.listen?.('status:set', ({ payload }) => {
@@ -510,17 +557,15 @@ async function boot() {
         if (focusInFlight) return focusInFlight;
         focusInFlight = (async () => {
         let doFetch = true;
-        if (TAURI.has) {
-            try {
-                const fields = await TAURI.invoke<Array<{ id: string; value: unknown }>>('get_plugin_settings', {
-                    pluginId: 'openvcs.git',
-                });
-                const fetchSetting = (Array.isArray(fields) ? fields : []).find((field) => String(field?.id || '').trim() === 'fetch_on_focus');
-                if (fetchSetting && typeof fetchSetting.value === 'boolean') {
-                    doFetch = fetchSetting.value;
-                }
-            } catch {}
-        }
+        try {
+            const fields = await TAURI.invoke<Array<{ id: string; value: unknown }>>('get_plugin_settings', {
+                pluginId: 'openvcs.git',
+            });
+            const fetchSetting = (Array.isArray(fields) ? fields : []).find((field) => String(field?.id || '').trim() === 'fetch_on_focus');
+            if (fetchSetting && typeof fetchSetting.value === 'boolean') {
+                doFetch = fetchSetting.value;
+            }
+        } catch {}
         if (doFetch) {
             await fetchCurrentRemoteOnly({ hydrate: false });
         }
@@ -546,7 +591,7 @@ async function boot() {
     const headPollMs = 15000;
     const scheduleHeadPoll = () => {
         window.setTimeout(async () => {
-            if (!TAURI.has || !state.hasRepo || document.visibilityState !== 'visible' || !document.hasFocus()) {
+            if (!isTauriRuntimeAvailable() || !state.hasRepo || document.visibilityState !== 'visible' || !document.hasFocus()) {
                 return scheduleHeadPoll();
             }
             if (headPollInFlight) {
@@ -589,6 +634,7 @@ async function boot() {
     window.addEventListener('app:status-updated', updateFetchUI);
     window.addEventListener('app:branches-updated', updateFetchUI);
     window.addEventListener('app:repo-selected', updateFetchUI);
+    window.addEventListener('app:repo-will-switch', clearPluginMenubarMenus);
 
     // fetch popover interactions
     fetchList?.addEventListener('click', (e) => {
@@ -616,6 +662,15 @@ async function boot() {
         if (e.key !== 'Escape') return;
         if (fetchPop && !fetchPop.hidden) closeFetchPopover();
     });
+}
+
+/** Loads persisted global settings for bootstrap-time features such as theming and monitoring. */
+async function loadInitialGlobalSettings(): Promise<GlobalSettings | null> {
+    try {
+        return await TAURI.invoke<GlobalSettings>('get_global_settings');
+    } catch {
+        return null;
+    }
 }
 
 boot();

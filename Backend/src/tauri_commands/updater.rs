@@ -1,9 +1,65 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use log::{debug, error, info, trace};
+use serde::Serialize;
 use tauri::{Emitter, Manager, Runtime, Window};
 
 use tauri_plugin_updater::UpdaterExt;
+
+/// Response payload for update status check.
+#[derive(Serialize)]
+pub struct UpdateStatus {
+    pub available: bool,
+    pub version: Option<String>,
+    pub current_version: Option<String>,
+    pub body: Option<String>,
+    pub date: Option<String>,
+}
+
+#[tauri::command]
+/// Checks for available updates and returns detailed status.
+///
+/// # Parameters
+/// - `window`: Calling window handle.
+///
+/// # Returns
+/// - [`UpdateStatus`] with version info if update available, or {available: false}.
+pub async fn get_update_status<R: Runtime>(window: Window<R>) -> Result<UpdateStatus, String> {
+    let app = window.app_handle();
+    let updater = app.updater().map_err(|e| {
+        error!("get_update_status: failed to get updater: {}", e);
+        e.to_string()
+    })?;
+
+    match updater.check().await {
+        Ok(Some(update)) => {
+            let date_str = update.date.map(|d| d.to_string());
+            let status = UpdateStatus {
+                available: true,
+                version: Some(update.version.clone()),
+                current_version: Some(update.current_version.clone()),
+                body: update.body.clone(),
+                date: date_str,
+            };
+            debug!(
+                "get_update_status: update available: {} -> {}",
+                update.current_version, update.version
+            );
+            Ok(status)
+        }
+        Ok(None) => Ok(UpdateStatus {
+            available: false,
+            version: None,
+            current_version: None,
+            body: None,
+            date: None,
+        }),
+        Err(e) => {
+            error!("get_update_status: check failed: {}", e);
+            Err(e.to_string())
+        }
+    }
+}
 
 #[tauri::command]
 /// Downloads and installs an available application update.

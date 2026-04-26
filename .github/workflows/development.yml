@@ -4,6 +4,7 @@ on:
   push:
     branches: [ Dev ]
     paths:
+      - 'openvcs.plugins.json'
       - 'Frontend/**'
       - 'Backend/**'
       - 'crates/**'
@@ -13,6 +14,7 @@ on:
   pull_request:
     branches: [ Dev ]
     paths:
+      - 'openvcs.plugins.json'
       - 'Frontend/**'
       - 'Backend/**'
       - 'crates/**'
@@ -31,8 +33,9 @@ jobs:
       contents: read
     env:
       RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: 'true'
-      SCCACHE_CACHE_SIZE: '2G'
+      SCCACHE_GHA_ENABLED: ${{ vars.SSCCACHE_GHA_ENABLED }}
+      SCCACHE_CACHE_SIZE: ${{ vars.SSCCACHE_SIZE }}
+      OPENVCS_UPDATE_CHANNEL: dev
     timeout-minutes: 20
 
     steps:
@@ -40,7 +43,6 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
-          submodules: recursive
           # Dev CI doesn't need LFS assets; skipping saves bandwidth and disk.
           lfs: false
 
@@ -58,7 +60,7 @@ jobs:
 
       # ---------- Frontend: lint + typecheck ----------
       - name: Setup Node
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '24'
           cache: 'npm'

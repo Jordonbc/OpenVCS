@@ -31,10 +31,6 @@ export function wireCherryPick() {
     const branch = (branchEl?.value || '').trim();
     if (!commit || !branch) return;
     try {
-      if (!TAURI.has) {
-        notify('Cherry-pick requires the desktop app');
-        return;
-      }
       await TAURI.invoke('git_cherry_pick_to_branch', { id: commit, branch });
       notify(`Cherry-picked onto ${branch}`);
       closeModal('cherry-pick-modal');
@@ -73,11 +69,6 @@ export function wireCherryPick() {
 export async function openCherryPick(commit: CommitLike) {
   hydrate('cherry-pick-modal');
   wireCherryPick();
-
-  if (!TAURI.has) {
-    notify('Cherry-pick requires the desktop app');
-    return;
-  }
 
   await hydrateBranches();
   const branches = (state.branches || [])

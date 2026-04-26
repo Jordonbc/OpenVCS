@@ -5,7 +5,7 @@
 //! This crate wires together Tauri command handlers, runtime state,
 //! plugin discovery, and startup behavior.
 
-use log::warn;
+use log::{error, warn};
 use std::sync::Arc;
 use tauri::path::BaseDirectory;
 use tauri::WindowEvent;
@@ -14,12 +14,17 @@ use tauri_plugin_updater::UpdaterExt;
 
 use crate::core::BackendId;
 
+mod app_identity;
+mod config_watcher;
 mod core;
 mod logging;
+mod monitoring;
 mod output_log;
 mod plugin_bundles;
+mod plugin_manifest;
 mod plugin_paths;
 mod plugin_runtime;
+mod plugin_sources;
 mod plugin_vcs_backends;
 mod plugins;
 mod repo;
@@ -31,6 +36,26 @@ mod themes;
 mod utilities;
 mod validate;
 mod workarounds;
+
+/// Loads `Client/.env` for local development without overwriting existing env vars.
+///
+/// Missing .env file is silently ignored. Malformed or unreadable .env files
+/// are reported with context for debugging before structured logging is ready.
+fn load_local_dotenv() {
+    let dotenv_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.env");
+
+    match dotenvy::from_path(&dotenv_path) {
+        Ok(_) => {}
+        Err(dotenvy::Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => {
+            eprintln!(
+                "warning: failed to load local .env from {}: {}",
+                dotenv_path.display(),
+                err
+            );
+        }
+    }
+}
 
 /// Selects preferred backend from settings or first available plugin backend.
 ///
@@ -98,7 +123,13 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
                         log::warn!("startup reopen: failed to emit repo:selected: {}", error);
                     }
                 }
-                Err(error) => log::warn!("startup reopen: failed to open repo: {}", error),
+                Err(error) => {
+                    crate::monitoring::capture_startup_error(
+                        "reopen_last_repo",
+                        &error.to_string(),
+                    );
+                    log::warn!("startup reopen: failed to open repo: {}", error)
+                }
             }
         } else {
             log::warn!("startup reopen: backend not available");
@@ -108,22 +139,25 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
 
 /// Starts the OpenVCS backend runtime and Tauri application.
 ///
-/// This configures logging, plugin bundle synchronization, startup restore
+/// This configures logging, plugin synchronization, startup restore
 /// behavior, update checks, and all IPC handlers exposed to the frontend.
 ///
 /// # Returns
 /// - `()`. This function runs the Tauri event loop until application exit.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    load_local_dotenv();
     // Initialize logging
     logging::init();
+    let app_state = state::AppState::new_with_config();
+    monitoring::sync_backend_monitoring(&app_state.config());
 
     workarounds::apply_linux_nvidia_workaround();
 
     println!("Running OpenVCS...");
 
     tauri::Builder::default()
-        .manage(state::AppState::new_with_config())
+        .manage(app_state)
         .setup(|app| {
             crate::plugin_runtime::host_api::set_status_event_emitter({
                 let app_handle = app.handle().clone();
@@ -187,11 +221,42 @@ pub fn run() {
             }
             let store = crate::plugin_bundles::PluginBundleStore::new_default();
             if let Err(err) = store.sync_built_in_plugins() {
-                warn!("plugins: failed to sync built-in bundles: {}", err);
+                crate::monitoring::capture_startup_error("sync_built_in_plugins", &err.to_string());
+                warn!("plugins: failed to sync built-in plugins: {}", err);
             }
             let state = app.state::<state::AppState>();
+            crate::config_watcher::start_config_watcher(app.handle().clone());
+            if let Err(err) = crate::plugin_sources::sync_configured_plugins(&state.config()) {
+                crate::monitoring::capture_startup_error(
+                    "sync_configured_plugins",
+                    &err.to_string(),
+                );
+                warn!("plugins: failed to sync configured plugins: {}", err);
+            }
             if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {
+                crate::monitoring::capture_startup_error("sync_plugin_runtime", &err.to_string());
                 warn!("plugins: failed to sync runtime on startup: {}", err);
+            }
+            match crate::plugin_vcs_backends::list_plugin_vcs_backends() {
+                Ok(backends) if backends.is_empty() => {
+                    let configured_default = state.config().general.default_backend;
+                    error!(
+                        "startup: no VCS backends are available; configured default backend='{}'; repo actions will remain unavailable until a backend plugin is installed, approved, and enabled",
+                        configured_default
+                    );
+                }
+                Ok(backends) => {
+                    log::info!(
+                        "startup: {} VCS backend(s) available after plugin sync",
+                        backends.len()
+                    );
+                }
+                Err(err) => {
+                    warn!(
+                        "startup: failed to discover VCS backends after plugin sync: {}",
+                        err
+                    );
+                }
             }
             // On startup, optionally reopen the last repository if enabled in settings.
             try_reopen_last_repo(app.handle());
@@ -308,8 +373,8 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::list_plugins,
         tauri_commands::list_plugin_start_failures,
         tauri_commands::load_plugin,
-        tauri_commands::install_ovcsp,
-        tauri_commands::list_installed_bundles,
+        tauri_commands::list_installed_plugins,
+        tauri_commands::sync_configured_plugins,
         tauri_commands::uninstall_plugin,
         tauri_commands::set_plugin_enabled,
         tauri_commands::set_plugin_approval,
@@ -327,6 +392,7 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::ssh_key_candidates,
         tauri_commands::ssh_add_key,
         tauri_commands::updater_install_now,
+        tauri_commands::get_update_status,
         tauri_commands::open_repo_dotfile,
         tauri_commands::open_docs,
         tauri_commands::open_output_log_window,
@@ -335,6 +401,7 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::log_frontend_message,
         tauri_commands::tail_app_log,
         tauri_commands::clear_app_log,
+        tauri_commands::report_frontend_error,
         tauri_commands::exit_app,
         tauri_commands::check_for_updates,
     ]

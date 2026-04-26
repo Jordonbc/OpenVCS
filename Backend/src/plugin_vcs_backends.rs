@@ -56,14 +56,13 @@ pub struct PluginBackendDescriptor {
 
 /// Lists VCS backends currently available from installed plugins.
 ///
-/// Built-in plugin bundles are synchronized into the installed plugin store at
-/// startup, so backend discovery must use installed component metadata instead
-/// of treating bundled `.ovcsp` archives as unpacked plugin directories.
+/// Built-in and user-configured plugins are synchronized into the installed
+/// plugin store at startup, so backend discovery must use installed component
+/// metadata instead of treating config sources as runtime directories.
 ///
-/// Discovery also performs a best-effort built-in sync before listing
-/// components. This keeps packaged backends visible even if startup sync ran
-/// before bundled resources were fully ready or if the installed store later
-/// needs repair.
+/// Discovery also performs a best-effort sync before listing components. This
+/// keeps packaged backends visible even if startup sync ran before bundled
+/// resources were fully ready or if the installed store later needs repair.
 ///
 /// # Returns
 /// - `Ok(Vec<PluginBackendDescriptor>)` containing discovered backend descriptors.
@@ -76,6 +75,13 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
     if let Err(err) = store.sync_built_in_plugins() {
         warn!(
             "list_plugin_vcs_backends: built-in sync failed before discovery: {}",
+            err
+        );
+    }
+    let cfg = AppConfig::load_or_default();
+    if let Err(err) = crate::plugin_sources::sync_configured_plugins(&cfg) {
+        warn!(
+            "list_plugin_vcs_backends: configured plugin sync failed before discovery: {}",
             err
         );
     }
@@ -247,8 +253,8 @@ pub fn open_repo_via_plugin_vcs_backend(
         desc.plugin_id
     );
 
-    let spawn = runtime_manager
-        .vcs_spawn_for_workspace_with_config(cfg, &desc.plugin_id, workspace_root)
+    let runtime = runtime_manager
+        .vcs_spawn_for_workspace_with_config(cfg, &desc.plugin_id, workspace_root.clone())
         .map_err(|e| {
             error!(
                 "open_repo_via_plugin_vcs_backend: failed to resolve spawn for plugin {}: {}",
@@ -260,7 +266,7 @@ pub fn open_repo_via_plugin_vcs_backend(
             }
         })?;
 
-    let runtime = create_node_runtime_instance(spawn).map_err(|e| {
+    let runtime = create_node_runtime_instance(runtime).map_err(|e| {
         error!(
             "open_repo_via_plugin_vcs_backend: failed to create runtime for plugin {}: {}",
             desc.plugin_id, e
@@ -275,6 +281,17 @@ pub fn open_repo_via_plugin_vcs_backend(
         backend: backend_id.clone(),
         msg: e,
     })?;
+
+    if let Err(e) = runtime_manager.track_node_runtime_for_workspace(
+        &desc.plugin_id,
+        Some(workspace_root),
+        Arc::clone(&runtime),
+    ) {
+        error!(
+            "open_repo_via_plugin_vcs_backend: failed to track runtime for plugin {}: {}",
+            desc.plugin_id, e
+        );
+    }
 
     debug!("open_repo_via_plugin_vcs_backend: opening via plugin proxy",);
 

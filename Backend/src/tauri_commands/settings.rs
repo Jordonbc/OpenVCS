@@ -13,6 +13,9 @@ use super::run_repo_task;
 fn diff_configs(old_cfg: &AppConfig, new_cfg: &AppConfig) -> Vec<String> {
     let mut changes = Vec::new();
 
+    if old_cfg.plugin != new_cfg.plugin {
+        changes.push("plugin".to_string());
+    }
     if old_cfg.general != new_cfg.general {
         changes.push("general".to_string());
     }
@@ -78,6 +81,8 @@ pub fn get_global_settings(state: State<'_, AppState>) -> Result<AppConfig, Stri
 pub fn set_global_settings(state: State<'_, AppState>, cfg: AppConfig) -> Result<(), String> {
     let old_cfg = state.config();
     state.set_config(cfg.clone())?;
+    crate::plugin_sources::sync_configured_plugins(&cfg)
+        .map_err(|err| format!("settings saved but plugin source sync failed: {err}"))?;
     state
         .plugin_runtime()
         .sync_plugin_runtime_with_config(&cfg)
@@ -105,7 +110,7 @@ pub fn set_global_settings(state: State<'_, AppState>, cfg: AppConfig) -> Result
 /// - `Ok(RepoConfig)` current effective repository settings.
 /// - `Err(String)` when repo queries fail.
 pub async fn get_repo_settings(state: State<'_, AppState>) -> Result<RepoConfig, String> {
-    let mut cfg = state.repo_config();
+    let mut cfg = RepoConfig::default();
     if let Some(repo) = state.current_repo() {
         let (identity, remotes) = run_repo_task("get_repo_settings", repo, move |repo| {
             let identity = match repo.inner().get_identity() {

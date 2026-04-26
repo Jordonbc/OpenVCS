@@ -1,20 +1,22 @@
 default:
   @just --list
 
-build target="all":
-  @just {{ if target == "plugins" { "_build_plugins" } else if target == "client" { "_build_client" } else if target == "all" { "_build_all" } else { "_build_usage" } }}
+build target:
+  @case "{{target}}" in \
+    plugins) just _build_plugins ;; \
+    stable|beta|nightly) just _build_client "{{target}}" ;; \
+    *) just _build_usage ;; \
+  esac
 
-_build_all: _build_client
+_build_client channel="stable":
+  npm --prefix Frontend run build
+  FRONTEND_SKIP_BUILD=1 NO_STRIP=true OPENVCS_UPDATE_CHANNEL={{channel}} node scripts/tauri-build.js
 
 _build_plugins:
-  cargo openvcs dist --all --plugin-dir Backend/built-in-plugins --out target/openvcs/built-in-plugins
-
-_build_client: _build_plugins
-  npm --prefix Frontend run build
-  cargo build
+  @echo "Plugin-only builds are not currently implemented by this Justfile"
 
 _build_usage:
-  @echo "Unknown build target. Use: just build, just build plugins, or just build client"
+  @echo "Unknown build target. Use: just build stable, just build beta, just build nightly, or just build plugins"
   @exit 2
 
 test:
@@ -22,8 +24,8 @@ test:
   cd Frontend && npm exec tsc -- -p tsconfig.json --noEmit || true
   cd Frontend && npx vitest run || true
 
-tauri-build:
-  node scripts/tauri-build.js
+tauri-build channel="stable":
+  FRONTEND_SKIP_BUILD=1 NO_STRIP=true OPENVCS_UPDATE_CHANNEL={{channel}} node scripts/tauri-build.js
 
 build-flatpak install="":
   @if [ "{{install}}" = "-i" ]; then \

@@ -301,22 +301,6 @@ export function getCurrentMode(): 'system' | 'light' | 'dark' {
 /** Refreshes available themes from backend and plugin registries. */
 export async function refreshAvailableThemes(): Promise<ThemeSummary[]> {
     const pluginSummaries = getRegisteredThemeSummaries();
-    if (!TAURI.has) {
-        const others: ThemeSummary[] = [];
-        const seen = new Set<string>([DEFAULT_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_DARK_THEME_ID]);
-        for (const item of Array.isArray(pluginSummaries) ? pluginSummaries : []) {
-            if (!item) continue;
-            const summary = sanitizeSummary(item);
-            const norm = summary.id.toLowerCase();
-            if (seen.has(norm)) continue;
-            seen.add(norm);
-            others.push(summary);
-        }
-        others.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-        availableThemes = [defaultLightSummary(), defaultDarkSummary(), ...others];
-        fetchedThemes = true;
-        return availableThemes;
-    }
 
     try {
         const list = await TAURI.invoke<ThemeSummary[]>('list_themes');
@@ -388,7 +372,7 @@ export async function selectThemePack(
         if (paired) target = paired;
     }
 
-    if (!TAURI.has || isBuiltInDefaultThemeId(target)) {
+    if (isBuiltInDefaultThemeId(target)) {
         activeThemeId = isBuiltInDefaultThemeId(target) ? target : defaultThemeIdForMode(desiredMode);
         activeThemePackId = activeThemeId;
         activeStyles = null;

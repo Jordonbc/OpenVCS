@@ -53,7 +53,6 @@ export function wireSshKeys() {
   }
 
   async function refresh() {
-    if (!TAURI.has) return;
     if (refreshBtn) refreshBtn.disabled = true;
     if (addBtn) addBtn.disabled = true;
     try {
@@ -95,7 +94,6 @@ export function wireSshKeys() {
     copyToClipboard(`ssh-add "${selectedPath.replace(/[\\"]/g, (ch) => '\\' + ch)}"`);
   });
   addBtn?.addEventListener('click', async () => {
-    if (!TAURI.has) return;
     if (!selectedPath) { notify('Select a key first'); return; }
     if (addBtn) addBtn.disabled = true;
     try {

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { TAURI } from "./tauri";
+import { addFrontendLogBreadcrumb } from "./monitoring";
 
 type LogLevel = "trace" | "debug" | "info" | "warn" | "error";
+const LOGGER_PATCH_FLAG = "__OPENVCS_FRONTEND_LOGGER_INSTALLED__";
 
 interface Logger {
   trace: (...args: unknown[]) => void;
@@ -31,9 +33,29 @@ function formatMessage(...args: unknown[]): string {
     .join(" ");
 }
 
-function sendToBackend(level: LogLevel, message: string): void {
-  if (TAURI.has) {
-    TAURI.invoke("log_frontend_message", { level, message }).catch(() => {});
+function sendToBackend(
+  level: LogLevel,
+  message: string,
+  options: { breadcrumb?: boolean } = {},
+): void {
+  if (options.breadcrumb !== false) {
+    addFrontendLogBreadcrumb(toMonitoringBreadcrumbLevel(level), message);
+  }
+  TAURI.invoke("log_frontend_message", { level, message }).catch(() => {});
+}
+
+/** Maps logger levels to the breadcrumb levels sent through monitoring relay payloads. */
+function toMonitoringBreadcrumbLevel(level: LogLevel): "debug" | "info" | "warning" | "error" {
+  switch (level) {
+    case "trace":
+    case "debug":
+      return "debug";
+    case "info":
+      return "info";
+    case "warn":
+      return "warning";
+    case "error":
+      return "error";
   }
 }
 
@@ -65,37 +87,56 @@ function createLogger(module: string): Logger {
 }
 
 function installFrontendLogger(): void {
+  if ((globalThis as Record<string, unknown>)[LOGGER_PATCH_FLAG]) {
+    return;
+  }
+
   const originalConsole = {
-    debug: console.debug,
-    log: console.log,
-    warn: console.warn,
-    error: console.error,
+    debug: console.debug.bind(console),
+    info: console.info.bind(console),
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+    trace: console.trace.bind(console),
   };
 
   console.debug = (...args: unknown[]) => {
     const msg = formatMessage(...args);
     sendToBackend("debug", msg);
+    originalConsole.debug(...args);
+  };
+
+  console.info = (...args: unknown[]) => {
+    const msg = formatMessage(...args);
+    sendToBackend("info", msg);
+    originalConsole.info(...args);
   };
 
   console.log = (...args: unknown[]) => {
     const msg = formatMessage(...args);
     sendToBackend("info", msg);
+    originalConsole.log(...args);
   };
 
   console.warn = (...args: unknown[]) => {
     const msg = formatMessage(...args);
     sendToBackend("warn", msg);
+    originalConsole.warn(...args);
   };
 
   console.error = (...args: unknown[]) => {
     const msg = formatMessage(...args);
     sendToBackend("error", msg);
+    originalConsole.error(...args);
   };
 
   console.trace = (...args: unknown[]) => {
     const msg = formatMessage(...args);
     sendToBackend("trace", msg);
+    originalConsole.trace(...args);
   };
+
+  (globalThis as Record<string, unknown>)[LOGGER_PATCH_FLAG] = true;
 }
 
 installFrontendLogger();

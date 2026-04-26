@@ -1,182 +1,135 @@
 # Plugins
 
-OpenVCS plugins are local extensions installed as `.ovcsp` bundles.
+OpenVCS plugins are declared by config and synchronized into a local installed
+plugin store.
 
-Plugins may include themes, a Node.js module, or both.
+The plugin runtime still executes local files from the writable `plugins/`
+directory under the app config directory.
 
-## Where plugins live
+## Source Of Truth
 
-OpenVCS discovers installed plugins from the user plugins directory in the
-OpenVCS config dir: `plugins/`.
+OpenVCS reads two plugin source lists:
 
-Built-in plugins ship with the app as `.ovcsp` archives in
-`built-in-plugins/`. During startup, OpenVCS synchronizes those bundled archives
-into the installed `plugins/` store before plugin, theme, and VCS backend
-discovery runs.
+- Built-in plugins: `Client/openvcs.plugins.json` (channel-first)
+- User plugins: the top-level `plugin = [...]` array in `openvcs.conf`
 
-## Bundle format (`.ovcsp`)
+## Channel-Based Built-in Config
 
-An `.ovcsp` is a tar.gz archive with this layout:
+Built-in plugins use a channel-first schema that maps release channels to plugin
+specifier arrays:
+
+```json
+{
+  "stable": ["@openvcs/git-plugin@latest", "@openvcs/official-themes@latest"],
+  "beta": ["@openvcs/git-plugin@beta", "@openvcs/official-themes@beta"],
+  "dev": ["@openvcs/git-plugin@edge", "@openvcs/official-themes@nightly"]
+}
+```
+
+The active channel is determined by the `OPENVCS_UPDATE_CHANNEL` environment
+variable:
+
+- `stable` - production releases
+- `beta` - beta builds  
+- `dev` - development builds
+- `nightly` - alias for `dev`
+- unset/unknown values default to `stable`
+
+### Local Override
+
+For local development, create `openvcs.plugins.local.json` in the Client directory
+with the same shape to override the channel-specific plugin list. This is useful
+for testing different plugin versions without modifying the main config.
+
+If the local file defines the active channel key, that channel list fully
+replaces the committed list, including an empty array.
+
+The local override file is ignored by git (see `.gitignore`).
+
+## User Plugin Config
+
+Example user config:
+
+```toml
+plugin = [
+  "@openvcs/git-plugin",
+  "@scope/example-plugin@latest",
+  "../Git"
+]
+```
+
+Entries can be:
+
+- npm package specifiers such as `@scope/name` or `@scope/name@version`
+- local paths to npm plugin folders such as `../Git`
+
+Relative user paths are resolved from the directory that contains
+`openvcs.conf`.
+
+## Sync Flow
+
+- Built-in plugin sources are materialized during client builds into
+  `target/openvcs/built-in-plugins/<plugin-id>/`.
+- Packaged apps ship those directories as the `built-in-plugins/` resource.
+- On startup, the backend synchronizes built-in plugins and user-configured
+  plugins into the writable installed plugin store.
+- While the app is running, edits to `openvcs.conf` are watched and re-synced
+  automatically.
+- Plugin store writes are serialized so built-in sync, config reloads, and
+  backend discovery do not race while replacing the same installed plugin.
+- Plugin action payloads are forwarded back to the runtime, and any plugin
+  modal returned by an action is re-rendered in the host UI.
+- Plugin modals can nest `horizontal-box`, `vertical-box`, and `grid` content
+  items so plugin authors can keep related controls on the same row or in the
+  same multi-column section.
+- The Settings > Plugins pane can still reload config manually.
+
+Config-managed plugins are auto-approved because adding them to config is the
+trust action.
+
+## Installed Layout
+
+The installed plugin store still uses one directory per plugin id and keeps the
+current selected version metadata:
 
 ```text
-<plugin-id>/
-  openvcs.plugin.json
-  icon.<ext>            (optional)
-  themes/               (optional)
-  bin/
-    <module>.mjs|.js|.cjs
-    ...other runtime files
-  node_modules/         (optional; pre-bundled npm dependencies)
+plugins/
+  <plugin-id>/
+    package.json
+    source.json
+    index.json
+    current.json
+    bin/
+    themes/
+    node_modules/
 ```
 
-## Manifest (`openvcs.plugin.json`)
+`source.json` records whether the plugin came from a built-in config entry or a
+user config entry and preserves the original specifier.
 
-Minimal theme-only plugin:
+## Plugin Author Workflow
 
-```json
-{
-  "id": "example.theme-pack",
-  "name": "Example Theme Pack",
-  "version": "0.1.0"
-}
+Plugin packages should be ordinary npm packages that include:
+
+- `package.json` with an `openvcs` object
+- compiled runtime files under `bin/`
+- optional `themes/`
+- any runtime dependencies installable from `dependencies`
+
+The SDK build step still generates the Node bootstrap under `bin/<module.exec>`:
+
+```bash
+npx openvcs build --plugin-dir /path/to/plugin
 ```
 
-Minimal module plugin:
+For local path plugins used in config, `npm pack` is the packaging boundary used
+by OpenVCS during sync, so package `files`, `prepack`, and published runtime
+assets matter.
 
-```json
-{
-  "id": "example.plugin",
-  "name": "Example Plugin",
-  "version": "0.1.0",
-  "module": { "exec": "example-plugin.mjs" }
-}
-```
+## Security Model
 
-Notes:
-
-- `module.exec` must end with `.js`, `.mjs`, or `.cjs`.
-- The runtime loads only Node entry files from `bin/`.
-- If `themes/` exists, it is packaged and discovered automatically.
-- Dependency installation is a packaging concern (SDK), not an app install concern.
-- OpenVCS does not run npm during plugin installation or updates.
-
-## Plugin UI menus and settings
-
-- Plugins can contribute typed menus/elements (text and buttons today) that the client renders.
-- Enabling/disabling a plugin from the Settings > Plugins pane refreshes plugin-contributed menus.
-- Plugin list checkboxes are tri-state in the UI: disabled, enabled (green check), and enabling (animated pending indicator).
-- If plugin runtime startup fails, the plugin list shows a persistent red `!` marker for that plugin until retry.
-- Plugin menus are fetched only from plugins with a currently running module runtime.
-- If enabling a plugin fails during runtime startup, the host keeps that plugin disabled and returns an error to the UI.
-- Plugin settings persistence is automatic in the host under:
-  - `plugin-data/<plugin-id>/settings.json`
-
-## Security model
-
-Plugins are trust-model based and do not use per-capability permission prompts.
-Plugins run with full system access in their own Node process.
-
-Before a plugin module can start, the installed version must be marked
-`approved` in plugin installation metadata.
-
-Plugin modules run only with the app-bundled Node runtime; OpenVCS does not
-fall back to `node` from system PATH. The backend resolves bundled Node from the
-packaged `node-runtime/` resource, packaged filesystem layouts such as
-`node-runtime/` next to the executable or OpenVCS-owned Linux
-`lib/<AppName>/node-runtime/` directories, or the generated dev runtime under
-`target/openvcs/node-runtime/`.
+- Plugins run as full-trust Node.js processes.
+- OpenVCS does not sandbox plugin filesystem or process access.
+- Adding a plugin source to config means you trust that package or local folder.
 
 Install only plugins you trust.
-
-## Building bundles
-
-Install the SDK in your plugin project:
-
-```bash
-npm install --save-dev @openvcs/sdk
-```
-
-Code plugins should expose a `build:plugin` npm script that compiles runtime
-assets into `bin/plugin.js`. Plugins can also import `@openvcs/sdk/runtime` and
-`@openvcs/sdk/types` to reuse the Node JSON-RPC transport, host notification
-helpers, and delegate typings instead of implementing stdio framing manually.
-Then use the SDK CLI in two steps:
-
-```bash
-# Build runtime assets from a plugin directory
-npx openvcs build
-
-# Package a bundle from a plugin directory
-npx openvcs dist --plugin-dir . --out dist
-
-# Or explicitly from anywhere
-npx openvcs build --plugin-dir /path/to/plugin
-npx openvcs dist --plugin-dir /path/to/plugin --out /path/to/dist
-```
-
-`openvcs dist` runs the build step automatically unless `--no-build` is passed.
-
-If bundled runtime code imports npm packages at execution time, declare those
-packages in `dependencies` rather than `devDependencies` so `openvcs dist`
-includes them in the shipped `node_modules/` tree.
-
-The desktop client's built-in plugin bundler follows the same contract: it runs
-`npm install`/`npm ci` as needed and then `npm run dist` for every built-in
-plugin. Plugins that do not ship their own `package.json` get a transient npm
-packaging manifest during the build so the workflow stays npm-only.
-
-Typical Node plugin author modules now look like:
-
-```ts
-import type { PluginModuleDefinition } from '@openvcs/sdk/runtime';
-
-export const PluginDefinition: PluginModuleDefinition = {
-  plugin: {
-    async 'plugin.init'(_params, context) {
-      context.host.info('Plugin started');
-      return null;
-    },
-  },
-};
-
-export function OnPluginStart(): void {}
-```
-
-VCS backends can keep that same startup flow while using the SDK's class-based
-delegate helper:
-
-```ts
-import {
-  VcsDelegateBase,
-  type PluginModuleDefinition,
-} from '@openvcs/sdk/runtime';
-
-class ExampleVcsDelegates extends VcsDelegateBase<{}> {
-  override getCaps() {
-    return {
-      commits: true,
-      branches: true,
-      tags: false,
-      staging: true,
-      push_pull: true,
-      fast_forward: true,
-    };
-  }
-}
-
-export const PluginDefinition: PluginModuleDefinition = {};
-
-export function OnPluginStart(): void {
-  PluginDefinition.vcs = new ExampleVcsDelegates({}).toDelegates();
-}
-```
-
-`VcsDelegateBase` maps ordinary prototype methods such as `getCaps()` or
-`commitIndex()` to exact JSON-RPC method names like `vcs.get_caps` and
-`vcs.commit_index`.
-
-`openvcs build` then generates `bin/<module.exec>` as the SDK-owned bootstrap.
-Keep `module.exec` different from `plugin.js`; `plugin.js` is reserved for the
-compiled author module that exports `PluginDefinition` and `OnPluginStart()`.
-
-See `Client/docs/plugin architecture.md` for the runtime model and `SDK/README.md` for packager details.

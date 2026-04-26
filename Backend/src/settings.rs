@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Global application configuration types and persistence helpers.
 
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{fs, io};
@@ -16,9 +15,12 @@ fn default_true() -> bool {
 }
 
 /// Root global settings document persisted as TOML.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppConfig {
     pub schema_version: u32,
+    /// Opencode-style plugin source entries resolved from npm specs or local paths.
+    #[serde(default)]
+    pub plugin: Vec<String>,
     #[serde(default)]
     pub general: General,
     #[serde(default)]
@@ -53,6 +55,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             schema_version: 1,
+            plugin: Default::default(),
             general: Default::default(),
             git: Default::default(),
             credentials: Default::default(),
@@ -82,13 +85,13 @@ pub struct General {
     pub default_backend: String,
     #[serde(default)]
     pub update_channel: UpdateChannel,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub reopen_last_repos: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub checks_on_launch: bool,
     #[serde(default)]
     pub telemetry: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub crash_reports: bool,
 }
 impl Default for General {
@@ -106,7 +109,7 @@ impl Default for General {
             reopen_last_repos: true,
             checks_on_launch: true,
             telemetry: false,
-            crash_reports: false,
+            crash_reports: true,
         }
     }
 }
@@ -322,7 +325,7 @@ impl Default for Integrations {
     }
 }
 
-/// Plugin enable/disable overrides.
+/// Plugin source and enable/disable settings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Plugins {
     /// Plugin ids that are installed but disabled.
@@ -669,7 +672,7 @@ impl AppConfig {
     /// # Returns
     /// - Filesystem path to the global OpenVCS config file.
     pub fn path() -> PathBuf {
-        if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
+        if let Some(pd) = crate::app_identity::project_dirs() {
             pd.config_dir().join("openvcs.conf")
         } else {
             PathBuf::from("openvcs.conf")
@@ -781,6 +784,18 @@ impl AppConfig {
         self.lfs.concurrency = self.lfs.concurrency.clamp(1, 16);
 
         // Performance
+
+        // Plugin source list
+        {
+            let mut seen = std::collections::HashSet::new();
+            self.plugin = self
+                .plugin
+                .iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .filter(|s| seen.insert(s.clone()))
+                .collect();
+        }
 
         // Plugins
         {

@@ -3,14 +3,13 @@
 
 //! Filesystem persistence for plugin settings JSON.
 
-use directories::ProjectDirs;
 use serde_json::{Map, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Returns the root plugin data directory under the app config directory.
 fn plugin_data_root() -> PathBuf {
-    if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
+    if let Some(pd) = crate::app_identity::project_dirs() {
         pd.config_dir().join("plugin-data")
     } else {
         PathBuf::from("plugin-data")

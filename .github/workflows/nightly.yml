@@ -20,8 +20,6 @@ permissions:
 env:
   # Scheduled runs should always build from Dev. Manual runs should build from the selected branch.
   TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'Dev' }}
-  # Flatpak is enabled in CI.
-  OPENVCS_ENABLE_FLATPAK: '0'
 
 jobs:
   check-changes:
@@ -39,7 +37,6 @@ jobs:
         with:
           ref: ${{ env.TARGET_REF }}
           fetch-depth: 0   # we need history and tags
-          submodules: recursive
           lfs: false
 
       - name: Fetch tags
@@ -83,8 +80,8 @@ jobs:
       actions: write       # use GitHub Actions cache (rust-cache / sccache)
     env:
       RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: 'true'
-      SCCACHE_CACHE_SIZE: '2G'
+      SCCACHE_GHA_ENABLED: ${{ vars.SSCCACHE_GHA_ENABLED }}
+      SCCACHE_CACHE_SIZE: ${{ vars.SSCCACHE_SIZE }}
     strategy:
       fail-fast: false
       matrix:
@@ -100,12 +97,11 @@ jobs:
         with:
           ref: ${{ env.TARGET_REF }}
           fetch-depth: 0
-          submodules: recursive
           lfs: true
 
       - name: Compute metadata (date, short SHA, compare, changelog)
         id: meta
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const date = new Date().toISOString().slice(0, 10); // UTC date
@@ -156,7 +152,7 @@ jobs:
 
       # ---------- Frontend ----------
       - name: Setup Node
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '24'
           cache: 'npm'
@@ -168,6 +164,12 @@ jobs:
 
       - name: Build frontend
         working-directory: Frontend
+        env:
+          VITE_SENTRY_ENVIRONMENT: nightly
+          VITE_SENTRY_RELEASE: openvcs-nightly-${{ steps.meta.outputs.short_sha }}
+          SENTRY_AUTH_TOKEN: ${{ matrix.platform == 'ubuntu-24.04' && secrets.SENTRY_AUTH_TOKEN || '' }}
+          SENTRY_ORG: ${{ matrix.platform == 'ubuntu-24.04' && secrets.SENTRY_ORG || '' }}
+          SENTRY_PROJECT: ${{ matrix.platform == 'ubuntu-24.04' && secrets.SENTRY_PROJECT || '' }}
         run: npm run build
 
       # ---------- Rust & platform deps ----------
@@ -187,42 +189,6 @@ jobs:
           sudo apt-get install -y libappindicator3-dev librsvg2-dev patchelf
           sudo apt-get install -y libwebkit2gtk-4.1-dev || sudo apt-get install -y libwebkit2gtk-4.0-dev
 
-      # ---------- Flatpak (Linux only; artifact) ----------
-      - name: Install Flatpak tooling
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
-        run: |
-          set -euxo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream elfutils
-          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y flathub org.gnome.Platform//49 org.gnome.Sdk//49
-          # Cargo/rustc must come from the Flatpak SDK environment (not the host toolchain).
-          # Try common branches to avoid coupling this workflow to the host runner image.
-          flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//25.08 \
-            || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//24.08 \
-            || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable
-
-      - name: Verify Flatpak manifest exists
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
-        run: |
-          set -euxo pipefail
-          ls -la packaging/flatpak
-          test -f packaging/flatpak/io.github.jordonbc.OpenVCS.yml
-
-      - name: Build Flatpak bundle
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
-        run: |
-          set -euxo pipefail
-          flatpak-builder --user --force-clean --repo=repo build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml
-          flatpak build-bundle repo OpenVCS.flatpak io.github.jordonbc.OpenVCS
-
-      - name: Upload Flatpak bundle (artifact)
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: OpenVCS-flatpak-nightly
-          path: OpenVCS.flatpak
-
       # ---------- Cache ----------
       - name: Rust cache
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
@@ -237,7 +203,7 @@ jobs:
 
       # ---------- Reset rolling tag (optional but keeps things tidy) ----------
       - name: Remove existing 'openvcs-nightly' release & tag (if any)
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const owner = context.repo.owner;
@@ -252,6 +218,11 @@ jobs:
               if (e.status !== 422) throw e;
             }
 
+      - name: Write channel Tauri config override
+        env:
+          OPENVCS_UPDATE_CHANNEL: nightly
+        run: node scripts/write-tauri-channel-config.js "${{ runner.temp }}/tauri.channel.conf.json"
+
       # ---------- Build & publish ----------
       - name: Build and publish Nightly prerelease
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # action-v0.6.2
@@ -259,6 +230,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FRONTEND_SKIP_BUILD: '1'
           OPENVCS_UPDATE_CHANNEL: nightly
+          OPENVCS_SENTRY_DSN: ${{ secrets.OPENVCS_SENTRY_DSN }}
+          OPENVCS_SENTRY_ENVIRONMENT: nightly
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_PRIVATE_KEY_PASSWORD }}
         with:
@@ -278,10 +251,4 @@ jobs:
             ${{ steps.meta.outputs.changelog }}
           releaseDraft: false
           prerelease: true
-          args: ${{ matrix.args }}
-
-      - name: Upload Flatpak bundle to GitHub Release
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload openvcs-nightly OpenVCS.flatpak --clobber
+          args: ${{ format('{0} --config {1}/tauri.channel.conf.json', matrix.args || '', runner.temp) }}

@@ -28,6 +28,8 @@ curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh 
 
 The script targets Linux, leaves existing configuration untouched, and can be re-run to pull the newest release.
 
+Desktop builds keep using the legacy shared `OpenVCS` config and plugin directories.
+
 **Install pre-release (nightly):**
 
 ```bash
@@ -41,6 +43,8 @@ curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh 
 ```
 
 Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
+
+Pre-release AppImage installs use a separate launcher and install path when the selected release is branded as beta or nightly, so they can coexist with stable on the same machine.
 
 ---
 
@@ -70,7 +74,7 @@ Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
 - 🗃 **Git LFS helpers:** fetch/pull/prune, track/untrack, inspect tracked paths.
 - 🔐 **SSH helpers:** trust host keys, list/add SSH agent keys, key discovery.
 - 🎨 **Themes:** built-in light/dark themes, plus plugin-provided themes (standalone theme `.zip` packs are not supported).
-- 🧩 **Plugins (early):** installable `.ovcsp` bundles (theme packs and/or Node.js modules).
+- 🧩 **Plugins (early):** config-driven npm or local-path plugins synchronized into the app on startup.
 - 🔄 **Updater & logs:** update check/install, VCS output log window, app log tail/clear.
 
 ## Planned / Exploratory
@@ -159,15 +163,21 @@ cargo tauri dev
 
 ```bash
 just tauri-build
+just tauri-build beta
 ```
 
 This wraps `cargo tauri build` with `NO_STRIP=true` to avoid AppImage
 linuxdeploy strip failures on newer Linux toolchains.
 
+`just build`, `just build stable`, `just build beta`, and `just build nightly`
+use the same channel-aware Tauri build flow.
+
 The Tauri precommands in `Backend/tauri.conf.json` intentionally set an
 explicit hook `cwd` to `Backend/` so Tauri does not resolve them from nested
-plugin directories, and built-in plugins are bundled through each plugin's own
-`npm run dist` workflow when available.
+plugin directories, and built-in plugins are materialized from the
+channel-aware `openvcs.plugins.json` into `target/openvcs/built-in-plugins/`
+before the app is built. Local development can optionally override the active
+channel list with `openvcs.plugins.local.json`.
 
 ### Optional: Rust‑only build
 

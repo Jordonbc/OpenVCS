@@ -13,49 +13,10 @@ use crate::plugin_runtime::PluginRuntimeManager;
 use crate::repo::Repo;
 use crate::repo_settings::RepoConfig;
 use crate::settings::AppConfig;
-use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
 /// Default number of recent repositories stored when settings are missing or invalid.
 pub const MAX_RECENTS: usize = 10;
-
-/// Applies Git SSH-related environment variables from current settings.
-///
-/// # Parameters
-/// - `cfg`: Current app configuration.
-///
-/// # Returns
-/// - `()`.
-fn apply_git_ssh_env(cfg: &AppConfig) {
-    // Prefer config-driven runtime env so the VCS backend (in another crate) can read it.
-    // Keep env var names stable for packaging and troubleshooting.
-    unsafe {
-        // Safety: OpenVCS sets these env vars during startup/config updates and treats them as
-        // process-wide configuration for child processes (e.g. `git`).
-        std::env::set_var(
-            "OPENVCS_SSH_MODE",
-            match cfg.git.ssh_binary {
-                crate::settings::GitSshBinary::Auto => "auto",
-                crate::settings::GitSshBinary::Host => "host",
-                crate::settings::GitSshBinary::Bundled => "bundled",
-                crate::settings::GitSshBinary::Custom => "custom",
-            },
-        );
-    }
-    if cfg.git.ssh_binary == crate::settings::GitSshBinary::Custom
-        && !cfg.git.ssh_path.trim().is_empty()
-    {
-        unsafe {
-            // Safety: see comment above.
-            std::env::set_var("OPENVCS_SSH", cfg.git.ssh_path.trim());
-        }
-    } else {
-        unsafe {
-            // Safety: see comment above.
-            std::env::remove_var("OPENVCS_SSH");
-        }
-    }
-}
 
 /// Central application state.
 /// Keeps track of the currently open repo and MRU recents.
@@ -85,10 +46,9 @@ impl AppState {
     /// Creates app state by loading persisted settings and recent repositories.
     ///
     /// # Returns
-    /// - A fully initialized [`AppState`] with config, recents, and runtime env applied.
+    /// - A fully initialized [`AppState`] with config and recent repositories loaded.
     pub fn new_with_config() -> Self {
         let cfg = AppConfig::load_or_default(); // reads ~/.config/openvcs/openvcs.conf
-        apply_git_ssh_env(&cfg);
         let s = Self {
             config: RwLock::new(cfg),
             repo_config: RwLock::new(RepoConfig::default()),
@@ -126,21 +86,13 @@ impl AppState {
         next.migrate();
         next.validate();
         next.save().map_err(|e| e.to_string())?;
-        apply_git_ssh_env(&next);
+        crate::monitoring::sync_backend_monitoring(&next);
         *self.config.write() = next;
         self.enforce_recents_limit_and_persist();
         Ok(())
     }
 
     /* -------- repo config -------- */
-
-    /// Returns a snapshot of repository-local settings.
-    ///
-    /// # Returns
-    /// - A cloned [`RepoConfig`] for the current repository context.
-    pub fn repo_config(&self) -> RepoConfig {
-        self.repo_config.read().clone()
-    }
 
     /// Replaces repository-local settings kept in memory.
     ///
@@ -287,7 +239,7 @@ struct RecentFileEntry {
 /// # Returns
 /// - Recents file path.
 fn recents_file_path() -> PathBuf {
-    if let Some(pd) = ProjectDirs::from("dev", "OpenVCS", "OpenVCS") {
+    if let Some(pd) = crate::app_identity::project_dirs() {
         pd.data_dir().join("recents.json")
     } else {
         PathBuf::from("recents.json")
@@ -312,10 +264,8 @@ fn load_recents_from_disk() -> Result<Vec<PathBuf>, String> {
     if let Ok(serde_json::Value::Array(items)) = serde_json::from_str::<serde_json::Value>(&data) {
         for it in items {
             match it {
-                serde_json::Value::String(s) => {
-                    if !s.trim().is_empty() {
-                        out.push(PathBuf::from(s));
-                    }
+                serde_json::Value::String(s) if !s.trim().is_empty() => {
+                    out.push(PathBuf::from(s));
                 }
                 serde_json::Value::Object(map) => {
                     if let Some(serde_json::Value::String(s)) = map.get("path") {

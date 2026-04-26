@@ -81,14 +81,9 @@ pub async fn browse_directory<R: Runtime>(
 /// - `Some(String)` with the selected file path.
 /// - `None` when canceled.
 pub async fn browse_file<R: Runtime>(window: Window<R>, purpose: Option<String>) -> Option<String> {
-    let title = match purpose.as_deref() {
-        Some("install_plugin") => "Select an OpenVCS plugin bundle (.ovcsp)",
-        _ => "Select a file",
-    };
-    let exts = match purpose.as_deref() {
-        Some("install_plugin") => &["ovcsp"][..],
-        _ => &[][..],
-    };
+    let _ = purpose;
+    let title = "Select a file";
+    let exts = &[][..];
     utilities::browse_file_async(window.app_handle().clone(), title, exts).await
 }
 
@@ -446,7 +441,8 @@ pub fn open_docs<R: Runtime>(window: Window<R>) -> Result<(), String> {
 ///
 /// # Returns
 /// - `Ok(())`.
-pub fn exit_app<R: Runtime>(window: Window<R>) -> Result<(), String> {
+pub fn exit_app<R: Runtime>(window: Window<R>, state: State<'_, AppState>) -> Result<(), String> {
+    state.plugin_runtime().stop_all_plugins();
     window.app_handle().exit(0);
     Ok(())
 }

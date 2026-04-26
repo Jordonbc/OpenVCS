@@ -35,7 +35,6 @@ function setDisabled(id: string, on: boolean) {
 }
 
 async function validateClone() {
-    if (!TAURI.has) return;
     const url = cloneUrl?.value.trim();
     const dest = clonePath?.value.trim();
     try {
@@ -48,7 +47,6 @@ async function validateClone() {
 }
 
 async function validateAdd() {
-    if (!TAURI.has) return;
     const path = addPath?.value.trim();
     try {
         const res = await TAURI.invoke<{ ok: boolean; reason?: string }>("validate_add_path", { path });
@@ -186,7 +184,6 @@ export function bindCommandSheet() {
 
     // Browse buttons
     el<HTMLButtonElement>("#browse-clone", root)?.addEventListener("click", async () => {
-        if (!TAURI.has) return;
         try {
             const dir = await TAURI.invoke<string>("browse_directory", { purpose: "clone_dest" });
             if (dir && clonePath) {
@@ -197,7 +194,6 @@ export function bindCommandSheet() {
     });
 
     el<HTMLButtonElement>("#browse-add", root)?.addEventListener("click", async () => {
-        if (!TAURI.has) return;
         try {
             const dir = await TAURI.invoke<string>("browse_directory", { purpose: "add_repo" });
             if (dir && addPath) {
@@ -213,7 +209,7 @@ export function bindCommandSheet() {
         const dest = clonePath?.value.trim();
         if (!url || !dest) return;
         try {
-            if (TAURI.has) await TAURI.invoke("clone_repo", { url, dest });
+            await TAURI.invoke("clone_repo", { url, dest });
             await refreshRepoSummary();               // ensure state + event
             notify(`Cloned ${url} → ${dest}`);
             closeSheet();
@@ -226,7 +222,7 @@ export function bindCommandSheet() {
         const path = addPath?.value.trim();
         if (!path) return;
         try {
-            if (TAURI.has) await TAURI.invoke("add_repo", { path });
+            await TAURI.invoke("add_repo", { path });
             await refreshRepoSummary();               // ensure state + event
             notify(`Added ${path}`);
             closeSheet();
