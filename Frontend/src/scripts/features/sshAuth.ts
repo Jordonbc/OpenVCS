@@ -70,7 +70,7 @@ function wireAuthModal() {
     openSshKeysModal();
   });
   httpsBtn?.addEventListener('click', async () => {
-    if (!TAURI.has || !current) return;
+    if (!current) return;
     const https = sshToHttps(current.url);
     if (!https) return;
     httpsBtn.disabled = true;
@@ -87,7 +87,7 @@ function wireAuthModal() {
 }
 
 export function initSshAuthPrompt() {
-  if (!TAURI.has || wired) return;
+  if (wired) return;
   wired = true;
 
   TAURI.listen?.('ui:ssh-auth', (ev: any) => {

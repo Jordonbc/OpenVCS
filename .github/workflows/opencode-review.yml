@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
-      contents: read
+      contents: write
       pull-requests: write
       issues: write
 
@@ -26,15 +26,17 @@ jobs:
         env:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          #GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL }}
-          use_github_token: false
+          use_github_token: true
           prompt: |
+            Before anything else, read and follow AGENTS.md for this repository and module.
             Review this pull request:
             - Check for code quality issues
             - Look for potential bugs
             - Suggest improvements
+            - If you make any code edits, run 'cd Client && just test' to verify they compile and pass tests before committing.
 
       - name: fallback
         if: ${{ steps.review_primary.outcome == 'failure' }}
@@ -42,12 +44,14 @@ jobs:
         env:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          #GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL_FALLBACK }}
-          use_github_token: false
+          use_github_token: true
           prompt: |
+            Before anything else, read and follow AGENTS.md for this repository and module.
             Review this pull request:
             - Check for code quality issues
             - Look for potential bugs
             - Suggest improvements
+            - If you make any code edits, run 'cd Client && just test' to verify they compile and pass tests before committing.

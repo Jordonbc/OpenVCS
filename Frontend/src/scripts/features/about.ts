@@ -35,7 +35,7 @@ export async function openAbout(): Promise<void> {
     if (!modal) return;
 
     try {
-        const info = (TAURI.has ? await TAURI.invoke("about_info").catch(() => null) : null) as
+        const info = (await TAURI.invoke("about_info").catch(() => null)) as
             | {
             version?: string;
             build?: string;

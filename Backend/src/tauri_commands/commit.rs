@@ -6,9 +6,27 @@ use log::{error, info};
 use tauri::{async_runtime, Manager, Runtime, State, Window};
 
 use crate::core::models::VcsEvent;
+use crate::repo::Repo;
 use crate::state::AppState;
 
 use super::{current_repo_or_err, progress_bridge, run_repo_task};
+
+/// Resolves the repository commit identity from Git config.
+///
+/// # Parameters
+/// - `repo`: Active repository handle.
+///
+/// # Returns
+/// - `Ok((name, email))` when Git has a configured identity.
+/// - `Err(String)` when the repository has no usable commit identity.
+fn commit_identity(repo: &Repo) -> Result<(String, String), String> {
+    repo.inner()
+        .get_identity()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| {
+            "No Git commit identity configured for this repository; set user.name and user.email in Git".to_string()
+        })
+}
 
 #[tauri::command]
 /// Commits all staged/working-tree changes using summary + optional description.
@@ -49,20 +67,7 @@ pub async fn commit_changes<R: Runtime>(
         });
         info!("Staging changes for commit");
 
-        let (name, email) = repo
-            .inner()
-            .get_identity()
-            .ok()
-            .flatten()
-            .or_else(|| {
-                let n = std::env::var("GIT_AUTHOR_NAME").ok();
-                let e = std::env::var("GIT_AUTHOR_EMAIL").ok();
-                match (n, e) {
-                    (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
-                    _ => None,
-                }
-            })
-            .unwrap_or_else(|| ("OpenVCS".into(), "openvcs@example".into()));
+        let (name, email) = commit_identity(repo.as_ref())?;
         info!("Using identity: {} <{}>", name, email);
 
         on(VcsEvent::Info {
@@ -125,20 +130,7 @@ pub async fn commit_selected<R: Runtime>(
 
     async_runtime::spawn_blocking(move || {
         let on = progress_bridge(app);
-        let (name, email) = repo
-            .inner()
-            .get_identity()
-            .ok()
-            .flatten()
-            .or_else(|| {
-                let n = std::env::var("GIT_AUTHOR_NAME").ok();
-                let e = std::env::var("GIT_AUTHOR_EMAIL").ok();
-                match (n, e) {
-                    (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
-                    _ => None,
-                }
-            })
-            .unwrap_or_else(|| ("OpenVCS".into(), "openvcs@example".into()));
+        let (name, email) = commit_identity(repo.as_ref())?;
 
         let paths: Vec<PathBuf> = files.into_iter().map(PathBuf::from).collect();
 
@@ -210,20 +202,7 @@ pub async fn commit_patch<R: Runtime>(
             e.to_string()
         })?;
 
-        let (name, email) = repo
-            .inner()
-            .get_identity()
-            .ok()
-            .flatten()
-            .or_else(|| {
-                let n = std::env::var("GIT_AUTHOR_NAME").ok();
-                let e = std::env::var("GIT_AUTHOR_EMAIL").ok();
-                match (n, e) {
-                    (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
-                    _ => None,
-                }
-            })
-            .unwrap_or_else(|| ("OpenVCS".into(), "openvcs@example".into()));
+        let (name, email) = commit_identity(repo.as_ref())?;
 
         on(VcsEvent::Info {
             msg: "Committing staged hunks…".into(),
@@ -250,7 +229,8 @@ pub async fn commit_patch<R: Runtime>(
 /// - `summary`: Commit summary line.
 /// - `description`: Optional commit body text.
 /// - `patch`: Optional patch text to stage first.
-/// - `files`: Optional explicit file list.
+/// - `files`: Explicit commit path list.
+/// - `stage_paths`: Full-file paths to stage directly before commit.
 ///
 /// # Returns
 /// - `Ok(String)` created commit id.
@@ -262,11 +242,13 @@ pub async fn commit_patch_and_files<R: Runtime>(
     description: String,
     patch: String,
     files: Vec<String>,
+    stage_paths: Vec<String>,
 ) -> Result<String, String> {
     info!(
-        "commit_patch_and_files called (patch bytes={}, files={})",
+        "commit_patch_and_files called (patch bytes={}, files={}, stage_paths={})",
         patch.len(),
-        files.len()
+        files.len(),
+        stage_paths.len()
     );
     let repo = state
         .current_repo()
@@ -293,39 +275,31 @@ pub async fn commit_patch_and_files<R: Runtime>(
             })?;
         }
 
-        let (name, email) = repo
-            .inner()
-            .get_identity()
-            .ok()
-            .flatten()
-            .or_else(|| {
-                let n = std::env::var("GIT_AUTHOR_NAME").ok();
-                let e = std::env::var("GIT_AUTHOR_EMAIL").ok();
-                match (n, e) {
-                    (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
-                    _ => None,
-                }
-            })
-            .unwrap_or_else(|| ("OpenVCS".into(), "openvcs@example".into()));
+        let (name, email) = commit_identity(repo.as_ref())?;
 
         on(VcsEvent::Info {
             msg: "Writing commit…".into(),
         });
-        let oid = if files.is_empty() {
-            repo.inner()
-                .commit_index(&message, &name, &email)
-                .map_err(|e| e.to_string())?
-        } else {
-            let paths: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
+        let stage_paths: Vec<PathBuf> = stage_paths.iter().map(PathBuf::from).collect();
+        if !stage_paths.is_empty() {
             on(VcsEvent::Info {
                 msg: "Staging selected files…".into(),
             });
-            repo.inner().stage_paths(&paths).map_err(|e| {
+            repo.inner().stage_paths(&stage_paths).map_err(|e| {
                 error!("stage_paths failed: {e}");
                 e.to_string()
             })?;
+        }
+        let commit_paths: Vec<PathBuf> = if files.is_empty() {
+            stage_paths.clone()
+        } else {
+            files.iter().map(PathBuf::from).collect()
+        };
+        let oid = if commit_paths.is_empty() {
+            return Err("No commit paths provided".into());
+        } else {
             repo.inner()
-                .commit(&message, &name, &email, &paths)
+                .commit(&message, &name, &email, &commit_paths)
                 .map_err(|e| e.to_string())?
         };
         on(VcsEvent::Info {

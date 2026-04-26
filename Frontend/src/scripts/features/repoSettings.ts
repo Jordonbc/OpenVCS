@@ -70,26 +70,24 @@ export async function wireRepoSettings() {
         remotesEl?.replaceChildren();
     }
 
-    if (TAURI.has) {
-        try {
-            const cfg = await TAURI.invoke<RepoSettings>('get_repo_settings');
-            if (nameInput && cfg?.user_name) nameInput.value = cfg.user_name;
-            if (emailInput && cfg?.user_email) emailInput.value = cfg.user_email;
+    try {
+        const cfg = await TAURI.invoke<RepoSettings>('get_repo_settings');
+        if (nameInput && cfg?.user_name) nameInput.value = cfg.user_name;
+        if (emailInput && cfg?.user_email) emailInput.value = cfg.user_email;
 
-            clearRemoteRows();
-            const remotes = cfg?.remotes?.length
-                ? cfg.remotes
-                : (cfg?.origin_url ? [{ name: 'origin', url: cfg.origin_url }] : []);
+        clearRemoteRows();
+        const remotes = cfg?.remotes?.length
+            ? cfg.remotes
+            : (cfg?.origin_url ? [{ name: 'origin', url: cfg.origin_url }] : []);
 
-            for (const r of remotes) addRemoteRow(r);
-            initialRemotesKey = JSON.stringify(
-                remotes
-                    .map(r => ({ name: String(r?.name || '').trim(), url: String(r?.url || '').trim() }))
-                    .filter(r => r.name && r.url)
-                    .sort((a, b) => a.name.localeCompare(b.name))
-            );
-        } catch { /* ignore */ }
-    }
+        for (const r of remotes) addRemoteRow(r);
+        initialRemotesKey = JSON.stringify(
+            remotes
+                .map(r => ({ name: String(r?.name || '').trim(), url: String(r?.url || '').trim() }))
+                .filter(r => r.name && r.url)
+                .sort((a, b) => a.name.localeCompare(b.name))
+        );
+    } catch { /* ignore */ }
 
     addRemoteBtn?.addEventListener('click', () => addRemoteRow());
 
@@ -123,8 +121,8 @@ export async function wireRepoSettings() {
             remotes,
         };
         try {
-            if (TAURI.has) await TAURI.invoke('set_repo_settings', { cfg: next });
-            if (TAURI.has && remotesChanged) {
+            await TAURI.invoke('set_repo_settings', { cfg: next });
+            if (remotesChanged) {
                 // Remote-tracking branches only exist after a fetch; do it once after remotes are modified.
                 try { await TAURI.invoke('git_fetch_all', {}); } catch { /* ignore */ }
             }

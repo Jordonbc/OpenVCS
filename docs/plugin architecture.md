@@ -30,6 +30,11 @@ Core host-to-plugin method groups:
 - `plugin.*`: lifecycle, menus, and settings hooks
 - `vcs.*`: backend operations for repository workflows
 
+Repository identity is resolved from Git config, not from an OpenVCS-side cache.
+`vcs.get_identity` reads the repository's configured `user.name` and
+`user.email`, and commit flows fail when Git has no usable identity instead of
+inventing an OpenVCS author.
+
 `plugin.handle_action` requests carry the selected action as `action_id` and an
 optional `payload` object. Plugin handlers may return a modal definition object
 to reopen a plugin modal after the action completes.

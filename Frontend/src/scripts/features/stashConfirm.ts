@@ -102,7 +102,6 @@ export function wireStashConfirm() {
         confirmBtn.disabled = true;
         confirmBtn.textContent = 'Stashing…';
         try {
-            if (!TAURI.has) return;
             const payload: Record<string, unknown> = { message, includeUntracked };
             if (overridePaths && overridePaths.length) payload.paths = overridePaths;
             await TAURI.invoke('git_stash_push', payload);

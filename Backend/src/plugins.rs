@@ -196,12 +196,21 @@ impl PluginCache {
 
     fn list(&self) -> Vec<PluginSummary> {
         self.ensure_fresh();
-        self.data.read().unwrap().list.clone()
+        self.data
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .list
+            .clone()
     }
 
     fn load_cached_plugin(&self, id: &str) -> Option<CachedPlugin> {
         self.ensure_fresh();
-        self.data.read().unwrap().entries.get(id).cloned()
+        self.data
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .entries
+            .get(id)
+            .cloned()
     }
 
     fn mark_dirty(&self) {
@@ -210,7 +219,10 @@ impl PluginCache {
 
     fn ensure_fresh(&self) {
         let needs_reload = self.dirty.swap(false, Ordering::SeqCst) || {
-            let data = self.data.read().unwrap();
+            let data = self
+                .data
+                .read()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             !data.loaded
         };
         if needs_reload {
@@ -282,7 +294,10 @@ impl PluginCache {
         }
 
         summaries.sort_by_key(|a| a.name.to_lowercase());
-        let mut data = self.data.write().unwrap();
+        let mut data = self
+            .data
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         data.list = summaries;
         data.entries = entries;
         data.loaded = true;
@@ -310,7 +325,10 @@ impl PluginCache {
             }
         }
 
-        let mut guard = self.watcher.lock().unwrap();
+        let mut guard = self
+            .watcher
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         *guard = Some(watcher);
     }
 }
