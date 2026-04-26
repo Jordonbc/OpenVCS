@@ -99,8 +99,8 @@ jobs:
           flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//25.08 \
             || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//24.08 \
             || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable
-          flatpak install --user -y flathub org.freedesktop.Sdk.Extension.node24//49 \
-            || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.node24
+          flatpak install --user -y flathub org.freedesktop.Sdk.Extension.node24//25.08 \
+            || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.node24//24.08
 
       - name: Verify Flatpak manifest exists
         if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
