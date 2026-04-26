@@ -30,6 +30,7 @@ jobs:
           model: ${{ vars.OPENCODE_REVIEW_MODEL }}
           use_github_token: false
           prompt: |
+            Before anything else, read and follow AGENTS.md for this repository and module.
             Review this pull request:
             - Check for code quality issues
             - Look for potential bugs
@@ -46,6 +47,7 @@ jobs:
           model: ${{ vars.OPENCODE_REVIEW_MODEL_FALLBACK }}
           use_github_token: false
           prompt: |
+            Before anything else, read and follow AGENTS.md for this repository and module.
             Review this pull request:
             - Check for code quality issues
             - Look for potential bugs
