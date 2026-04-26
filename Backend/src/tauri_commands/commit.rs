@@ -229,7 +229,8 @@ pub async fn commit_patch<R: Runtime>(
 /// - `summary`: Commit summary line.
 /// - `description`: Optional commit body text.
 /// - `patch`: Optional patch text to stage first.
-/// - `files`: Optional explicit file list.
+/// - `files`: Explicit commit path list.
+/// - `stage_paths`: Full-file paths to stage directly before commit.
 ///
 /// # Returns
 /// - `Ok(String)` created commit id.
@@ -241,11 +242,13 @@ pub async fn commit_patch_and_files<R: Runtime>(
     description: String,
     patch: String,
     files: Vec<String>,
+    stage_paths: Vec<String>,
 ) -> Result<String, String> {
     info!(
-        "commit_patch_and_files called (patch bytes={}, files={})",
+        "commit_patch_and_files called (patch bytes={}, files={}, stage_paths={})",
         patch.len(),
-        files.len()
+        files.len(),
+        stage_paths.len()
     );
     let repo = state
         .current_repo()
@@ -277,21 +280,26 @@ pub async fn commit_patch_and_files<R: Runtime>(
         on(VcsEvent::Info {
             msg: "Writing commit…".into(),
         });
-        let oid = if files.is_empty() {
-            repo.inner()
-                .commit_index(&message, &name, &email)
-                .map_err(|e| e.to_string())?
-        } else {
-            let paths: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
+        let stage_paths: Vec<PathBuf> = stage_paths.iter().map(PathBuf::from).collect();
+        if !stage_paths.is_empty() {
             on(VcsEvent::Info {
                 msg: "Staging selected files…".into(),
             });
-            repo.inner().stage_paths(&paths).map_err(|e| {
+            repo.inner().stage_paths(&stage_paths).map_err(|e| {
                 error!("stage_paths failed: {e}");
                 e.to_string()
             })?;
+        }
+        let commit_paths: Vec<PathBuf> = if files.is_empty() {
+            stage_paths.clone()
+        } else {
+            files.iter().map(PathBuf::from).collect()
+        };
+        let oid = if commit_paths.is_empty() {
+            return Err("No commit paths provided".into());
+        } else {
             repo.inner()
-                .commit(&message, &name, &email, &paths)
+                .commit(&message, &name, &email, &commit_paths)
                 .map_err(|e| e.to_string())?
         };
         on(VcsEvent::Info {
