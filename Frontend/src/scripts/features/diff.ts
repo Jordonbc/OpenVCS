@@ -50,6 +50,11 @@ export function bindCommit() {
                 const selLines = linesMap[path] || {};
                 combinedPatch += buildPatchForSelected(path, lines, selHunks, selLines) + '\n';
             }
+            if (!TAURI.has) {
+                notify('Commit is available in the desktop app');
+                clearBusy('Ready');
+                return;
+            }
             if (combinedPatch.trim().length > 0 || selectedFiles.length > 0) {
                 const hookData = {
                     summary,

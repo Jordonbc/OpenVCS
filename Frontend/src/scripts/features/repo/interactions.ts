@@ -208,7 +208,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         .map((path) => path.trim())
         .filter(Boolean);
     const clickedPath = (f.path || '').trim();
-    const clickedInSelection = !!clickedPath && (state.selectedFiles?.has(f.path) ?? false);
+    const clickedInSelection = !!clickedPath && (state.selectedFiles?.has(clickedPath) ?? false);
     const explicitMultiSelection =
         clickedInSelection &&
         selectedPaths.length > 1 &&
