@@ -61,7 +61,7 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: C
         }
     }
 
-    if (TAURI.has && commit?.id) {
+    if (commit?.id) {
         items.push({ label: '---' });
         items.push({ label: 'Cherry-pick to branch…', action: async () => openCherryPick(commit) });
         items.push({
@@ -85,7 +85,6 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: C
         items.push({ label: '---' });
         items.push({
             label: 'Undo to this commit', action: async () => {
-                if (!TAURI.has) return;
                 try {
                     await TAURI.invoke('git_undo_to_commit', { id: commit.id });
                     await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
@@ -216,7 +215,7 @@ export async function selectHistory(commit: any, index: number) {
 
     try {
         let lines: string[] = [];
-        if (TAURI.has && commit.id) {
+        if (commit.id) {
             lines = await TAURI.invoke<string[]>('git_diff_commit', { id: commit.id });
         }
         const files = parseCommitDiffByFile(lines || []);
@@ -291,10 +290,6 @@ export async function selectHistory(commit: any, index: number) {
                     items.push({ label: '---' });
                     items.push({
                         label: 'Revert this file', action: async () => {
-                            if (!TAURI.has) {
-                                notify('Revert requires the desktop app');
-                                return;
-                            }
                             const block = Array.isArray(file?.lines) ? file.lines : [];
                             const isBinary = block.some((l) => /GIT binary patch|Binary files /i.test(String(l || '')));
                             if (isBinary) {

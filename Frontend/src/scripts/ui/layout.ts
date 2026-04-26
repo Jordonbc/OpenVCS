@@ -58,20 +58,16 @@ export function setTheme(theme: 'dark'|'light'|'system') {
 export function toggleTheme() {
     const next = (prefs.theme === 'dark' ? 'light' : 'dark');
     // Persist to native settings when available, then apply to UI
-    if (TAURI.has) {
-        (async () => {
-            try {
-                const cur = await TAURI.invoke<any>('get_global_settings');
-                if (cur && typeof cur === 'object') {
-                    cur.general = { ...(cur.general || {}), theme: next };
-                    await TAURI.invoke('set_global_settings', { cfg: cur });
-                }
-            } catch {}
-            setTheme(next);
-        })();
-    } else {
+    (async () => {
+        try {
+            const cur = await TAURI.invoke<any>('get_global_settings');
+            if (cur && typeof cur === 'object') {
+                cur.general = { ...(cur.general || {}), theme: next };
+                await TAURI.invoke('set_global_settings', { cfg: cur });
+            }
+        } catch {}
         setTheme(next);
-    }
+    })();
 }
 
 /** Switches the active center tab and updates related UI state. */

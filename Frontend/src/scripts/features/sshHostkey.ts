@@ -43,7 +43,7 @@ function wireModalOnce() {
   });
 
   acceptBtn?.addEventListener('click', async () => {
-    if (!TAURI.has || !current) return;
+    if (!current) return;
     setBusy(true);
     try {
       await TAURI.invoke('ssh_trust_host', { host: current.host });
@@ -63,8 +63,6 @@ function wireModalOnce() {
 }
 
 export function initSshHostkeyPrompt() {
-  if (!TAURI.has) return;
-
   TAURI.listen?.('ui:ssh-hostkey', (ev: any) => {
     const p = (ev?.payload || {}) as HostKeyPrompt;
     openModal('ssh-hostkey-modal');

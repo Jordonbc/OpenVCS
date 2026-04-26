@@ -3,7 +3,7 @@
 
 import type { GlobalSettings } from '../types';
 
-import { TAURI } from './tauri';
+import { TAURI, isTauriRuntimeAvailable } from './tauri';
 
 /** Represents the console breadcrumb level forwarded with frontend error reports. */
 type MonitoringBreadcrumbLevel = 'debug' | 'info' | 'warning' | 'error';
@@ -63,7 +63,7 @@ export function isFrontendMonitoringAllowed(settings: GlobalSettings | null | un
 export function shouldEnableFrontendMonitoring(
   settings: GlobalSettings | null | undefined,
 ): boolean {
-  return Boolean(TAURI.has && isFrontendMonitoringAllowed(settings));
+  return Boolean(isTauriRuntimeAvailable() && isFrontendMonitoringAllowed(settings));
 }
 
 /** Synchronizes frontend error relay hooks with the latest settings. */
@@ -151,7 +151,7 @@ function uninstallFrontendMonitoring(): void {
 async function reportFrontendError(
   report: Omit<FrontendErrorReport, 'url' | 'userAgent' | 'release' | 'environment' | 'breadcrumbs'>,
 ): Promise<void> {
-  if (!monitoringEnabled || !TAURI.has) {
+  if (!monitoringEnabled || !isTauriRuntimeAvailable()) {
     return;
   }
 

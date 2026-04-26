@@ -40,7 +40,6 @@ function syncBranchLabelsFromState() {
 /* ---------------- data load ---------------- */
 
 async function loadBranches() {
-    if (!TAURI.has) return;
     try {
         const branches = await TAURI.invoke<Branch[]>('git_list_branches');
         state.branches = Array.isArray(branches) ? branches : [];
@@ -174,7 +173,7 @@ export function bindBranchUI() {
             return;
         }
         try {
-            if (TAURI.has) await TAURI.invoke('git_checkout_branch', { name });
+            await TAURI.invoke('git_checkout_branch', { name });
             await runHook('onSwitchBranch', hookData);
             await loadBranches(); // resync from backend instead of manual toggles
             if (options.closePopover) closeBranchPopover();
@@ -214,7 +213,7 @@ export function bindBranchUI() {
             const ok = await confirmBool(`Merge '${name}' into '${cur}'?`);
             if (!ok) return;
             try {
-                if (TAURI.has) await TAURI.invoke('git_merge_branch', { name });
+                await TAURI.invoke('git_merge_branch', { name });
                 notify(`Merged branch '${name}' into '${cur}'`);
                 await Promise.allSettled([renderList(), loadBranches()]);
             } catch (e) {
@@ -263,7 +262,7 @@ export function bindBranchUI() {
                         notify(pre.reason || 'Delete cancelled');
                         return;
                     }
-                    if (TAURI.has) await TAURI.invoke('git_delete_branch', { name, force: wantForce });
+                    await TAURI.invoke('git_delete_branch', { name, force: wantForce });
                     await runHook('onBranchDelete', hookData);
                     notify(`${wantForce ? 'Force-deleted' : 'Deleted'} '${name}'`);
                     await loadBranches();
@@ -286,7 +285,7 @@ export function bindBranchUI() {
                             notify(pre.reason || 'Delete cancelled');
                             return;
                         }
-                        if (TAURI.has) await TAURI.invoke('git_delete_branch', { name, force: true });
+                        await TAURI.invoke('git_delete_branch', { name, force: true });
                         await runHook('onBranchDelete', hookData);
                         notify(`Force-deleted '${name}'`);
                         await loadBranches();

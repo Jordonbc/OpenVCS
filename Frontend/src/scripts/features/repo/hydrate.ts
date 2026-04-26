@@ -1,6 +1,6 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { TAURI } from '../../lib/tauri';
+import { TAURI, isTauriRuntimeAvailable } from '../../lib/tauri';
 import { state, prefs } from '../../state/state';
 import { renderList } from './list';
 import { autoOpenFirstConflict } from '../conflicts';
@@ -66,7 +66,7 @@ function describeHydrationFailure(operation: string, error: unknown): string {
 }
 
 export async function hydrateBranches(): Promise<boolean> {
-    if (!TAURI.has) return false;
+    if (!isTauriRuntimeAvailable()) return false;
     try {
         await yieldToPaint();
         const list = await TAURI.invoke<any[]>('git_list_branches');
@@ -92,7 +92,6 @@ export async function hydrateBranches(): Promise<boolean> {
 }
 
 export async function hydrateStatus() {
-    if (!TAURI.has) return;
     try {
         await yieldToPaint();
         const result = await TAURI.invoke<{ files: any[]; ahead?: number; behind?: number }>('git_status');
@@ -159,8 +158,7 @@ export async function hydrateStatus() {
     }
 }
 
-export async function hydrateCommits() {
-    if (!TAURI.has) return;
+export async function hydrateCommits(): Promise<void> {
     try {
         await yieldToPaint();
         const list = await TAURI.invoke<any[]>('git_log', { limit: 100 });
@@ -219,8 +217,7 @@ export async function hydrateCommits() {
     }
 }
 
-export async function hydrateStash() {
-    if (!TAURI.has) return;
+export async function hydrateStash(): Promise<void> {
     try {
         await yieldToPaint();
         const list = await TAURI.invoke<any[]>('git_stash_list');

@@ -97,12 +97,12 @@ export async function selectFile(file: FileStatus, index: number) {
 
     try {
         let lines: string[] = [];
-        if (TAURI.has && file.path) {
+        if (file.path) {
             lines = await TAURI.invoke<string[]>('git_diff_file', { path: file.path });
         }
         if (status === '?' && file.path && (!Array.isArray(lines) || lines.length === 0)) {
             try {
-                const text = TAURI.has ? await TAURI.invoke<string>('read_repo_file_text', { path: file.path }) : '';
+                const text = await TAURI.invoke<string>('read_repo_file_text', { path: file.path });
                 lines = buildUntrackedTextPatch(file.path, text || '');
             } catch {
                 lines = [
@@ -142,7 +142,6 @@ export async function selectFile(file: FileStatus, index: number) {
             const x = mev.clientX, y = mev.clientY;
             const items: CtxItem[] = [];
             items.push({ label: 'Discard hunk', action: async () => {
-                if (!TAURI.has) return;
                 const ok = await confirmBool('Discard this hunk? This cannot be undone.');
                 if (!ok) return;
                 try {
@@ -156,7 +155,6 @@ export async function selectFile(file: FileStatus, index: number) {
             const selected = (state as any).selectedHunksByFile?.[file.path] as number[] | undefined;
             if (Array.isArray(selected) && selected.length > 0) {
                 items.push({ label: 'Discard selected hunks (this file)', action: async () => {
-                    if (!TAURI.has) return;
                     const ok = await confirmBool(`Discard ${selected.length} selected hunk(s) in this file? This cannot be undone.`);
                     if (!ok) return;
                     try {
@@ -172,7 +170,6 @@ export async function selectFile(file: FileStatus, index: number) {
             const filesWithSel = Object.keys(hunksMap).filter((k) => Array.isArray(hunksMap[k]) && hunksMap[k].length > 0);
             if (filesWithSel.length > 0) {
                 items.push({ label: 'Discard selected hunks (all files)', action: async () => {
-                    if (!TAURI.has) return;
                     const ok = await confirmBool(`Discard selected hunks across ${filesWithSel.length} file(s)? This cannot be undone.`);
                     if (!ok) return;
                     try {
@@ -250,7 +247,7 @@ export async function selectStashDiff(selector: string) {
     scrollDiffToTop();
     try {
         let lines: string[] = [];
-        if (TAURI.has && selector) {
+        if (selector) {
             lines = await TAURI.invoke<string[]>('git_stash_show', { selector });
         }
         state.currentDiff = lines || [];
@@ -274,7 +271,7 @@ export async function renderCombinedDiff(paths: string[]) {
     let html = '';
     for (const p of files) {
         try {
-            const lines = TAURI.has ? await TAURI.invoke<string[]>('git_diff_file', { path: p }) : [];
+            const lines = await TAURI.invoke<string[]>('git_diff_file', { path: p });
             html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)}</div></div></div>`;
             const fileLines = Array.isArray(lines) ? lines : [];
             if (detectBinaryDiff(fileLines)) {
@@ -318,11 +315,6 @@ async function renderConflictView(file: FileStatus) {
     }
     diffEl.innerHTML = '<div class="conflict-view"><div class="conflict-loading">Loading conflict…</div></div>';
     scrollDiffToTop();
-    if (!TAURI.has) {
-        diffEl.innerHTML = '<div class="conflict-view"><div class="conflict-error">Conflict details are only available in the desktop app.</div></div>';
-        scrollDiffToTop();
-        return;
-    }
     try {
         const details = await TAURI.invoke<ConflictDetails>('git_conflict_details', { path: file.path });
         diffEl.innerHTML = renderConflictMarkup(details);
@@ -384,7 +376,6 @@ function bindConflictActions(root: HTMLElement, file: FileStatus, details: Confl
     if (!container) return;
 
     const resolve = async (side: 'ours' | 'theirs') => {
-        if (!TAURI.has) { notify('Resolving conflicts requires the desktop app.'); return; }
         const buttons = container.querySelectorAll<HTMLButtonElement>('[data-conflict-action]');
         buttons.forEach((b) => { b.disabled = true; });
         container.setAttribute('data-busy', '1');

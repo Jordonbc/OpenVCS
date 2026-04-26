@@ -108,7 +108,7 @@ function renderRecents() {
 
 async function openRecent(path: string) {
     try {
-        if (TAURI.has) await TAURI.invoke('open_repo', { path });
+        await TAURI.invoke('open_repo', { path });
         await refreshRepoSummary();
         notify(`Opened ${path}`);
         closeSwitchDrawer();
@@ -121,7 +121,7 @@ async function loadRecents() {
     if (!recentList) return;
     try {
         let raw: unknown = [];
-        if (TAURI.has) raw = await TAURI.invoke<any[]>('list_recent_repos').catch(() => []);
+        raw = await TAURI.invoke<any[]>('list_recent_repos').catch(() => []);
 
         allRecents = Array.isArray(raw)
             ? raw
