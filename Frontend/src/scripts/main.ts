@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import './lib/logger';
 import { syncFrontendMonitoring } from './lib/monitoring';
-import { TAURI } from './lib/tauri';
+import { TAURI, assertDesktopRuntime } from './lib/tauri';
 import type { GlobalSettings } from './types';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
@@ -99,6 +99,7 @@ function forceCloseTransientUi() {
 
 /** Boots the frontend shell, wires handlers, and hydrates initial state. */
 async function boot() {
+    assertDesktopRuntime();
     const cfg = await loadInitialGlobalSettings();
     await syncFrontendMonitoring(cfg);
 
@@ -677,10 +678,6 @@ async function boot() {
 
 /** Loads persisted global settings for bootstrap-time features such as theming and monitoring. */
 async function loadInitialGlobalSettings(): Promise<GlobalSettings | null> {
-    if (!TAURI.has) {
-        return null;
-    }
-
     try {
         return await TAURI.invoke<GlobalSettings>('get_global_settings');
     } catch {

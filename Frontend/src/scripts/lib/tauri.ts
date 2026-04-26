@@ -23,6 +23,7 @@ declare global {
 
 const core: TauriCore | null   = typeof window !== "undefined" && window.__TAURI__?.core  ? window.__TAURI__.core  : null;
 const tEvent: TauriEvent | null = typeof window !== "undefined" && window.__TAURI__?.event ? window.__TAURI__.event : null;
+const TAURI_RUNTIME_ERROR = 'Failed to initialize Tauri runtime.';
 
 /** Tauri API wrapper providing invoke and event listening capabilities. */
 export const TAURI = {
@@ -30,10 +31,23 @@ export const TAURI = {
     has: !!core,
     /** Invoke a Tauri command. */
     invoke<T = unknown>(cmd: string, args?: Json): Promise<T> {
-        return core ? core.invoke<T>(cmd, args) : Promise.resolve(undefined as unknown as T);
+        if (!core) {
+            throw new Error(TAURI_RUNTIME_ERROR);
+        }
+        return core.invoke<T>(cmd, args);
     },
     /** Listen for Tauri events. */
     listen<T = unknown>(event: string, cb: Listener<T>): Promise<{ unlisten: Unlisten }> {
-        return tEvent ? tEvent.listen<T>(event, cb) : Promise.resolve({ unlisten() {} });
+        if (!tEvent) {
+            throw new Error(TAURI_RUNTIME_ERROR);
+        }
+        return tEvent.listen<T>(event, cb);
     },
 };
+
+/** Ensures the desktop runtime is available before boot continues. */
+export function assertDesktopRuntime() {
+    if (!core || !tEvent) {
+        throw new Error(TAURI_RUNTIME_ERROR);
+    }
+}
