@@ -204,8 +204,11 @@ export function toggleSelectAll(on: boolean, visible: FileStatus[]) {
 export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     ev.preventDefault();
     const x = ev.clientX, y = ev.clientY;
-    const selectedPaths = Array.from(state.selectedFiles || []).filter(Boolean);
-    const clickedInSelection = !!f.path && (state.selectedFiles?.has(f.path) ?? false);
+    const selectedPaths = Array.from(state.selectedFiles || [])
+        .map((path) => path.trim())
+        .filter(Boolean);
+    const clickedPath = (f.path || '').trim();
+    const clickedInSelection = !!clickedPath && (state.selectedFiles?.has(f.path) ?? false);
     const explicitMultiSelection =
         clickedInSelection &&
         selectedPaths.length > 1 &&
@@ -217,11 +220,12 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     const items: CtxItem[] = [];
     /** Opens the stash modal pre-filled for the provided paths. */
     const openStashForPaths = (paths: string[], defaultMessage: string) => {
-        if (!paths.length) return;
+        const normalizedPaths = paths.map((path) => path.trim()).filter(Boolean);
+        if (!normalizedPaths.length) return;
         openStashConfirm({
             defaultMessage,
             includeUntracked: false,
-            paths,
+            paths: normalizedPaths,
             onSuccess: async () => {
                 await Promise.allSettled([hydrateStatus(), hydrateStash()]);
                 renderListCallback?.();
@@ -234,7 +238,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             notify('Open is available in the desktop app');
             return;
         }
-        const target = (hasSingleSelection ? selectedPaths[0] : f.path) || '';
+        const target = (hasSingleSelection ? selectedPaths[0] : clickedPath) || '';
         if (!target) return;
         try {
             await TAURI.invoke('open_repo_file', { path: target });
@@ -249,11 +253,13 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             openStashForPaths(selectedPaths.slice(), 'WIP selection');
         }});
     }
-    const singleTarget = hasSingleSelection ? selectedPaths[0] : f.path;
-    const defaultMsg = `WIP ${singleTarget}`;
-    items.push({ label: 'Create stash for this file…', action: () => {
-        openStashForPaths([singleTarget], defaultMsg);
-    }});
+    const singleTarget = (hasSingleSelection ? selectedPaths[0] : clickedPath) || '';
+    if (singleTarget) {
+        const defaultMsg = `WIP ${singleTarget}`;
+        items.push({ label: 'Create stash for this file…', action: () => {
+            openStashForPaths([singleTarget], defaultMsg);
+        }});
+    }
     items.push({ label: '---' });
     items.push({ label: 'Add to .gitignore', action: async () => {
         if (!TAURI.has) {
