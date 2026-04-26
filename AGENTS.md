@@ -5,6 +5,7 @@
 - `Backend/`: Rust + Tauri backend (`src/`), commands (`src/tauri_commands/`), plugin runtime (`src/plugin_runtime/`), and config-driven plugin sync support (`scripts/`).
 - `openvcs.plugins.json`: built-in plugin source list used to materialize shipped plugins during client builds.
 - `Frontend/`: TypeScript + Vite UI code (`src/scripts/`, `src/styles/`, `src/modals/`), with Vitest tests colocated as `*.test.ts` files.
+- OpenVCS is desktop-only: there is no web app, no standalone browser mode, and no supported web browser/WebView deployment target.
 - `docs/`: UX docs, plugin architecture notes, and plugin/theme packaging guides referenced by contributors.
 - `packaging/flatpak/`: Flatpak manifests and Flatpak-specific build notes.
 - Supporting files at the repo root include the workspace `Cargo.toml`, `Justfile`, `README.md`, `ARCHITECTURE.md`, `SECURITY.md`, and installer scripts.
@@ -47,7 +48,7 @@
 ### Development servers
 
 - `cargo tauri dev`: run the desktop app in dev mode (`Backend/` directory).
-- `npm --prefix Frontend run dev`: run the frontend-only Vite dev server.
+- `npm --prefix Frontend run dev`: run the frontend-only Vite dev server for desktop UI development only; it is not a web app/browser deployment.
 
 ## Plugin runtime & host expectations
 
