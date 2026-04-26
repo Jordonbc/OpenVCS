@@ -31,6 +31,12 @@ export function bindCommit() {
             setBusy('Committing…');
             let description = commitDesc?.value || '';
 
+            if (!TAURI.has) {
+                notify('Commit is available in the desktop app');
+                clearBusy('Ready');
+                return;
+            }
+
             // Build a combined patch when any file has partial hunks/lines selected.
             const partialFiles = Array.from(new Set([
                 ...Object.keys(hunksMap).filter(p => Array.isArray(hunksMap[p]) && hunksMap[p].length > 0),
