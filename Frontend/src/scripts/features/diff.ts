@@ -50,37 +50,36 @@ export function bindCommit() {
                 const selLines = linesMap[path] || {};
                 combinedPatch += buildPatchForSelected(path, lines, selHunks, selLines) + '\n';
             }
-            if (TAURI.has) {
-                if (combinedPatch.trim().length > 0 || selectedFiles.length > 0) {
-                    const hookData = {
-                        summary,
-                        description,
-                        branch: state.branch,
-                        files: selectedFiles,
-                        stagedFiles: stagePaths,
-                        partialFiles,
-                        patch: combinedPatch,
-                    };
-                    const pre = await runHook('preCommit', hookData);
-                    if (pre.cancelled) {
-                        notify(pre.reason || 'Commit cancelled');
-                        clearBusy('Ready');
-                        return;
-                    }
-                    summary = String(hookData.summary || '').trim() || summary;
-                    description = String(hookData.description || '');
-                    await TAURI.invoke('commit_patch_and_files', {
-                        summary,
-                        description,
-                        patch: combinedPatch,
-                        files: selectedFiles,
-                        stagePaths,
-                    });
-                    await runHook('onCommit', hookData);
-                } else {
-                    notify('Select files or hunks to commit');
+            if (combinedPatch.trim().length > 0 || selectedFiles.length > 0) {
+                const hookData = {
+                    summary,
+                    description,
+                    branch: state.branch,
+                    files: selectedFiles,
+                    stagedFiles: stagePaths,
+                    partialFiles,
+                    patch: combinedPatch,
+                };
+                const pre = await runHook('preCommit', hookData);
+                if (pre.cancelled) {
+                    notify(pre.reason || 'Commit cancelled');
+                    clearBusy('Ready');
                     return;
                 }
+                summary = String(hookData.summary || '').trim() || summary;
+                description = String(hookData.description || '');
+                await TAURI.invoke('commit_patch_and_files', {
+                    summary,
+                    description,
+                    patch: combinedPatch,
+                    files: selectedFiles,
+                    stagePaths,
+                });
+                await runHook('onCommit', hookData);
+            }
+            else {
+                notify('Select files or hunks to commit');
+                return;
             }
             notify(`Committed to ${state.branch}: ${summary}`);
             if (commitSummary) commitSummary.value = '';
