@@ -27,7 +27,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::io::BufReader;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -45,6 +45,8 @@ struct NodeRpcProcess {
     rx: Receiver<Value>,
     /// Flag to signal the reader thread to stop.
     shutdown_flag: Arc<Mutex<bool>>,
+    /// Last reader-thread error observed while consuming framed messages.
+    reader_error: Arc<Mutex<Option<String>>>,
     /// Monotonic request id counter.
     next_request_id: u64,
 }
@@ -62,7 +64,7 @@ impl NodeRpcProcess {
     ///
     /// # Returns
     /// - `Ok(T)` decoded response result.
-    /// - `Err(String)` when transport/protocol/plugin errors or timeout occur.
+    /// - `Err(String)` when transport/protocol/plugin errors, disconnects, or timeout occur.
     fn call<T>(
         &mut self,
         method: &str,
@@ -94,14 +96,41 @@ impl NodeRpcProcess {
         let start = std::time::Instant::now();
         let mut remaining = timeout;
         loop {
-            let message = self.rx.recv_timeout(remaining).map_err(|_| {
-                format!(
-                    "plugin '{}' rpc '{}' timed out after {}s",
-                    plugin_id,
-                    method,
-                    timeout.as_secs()
-                )
-            })?;
+            let message = match self.rx.recv_timeout(remaining) {
+                Ok(message) => message,
+                Err(RecvTimeoutError::Timeout) => {
+                    return Err(format!(
+                        "plugin '{}' rpc '{}' timed out after {}s",
+                        plugin_id,
+                        method,
+                        timeout.as_secs()
+                    ));
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    let exit_status = self.child.try_wait().map_err(|e| {
+                        format!("check plugin process status for '{plugin_id}': {e}")
+                    })?;
+                    let reader_error = self.reader_error.lock().clone();
+                    return match (exit_status, reader_error) {
+                        (Some(status), Some(error)) => Err(format!(
+                            "plugin '{}' rpc '{}' disconnected because the process exited with {} (reader error: {})",
+                            plugin_id, method, status, error
+                        )),
+                        (Some(status), None) => Err(format!(
+                            "plugin '{}' rpc '{}' disconnected because the process exited with {}",
+                            plugin_id, method, status
+                        )),
+                        (None, Some(error)) => Err(format!(
+                            "plugin '{}' rpc '{}' disconnected while waiting for a response (reader error: {})",
+                            plugin_id, method, error
+                        )),
+                        (None, None) => Err(format!(
+                            "plugin '{}' rpc '{}' disconnected while waiting for a response",
+                            plugin_id, method
+                        )),
+                    };
+                }
+            };
 
             if let Some(method_name) = message.get("method").and_then(Value::as_str) {
                 let params = message.get("params").cloned().unwrap_or(Value::Null);
@@ -253,8 +282,10 @@ impl NodePluginRuntimeInstance {
 
         let (tx, rx) = channel::<Value>();
         let shutdown_flag = Arc::new(Mutex::new(false));
+        let reader_error = Arc::new(Mutex::new(None));
         let stdout_for_thread = BufReader::new(stdout);
         let shutdown_for_thread = Arc::clone(&shutdown_flag);
+        let reader_error_for_thread = Arc::clone(&reader_error);
 
         thread::spawn(move || {
             let mut stdout = stdout_for_thread;
@@ -269,6 +300,7 @@ impl NodePluginRuntimeInstance {
                         }
                     }
                     Err(e) => {
+                        *reader_error_for_thread.lock() = Some(e.to_string());
                         debug!("node rpc reader thread: read error: {}", e);
                         break;
                     }
@@ -281,6 +313,7 @@ impl NodePluginRuntimeInstance {
             stdin,
             rx,
             shutdown_flag,
+            reader_error,
             next_request_id: 1,
         };
 
@@ -336,7 +369,13 @@ impl NodePluginRuntimeInstance {
         let process = lock
             .as_mut()
             .ok_or_else(|| "node runtime did not initialize".to_string())?;
-        f(process)
+        let result = f(process);
+        if let Err(err) = &result {
+            if err.contains("disconnected") {
+                lock.take();
+            }
+        }
+        result
     }
 
     /// Sends one RPC request to the plugin process.
