@@ -25,7 +25,6 @@ async function ensureMergeModal() {
 
     const applyBtn = modal.querySelector<HTMLButtonElement>('#merge-apply');
     applyBtn?.addEventListener('click', async () => {
-        if (!TAURI.has) { notify('Saving merges requires the desktop app.'); return; }
         if (!currentConflict) { notify('No conflict selected.'); return; }
         const textarea = modal.querySelector<HTMLTextAreaElement>('#merge-result');
         const content = textarea?.value ?? '';
@@ -85,7 +84,6 @@ async function ensureSummaryModal() {
     const contBtn = modal.querySelector<HTMLButtonElement>('#conflicts-continue');
 
     abortBtn?.addEventListener('click', async () => {
-        if (!TAURI.has) return;
         const ok = await confirmBool('Abort the merge? This will discard merge progress.');
         if (!ok) return;
         try {
@@ -99,7 +97,6 @@ async function ensureSummaryModal() {
     });
 
     contBtn?.addEventListener('click', async () => {
-        if (!TAURI.has) return;
         try {
             await TAURI.invoke('git_merge_continue');
             notify('Merge committed');
@@ -114,7 +111,6 @@ async function ensureSummaryModal() {
 }
 
 export async function openConflictsSummary(files: FileStatus[]): Promise<void> {
-    if (!TAURI.has) return;
     await ensureSummaryModal();
     const modal = document.getElementById('conflicts-summary-modal') as HTMLElement | null;
     if (!modal) return;
@@ -207,7 +203,6 @@ export async function openConflictsSummary(files: FileStatus[]): Promise<void> {
 }
 
 export async function autoOpenFirstConflict(files: FileStatus[]): Promise<void> {
-    if (!TAURI.has) return;
     if (!Array.isArray(files) || files.length === 0) return;
 
     const conflicted = files.find((f) => String(f?.status || '').toUpperCase() === 'U' && !!f?.path);
@@ -230,7 +225,7 @@ export async function autoOpenFirstConflict(files: FileStatus[]): Promise<void> 
 }
 
 async function ensureExternalMergeConfig() {
-    if (externalToolState.loaded || !TAURI.has) return;
+    if (externalToolState.loaded) return;
     try {
         const cfg = await TAURI.invoke<GlobalSettings>('get_global_settings');
         const tool = cfg?.diff?.external_merge;
@@ -244,13 +239,11 @@ async function ensureExternalMergeConfig() {
 }
 
 export async function hasExternalMergeTool(): Promise<boolean> {
-    if (!TAURI.has) return false;
     await ensureExternalMergeConfig();
     return externalToolState.enabled;
 }
 
 export async function launchExternalMergeTool(path: string): Promise<void> {
-    if (!TAURI.has) { notify('Launching merge tools requires the desktop app.'); return; }
     if (!(await hasExternalMergeTool())) {
         notify('No custom merge tool configured');
         return;

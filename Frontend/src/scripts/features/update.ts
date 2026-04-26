@@ -20,7 +20,6 @@ export function wireUpdate() {
   const installBtn = modal.querySelector('#update-install') as HTMLButtonElement | null;
   installBtn?.addEventListener('click', async () => {
     try {
-      if (!TAURI.has) return;
       notify('Downloading update…');
       await TAURI.invoke('updater_install_now');
       notify('Update installed. Restart to apply.');
@@ -33,8 +32,6 @@ export function wireUpdate() {
 
 export async function showUpdateDialog(_data: any) {
   try {
-    if (!TAURI.has) return;
-
     const status = await TAURI.invoke<UpdateStatus>('get_update_status');
 
     if (!status.available) {

@@ -41,9 +41,7 @@ function sendToBackend(
   if (options.breadcrumb !== false) {
     addFrontendLogBreadcrumb(toMonitoringBreadcrumbLevel(level), message);
   }
-  if (TAURI.has) {
-    TAURI.invoke("log_frontend_message", { level, message }).catch(() => {});
-  }
+  TAURI.invoke("log_frontend_message", { level, message }).catch(() => {});
 }
 
 /** Maps logger levels to the breadcrumb levels sent through monitoring relay payloads. */

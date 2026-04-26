@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { TAURI } from '../lib/tauri';
+import { TAURI, isTauriRuntimeAvailable } from '../lib/tauri';
 
 type MenuAction = (id: string, payload?: { pluginId?: string; actionId?: string }) => void | Promise<void>;
 const MENU_CLOSE_MS = 130;
@@ -48,7 +48,7 @@ export function clearPluginMenubarMenus(): void {
 export async function refreshPluginMenubarMenus(): Promise<void> {
     clearPluginMenubarMenus();
 
-    if (!TAURI.has) return;
+    if (!isTauriRuntimeAvailable()) return;
 
     let menus: PluginMenuPayload[] = [];
     try {

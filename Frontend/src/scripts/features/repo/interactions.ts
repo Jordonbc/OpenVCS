@@ -234,10 +234,6 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     };
 
     items.push({ label: 'Open with default application', action: async () => {
-        if (!TAURI.has) {
-            notify('Open is available in the desktop app');
-            return;
-        }
         const target = (hasSingleSelection ? selectedPaths[0] : clickedPath) || '';
         if (!target) return;
         try {
@@ -262,10 +258,6 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     }
     items.push({ label: '---' });
     items.push({ label: 'Add to .gitignore', action: async () => {
-        if (!TAURI.has) {
-            notify('Ignore is available in the desktop app');
-            return;
-        }
         const targets = (explicitMultiSelection ? selectedPaths.slice() : [f.path]).filter(Boolean);
         if (!targets.length) return;
         const label = targets.length > 1 ? `${targets.length} files` : targets[0];
@@ -282,7 +274,6 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     items.push({ label: '---' });
     if (explicitMultiSelection) {
         items.push({ label: 'Discard all selected', action: async () => {
-            if (!TAURI.has) return;
             const paths = selectedPaths.slice();
             const ok = await confirmBool(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
             if (!ok) return;
@@ -291,7 +282,6 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         }});
     }
     items.push({ label: 'Discard changes', action: async () => {
-        if (!TAURI.has) return;
         const ok = await confirmBool(`Discard all changes in \n${f.path}? This cannot be undone.`);
         if (!ok) return;
         try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }

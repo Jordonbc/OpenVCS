@@ -124,7 +124,6 @@ export async function initOutputLogViewIfRequested(): Promise<boolean> {
 
   const startAppPolling = () => {
     stopAppPolling();
-    if (!TAURI.has) return;
     const poll = async () => {
       try {
         const entries = await TAURI.invoke<OutputLogEntry[]>('tail_app_log', { maxLines: 1500 });
@@ -147,18 +146,14 @@ export async function initOutputLogViewIfRequested(): Promise<boolean> {
     });
   });
 
-  if (TAURI.has) {
-    try {
+  try {
       const entries = await TAURI.invoke<OutputLogEntry[]>('get_output_log');
       append('vcs', Array.isArray(entries) ? entries : []);
     } catch {
       // ignore
     }
-  }
 
   clearBtn?.addEventListener('click', async () => {
-    if (!TAURI.has) return;
-
     const tab = activeTab();
     listFor(tab)?.replaceChildren();
     try {

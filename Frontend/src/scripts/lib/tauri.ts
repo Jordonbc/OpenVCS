@@ -25,21 +25,24 @@ const core: TauriCore | null   = typeof window !== "undefined" && window.__TAURI
 const tEvent: TauriEvent | null = typeof window !== "undefined" && window.__TAURI__?.event ? window.__TAURI__.event : null;
 const TAURI_RUNTIME_ERROR = 'Failed to initialize Tauri runtime.';
 
+/** Returns whether the Tauri runtime core is available. */
+export function isTauriRuntimeAvailable(): boolean {
+    return !!core;
+}
+
 /** Tauri API wrapper providing invoke and event listening capabilities. */
 export const TAURI = {
-    /** Whether Tauri runtime is available. */
-    has: !!core,
-    /** Invoke a Tauri command. */
+    /** Invoke a Tauri command. Returns a rejected promise if runtime unavailable. */
     invoke<T = unknown>(cmd: string, args?: Json): Promise<T> {
         if (!core) {
-            throw new Error(TAURI_RUNTIME_ERROR);
+            return Promise.reject(new Error(TAURI_RUNTIME_ERROR));
         }
         return core.invoke<T>(cmd, args);
     },
-    /** Listen for Tauri events. */
+    /** Listen for Tauri events. Returns a rejected promise if runtime unavailable. */
     listen<T = unknown>(event: string, cb: Listener<T>): Promise<{ unlisten: Unlisten }> {
         if (!tEvent) {
-            throw new Error(TAURI_RUNTIME_ERROR);
+            return Promise.reject(new Error(TAURI_RUNTIME_ERROR));
         }
         return tEvent.listen<T>(event, cb);
     },

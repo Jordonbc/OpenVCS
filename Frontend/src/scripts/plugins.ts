@@ -1,6 +1,6 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { TAURI } from './lib/tauri';
+import { TAURI, isTauriRuntimeAvailable } from './lib/tauri';
 import { notify } from './lib/notify';
 import { initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from './lib/scrollbars';
 import { openModal } from './ui/modals';
@@ -603,11 +603,6 @@ export async function invokePluginAction(
     actionId: string,
     payload?: Record<string, unknown>,
 ): Promise<unknown> {
-    if (!TAURI.has) {
-        notify('Plugin actions are available in the desktop app');
-        return null;
-    }
-
     const result = await TAURI.invoke<unknown>('invoke_plugin_action', {
         pluginId,
         actionId,
@@ -1152,8 +1147,6 @@ export async function initPlugins(): Promise<void> {
 
     ensurePluginsMenuPlaceholder();
 
-    if (!TAURI.has) return;
-
     resetPluginRuntime();
     ensurePluginsMenuPlaceholder();
 
@@ -1188,7 +1181,6 @@ export async function initPlugins(): Promise<void> {
 /** Reloads plugins by resetting and reinitializing the plugin runtime. */
 export async function reloadPlugins(): Promise<void> {
     installGlobalApi();
-    if (!TAURI.has) return;
     initialized = false;
     await initPlugins();
 }
