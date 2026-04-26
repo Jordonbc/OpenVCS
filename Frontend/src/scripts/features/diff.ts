@@ -28,10 +28,6 @@ export function bindCommit() {
             if (statusEl) { statusEl.classList.remove('busy'); if (msg) statusEl.textContent = msg; }
         };
         try {
-            if (!TAURI.has) {
-                notify('Commit is available in the desktop app');
-                return;
-            }
             setBusy('Committing…');
             let description = commitDesc?.value || '';
 
