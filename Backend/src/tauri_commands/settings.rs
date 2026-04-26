@@ -110,7 +110,7 @@ pub fn set_global_settings(state: State<'_, AppState>, cfg: AppConfig) -> Result
 /// - `Ok(RepoConfig)` current effective repository settings.
 /// - `Err(String)` when repo queries fail.
 pub async fn get_repo_settings(state: State<'_, AppState>) -> Result<RepoConfig, String> {
-    let mut cfg = state.repo_config();
+    let mut cfg = RepoConfig::default();
     if let Some(repo) = state.current_repo() {
         let (identity, remotes) = run_repo_task("get_repo_settings", repo, move |repo| {
             let identity = match repo.inner().get_identity() {

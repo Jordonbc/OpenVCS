@@ -8,7 +8,7 @@
     border-bottom: 1px solid var(--border);
 }
 #repo-settings-modal .dialog.sheet{
-    width:30rem;
+    width: clamp(34rem, 92vw, 44rem);
     max-width:100%;
     display:flex;
     flex-direction:column;
@@ -22,6 +22,10 @@
     display:grid;
     gap:1rem;
 }
+#repo-settings-modal .group{
+    display:grid;
+    gap:.45rem;
+}
 #repo-settings-modal .sheet-actions{
     background: var(--surface);
     display:flex;
@@ -33,8 +37,14 @@
 
 /* Form controls — theme-aware via tokens */
 #repo-settings-modal .panel-form .group label{ color: var(--muted); }
+#repo-settings-modal .panel-form .help-text{
+    color: var(--muted);
+    font-size: .875rem;
+    line-height: 1.35;
+}
 #repo-settings-modal .panel-form input[type="text"],
 #repo-settings-modal .panel-form input[type="number"],
+#repo-settings-modal .panel-form input[type="email"],
 #repo-settings-modal .panel-form select,
 #repo-settings-modal .panel-form textarea{
     width:100%;
