@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::sync::LazyLock;
 
-/// Regex pattern for scp-like Git URLs.
+/// Regex pattern for scp-like VCS URLs.
 static SCP_LIKE_RE: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"^[\w.-]+@[\w.-]+:[\w./-]+\.git$").unwrap());
 
@@ -37,15 +37,15 @@ fn normalize_and_probe(input: &str) -> (String, bool, bool) {
     (s.clone(), p.exists(), p.is_dir())
 }
 
-/// Heuristically checks whether a string looks like a Git URL.
+/// Heuristically checks whether a string looks like a VCS URL.
 ///
 /// # Parameters
 /// - `u`: Candidate URL string.
 ///
 /// # Returns
-/// - `true` when URL matches supported Git URL forms.
+/// - `true` when URL matches supported VCS URL forms.
 /// - `false` otherwise.
-fn is_probably_git_url(u: &str) -> bool {
+fn is_probably_vcs_url(u: &str) -> bool {
     let u = u.trim();
     if u.is_empty() {
         return false;
@@ -87,15 +87,15 @@ fn looks_like_path(s: &str) -> bool {
     WIN_ABS_RE.is_match(s)
 }
 
-/// Validates whether a string looks like a supported Git URL.
+/// Validates whether a string looks like a supported VCS URL.
 ///
 /// # Parameters
 /// - `url`: Candidate URL string.
 ///
 /// # Returns
 /// - Validation result with `ok` and optional reason.
-pub fn validate_git_url(url: String) -> Validation {
-    if is_probably_git_url(&url) {
+pub fn validate_vcs_url(url: String) -> Validation {
+    if is_probably_vcs_url(&url) {
         Validation {
             ok: true,
             reason: None,
@@ -104,7 +104,7 @@ pub fn validate_git_url(url: String) -> Validation {
         Validation {
             ok: false,
             reason: Some(
-                "Not a recognized Git URL (http(s), ssh, or scp-like ending in .git)".into(),
+                "Not a recognized VCS URL (http(s), ssh, or scp-like ending in .git)".into(),
             ),
         }
     }
@@ -138,12 +138,12 @@ pub fn validate_add_path(path: String) -> Validation {
         };
     }
 
-    // Optional: require .git folder present
+    // Optional: require repository marker present
     let is_repo = Path::new(&norm).join(".git").exists();
     if !is_repo {
         return Validation {
             ok: false,
-            reason: Some("Folder does not look like a Git repository (.git missing)".into()),
+            reason: Some("Folder does not look like a repository (.git missing)".into()),
         };
     }
 
@@ -162,10 +162,10 @@ pub fn validate_add_path(path: String) -> Validation {
 /// # Returns
 /// - Validation result with `ok` and optional reason.
 pub fn validate_clone_input(url: String, dest: String) -> Validation {
-    if !is_probably_git_url(&url) {
+    if !is_probably_vcs_url(&url) {
         return Validation {
             ok: false,
-            reason: Some("Invalid Git URL".into()),
+            reason: Some("Invalid VCS URL".into()),
         };
     }
     if !looks_like_path(&dest) {
@@ -200,7 +200,7 @@ pub fn validate_clone_input(url: String, dest: String) -> Validation {
     if Path::new(&norm).join(".git").exists() {
         return Validation {
             ok: false,
-            reason: Some("Destination already contains a Git repo".into()),
+            reason: Some("Destination already contains a repository".into()),
         };
     }
     Validation {

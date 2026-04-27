@@ -128,7 +128,7 @@ export function wireNewBranch() {
                     return;
                 }
             }
-            await TAURI.invoke('git_create_branch', { name, from, checkout });
+            await TAURI.invoke('vcs_create_branch', { name, from, checkout });
             await runHook('onBranchCreate', hookData);
             if (checkout) {
                 await runHook('onSwitchBranch', { from: state.branch, to: name });

@@ -98,7 +98,7 @@ export async function selectFile(file: FileStatus, index: number) {
     try {
         let lines: string[] = [];
         if (file.path) {
-            lines = await TAURI.invoke<string[]>('git_diff_file', { path: file.path });
+            lines = await TAURI.invoke<string[]>('vcs_diff_file', { path: file.path });
         }
         if (status === '?' && file.path && (!Array.isArray(lines) || lines.length === 0)) {
             try {
@@ -147,7 +147,7 @@ export async function selectFile(file: FileStatus, index: number) {
                 try {
                     const patch = buildPatchForSelectedHunks(file.path, state.currentDiff, [hi]);
                     if (patch) {
-                        await TAURI.invoke('git_discard_patch', { patch });
+                        await TAURI.invoke('vcs_discard_patch', { patch });
                         await Promise.allSettled([hydrateStatus()]);
                     }
                 } catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
@@ -160,7 +160,7 @@ export async function selectFile(file: FileStatus, index: number) {
                     try {
                         const patch = buildPatchForSelectedHunks(file.path, state.currentDiff, selected);
                         if (patch) {
-                            await TAURI.invoke('git_discard_patch', { patch });
+                            await TAURI.invoke('vcs_discard_patch', { patch });
                             await Promise.allSettled([hydrateStatus()]);
                         }
                     } catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
@@ -176,12 +176,12 @@ export async function selectFile(file: FileStatus, index: number) {
                         let patch = '';
                         for (const p of filesWithSel) {
                             let lines: string[] = [];
-                            try { lines = await TAURI.invoke<string[]>('git_diff_file', { path: p }); } catch {}
+                            try { lines = await TAURI.invoke<string[]>('vcs_diff_file', { path: p }); } catch {}
                             if (!Array.isArray(lines) || lines.length === 0) continue;
                             patch += buildPatchForSelectedHunks(p, lines, hunksMap[p]) + '\n';
                         }
                         if (patch.trim()) {
-                            await TAURI.invoke('git_discard_patch', { patch });
+                            await TAURI.invoke('vcs_discard_patch', { patch });
                             await Promise.allSettled([hydrateStatus()]);
                         }
                     } catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
@@ -248,13 +248,13 @@ export async function selectStashDiff(selector: string) {
     try {
         let lines: string[] = [];
         if (selector) {
-            lines = await TAURI.invoke<string[]>('git_stash_show', { selector });
+            lines = await TAURI.invoke<string[]>('vcs_stash_show', { selector });
         }
         state.currentDiff = lines || [];
         diffEl.innerHTML = renderHunksReadonly(state.currentDiff);
         scrollDiffToTop();
     } catch (e) {
-        console.warn('git_stash_show failed', e);
+        console.warn('vcs_stash_show failed', e);
         diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load stash diff</div></div></div>';
         scrollDiffToTop();
     }
@@ -271,7 +271,7 @@ export async function renderCombinedDiff(paths: string[]) {
     let html = '';
     for (const p of files) {
         try {
-            const lines = await TAURI.invoke<string[]>('git_diff_file', { path: p });
+            const lines = await TAURI.invoke<string[]>('vcs_diff_file', { path: p });
             html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)}</div></div></div>`;
             const fileLines = Array.isArray(lines) ? lines : [];
             if (detectBinaryDiff(fileLines)) {
@@ -316,7 +316,7 @@ async function renderConflictView(file: FileStatus) {
     diffEl.innerHTML = '<div class="conflict-view"><div class="conflict-loading">Loading conflict…</div></div>';
     scrollDiffToTop();
     try {
-        const details = await TAURI.invoke<ConflictDetails>('git_conflict_details', { path: file.path });
+        const details = await TAURI.invoke<ConflictDetails>('vcs_conflict_details', { path: file.path });
         diffEl.innerHTML = renderConflictMarkup(details);
         bindConflictActions(diffEl, file, details);
         scrollDiffToTop();
@@ -380,7 +380,7 @@ function bindConflictActions(root: HTMLElement, file: FileStatus, details: Confl
         buttons.forEach((b) => { b.disabled = true; });
         container.setAttribute('data-busy', '1');
         try {
-            await TAURI.invoke('git_resolve_conflict_side', { path: file.path, side });
+            await TAURI.invoke('vcs_resolve_conflict_side', { path: file.path, side });
             notify(side === 'ours' ? 'Kept your version' : 'Kept their version');
             await Promise.allSettled([hydrateStatus()]);
         } catch (err) {

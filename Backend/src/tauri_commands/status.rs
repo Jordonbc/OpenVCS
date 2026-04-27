@@ -19,17 +19,17 @@ use super::{current_repo_or_err, run_repo_task};
 /// # Returns
 /// - `Ok(StatusPayload)` status details.
 /// - `Err(String)` when status computation fails.
-pub async fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, String> {
+pub async fn vcs_status(state: State<'_, AppState>) -> Result<StatusPayload, String> {
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_status", repo, move |repo| {
-        info!("git_status: fetching repo status");
+    run_repo_task("vcs_status", repo, move |repo| {
+        info!("vcs_status: fetching repo status");
         let payload = repo.inner().status_payload().map_err(|e| {
-            error!("git_status: failed to compute status: {e}");
+            error!("vcs_status: failed to compute status: {e}");
             e.to_string()
         })?;
 
         debug!(
-            "git_status: files={}, ahead={}, behind={}",
+            "vcs_status: files={}, ahead={}, behind={}",
             payload.files.len(),
             payload.ahead,
             payload.behind
@@ -51,13 +51,13 @@ pub async fn git_status(state: State<'_, AppState>) -> Result<StatusPayload, Str
 /// # Returns
 /// - `Ok(Vec<CommitItem>)` commit list.
 /// - `Err(String)` on backend failure.
-pub async fn git_log(
+pub async fn vcs_log(
     state: State<'_, AppState>,
     limit: Option<usize>,
     rev: Option<String>,
 ) -> Result<Vec<CommitItem>, String> {
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_log", repo, move |repo| {
+    run_repo_task("vcs_log", repo, move |repo| {
         let q = LogQuery {
             rev,
             path: None,
@@ -85,12 +85,12 @@ pub async fn git_log(
 /// # Returns
 /// - `Ok(Vec<String>)` diff lines.
 /// - `Err(String)` on backend failure.
-pub async fn git_diff_file(
+pub async fn vcs_diff_file(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<Vec<String>, String> {
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_diff_file", repo, move |repo| {
+    run_repo_task("vcs_diff_file", repo, move |repo| {
         repo.inner()
             .diff_file(&PathBuf::from(path))
             .map_err(|e| e.to_string())
@@ -108,12 +108,12 @@ pub async fn git_diff_file(
 /// # Returns
 /// - `Ok(Vec<String>)` diff lines.
 /// - `Err(String)` on backend failure.
-pub async fn git_diff_commit(
+pub async fn vcs_diff_commit(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<String>, String> {
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_diff_commit", repo, move |repo| {
+    run_repo_task("vcs_diff_commit", repo, move |repo| {
         repo.inner().diff_commit(&id).map_err(|e| e.to_string())
     })
     .await
@@ -129,12 +129,12 @@ pub async fn git_diff_commit(
 /// # Returns
 /// - `Ok(())` on success.
 /// - `Err(String)` on backend failure.
-pub async fn git_discard_paths(
+pub async fn vcs_discard_paths(
     state: State<'_, AppState>,
     paths: Vec<String>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_discard_paths", repo, move |repo| {
+    run_repo_task("vcs_discard_paths", repo, move |repo| {
         let pb: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
         repo.inner().discard_paths(&pb).map_err(|e| e.to_string())
     })
@@ -151,9 +151,9 @@ pub async fn git_discard_paths(
 /// # Returns
 /// - `Ok(())` on success.
 /// - `Err(String)` on backend failure.
-pub async fn git_discard_patch(state: State<'_, AppState>, patch: String) -> Result<(), String> {
+pub async fn vcs_discard_patch(state: State<'_, AppState>, patch: String) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_discard_patch", repo, move |repo| {
+    run_repo_task("vcs_discard_patch", repo, move |repo| {
         repo.inner()
             .apply_reverse_patch(&patch)
             .map_err(|e| e.to_string())

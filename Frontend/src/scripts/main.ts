@@ -189,7 +189,7 @@ async function boot() {
             let success = false;
             try {
                 ctl.setBusy('Fetching…');
-                await TAURI.invoke('git_fetch', {});
+                await TAURI.invoke('vcs_fetch', {});
                 notify('Fetched');
                 if (hydrate) {
                     await yieldToPaint();
@@ -213,7 +213,7 @@ async function boot() {
             let success = false;
             try {
                 ctl.setBusy('Fetching all…');
-                await TAURI.invoke('git_fetch_all', {});
+                await TAURI.invoke('vcs_fetch_all', {});
                 notify('Fetched all remotes');
                 if (hydrate) {
                     await yieldToPaint();
@@ -284,7 +284,7 @@ async function boot() {
 
         try {
             ctl.setBusy('Pulling…');
-            const res = await TAURI.invoke<{ pulled: boolean; branch: string; reason?: string | null }>('git_pull', {});
+            const res = await TAURI.invoke<{ pulled: boolean; branch: string; reason?: string | null }>('vcs_pull', {});
             if (res?.pulled) {
                 notify('Pulled latest changes');
             } else {
@@ -338,7 +338,7 @@ async function boot() {
                 notify(pre.reason || 'Push cancelled');
                 return;
             }
-            setBusy('Pushing…'); await TAURI.invoke('git_push', {});
+            setBusy('Pushing…'); await TAURI.invoke('vcs_push', {});
             await runHook('onPush', hookData);
             notify('Pushed');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
@@ -439,7 +439,7 @@ async function boot() {
         const clearBusy = () => { if (statusEl) statusEl.classList.remove('busy'); };
         try {
             setBusy('Undoing…');
-            await TAURI.invoke('git_undo_since_push', {});
+            await TAURI.invoke('vcs_undo_since_push', {});
             notify('Undid unpushed commits');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
         } catch (e) { console.error('Undo failed:', e); notify('Undo failed'); } finally { clearBusy(); }
@@ -493,7 +493,7 @@ async function boot() {
                 setBusy('Working…', focused);
             });
         };
-        TAURI.listen?.('git-progress', ({ payload }) => {
+        TAURI.listen?.('vcs-progress', ({ payload }) => {
             // Don't spam the footer with raw git output; keep it generic.
             void payload;
             // Avoid spinner-driven repaint churn for passive/background progress.
@@ -599,7 +599,7 @@ async function boot() {
             }
             headPollInFlight = (async () => {
                 try {
-                    const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status');
+                    const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('vcs_head_status');
                     const key = `${head?.detached ? 1 : 0}:${String(head?.branch || '')}:${String(head?.commit || '')}`;
                     if (key === lastHeadKey) return;
 

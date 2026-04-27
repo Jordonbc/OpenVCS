@@ -23,20 +23,20 @@ use super::{current_repo_or_err, run_repo_task};
 /// # Returns
 /// - `Ok(ConflictDetails)` with conflict metadata/content.
 /// - `Err(String)` when lookup fails.
-pub async fn git_conflict_details(
+pub async fn vcs_conflict_details(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<ConflictDetails, String> {
     let start = std::time::Instant::now();
-    info!("git_conflict_details: path='{}'", path);
+    info!("vcs_conflict_details: path='{}'", path);
 
     let repo = current_repo_or_err(&state)?;
     let path_clone = path.clone();
-    let result = run_repo_task("git_conflict_details", repo, move |repo| {
+    let result = run_repo_task("vcs_conflict_details", repo, move |repo| {
         repo.inner()
             .conflict_details(&PathBuf::from(&path))
             .map_err(|e| {
-                error!("git_conflict_details: failed for '{}': {}", path, e);
+                error!("vcs_conflict_details: failed for '{}': {}", path, e);
                 e.to_string()
             })
     })
@@ -45,14 +45,14 @@ pub async fn git_conflict_details(
     match &result {
         Ok(details) => {
             debug!(
-                "git_conflict_details: found conflict details for '{}' ({:?})",
+                "vcs_conflict_details: found conflict details for '{}' ({:?})",
                 path_clone,
                 start.elapsed()
             );
-            trace!("git_conflict_details: binary={}", details.binary);
+            trace!("vcs_conflict_details: binary={}", details.binary);
         }
         Err(e) => {
-            error!("git_conflict_details: failed: {}", e);
+            error!("vcs_conflict_details: failed: {}", e);
         }
     }
 
@@ -70,33 +70,33 @@ pub async fn git_conflict_details(
 /// # Returns
 /// - `Ok(())` on success.
 /// - `Err(String)` on validation or checkout failure.
-pub async fn git_resolve_conflict_side(
+pub async fn vcs_resolve_conflict_side(
     state: State<'_, AppState>,
     path: String,
     side: String,
 ) -> Result<(), String> {
     let start = std::time::Instant::now();
     info!(
-        "git_resolve_conflict_side: path='{}', side='{}'",
+        "vcs_resolve_conflict_side: path='{}', side='{}'",
         path, side
     );
 
     let repo = current_repo_or_err(&state)?;
     let path_clone = path.clone();
     let side_clone = side.clone();
-    let result = run_repo_task("git_resolve_conflict_side", repo, move |repo| {
+    let result = run_repo_task("vcs_resolve_conflict_side", repo, move |repo| {
         let which = match side.to_lowercase().as_str() {
             "ours" => ConflictSide::Ours,
             "theirs" => ConflictSide::Theirs,
             other => {
-                warn!("git_resolve_conflict_side: invalid side '{}'", other);
+                warn!("vcs_resolve_conflict_side: invalid side '{}'", other);
                 return Err(format!("invalid conflict side '{other}'"));
             }
         };
         repo.inner()
             .checkout_conflict_side(&PathBuf::from(&path), which)
             .map_err(|e| {
-                error!("git_resolve_conflict_side: failed for '{}': {}", path, e);
+                error!("vcs_resolve_conflict_side: failed for '{}': {}", path, e);
                 e.to_string()
             })
     })
@@ -105,14 +105,14 @@ pub async fn git_resolve_conflict_side(
     match &result {
         Ok(()) => {
             debug!(
-                "git_resolve_conflict_side: resolved '{}' with '{}' ({:?})",
+                "vcs_resolve_conflict_side: resolved '{}' with '{}' ({:?})",
                 path_clone,
                 side_clone,
                 start.elapsed()
             );
         }
         Err(e) => {
-            error!("git_resolve_conflict_side: failed: {}", e);
+            error!("vcs_resolve_conflict_side: failed: {}", e);
         }
     }
 
@@ -130,25 +130,25 @@ pub async fn git_resolve_conflict_side(
 /// # Returns
 /// - `Ok(())` on success.
 /// - `Err(String)` when write/save fails.
-pub async fn git_save_merge_result(
+pub async fn vcs_save_merge_result(
     state: State<'_, AppState>,
     path: String,
     content: String,
 ) -> Result<(), String> {
     let start = std::time::Instant::now();
     info!(
-        "git_save_merge_result: path='{}', content_len={}",
+        "vcs_save_merge_result: path='{}', content_len={}",
         path,
         content.len()
     );
 
     let repo = current_repo_or_err(&state)?;
     let path_clone = path.clone();
-    let result = run_repo_task("git_save_merge_result", repo, move |repo| {
+    let result = run_repo_task("vcs_save_merge_result", repo, move |repo| {
         repo.inner()
             .write_merge_result(&PathBuf::from(&path), content.as_bytes())
             .map_err(|e| {
-                error!("git_save_merge_result: failed for '{}': {}", path, e);
+                error!("vcs_save_merge_result: failed for '{}': {}", path, e);
                 e.to_string()
             })
     })
@@ -157,13 +157,13 @@ pub async fn git_save_merge_result(
     match &result {
         Ok(()) => {
             debug!(
-                "git_save_merge_result: saved '{}' ({:?})",
+                "vcs_save_merge_result: saved '{}' ({:?})",
                 path_clone,
                 start.elapsed()
             );
         }
         Err(e) => {
-            error!("git_save_merge_result: failed: {}", e);
+            error!("vcs_save_merge_result: failed: {}", e);
         }
     }
 
@@ -197,25 +197,25 @@ fn tool_args(tool: &ExternalTool) -> (String, Vec<String>) {
 /// # Returns
 /// - `Ok(())` when the tool process is started.
 /// - `Err(String)` when tool config is missing or spawn fails.
-pub async fn git_launch_merge_tool(state: State<'_, AppState>, path: String) -> Result<(), String> {
+pub async fn vcs_launch_merge_tool(state: State<'_, AppState>, path: String) -> Result<(), String> {
     let start = std::time::Instant::now();
-    info!("git_launch_merge_tool: path='{}'", path);
+    info!("vcs_launch_merge_tool: path='{}'", path);
 
     let cfg = state.config();
     let tool = cfg.diff.external_merge.clone();
 
     if !tool.enabled {
-        warn!("git_launch_merge_tool: external merge tool is disabled");
+        warn!("vcs_launch_merge_tool: external merge tool is disabled");
         return Err("no external merge tool configured".into());
     }
 
     if tool.path.trim().is_empty() {
-        warn!("git_launch_merge_tool: no tool path configured");
+        warn!("vcs_launch_merge_tool: no tool path configured");
         return Err("no external merge tool configured".into());
     }
 
     debug!(
-        "git_launch_merge_tool: tool='{}', args='{}'",
+        "vcs_launch_merge_tool: tool='{}', args='{}'",
         tool.path, tool.args
     );
 
@@ -225,7 +225,7 @@ pub async fn git_launch_merge_tool(state: State<'_, AppState>, path: String) -> 
     let includes_placeholder = args_template.iter().any(|arg| arg.contains("{path}"));
     let path_for_log = path.clone();
 
-    let result = run_repo_task("git_launch_merge_tool", repo, move |repo| {
+    let result = run_repo_task("vcs_launch_merge_tool", repo, move |repo| {
         let repo_root = repo.inner().workdir().to_path_buf();
         let rel = PathBuf::from(&path);
         let abs = if rel.is_absolute() {
@@ -235,7 +235,7 @@ pub async fn git_launch_merge_tool(state: State<'_, AppState>, path: String) -> 
         };
 
         trace!(
-            "git_launch_merge_tool: repo_root='{}', abs_path='{}'",
+            "vcs_launch_merge_tool: repo_root='{}', abs_path='{}'",
             repo_root.display(),
             abs.display()
         );
@@ -265,13 +265,13 @@ pub async fn git_launch_merge_tool(state: State<'_, AppState>, path: String) -> 
         }
 
         debug!(
-            "git_launch_merge_tool: spawning '{}' with args {:?}",
+            "vcs_launch_merge_tool: spawning '{}' with args {:?}",
             tool_path, expanded
         );
 
         cmd.spawn().map(|_| ()).map_err(|e| {
             error!(
-                "git_launch_merge_tool: failed to spawn '{}': {}",
+                "vcs_launch_merge_tool: failed to spawn '{}': {}",
                 tool_path, e
             );
             e.to_string()
@@ -282,13 +282,13 @@ pub async fn git_launch_merge_tool(state: State<'_, AppState>, path: String) -> 
     match &result {
         Ok(()) => {
             info!(
-                "git_launch_merge_tool: launched tool for '{}' ({:?})",
+                "vcs_launch_merge_tool: launched tool for '{}' ({:?})",
                 path_for_log,
                 start.elapsed()
             );
         }
         Err(e) => {
-            error!("git_launch_merge_tool: failed: {}", e);
+            error!("vcs_launch_merge_tool: failed: {}", e);
         }
     }
 

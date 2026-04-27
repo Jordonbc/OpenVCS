@@ -19,22 +19,22 @@ use super::{current_repo_or_err, run_repo_task};
 /// # Returns
 /// - `Ok(Vec<StashItem>)` stash list.
 /// - `Err(String)` when listing fails.
-pub async fn git_stash_list(state: State<'_, AppState>) -> Result<Vec<StashItem>, String> {
+pub async fn vcs_stash_list(state: State<'_, AppState>) -> Result<Vec<StashItem>, String> {
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_stash_list", repo, move |repo| {
+    run_repo_task("vcs_stash_list", repo, move |repo| {
         match repo.inner().stash_list() {
             Ok(items) => {
-                info!("git_stash_list: count={}", items.len());
+                info!("vcs_stash_list: count={}", items.len());
                 for item in &items {
                     info!(
-                        "git_stash_list: selector='{}' msg='{}' meta='{}'",
+                        "vcs_stash_list: selector='{}' msg='{}' meta='{}'",
                         item.selector, item.msg, item.meta
                     );
                 }
                 Ok(items)
             }
             Err(e) => {
-                error!("git_stash_list: failed: {}", e);
+                error!("vcs_stash_list: failed: {}", e);
                 Err(e.to_string())
             }
         }
@@ -54,7 +54,7 @@ pub async fn git_stash_list(state: State<'_, AppState>) -> Result<Vec<StashItem>
 /// # Returns
 /// - `Ok(())` on success.
 /// - `Err(String)` on stash failure.
-pub async fn git_stash_push(
+pub async fn vcs_stash_push(
     state: State<'_, AppState>,
     message: Option<String>,
     include_untracked: Option<bool>,
@@ -68,7 +68,7 @@ pub async fn git_stash_push(
         .into_iter()
         .map(PathBuf::from)
         .collect();
-    run_repo_task("git_stash_push", repo, move |repo| {
+    run_repo_task("vcs_stash_push", repo, move |repo| {
         repo.inner()
             .stash_push(&msg, iu, &pathbufs)
             .map_err(|e| e.to_string())
@@ -86,13 +86,13 @@ pub async fn git_stash_push(
 /// # Returns
 /// - `Ok(())` on success.
 /// - `Err(String)` on apply failure.
-pub async fn git_stash_apply(
+pub async fn vcs_stash_apply(
     state: State<'_, AppState>,
     selector: Option<String>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let selector = selector.unwrap_or_default();
-    run_repo_task("git_stash_apply", repo, move |repo| {
+    run_repo_task("vcs_stash_apply", repo, move |repo| {
         repo.inner()
             .stash_apply(selector.as_str())
             .map_err(|e| e.to_string())
@@ -110,13 +110,13 @@ pub async fn git_stash_apply(
 /// # Returns
 /// - `Ok(())` on success.
 /// - `Err(String)` on pop failure.
-pub async fn git_stash_pop(
+pub async fn vcs_stash_pop(
     state: State<'_, AppState>,
     selector: Option<String>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let selector = selector.unwrap_or_default();
-    run_repo_task("git_stash_pop", repo, move |repo| {
+    run_repo_task("vcs_stash_pop", repo, move |repo| {
         repo.inner()
             .stash_pop(selector.as_str())
             .map_err(|e| e.to_string())
@@ -134,21 +134,21 @@ pub async fn git_stash_pop(
 /// # Returns
 /// - `Ok(())` on success.
 /// - `Err(String)` on drop failure.
-pub async fn git_stash_drop(
+pub async fn vcs_stash_drop(
     state: State<'_, AppState>,
     selector: Option<String>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let selector = selector.unwrap_or_default();
-    run_repo_task("git_stash_drop", repo, move |repo| {
-        info!("git_stash_drop: selector='{}'", selector);
+    run_repo_task("vcs_stash_drop", repo, move |repo| {
+        info!("vcs_stash_drop: selector='{}'", selector);
         match repo.inner().stash_drop(selector.as_str()) {
             Ok(()) => {
-                info!("git_stash_drop: success selector='{}'", selector);
+                info!("vcs_stash_drop: success selector='{}'", selector);
                 Ok(())
             }
             Err(e) => {
-                error!("git_stash_drop: failed selector='{}': {}", selector, e);
+                error!("vcs_stash_drop: failed selector='{}': {}", selector, e);
                 Err(e.to_string())
             }
         }
@@ -166,13 +166,13 @@ pub async fn git_stash_drop(
 /// # Returns
 /// - `Ok(Vec<String>)` patch lines.
 /// - `Err(String)` on lookup failure.
-pub async fn git_stash_show(
+pub async fn vcs_stash_show(
     state: State<'_, AppState>,
     selector: Option<String>,
 ) -> Result<Vec<String>, String> {
     let repo = current_repo_or_err(&state)?;
     let selector = selector.unwrap_or_default();
-    run_repo_task("git_stash_show", repo, move |repo| {
+    run_repo_task("vcs_stash_show", repo, move |repo| {
         repo.inner()
             .stash_show(selector.as_str())
             .map_err(|e| e.to_string())

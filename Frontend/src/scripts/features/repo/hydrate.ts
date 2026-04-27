@@ -69,8 +69,8 @@ export async function hydrateBranches(): Promise<boolean> {
     if (!isTauriRuntimeAvailable()) return false;
     try {
         await yieldToPaint();
-        const list = await TAURI.invoke<any[]>('git_list_branches');
-        const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status').catch(() => ({ detached: false } as any));
+        const list = await TAURI.invoke<any[]>('vcs_list_branches');
+        const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('vcs_head_status').catch(() => ({ detached: false } as any));
         const has = Array.isArray(list) && list.length > 0;
         state.hasRepo = state.hasRepo || has;
         if (has) {
@@ -94,13 +94,13 @@ export async function hydrateBranches(): Promise<boolean> {
 export async function hydrateStatus() {
     try {
         await yieldToPaint();
-        const result = await TAURI.invoke<{ files: any[]; ahead?: number; behind?: number }>('git_status');
+        const result = await TAURI.invoke<{ files: any[]; ahead?: number; behind?: number }>('vcs_status');
         const nextFiles = Array.isArray(result?.files) ? (result.files as any) : [];
         let nextMergeInProgress = false;
         let nextSeenConflicts = new Set<string>();
         // Track merge context for UI hints (e.g., resolved-conflict checkmarks)
         try {
-            const ctx = await TAURI.invoke<{ in_progress: boolean }>('git_merge_context');
+            const ctx = await TAURI.invoke<{ in_progress: boolean }>('vcs_merge_context');
             nextMergeInProgress = !!ctx?.in_progress;
             if (nextMergeInProgress) {
                 nextSeenConflicts = new Set<string>();
@@ -158,10 +158,13 @@ export async function hydrateStatus() {
     }
 }
 
+/**
+ * Loads the full commit history so history counts reflect all visible commits.
+ */
 export async function hydrateCommits(): Promise<void> {
     try {
         await yieldToPaint();
-        const list = await TAURI.invoke<any[]>('git_log', { limit: 100 });
+        const list = await TAURI.invoke<any[]>('vcs_log', { limit: 0 });
         state.hasRepo = true;
         const baseCommits = Array.isArray(list) ? (list as any) : [];
         const behindCount = Number((state as any).behind || 0);
@@ -177,7 +180,7 @@ export async function hydrateCommits(): Promise<void> {
             }
             for (const { range, ref } of ranges) {
                 try {
-                    const remoteList = await TAURI.invoke<any[]>('git_log', { limit, rev: range });
+                    const remoteList = await TAURI.invoke<any[]>('vcs_log', { limit, rev: range });
                     if (Array.isArray(remoteList) && remoteList.length > 0) {
                         incoming = remoteList.map((c: any) => ({ ...c, incoming: true, remoteRef: ref }));
                         break;
@@ -200,7 +203,7 @@ export async function hydrateCommits(): Promise<void> {
         const aheadCount = Number((state as any).ahead || 0);
         if (aheadCount > 0) {
             try {
-                const aheadList = await TAURI.invoke<any[]>('git_log', { limit: 1000, rev: '@{upstream}..HEAD' });
+                const aheadList = await TAURI.invoke<any[]>('vcs_log', { limit: 1000, rev: '@{upstream}..HEAD' });
                 const ids = new Set<string>();
                 (aheadList || []).forEach((c: any) => { if (c?.id) ids.add(String(c.id)); });
                 (state as any).aheadIds = ids;
@@ -220,7 +223,7 @@ export async function hydrateCommits(): Promise<void> {
 export async function hydrateStash(): Promise<void> {
     try {
         await yieldToPaint();
-        const list = await TAURI.invoke<any[]>('git_stash_list');
+        const list = await TAURI.invoke<any[]>('vcs_stash_list');
         (state as any).stash = Array.isArray(list) ? (list as any) : [];
         if (prefs.tab === 'stash') renderList();
     } catch (e) {
