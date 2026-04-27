@@ -231,3 +231,23 @@ export async function hydrateStash(): Promise<void> {
         (state as any).stash = [];
     }
 }
+
+/**
+ * Loads the resolved action-label map for the active backend.
+ */
+export async function hydrateVcsActionLabels(): Promise<void> {
+    try {
+        const labels = await TAURI.invoke<Array<[string, string]>>('current_vcs_action_labels');
+        const resolved: Record<string, string> = {};
+        for (const pair of labels || []) {
+            if (!Array.isArray(pair) || pair.length < 2) continue;
+            const key = String(pair[0] || '').trim();
+            const label = String(pair[1] || '').trim();
+            if (!key || !label) continue;
+            resolved[key] = label;
+        }
+        state.vcsActionLabels = resolved;
+    } catch {
+        state.vcsActionLabels = {};
+    }
+}

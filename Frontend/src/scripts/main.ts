@@ -8,7 +8,7 @@ import { qs } from './lib/dom';
 import { notify } from './lib/notify';
 import { setStatus } from './lib/status';
 import { destroyOverlayScrollbarsFor, initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from './lib/scrollbars';
-import { prefs, state, hasRepo } from './state/state';
+import { prefs, state, hasRepo, resolveVcsActionLabel } from './state/state';
 import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
     bindLayoutActionState
@@ -16,7 +16,7 @@ import {
 import { clearPluginMenubarMenus, initMenubar, refreshPluginMenubarMenus } from './ui/menubar';
 import { closeAllModals } from './ui/modals';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
-import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash, yieldToPaint } from './features/repo';
+import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash, hydrateVcsActionLabels, yieldToPaint } from './features/repo';
 import { bindBranchUI } from './features/branches';
 import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
@@ -188,7 +188,7 @@ async function boot() {
             const ctl = status ?? statusController();
             let success = false;
             try {
-                ctl.setBusy('Fetching…');
+                ctl.setBusy(`${resolveVcsActionLabel('VCS.Fetch', 'Fetch')}…`);
                 await TAURI.invoke('vcs_fetch', {});
                 notify('Fetched');
                 if (hydrate) {
@@ -243,10 +243,12 @@ async function boot() {
         const behind = getBehindCount();
         const repoOn = hasRepo();
         const canPull = repoOn;
-        const mainLabel = behind > 0 ? `Pull (${behind})` : 'Fetch';
+        const fetchLabel = resolveVcsActionLabel('VCS.Fetch', 'Fetch');
+        const pullLabel = resolveVcsActionLabel('VCS.Pull', 'Pull');
+        const mainLabel = behind > 0 ? `${pullLabel} (${behind})` : fetchLabel;
         const mainTitle = behind > 0
-            ? `Pull ${behind} commit${behind === 1 ? '' : 's'} (F5)`
-            : 'Fetch (F5)';
+            ? `${pullLabel} ${behind} commit${behind === 1 ? '' : 's'} (F5)`
+            : `${fetchLabel} (F5)`;
 
         if (fetchBtn) {
             fetchBtn.textContent = mainLabel;
@@ -262,18 +264,18 @@ async function boot() {
             fetchOnlyItem.setAttribute('aria-disabled', 'false');
             fetchOnlyItem.tabIndex = 0;
             const name = fetchOnlyItem.querySelector<HTMLElement>('.name');
-            if (name) name.textContent = 'Fetch';
+            if (name) name.textContent = fetchLabel;
         }
         if (fetchAllItem) {
             fetchAllItem.setAttribute('aria-disabled', 'false');
             fetchAllItem.tabIndex = 0;
         }
         if (pullItem) {
-            const pullLabel = behind > 0 ? `Pull (${behind})` : 'Pull';
+            const pullText = behind > 0 ? `${pullLabel} (${behind})` : pullLabel;
             pullItem.setAttribute('aria-disabled', canPull ? 'false' : 'true');
             pullItem.tabIndex = canPull ? 0 : -1;
             const name = pullItem.querySelector<HTMLElement>('.name');
-            if (name) name.textContent = pullLabel;
+            if (name) name.textContent = pullText;
         }
     }
 
@@ -283,7 +285,7 @@ async function boot() {
         if (!fetched) { ctl.clearBusy(); return; }
 
         try {
-            ctl.setBusy('Pulling…');
+            ctl.setBusy(`${resolveVcsActionLabel('VCS.Pull', 'Pull')}ing…`);
             const res = await TAURI.invoke<{ pulled: boolean; branch: string; reason?: string | null }>('vcs_pull', {});
             if (res?.pulled) {
                 notify('Pulled latest changes');
@@ -296,7 +298,7 @@ async function boot() {
             ctl.clearBusy();
         }
 
-        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash()]);
+        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash(), hydrateVcsActionLabels()]);
     }
 
     async function defaultFetchAction() {
@@ -513,7 +515,7 @@ async function boot() {
 
         await hydrateBranches();
         setRepoHeader(path);
-        await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+        await Promise.allSettled([hydrateStatus(), hydrateCommits(), hydrateVcsActionLabels()]);
         updateFetchUI();
 
         // Broadcast app-level event so branch UI and actions can sync
@@ -569,7 +571,7 @@ async function boot() {
         if (doFetch) {
             await fetchCurrentRemoteOnly({ hydrate: false });
         }
-        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash()]);
+        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash(), hydrateVcsActionLabels()]);
         updateFetchUI();
         })();
         try {

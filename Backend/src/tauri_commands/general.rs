@@ -64,7 +64,7 @@ pub async fn browse_directory<R: Runtime>(
 ) -> Option<String> {
     let title = match purpose.as_deref() {
         Some("clone_dest") => "Choose destination folder",
-        Some("add_repo") => "Select an existing Git repository folder",
+        Some("add_repo") => "Select an existing repository folder",
         _ => "Select a folder",
     };
     utilities::browse_directory_async(window.app_handle().clone(), title).await

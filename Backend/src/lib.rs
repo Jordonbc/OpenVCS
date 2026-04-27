@@ -322,6 +322,7 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::current_repo_path,
         tauri_commands::list_recent_repos,
         tauri_commands::vcs_list_branches,
+        tauri_commands::current_vcs_action_labels,
         tauri_commands::vcs_status,
         tauri_commands::vcs_log,
         tauri_commands::vcs_stash_list,

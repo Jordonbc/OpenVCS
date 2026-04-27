@@ -144,7 +144,11 @@ The host currently consumes these manifest fields from `package.json.openvcs`:
 - `name`, `version` (optional but recommended)
 - `default_enabled` (optional)
 - `module.exec` (optional Node entry filename under `bin/`)
-- `module.vcs_backends` (optional VCS backend ids the module provides)
+- `module.vcs_backends` (optional VCS backend ids or backend objects the module provides)
+
+Backend objects may include a namespaced action-label map such as `VCS.Push`
+→ `Push`, `VCS.Pull` → `Pull`, and `VCS.Commit` → `Commit`. The client falls
+back to generic VCS text when a label is missing.
 
 `module.exec` must resolve to a `.js`, `.mjs`, or `.cjs` file inside `bin/`.
 

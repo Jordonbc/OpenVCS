@@ -112,6 +112,8 @@ pub enum VcsBackendProvide {
         id: String,
         #[serde(default)]
         name: Option<String>,
+        #[serde(default)]
+        action_labels: BTreeMap<String, String>,
     },
 }
 
@@ -147,12 +149,23 @@ pub struct PluginBundleStore {
     root: PathBuf,
 }
 
+/// Installed VCS backend metadata resolved from a plugin module.
+#[derive(Debug, Clone)]
+pub struct ModuleVcsBackend {
+    /// Logical backend identifier.
+    pub id: String,
+    /// Optional human-readable backend name.
+    pub name: Option<String>,
+    /// Optional action-label map keyed by namespaced VCS actions.
+    pub action_labels: BTreeMap<String, String>,
+}
+
 /// Installed module component metadata and resolved executable path.
 #[derive(Debug, Clone)]
 pub struct ModuleComponent {
     pub exec: String,
     pub exec_path: PathBuf,
-    pub vcs_backends: Vec<(String, Option<String>)>,
+    pub vcs_backends: Vec<ModuleVcsBackend>,
 }
 
 /// Active component metadata for a plugin selected by `current.json`.
@@ -718,9 +731,17 @@ impl PluginBundleStore {
                     .filter_map(|backend| match backend {
                         VcsBackendProvide::Id(id) => {
                             let id = id.trim().to_string();
-                            (!id.is_empty()).then_some((id, None))
+                            (!id.is_empty()).then_some(ModuleVcsBackend {
+                                id,
+                                name: None,
+                                action_labels: BTreeMap::new(),
+                            })
                         }
-                        VcsBackendProvide::Named { id, name } => {
+                        VcsBackendProvide::Named {
+                            id,
+                            name,
+                            action_labels,
+                        } => {
                             let id = id.trim().to_string();
                             if id.is_empty() {
                                 return None;
@@ -730,7 +751,11 @@ impl PluginBundleStore {
                                 .map(str::trim)
                                 .filter(|value| !value.is_empty())
                                 .map(str::to_string);
-                            Some((id, name))
+                            Some(ModuleVcsBackend {
+                                id,
+                                name,
+                                action_labels,
+                            })
                         }
                     })
                     .collect(),
@@ -872,6 +897,19 @@ mod tests {
         fs::write(root.join("bin").join("plugin.js"), "export {};\n").unwrap();
     }
 
+    /// Writes a prepared plugin directory with backend action labels.
+    fn write_plugin_with_labels(root: &Path, plugin_id: &str) {
+        fs::create_dir_all(root.join("bin")).unwrap();
+        fs::write(
+            root.join("package.json"),
+            format!(
+                "{{\n  \"name\": \"{plugin_id}\",\n  \"version\": \"0.1.0\",\n  \"openvcs\": {{\n    \"id\": \"{plugin_id}\",\n    \"name\": \"Test\",\n    \"version\": \"0.1.0\",\n    \"module\": {{\n      \"exec\": \"plugin.js\",\n      \"vcs_backends\": [{{\n        \"id\": \"git\",\n        \"name\": \"Git\",\n        \"action_labels\": {{\n          \"VCS.Commit\": \"Commit\",\n          \"VCS.Push\": \"Push\"\n        }}\n      }}]\n    }}\n  }}\n}}\n"
+            ),
+        )
+        .unwrap();
+        fs::write(root.join("bin").join("plugin.js"), "export {};\n").unwrap();
+    }
+
     #[test]
     fn install_prepared_plugin_dir_writes_index_and_source() {
         let dir = tempdir().unwrap();
@@ -896,6 +934,43 @@ mod tests {
         assert!(
             read_plugin_source_metadata(&store.root.join("example.plugin"))
                 .is_some_and(|metadata| metadata.kind == "path")
+        );
+    }
+
+    #[test]
+    fn load_current_components_reads_backend_action_labels() {
+        let dir = tempdir().unwrap();
+        let store = PluginBundleStore::new_at(dir.path().join("plugins"));
+        let prepared = dir.path().join("prepared");
+        write_plugin_with_labels(&prepared, "example.plugin");
+
+        store
+            .install_prepared_plugin_dir(
+                &prepared,
+                &InstalledPluginSourceMetadata {
+                    managed_by: "user-config".to_string(),
+                    kind: "path".to_string(),
+                    spec: "../example".to_string(),
+                },
+                true,
+            )
+            .unwrap();
+
+        let components = store.load_current_components("example.plugin").unwrap();
+        let module = components.and_then(|c| c.module).expect("module component");
+        let backend = module
+            .vcs_backends
+            .into_iter()
+            .find(|backend| backend.id == "git")
+            .expect("git backend");
+        assert_eq!(backend.name.as_deref(), Some("Git"));
+        assert_eq!(
+            backend.action_labels.get("VCS.Commit").map(String::as_str),
+            Some("Commit")
+        );
+        assert_eq!(
+            backend.action_labels.get("VCS.Push").map(String::as_str),
+            Some("Push")
         );
     }
 }
