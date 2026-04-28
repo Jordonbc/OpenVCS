@@ -8,9 +8,9 @@ jobs:
   review:
     if: github.event.pull_request.user.login == 'Jordonbc'
     runs-on: ubuntu-latest
+
     permissions:
-      id-token: write
-      contents: write
+      contents: read
       pull-requests: write
       issues: write
 
@@ -31,12 +31,44 @@ jobs:
           model: ${{ vars.OPENCODE_REVIEW_MODEL }}
           use_github_token: true
           prompt: |
-            Before anything else, read and follow AGENTS.md for this repository and module.
-            Review this pull request:
-            - Check for code quality issues
-            - Look for potential bugs
-            - Suggest improvements
-            - If you make any code edits, run 'cd Client && just test' to verify they compile and pass tests before committing.
+            Before doing anything else, read and follow AGENTS.md for this repository and for any affected module.
+
+            You are reviewing this pull request only. Do not edit files, do not commit changes, and do not attempt to rewrite the PR.
+
+            Review only the changes introduced by this pull request, using surrounding repository context only when needed to understand correctness.
+
+            Focus on:
+            - Correctness bugs
+            - Regressions
+            - Unsafe assumptions
+            - Error handling problems
+            - API misuse
+            - Race conditions, lifetime issues, ownership issues, or resource leaks
+            - Test coverage gaps where the changed behaviour is not adequately covered
+            - Maintainability issues that would realistically matter in this codebase
+
+            Do not comment on:
+            - Pure style preferences unless AGENTS.md or existing repository conventions clearly require them
+            - Hypothetical rewrites
+            - Broad architecture advice unrelated to this PR
+            - Trivial naming or formatting issues unless they obscure correctness
+            - Missing tests for code that has no meaningful behavioural change
+
+            For every finding:
+            - Cite the specific file and changed line/range when possible
+            - Explain why it is a real issue
+            - Explain the likely impact
+            - Suggest the smallest reasonable fix
+            - State confidence as High, Medium, or Low
+
+            Use this severity scale:
+            - Blocking: correctness, data loss, security, build failure, test failure, serious regression
+            - Important: likely bug, maintainability risk, missing validation, meaningful test gap
+            - Minor: small cleanup with clear value
+
+            Prefer fewer, higher-confidence comments over many speculative comments.
+
+            If there are no substantive issues, say that no blocking or important issues were found. Do not invent issues to appear useful.
 
       - name: fallback
         if: ${{ steps.review_primary.outcome == 'failure' }}
@@ -49,9 +81,41 @@ jobs:
           model: ${{ vars.OPENCODE_REVIEW_MODEL_FALLBACK }}
           use_github_token: true
           prompt: |
-            Before anything else, read and follow AGENTS.md for this repository and module.
-            Review this pull request:
-            - Check for code quality issues
-            - Look for potential bugs
-            - Suggest improvements
-            - If you make any code edits, run 'cd Client && just test' to verify they compile and pass tests before committing.
+            Before doing anything else, read and follow AGENTS.md for this repository and for any affected module.
+
+            You are reviewing this pull request only. Do not edit files, do not commit changes, and do not attempt to rewrite the PR.
+
+            Review only the changes introduced by this pull request, using surrounding repository context only when needed to understand correctness.
+
+            Focus on:
+            - Correctness bugs
+            - Regressions
+            - Unsafe assumptions
+            - Error handling problems
+            - API misuse
+            - Race conditions, lifetime issues, ownership issues, or resource leaks
+            - Test coverage gaps where the changed behaviour is not adequately covered
+            - Maintainability issues that would realistically matter in this codebase
+
+            Do not comment on:
+            - Pure style preferences unless AGENTS.md or existing repository conventions clearly require them
+            - Hypothetical rewrites
+            - Broad architecture advice unrelated to this PR
+            - Trivial naming or formatting issues unless they obscure correctness
+            - Missing tests for code that has no meaningful behavioural change
+
+            For every finding:
+            - Cite the specific file and changed line/range when possible
+            - Explain why it is a real issue
+            - Explain the likely impact
+            - Suggest the smallest reasonable fix
+            - State confidence as High, Medium, or Low
+
+            Use this severity scale:
+            - Blocking: correctness, data loss, security, build failure, test failure, serious regression
+            - Important: likely bug, maintainability risk, missing validation, meaningful test gap
+            - Minor: small cleanup with clear value
+
+            Prefer fewer, higher-confidence comments over many speculative comments.
+
+            If there are no substantive issues, say that no blocking or important issues were found. Do not invent issues to appear useful.
