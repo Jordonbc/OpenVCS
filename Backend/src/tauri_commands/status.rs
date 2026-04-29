@@ -12,13 +12,12 @@ use super::{current_repo_or_err, run_repo_task};
 
 /// Normalizes the commit history limit for `vcs_log`.
 ///
-/// A missing limit keeps the historical default of 100 commits, `0` means
-/// unlimited, and positive limits are clamped to the backend safety cap.
-/// The frontend uses `0` when it wants the full history.
-fn normalize_log_limit(limit: Option<usize>) -> u32 {
+/// A missing limit keeps the historical default of 100 commits, `0` becomes
+/// `None` (unlimited), and positive limits are clamped to the backend safety cap.
+fn normalize_log_limit(limit: Option<usize>) -> Option<u32> {
     match limit.unwrap_or(100) {
-        0 => 0,
-        n => n.min(1000) as u32,
+        0 => None,
+        n => Some(n.min(1000) as u32),
     }
 }
 
@@ -94,19 +93,19 @@ mod tests {
     #[test]
     /// Verifies the default history limit remains 100 commits.
     fn normalize_log_limit_defaults_to_100() {
-        assert_eq!(normalize_log_limit(None), 100);
+        assert_eq!(normalize_log_limit(None), Some(100));
     }
 
     #[test]
     /// Verifies a zero limit requests the full history.
     fn normalize_log_limit_treats_zero_as_unlimited() {
-        assert_eq!(normalize_log_limit(Some(0)), 0);
+        assert_eq!(normalize_log_limit(Some(0)), None);
     }
 
     #[test]
     /// Verifies large limits are clamped to the backend cap.
     fn normalize_log_limit_clamps_large_values() {
-        assert_eq!(normalize_log_limit(Some(2_000)), 1_000);
+        assert_eq!(normalize_log_limit(Some(2_000)), Some(1_000));
     }
 }
 

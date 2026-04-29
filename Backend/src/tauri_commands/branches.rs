@@ -264,7 +264,7 @@ pub async fn vcs_head_status(state: State<'_, AppState>) -> Result<HeadStatus, S
         let branch = repo.inner().current_branch().map_err(|e| e.to_string())?;
         let q = LogQuery {
             rev: Some("HEAD".into()),
-            limit: 1,
+            limit: Some(1),
             ..Default::default()
         };
         let head = repo.inner().log_commits(&q).map_err(|e| e.to_string())?;
