@@ -159,7 +159,9 @@ export async function hydrateStatus() {
 }
 
 /**
- * Loads the full commit history so history counts reflect all visible commits.
+ * Loads commit history for the history pane.
+ *
+ * Passing `limit: 0` asks the backend for the full history.
  */
 export async function hydrateCommits(): Promise<void> {
     try {
