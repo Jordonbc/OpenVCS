@@ -10,6 +10,18 @@ use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};
 
+/// Normalizes the commit history limit for `vcs_log`.
+///
+/// A missing limit keeps the historical default of 100 commits, `0` means
+/// unlimited, and positive limits are clamped to the backend safety cap.
+/// The frontend uses `0` when it wants the full history.
+fn normalize_log_limit(limit: Option<usize>) -> u32 {
+    match limit.unwrap_or(100) {
+        0 => 0,
+        n => n.min(1000) as u32,
+    }
+}
+
 #[tauri::command]
 /// Returns repository status payload (files + ahead/behind).
 ///
@@ -65,7 +77,7 @@ pub async fn vcs_log(
             until_utc: None,
             author_contains: None,
             skip: 0,
-            limit: (limit.unwrap_or(100)).min(1000) as u32,
+            limit: normalize_log_limit(limit),
             topo_order: true,
             include_merges: true,
         };
@@ -73,6 +85,29 @@ pub async fn vcs_log(
         repo.inner().log_commits(&q).map_err(|e| e.to_string())
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_log_limit;
+
+    #[test]
+    /// Verifies the default history limit remains 100 commits.
+    fn normalize_log_limit_defaults_to_100() {
+        assert_eq!(normalize_log_limit(None), 100);
+    }
+
+    #[test]
+    /// Verifies a zero limit requests the full history.
+    fn normalize_log_limit_treats_zero_as_unlimited() {
+        assert_eq!(normalize_log_limit(Some(0)), 0);
+    }
+
+    #[test]
+    /// Verifies large limits are clamped to the backend cap.
+    fn normalize_log_limit_clamps_large_values() {
+        assert_eq!(normalize_log_limit(Some(2_000)), 1_000);
+    }
 }
 
 #[tauri::command]
