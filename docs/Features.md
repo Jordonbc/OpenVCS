@@ -8,7 +8,7 @@ OpenVCS is plugin-first and VCS-agnostic. Features, themes, UI changes, and VCS 
 
 ## Current capability areas
 
-<table>
+<table style="width: 100%;">
   <tr>
     <th>Feature</th>
     <th>Status</th>
@@ -23,7 +23,7 @@ OpenVCS is plugin-first and VCS-agnostic. Features, themes, UI changes, and VCS 
   <tr><td>Discard changes</td><td align="center">✅</td><td>Working tree cleanup</td></tr>
 </table>
 
-<table>
+<table style="width: 100%;">
   <tr>
     <th>Feature</th>
     <th>Status</th>
@@ -35,7 +35,7 @@ OpenVCS is plugin-first and VCS-agnostic. Features, themes, UI changes, and VCS 
   <tr><td>Commit from index</td><td align="center">✅</td><td>Commit staged changes</td></tr>
 </table>
 
-<table>
+<table style="width: 100%;">
   <tr>
     <th>Feature</th>
     <th>Status</th>
@@ -50,7 +50,7 @@ OpenVCS is plugin-first and VCS-agnostic. Features, themes, UI changes, and VCS 
   <tr><td>Set upstream tracking</td><td align="center">✅</td><td>Configure tracking</td></tr>
 </table>
 
-<table>
+<table style="width: 100%;">
   <tr>
     <th>Feature</th>
     <th>Status</th>
@@ -65,7 +65,7 @@ OpenVCS is plugin-first and VCS-agnostic. Features, themes, UI changes, and VCS 
   <tr><td>Continue merge</td><td align="center">✅</td><td>Complete merge after resolution</td></tr>
 </table>
 
-<table>
+<table style="width: 100%;">
   <tr>
     <th>Feature</th>
     <th>Status</th>
@@ -84,7 +84,7 @@ OpenVCS is plugin-first and VCS-agnostic. Features, themes, UI changes, and VCS 
   <tr><td>Push</td><td align="center">✅</td><td>Push local changes</td></tr>
 </table>
 
-<table>
+<table style="width: 100%;">
   <tr>
     <th>Feature</th>
     <th>Status</th>
@@ -101,7 +101,7 @@ OpenVCS is plugin-first and VCS-agnostic. Features, themes, UI changes, and VCS 
   <tr><td>Discover SSH keys</td><td align="center">✅</td><td>Local key discovery</td></tr>
 </table>
 
-<table>
+<table style="width: 100%;">
   <tr>
     <th>Feature</th>
     <th>Status</th>
