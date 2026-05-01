@@ -256,6 +256,7 @@ export function bindLayoutActionState() {
     window.addEventListener('app:repo-selected', refreshRepoActions);
     window.addEventListener('app:status-updated', () => { refreshRepoActions(); renderAheadBehind(); });
     window.addEventListener('app:branches-updated', () => { setRepoHeader(); refreshRepoActions(); renderAheadBehind(); });
+    window.addEventListener('app:vcs-action-labels-updated', refreshRepoActions);
 
     // Summary typing should re-evaluate the commit button state
     qs<HTMLInputElement>('#commit-summary')?.addEventListener('input', refreshRepoActions);
