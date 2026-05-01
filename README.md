@@ -26,7 +26,7 @@
   ·
   <a href="#quick-start">Quick Start</a>
   ·
-  <a href="#feature-matrix">Features</a>
+  <a href="#features">Features</a>
   ·
   <a href="#screenshots">Screenshots</a>
   ·
@@ -161,99 +161,16 @@ Flatpak packaging exists under `packaging/flatpak/`. Stable-channel Flatpak buil
 
 ---
 
-## Feature Matrix
+## Features
 
-### Repository and working tree
+OpenVCS keeps the README short. The full feature list lives in [docs/Features.md](docs/Features.md).
 
-| Feature                          | Status | Notes                               |
-| -------------------------------- |:------:| ----------------------------------- |
-| Clone repository                 | ✅      | Available through the Git plugin    |
-| Open existing repository         | ✅      | Includes recent repository tracking |
-| Reopen last repository on launch | ✅      | Optional behaviour                  |
-| Working tree status              | ✅      | Shows repository changes            |
-| Per-file diff                    | ✅      | File-level change inspection        |
-| Commit diff                      | ✅      | Commit-level inspection             |
-| Discard changes                  | ✅      | Working tree cleanup                |
+Highlights:
 
-### Staging and commits
-
-| Feature           | Status | Notes                         |
-| ----------------- |:------:| ----------------------------- |
-| Stage files       | ✅      | Standard index workflow       |
-| Partial staging   | ✅      | Patch-based staging           |
-| Partial commits   | ✅      | Commit selected patch content |
-| Commit from index | ✅      | Commit staged changes         |
-
-### Branches
-
-| Feature               | Status | Notes                    |
-| --------------------- |:------:| ------------------------ |
-| List local branches   | ✅      | Local branch visibility  |
-| List remote branches  | ✅      | Remote branch visibility |
-| Create branch         | ✅      | Standard branch creation |
-| Checkout branch       | ✅      | Switch active branch     |
-| Rename branch         | ✅      | Local branch rename      |
-| Delete branch         | ✅      | Branch cleanup           |
-| Set upstream tracking | ✅      | Configure tracking       |
-
-### Merge and conflicts
-
-| Feature                    | Status | Notes                            |
-| -------------------------- |:------:| -------------------------------- |
-| Merge branch               | ✅      | Branch merge workflow            |
-| Inspect conflicts          | ✅      | Conflict details surfaced in UI  |
-| Checkout ours/theirs       | ✅      | Conflict-side selection          |
-| Save merged result         | ✅      | Persist resolved files           |
-| Launch external merge tool | ✅      | Uses configured external tooling |
-| Abort merge                | ✅      | Cancel active merge              |
-| Continue merge             | ✅      | Complete merge after resolution  |
-
-### Stash, sync, and remotes
-
-| Feature                | Status | Notes                       |
-| ---------------------- |:------:| --------------------------- |
-| List stashes           | ✅      | Stash overview              |
-| Push stash             | ✅      | Save working changes        |
-| Apply stash            | ✅      | Apply without dropping      |
-| Pop stash              | ✅      | Apply and remove            |
-| Drop stash             | ✅      | Delete stash entry          |
-| Show stash             | ✅      | Inspect stash content       |
-| Set remote URL         | ✅      | Remote configuration        |
-| Fetch single remote    | ✅      | Targeted fetch              |
-| Fetch all remotes      | ✅      | Full remote update          |
-| Pull fast-forward only | ✅      | Conservative pull behaviour |
-| Push                   | ✅      | Push local changes          |
-
-### Git LFS and SSH helpers
-
-| Feature                   | Status | Notes                       |
-| ------------------------- |:------:| --------------------------- |
-| LFS fetch                 | ✅      | Fetch LFS objects           |
-| LFS pull                  | ✅      | Pull LFS objects            |
-| LFS prune                 | ✅      | Remove old LFS objects      |
-| LFS track/untrack         | ✅      | Manage LFS paths            |
-| Inspect LFS tracked paths | ✅      | View tracked files/patterns |
-| Trust SSH host keys       | ✅      | Host-key trust helper       |
-| List SSH agent keys       | ✅      | Agent key visibility        |
-| Add SSH agent keys        | ✅      | Agent key helper            |
-| Discover SSH keys         | ✅      | Local key discovery         |
-
-### Application, plugins, and themes
-
-| Feature                       | Status | Notes                     |
-| ----------------------------- |:------:| ------------------------- |
-| Light theme                   | ✅      | Built in                  |
-| Dark theme                    | ✅      | Built in                  |
-| Plugin-provided themes        | ✅      | Supported through plugins |
-| Standalone theme `.zip` packs | ❌      | Not currently supported   |
-| npm plugin loading            | 🧪     | Early support             |
-| local-path plugin loading     | 🧪     | Early support             |
-| Update check/install          | ✅      | Application update flow   |
-| VCS output log                | ✅      | Dedicated output window   |
-| App log tail/clear            | ✅      | Runtime log tooling       |
-| Plugin/theme store            | 🧭     | Planned/exploratory       |
-
-Legend: ✅ available · 🧪 early/experimental · 🧭 planned · ❌ not supported
+- Plugin-first and VCS-agnostic architecture
+- Plugins can add, remove, or modify UI
+- Themes are plugins
+- Additional features and VCS backends are plugins too
 
 ---
 
