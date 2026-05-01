@@ -411,12 +411,12 @@ Legend: ✅ active · 🧭 planned/exploratory
 
 | Repository                                                                   | Purpose                                    |
 | ---------------------------------------------------------------------------- | ------------------------------------------ |
-| [`Open-VCS`](https://github.com/Open-VCS)                                    | GitHub organisation                        |
-| [`OpenVCS-Plugin-Git`](https://github.com/Open-VCS/OpenVCS-Plugin-Git)       | Git VCS plugin implementation              |
-| [`OpenVCS-SDK`](https://github.com/Open-VCS/OpenVCS-SDK)                     | SDK, runtime helpers, and shared contracts |
-| [`OpenVCS-Plugin-Themes`](https://github.com/Open-VCS/OpenVCS-Plugin-Themes) | Theme plugin work                          |
-| [`ExamplePlugins`](https://github.com/Open-VCS/ExamplePlugins)               | Example plugin implementations             |
-| [`PluginTemplate`](https://github.com/Open-VCS/PluginTemplate)               | Starter template for new plugins           |
+| [Open-VCS](https://github.com/Open-VCS)                                    | GitHub organisation                        |
+| [OpenVCS-Plugin-Git](https://github.com/Open-VCS/OpenVCS-Plugin-Git)       | Git VCS plugin implementation              |
+| [OpenVCS-SDK](https://github.com/Open-VCS/OpenVCS-SDK)                     | SDK, runtime helpers, and shared contracts |
+| [OpenVCS-Plugin-Themes](https://github.com/Open-VCS/OpenVCS-Plugin-Themes) | Theme plugin work                          |
+| [ExamplePlugins](https://github.com/Open-VCS/ExamplePlugins)               | Example plugin implementations             |
+| [PluginTemplate](https://github.com/Open-VCS/PluginTemplate)               | Starter template for new plugins           |
 
 ---
 
