@@ -312,9 +312,7 @@ In short: Flatpak users are helping test the packaging path. Expect rough edges.
 
 For local Flatpak build notes, see:
 
-```text
-packaging/flatpak/README.md
-```
+[packaging/flatpak/README.md](packaging/flatpak/README.md)
 
 ---
 
