@@ -11,7 +11,8 @@ use crate::plugin_runtime::settings_store;
 use crate::plugin_runtime::{vcs_proxy::PluginVcsProxy, PluginRuntimeManager};
 use crate::settings::AppConfig;
 use log::{debug, error, info, trace, warn};
-use std::{collections::BTreeMap, path::Path, sync::Arc};
+use std::collections::BTreeMap;
+use std::{path::Path, sync::Arc};
 
 const MODULE: &str = "plugin_vcs_backends";
 
@@ -48,6 +49,8 @@ pub struct PluginBackendDescriptor {
     pub backend_id: BackendId,
     /// Optional human-readable backend name.
     pub backend_name: Option<String>,
+    /// Optional action-label map keyed by namespaced VCS actions.
+    pub action_labels: BTreeMap<String, String>,
     /// Owning plugin identifier.
     pub plugin_id: String,
     /// Optional human-readable plugin name.
@@ -131,15 +134,16 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
             continue;
         };
 
-        for (id, name) in module.vcs_backends {
-            let backend_id = BackendId::from(id.as_str());
+        for backend in module.vcs_backends {
+            let backend_id = BackendId::from(backend.id.as_str());
             debug!(
                 "list_plugin_vcs_backends: found backend '{}' from plugin '{}'",
                 backend_id, p.plugin_id
             );
             let candidate = PluginBackendDescriptor {
                 backend_id: backend_id.clone(),
-                backend_name: name,
+                backend_name: backend.name,
+                action_labels: backend.action_labels,
                 plugin_id: p.plugin_id.clone(),
                 plugin_name: p.name.clone(),
             };

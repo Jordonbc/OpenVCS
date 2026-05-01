@@ -264,7 +264,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         const ok = await confirmBool(`Add ${label} to .gitignore?`);
         if (!ok) return;
         try {
-            await TAURI.invoke('git_add_to_gitignore_paths', { paths: targets });
+            await TAURI.invoke('vcs_add_to_gitignore_paths', { paths: targets });
             notify(targets.length > 1 ? 'Added to .gitignore' : 'Added to .gitignore');
             await Promise.allSettled([hydrateStatus()]);
         } catch {
@@ -277,14 +277,14 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             const paths = selectedPaths.slice();
             const ok = await confirmBool(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
             if (!ok) return;
-            try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
+            try { await TAURI.invoke('vcs_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
             catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
         }});
     }
     items.push({ label: 'Discard changes', action: async () => {
         const ok = await confirmBool(`Discard all changes in \n${f.path}? This cannot be undone.`);
         if (!ok) return;
-        try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
+        try { await TAURI.invoke('vcs_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
         catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
     }});
 

@@ -64,7 +64,7 @@ pub async fn browse_directory<R: Runtime>(
 ) -> Option<String> {
     let title = match purpose.as_deref() {
         Some("clone_dest") => "Choose destination folder",
-        Some("add_repo") => "Select an existing Git repository folder",
+        Some("add_repo") => "Select an existing repository folder",
         _ => "Select a folder",
     };
     utilities::browse_directory_async(window.app_handle().clone(), title).await
@@ -267,15 +267,15 @@ pub async fn clone_repo<R: Runtime>(
 }
 
 #[tauri::command]
-/// Validates a user-entered Git URL.
+/// Validates a user-entered VCS URL.
 ///
 /// # Parameters
 /// - `url`: Candidate URL string.
 ///
 /// # Returns
 /// - Validation result describing whether the URL is acceptable.
-pub fn validate_git_url(url: String) -> validate::Validation {
-    validate::validate_git_url(url)
+pub fn validate_vcs_url(url: String) -> validate::Validation {
+    validate::validate_vcs_url(url)
 }
 
 #[tauri::command]

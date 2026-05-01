@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { qs, qsa, setText } from '../lib/dom';
-import { prefs, savePrefs, state, hasRepo, hasChanges } from '../state/state';
+import { prefs, savePrefs, state, hasRepo, hasChanges, resolveVcsActionLabel } from '../state/state';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { setAppearanceMode } from '../themes';
@@ -202,9 +202,10 @@ export function refreshRepoActions() {
     if (pushBtn) {
         pushBtn.classList.toggle('attention', repoOn && ahead > 0);
         const labelEl = pushBtn.querySelector<HTMLElement>('.btn-label');
+        const base = resolveVcsActionLabel('VCS.Push', 'Push');
         const label = repoOn && ahead > 0
-            ? `Push (${ahead})`
-            : 'Push';
+            ? `${base} (${ahead})`
+            : base;
         pushBtn.title = label;
         pushBtn.setAttribute('aria-label', label);
         if (labelEl) labelEl.textContent = label;
@@ -223,6 +224,12 @@ export function refreshRepoActions() {
         .some((k) => !!(state as any).selectedLinesByFile[k] && Object.keys((state as any).selectedLinesByFile[k] || {}).length > 0);
     const filesSelected = !!((state as any).selectedFiles && (state as any).selectedFiles.size > 0);
     if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && (hunksSelected || linesSelected || filesSelected));
+    if (commit) {
+        const commitLabel = resolveVcsActionLabel('VCS.Commit', 'Commit');
+        commit.textContent = commitLabel;
+        commit.title = commitLabel;
+        commit.setAttribute('aria-label', commitLabel);
+    }
 
     // Left-panel undo visibility (under files list)
     const showUndo = repoOn && ahead > 0 && prefs.tab === 'changes';
@@ -249,6 +256,7 @@ export function bindLayoutActionState() {
     window.addEventListener('app:repo-selected', refreshRepoActions);
     window.addEventListener('app:status-updated', () => { refreshRepoActions(); renderAheadBehind(); });
     window.addEventListener('app:branches-updated', () => { setRepoHeader(); refreshRepoActions(); renderAheadBehind(); });
+    window.addEventListener('app:vcs-action-labels-updated', refreshRepoActions);
 
     // Summary typing should re-evaluate the commit button state
     qs<HTMLInputElement>('#commit-summary')?.addEventListener('input', refreshRepoActions);

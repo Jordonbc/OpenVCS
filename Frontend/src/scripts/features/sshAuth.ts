@@ -75,7 +75,7 @@ function wireAuthModal() {
     if (!https) return;
     httpsBtn.disabled = true;
     try {
-      await TAURI.invoke('git_set_remote_url', { name: current.remote, url: https });
+      await TAURI.invoke('vcs_set_remote_url', { name: current.remote, url: https });
       notify(`Remote '${current.remote}' set to HTTPS`);
       closeModal('ssh-auth-modal');
     } catch (e) {

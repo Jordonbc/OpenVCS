@@ -70,7 +70,7 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: C
                 const ok = await confirmBool(`Revert commit ${short}? This will create a new commit that undoes its changes.`);
                 if (!ok) return;
                 try {
-                    await TAURI.invoke('git_revert_commit', { id: commit.id });
+                    await TAURI.invoke('vcs_revert_commit', { id: commit.id });
                     notify('Revert complete');
                     await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 } catch (e) {
@@ -86,7 +86,7 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: C
         items.push({
             label: 'Undo to this commit', action: async () => {
                 try {
-                    await TAURI.invoke('git_undo_to_commit', { id: commit.id });
+                    await TAURI.invoke('vcs_undo_to_commit', { id: commit.id });
                     await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 } catch (e) { console.error('Undo failed:', e); notify('Undo failed'); }
             },
@@ -216,7 +216,7 @@ export async function selectHistory(commit: any, index: number) {
     try {
         let lines: string[] = [];
         if (commit.id) {
-            lines = await TAURI.invoke<string[]>('git_diff_commit', { id: commit.id });
+            lines = await TAURI.invoke<string[]>('vcs_diff_commit', { id: commit.id });
         }
         const files = parseCommitDiffByFile(lines || []);
         if (files.length === 0) {
@@ -305,7 +305,7 @@ export async function selectHistory(commit: any, index: number) {
                             if (patch && !patch.endsWith('\n')) patch += '\n';
 
                             try {
-                                await TAURI.invoke('git_discard_patch', { patch });
+                                await TAURI.invoke('vcs_discard_patch', { patch });
                                 notify('Reverted file changes (review in Changes tab)');
                                 await Promise.allSettled([hydrateStatus()]);
                             } catch (e) {
@@ -320,7 +320,7 @@ export async function selectHistory(commit: any, index: number) {
             });
         }
     } catch (e) {
-        console.warn('git_diff_commit failed', e);
+        console.warn('vcs_diff_commit failed', e);
         diffEl.innerHTML += '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load diff</div></div></div>';
     }
 }

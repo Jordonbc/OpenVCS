@@ -28,7 +28,7 @@ export function wireSetUpstream() {
     const upstream = (selectEl?.value || "").trim();
     if (!branch || !upstream) return;
     try {
-      await TAURI.invoke("git_set_upstream", { branch, upstream });
+      await TAURI.invoke("vcs_set_upstream", { branch, upstream });
       notify(`Tracking '${upstream}'`);
       closeModal("set-upstream-modal");
       await Promise.allSettled([hydrateStatus(), hydrateCommits()]);

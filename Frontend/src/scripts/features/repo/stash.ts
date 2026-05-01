@@ -77,7 +77,7 @@ export function renderStashList(query: string): boolean {
             const items: CtxItem[] = [];
             items.push({ label: 'Apply stash', action: async () => {
                 try {
-                    await TAURI.invoke('git_stash_apply', { selector: target });
+                    await TAURI.invoke('vcs_stash_apply', { selector: target });
                     notify('Applied stash');
                     await Promise.allSettled([hydrateStatus(), hydrateStash()]);
                     renderListRef?.();
@@ -87,7 +87,7 @@ export function renderStashList(query: string): boolean {
                 const ok = await confirmBool(`Delete ${target}? This cannot be undone.`);
                 if (!ok) return;
                 try {
-                    await TAURI.invoke('git_stash_drop', { selector: target });
+                    await TAURI.invoke('vcs_stash_drop', { selector: target });
                     notify('Deleted stash');
                     if (state.currentStash === target) state.currentStash = '';
                     await Promise.allSettled([hydrateStash()]);
@@ -116,7 +116,7 @@ export async function selectStash(item: StashListItem, index: number) {
         const p = document.querySelector<HTMLButtonElement>('#stash-pop-btn'); if (p) p.disabled = false;
         const d = document.querySelector<HTMLButtonElement>('#stash-drop-btn'); if (d) d.disabled = false;
     } catch (e) {
-        console.warn('git_stash_show failed', e);
+        console.warn('vcs_stash_show failed', e);
         diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load stash diff</div></div></div>';
     }
 }
@@ -191,11 +191,11 @@ function wireStashFooterButtons(container: HTMLElement) {
         const selector = getActiveStashSelector();
         if (!selector) return;
         try {
-            await TAURI.invoke('git_stash_apply', { selector });
+            await TAURI.invoke('vcs_stash_apply', { selector });
             notify('Applied stash');
             await Promise.allSettled([hydrateStatus(), hydrateStash()]);
             renderListRef?.();
-        } catch (e) { console.error('git_stash_apply failed:', e); notify('Failed to apply stash'); }
+        } catch (e) { console.error('vcs_stash_apply failed:', e); notify('Failed to apply stash'); }
     });
 
     const popBtn = container.querySelector<HTMLButtonElement>('#stash-pop-btn');
@@ -203,11 +203,11 @@ function wireStashFooterButtons(container: HTMLElement) {
         const selector = getActiveStashSelector();
         if (!selector) return;
         try {
-            await TAURI.invoke('git_stash_pop', { selector });
+            await TAURI.invoke('vcs_stash_pop', { selector });
             notify('Popped stash');
             await Promise.allSettled([hydrateStatus(), hydrateStash()]);
             renderListRef?.();
-        } catch (e) { console.error('git_stash_pop failed:', e); notify('Failed to pop stash'); }
+        } catch (e) { console.error('vcs_stash_pop failed:', e); notify('Failed to pop stash'); }
     });
 
     const dropBtn = container.querySelector<HTMLButtonElement>('#stash-drop-btn');
@@ -217,11 +217,11 @@ function wireStashFooterButtons(container: HTMLElement) {
         const ok = await confirmBool(`Drop ${selector}? This cannot be undone.`);
         if (!ok) return;
         try {
-            await TAURI.invoke('git_stash_drop', { selector });
+            await TAURI.invoke('vcs_stash_drop', { selector });
             notify('Dropped stash');
             state.currentStash = '';
             await Promise.allSettled([hydrateStash()]);
             renderListRef?.();
-        } catch (e) { console.error('git_stash_drop failed:', e); notify('Failed to drop stash'); }
+        } catch (e) { console.error('vcs_stash_drop failed:', e); notify('Failed to drop stash'); }
     });
 }

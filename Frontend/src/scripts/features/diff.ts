@@ -44,7 +44,7 @@ export function bindCommit() {
             let combinedPatch = '';
             for (const path of partialFiles) {
                 let lines: string[] = [];
-                try { lines = await TAURI.invoke<string[]>('git_diff_file', { path }); } catch {}
+                try { lines = await TAURI.invoke<string[]>('vcs_diff_file', { path }); } catch {}
                 if (!Array.isArray(lines) || lines.length === 0) continue;
                 const selHunks = hunksMap[path] || [];
                 const selLines = linesMap[path] || {};

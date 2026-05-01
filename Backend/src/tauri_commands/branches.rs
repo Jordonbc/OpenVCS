@@ -135,9 +135,9 @@ fn backend_merge_message_template(backend_id: &BackendId) -> String {
 /// # Returns
 /// - `Ok(Vec<BranchItem>)` sorted branch list.
 /// - `Err(String)` when repository access fails.
-pub async fn git_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
+pub async fn vcs_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchItem>, String> {
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_list_branches", repo, move |repo| {
+    run_repo_task("vcs_list_branches", repo, move |repo| {
         info!("list_branches: fetching unified branches via Vcs::branches()");
         let vcs = repo.inner();
         debug!("list_branches: workdir={}", vcs.workdir().display());
@@ -256,15 +256,15 @@ pub struct HeadStatus {
 /// # Returns
 /// - `Ok(HeadStatus)` with branch and commit data.
 /// - `Err(String)` when repository queries fail.
-pub async fn git_head_status(state: State<'_, AppState>) -> Result<HeadStatus, String> {
+pub async fn vcs_head_status(state: State<'_, AppState>) -> Result<HeadStatus, String> {
     use crate::core::models::LogQuery;
 
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_head_status", repo, move |repo| {
+    run_repo_task("vcs_head_status", repo, move |repo| {
         let branch = repo.inner().current_branch().map_err(|e| e.to_string())?;
         let q = LogQuery {
             rev: Some("HEAD".into()),
-            limit: 1,
+            limit: Some(1),
             ..Default::default()
         };
         let head = repo.inner().log_commits(&q).map_err(|e| e.to_string())?;
@@ -289,23 +289,23 @@ pub async fn git_head_status(state: State<'_, AppState>) -> Result<HeadStatus, S
 /// # Returns
 /// - `Ok(())` when checkout succeeds.
 /// - `Err(String)` when validation or checkout fails.
-pub async fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
+pub async fn vcs_checkout_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let branch = name.trim();
     if branch.is_empty() {
         return Err("Branch name cannot be empty".to_string());
     }
 
-    info!("git_checkout_branch: attempting to checkout '{branch}'");
+    info!("vcs_checkout_branch: attempting to checkout '{branch}'");
 
     let repo = current_repo_or_err(&state)?;
     let branch = branch.to_string();
-    run_repo_task("git_checkout_branch", repo, move |repo| {
+    run_repo_task("vcs_checkout_branch", repo, move |repo| {
         repo.inner().checkout_branch(&branch).map_err(|e| {
-            error!("git_checkout_branch: failed to checkout '{}': {e}", branch);
+            error!("vcs_checkout_branch: failed to checkout '{}': {e}", branch);
             e.to_string()
         })?;
 
-        info!("git_checkout_branch: successfully checked out '{}'", branch);
+        info!("vcs_checkout_branch: successfully checked out '{}'", branch);
         Ok(())
     })
     .await
@@ -322,7 +322,7 @@ pub async fn git_checkout_branch(state: State<'_, AppState>, name: String) -> Re
 /// # Returns
 /// - `Ok(())` when deletion succeeds.
 /// - `Err(String)` when validation or deletion fails.
-pub async fn git_delete_branch(
+pub async fn vcs_delete_branch(
     state: State<'_, AppState>,
     name: String,
     force: Option<bool>,
@@ -334,7 +334,7 @@ pub async fn git_delete_branch(
     let repo = current_repo_or_err(&state)?;
     let force = force.unwrap_or(false);
     let branch = name.to_string();
-    run_repo_task("git_delete_branch", repo, move |repo| {
+    run_repo_task("vcs_delete_branch", repo, move |repo| {
         repo.inner()
             .delete_branch(&branch, force)
             .map_err(|e| e.to_string())
@@ -353,7 +353,7 @@ pub async fn git_delete_branch(
 /// # Returns
 /// - `Ok(())` when rename succeeds.
 /// - `Err(String)` when validation or rename fails.
-pub async fn git_rename_branch(
+pub async fn vcs_rename_branch(
     state: State<'_, AppState>,
     old_name: String,
     new_name: String,
@@ -369,7 +369,7 @@ pub async fn git_rename_branch(
     let repo = current_repo_or_err(&state)?;
     let old = old.to_string();
     let newn = newn.to_string();
-    run_repo_task("git_rename_branch", repo, move |repo| {
+    run_repo_task("vcs_rename_branch", repo, move |repo| {
         repo.inner()
             .rename_branch(&old, &newn)
             .map_err(|e| e.to_string())
@@ -387,7 +387,7 @@ pub async fn git_rename_branch(
 /// # Returns
 /// - `Ok(())` when merge succeeds.
 /// - `Err(String)` when validation or merge fails.
-pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
+pub async fn vcs_merge_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let name = name.trim();
     if name.is_empty() {
         return Err("Branch name cannot be empty".to_string());
@@ -395,7 +395,7 @@ pub async fn git_merge_branch(state: State<'_, AppState>, name: String) -> Resul
     let repo = current_repo_or_err(&state)?;
     let branch = name.to_string();
     let template = backend_merge_message_template(&repo.id());
-    run_repo_task("git_merge_branch", repo, move |repo| {
+    run_repo_task("vcs_merge_branch", repo, move |repo| {
         let vcs = repo.inner();
         let target_branch = vcs
             .current_branch()
@@ -459,9 +459,9 @@ pub struct MergeContext {
 /// # Returns
 /// - `Ok(MergeContext)` merge state payload.
 /// - `Err(String)` when repository access fails.
-pub async fn git_merge_context(state: State<'_, AppState>) -> Result<MergeContext, String> {
+pub async fn vcs_merge_context(state: State<'_, AppState>) -> Result<MergeContext, String> {
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_merge_context", repo, move |repo| {
+    run_repo_task("vcs_merge_context", repo, move |repo| {
         let in_progress = repo.inner().merge_in_progress().unwrap_or(false);
         Ok(MergeContext { in_progress })
     })
@@ -477,9 +477,9 @@ pub async fn git_merge_context(state: State<'_, AppState>) -> Result<MergeContex
 /// # Returns
 /// - `Ok(())` when abort succeeds.
 /// - `Err(String)` when abort fails.
-pub async fn git_merge_abort(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn vcs_merge_abort(state: State<'_, AppState>) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_merge_abort", repo, move |repo| {
+    run_repo_task("vcs_merge_abort", repo, move |repo| {
         repo.inner().merge_abort().map_err(|e| e.to_string())
     })
     .await
@@ -494,9 +494,9 @@ pub async fn git_merge_abort(state: State<'_, AppState>) -> Result<(), String> {
 /// # Returns
 /// - `Ok(())` when continuation succeeds.
 /// - `Err(String)` when continuation fails.
-pub async fn git_merge_continue(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn vcs_merge_continue(state: State<'_, AppState>) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_merge_continue", repo, move |repo| {
+    run_repo_task("vcs_merge_continue", repo, move |repo| {
         repo.inner().merge_continue().map_err(|e| e.to_string())
     })
     .await
@@ -513,7 +513,7 @@ pub async fn git_merge_continue(state: State<'_, AppState>) -> Result<(), String
 /// # Returns
 /// - `Ok(())` when upstream is updated.
 /// - `Err(String)` when validation or update fails.
-pub async fn git_set_upstream(
+pub async fn vcs_set_upstream(
     state: State<'_, AppState>,
     branch: String,
     upstream: String,
@@ -527,7 +527,7 @@ pub async fn git_set_upstream(
     let repo = current_repo_or_err(&state)?;
     let branch = branch.to_string();
     let upstream = upstream.to_string();
-    run_repo_task("git_set_upstream", repo, move |repo| {
+    run_repo_task("vcs_set_upstream", repo, move |repo| {
         repo.inner()
             .set_branch_upstream(&branch, &upstream)
             .map_err(|e| e.to_string())
@@ -547,14 +547,14 @@ pub async fn git_set_upstream(
 /// # Returns
 /// - `Ok(())` when creation succeeds.
 /// - `Err(String)` when backend operations fail.
-pub async fn git_create_branch(
+pub async fn vcs_create_branch(
     state: State<'_, AppState>,
     name: String,
     from: Option<String>,
     checkout: Option<bool>,
 ) -> Result<(), String> {
     info!(
-        "git_create_branch: requested branch '{}', from={:?}, checkout={:?}",
+        "vcs_create_branch: requested branch '{}', from={:?}, checkout={:?}",
         name, from, checkout
     );
 
@@ -562,14 +562,14 @@ pub async fn git_create_branch(
     let checkout_flag = checkout.unwrap_or(false);
     let branch_name = name.clone();
     let from_branch = from.map(|s| s.to_string());
-    run_repo_task("git_create_branch", repo, move |repo| {
+    run_repo_task("vcs_create_branch", repo, move |repo| {
         let vcs = repo.inner();
 
         if let Some(from) = from_branch.as_ref() {
             match vcs.checkout_branch(from) {
-                Ok(_) => info!("git_create_branch: successfully checked out base branch '{from}'"),
+                Ok(_) => info!("vcs_create_branch: successfully checked out base branch '{from}'"),
                 Err(e) => {
-                    error!("git_create_branch: failed to checkout base branch '{from}': {e}");
+                    error!("vcs_create_branch: failed to checkout base branch '{from}': {e}");
                     return Err(format!("base branch not found or cannot checkout: {e}"));
                 }
             }
@@ -577,11 +577,11 @@ pub async fn git_create_branch(
 
         vcs.create_branch(&branch_name, checkout_flag)
             .map_err(|e| {
-                error!("git_create_branch: failed to create branch '{branch_name}': {e}");
+                error!("vcs_create_branch: failed to create branch '{branch_name}': {e}");
                 e.to_string()
             })?;
 
-        info!("git_create_branch: successfully created branch '{branch_name}'");
+        info!("vcs_create_branch: successfully created branch '{branch_name}'");
         Ok(())
     })
     .await
@@ -620,7 +620,7 @@ pub async fn get_repo_summary(state: State<'_, AppState>) -> Result<RepoSummary,
     })
     .await?;
 
-    let normalized = git_list_branches(state).await?;
+    let normalized = vcs_list_branches(state).await?;
 
     Ok(RepoSummary {
         path,
@@ -638,9 +638,9 @@ pub async fn get_repo_summary(state: State<'_, AppState>) -> Result<RepoSummary,
 /// # Returns
 /// - `Ok(String)` branch name.
 /// - `Err(String)` when detached HEAD or backend failure occurs.
-pub async fn git_current_branch(state: State<'_, AppState>) -> Result<String, String> {
+pub async fn vcs_current_branch(state: State<'_, AppState>) -> Result<String, String> {
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_current_branch", repo, move |repo| {
+    run_repo_task("vcs_current_branch", repo, move |repo| {
         repo.inner()
             .current_branch()
             .map_err(|e| e.to_string())?

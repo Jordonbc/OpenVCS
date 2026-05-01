@@ -45,6 +45,7 @@ export const state = {
     branches: [] as Branch[],       // list of branches
     files: [] as FileStatus[],      // working tree status
     commits: [] as CommitItem[],    // recent commits
+    vcsActionLabels: {} as Record<string, string>, // resolved action labels from the active backend
     selectedCommit: null as CommitItem | null,
     stash: [] as StashItem[],       // stash entries
     ahead: 0 as number,             // commits ahead of upstream
@@ -77,6 +78,19 @@ export const hasRepo = (): boolean => Boolean(state.hasRepo);
 /** True iff there are staged/unstaged changes. Always boolean. */
 export const hasChanges = (): boolean =>
     Array.isArray(state.files) && state.files.length > 0;
+
+/**
+ * Resolves a backend-provided VCS action label with a generic fallback.
+ * @param actionKey - Stable namespaced action key such as `VCS.Push`.
+ * @param fallback - Generic text to use when no label is available.
+ * @returns The resolved user-facing label.
+ */
+export function resolveVcsActionLabel(actionKey: string, fallback: string): string {
+    const key = String(actionKey || '').trim();
+    if (!key) return fallback;
+    const label = state.vcsActionLabels[key];
+    return String(label || '').trim() || fallback;
+}
 
 /**
  * Get display label for a file status code.
