@@ -153,11 +153,11 @@ Flatpak packaging exists under `packaging/flatpak/`. Stable-channel Flatpak buil
 
 ## Release Channels
 
-| Channel     | Badge                                                           | Intended use                       | Stability                     |
-| ----------- | --------------------------------------------------------------- | ---------------------------------- | ----------------------------- |
-| **Stable**  | ![Stable](https://img.shields.io/badge/channel-stable-success)  | General use and manual testing     | Most reliable available build |
-| **Beta**    | ![Beta](https://img.shields.io/badge/channel-beta-yellow)       | Previewing upcoming release work   | May contain regressions       |
-| **Nightly** | ![Nightly](https://img.shields.io/badge/channel-nightly-purple) | Testing latest development changes | Experimental                  |
+| Channel     | Intended use                       | Stability                     |
+| ----------- | ---------------------------------- | ----------------------------- |
+| **Stable**  | General use and manual testing     | Most reliable available build |
+| **Beta**    | Previewing upcoming release work   | May contain regressions       |
+| **Nightly** | Testing latest development changes | Experimental                  |
 
 ---
 
