@@ -636,6 +636,7 @@ async function boot() {
     window.addEventListener('app:status-updated', updateFetchUI);
     window.addEventListener('app:branches-updated', updateFetchUI);
     window.addEventListener('app:repo-selected', updateFetchUI);
+    window.addEventListener('app:vcs-action-labels-updated', updateFetchUI);
     window.addEventListener('app:repo-will-switch', clearPluginMenubarMenus);
 
     // fetch popover interactions
