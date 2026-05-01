@@ -355,11 +355,11 @@ For local Flatpak build notes, see:
 | ------------------------------------------------------------- | ---------------------------------------------------- |
 | just test                                                     | Full project test/check flow                         |
 | just fix                                                      | Formatting, Clippy fixes, and frontend type checking |
-| `cargo fmt --all`                                             | Rust formatting                                      |
-| `cargo fmt --all -- --check`                                  | CI formatting check                                  |
-| `cargo clippy --all-targets --all-features -- -D warnings`    | CI lint check                                        |
-| `npm --prefix Frontend exec tsc -- -p tsconfig.json --noEmit` | Frontend type checking                               |
-| `npm --prefix Frontend test`                                  | Frontend tests                                       |
+| cargo fmt --all                                             | Rust formatting                                      |
+| cargo fmt --all -- --check                                  | CI formatting check                                  |
+| cargo clippy --all-targets --all-features -- -D warnings    | CI lint check                                        |
+| npm --prefix Frontend exec tsc -- -p tsconfig.json --noEmit | Frontend type checking                               |
+| npm --prefix Frontend test                                  | Frontend tests                                       |
 
 ### just test includes
 
