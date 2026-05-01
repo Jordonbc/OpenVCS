@@ -18,10 +18,6 @@
 [![Beta](https://github.com/Jordonbc/OpenVCS/actions/workflows/beta.yml/badge.svg?branch=Beta)](https://github.com/Jordonbc/OpenVCS/actions/workflows/beta.yml)
 [![Stable](https://github.com/Jordonbc/OpenVCS/actions/workflows/publish-stable.yml/badge.svg?branch=Stable)](https://github.com/Jordonbc/OpenVCS/actions/workflows/publish-stable.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
-![Platform: Linux first](https://img.shields.io/badge/platform-Linux%20first-success)
-![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri-24C8DB)
-![Rust](https://img.shields.io/badge/Rust-native-orange)
-![TypeScript](https://img.shields.io/badge/TypeScript-frontend-blue)
 
 </div>
 
