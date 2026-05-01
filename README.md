@@ -14,9 +14,9 @@
 
 <div align="center">
 
-[![Nightly](https://github.com/Jordonbc/OpenVCS/actions/workflows/nightly.yml/badge.svg?branch=Dev)](https://github.com/Jordonbc/OpenVCS/actions/workflows/nightly.yml)
-[![Beta](https://github.com/Jordonbc/OpenVCS/actions/workflows/beta.yml/badge.svg?branch=Beta)](https://github.com/Jordonbc/OpenVCS/actions/workflows/beta.yml)
-[![Stable](https://github.com/Jordonbc/OpenVCS/actions/workflows/publish-stable.yml/badge.svg?branch=stable)](https://github.com/Jordonbc/OpenVCS/actions/workflows/publish-stable.yml)
+[![Nightly](https://github.com/Open-VCS/OpenVCS/actions/workflows/nightly.yml/badge.svg?branch=Dev)](https://github.com/Open-VCS/OpenVCS/actions/workflows/nightly.yml)
+[![Beta](https://github.com/Open-VCS/OpenVCS/actions/workflows/beta.yml/badge.svg?branch=Beta)](https://github.com/Open-VCS/OpenVCS/actions/workflows/beta.yml)
+[![Stable](https://github.com/Open-VCS/OpenVCS/actions/workflows/publish-stable.yml/badge.svg?branch=stable)](https://github.com/Open-VCS/OpenVCS/actions/workflows/publish-stable.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 </div>
@@ -98,7 +98,7 @@ OpenVCS desktop builds are distributed through **GitHub Releases**.
 | **Pre-release / nightly** | Testing upcoming changes | May contain regressions or incomplete features |
 | **Source archive**        | Reviewing release source | Use the repository directly for development    |
 
-1. Open the [latest release](https://github.com/Jordonbc/OpenVCS/releases/latest) on GitHub.
+1. Open the [latest release](https://github.com/Open-VCS/OpenVCS/releases/latest) on GitHub.
 2. Download the appropriate asset for your platform.
 3. Run the downloaded build locally.
 
@@ -139,8 +139,8 @@ If Windows SmartScreen warns about the installer, verify that the file came from
 For development builds, clone the repository and run OpenVCS through Tauri:
 
 ```bash
-git clone https://github.com/Jordonbc/OpenVCS.git
-cd OpenVCS/Client
+git clone https://github.com/Open-VCS/OpenVCS.git
+cd OpenVCS
 npm --prefix Frontend install
 cd Backend
 cargo tauri dev
@@ -272,8 +272,8 @@ flowchart LR
 ### Developer setup
 
 ```bash
-git clone https://github.com/Jordonbc/OpenVCS.git
-cd OpenVCS/Client
+git clone https://github.com/Open-VCS/OpenVCS.git
+cd OpenVCS
 npm --prefix Frontend install
 cd Backend
 cargo tauri dev
