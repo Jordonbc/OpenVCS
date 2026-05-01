@@ -43,6 +43,10 @@
 
 OpenVCS is a desktop version control client focused on **speed**, **clarity**, and **customisation**.
 
+<p align="center">
+  <img src="docs/images/Main-UI-Preview.png" alt="OpenVCS main repository interface" width="900">
+</p>
+
 The client itself stays **VCS-agnostic**. It provides the desktop shell, core framework, plugin runtime, and base UI; VCS support, themes, UI changes, and additional product features are provided by plugins. A single plugin can provide any combination of these capabilities. The first major release ships with the `openvcs.git` plugin so Git workflows can stabilise before other VCS support is explored.
 
 > [!IMPORTANT]
