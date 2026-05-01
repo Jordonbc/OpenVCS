@@ -1,271 +1,493 @@
 <p align="center">
-  <img src="docs/images/logos/OpenVCS-256.png" alt="OpenVCS logo" width="220">
+  <img src="docs/images/logos/OpenVCS-256.png" alt="OpenVCS logo" width="170">
+</p>
+
+<h1 align="center">OpenVCS</h1>
+
+<p align="center">
+  <strong>A desktop client for every VCS.</strong>
+</p>
+
+<p align="center">
+  Plugin-based by design, starting with Git.
 </p>
 
 <div align="center">
 
-[![Nightly](https://github.com/Open-VCS/OpenVCS-Plugin-Git/actions/workflows/nightly.yml/badge.svg?branch=Dev)](https://github.com/Open-VCS/OpenVCS-Plugin-Git/actions/workflows/nightly.yml) [![Dev](https://github.com/Open-VCS/OpenVCS-Plugin-Git/actions/workflows/ci.yml/badge.svg?branch=Dev)](https://github.com/Open-VCS/OpenVCS-Plugin-Git/actions/workflows/ci.yml) [![Stable](https://github.com/Open-VCS/OpenVCS-Plugin-Git/actions/workflows/release.yml/badge.svg?branch=Stable)](https://github.com/Open-VCS/OpenVCS-Plugin-Git/actions/workflows/release.yml)
+[![Nightly](https://github.com/Open-VCS/OpenVCS/actions/workflows/nightly.yml/badge.svg?branch=Dev)](https://github.com/Open-VCS/OpenVCS/actions/workflows/nightly.yml)
+[![Beta](https://github.com/Open-VCS/OpenVCS/actions/workflows/beta.yml/badge.svg?branch=Beta)](https://github.com/Open-VCS/OpenVCS/actions/workflows/beta.yml)
+[![Stable](https://github.com/Open-VCS/OpenVCS/actions/workflows/publish-stable.yml/badge.svg?branch=stable)](https://github.com/Open-VCS/OpenVCS/actions/workflows/publish-stable.yml)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 </div>
 
-<div align="center">
-
-**The open‑source, fully customisable VCS client.** 
-
-</div>
-
-OpenVCS is a new and upcoming cross‑platform version control client built with [Tauri](https://tauri.app/), [Rust](https://www.rust-lang.org/), and a modern [TypeScript](https://www.typescriptlang.org/) + [Vite](https://vitejs.dev/) frontend. It aims to be the **all‑in‑one solution** for version control: clean, fast, and extensible. Features are actively being explored and are **not yet finalised**.
-
-> **Scope note:** The first main release focuses on **Git** to keep the scope tight. The long‑term vision is to support **all major VCS systems** through a backend/plugin architecture (e.g., Mercurial, SVN, Perforce, Fossil, etc.).
-
-## Quick Install (AppImage)
-
-OpenVCS provides a convenience script that fetches the latest AppImage, stores it at `~/Applications/openvcs.AppImage`, and creates a desktop entry so you can launch it from your app menu. Run:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash
-```
-
-The script targets Linux, leaves existing configuration untouched, and can be re-run to pull the newest release.
-
-Desktop builds keep using the legacy shared `OpenVCS` config and plugin directories.
-
-**Install pre-release (nightly):**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash -s -- --prerelease
-```
-
-**Uninstall:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Jordonbc/OpenVCS/stable/install.sh | bash -s -- --uninstall
-```
-
-Swap `stable` for `dev` in the URL if you want the bleeding-edge installer.
-
-Pre-release AppImage installs use a separate launcher and install path when the selected release is branded as beta or nightly, so they can coexist with stable on the same machine.
+<p align="center">
+  <a href="#overview">Overview</a>
+  ·
+  <a href="#quick-start">Quick Start</a>
+  ·
+  <a href="#features">Features</a>
+  ·
+  <a href="#screenshots">Screenshots</a>
+  ·
+  <a href="#architecture">Architecture</a>
+  ·
+  <a href="#roadmap">Roadmap</a>
+  ·
+  <a href="#contributing">Contributing</a>
+</p>
 
 ---
 
-## Key Goals
+## Overview
 
-- 🧩 **Fully customisable** - themes, layout, and extensibility at the core.
-- 🗂 **Multi‑VCS architecture** - designed to support many backends beyond Git.
-- ⚡ **Lightweight & fast** - native shell via Tauri + Rust.
-- 🧰 **Developer‑first UX** - frictionless flows for common VCS tasks.
+OpenVCS is a desktop version control client focused on **speed**, **clarity**, and **customisation**.
 
-## Platform Targets
+<p align="center">
+  <img src="docs/images/Main-UI-Preview.png" alt="OpenVCS main repository interface" width="900">
+</p>
 
-- 🐧 **Linux‑first** (primary target)
-- 🪟 **Windows** builds supported
-- 🍏 **macOS** not currently planned (community interest welcome)
+The client itself stays **VCS-agnostic**. It provides the desktop shell, core framework, plugin runtime, and base UI; VCS support, themes, UI changes, and additional product features are provided by plugins. A single plugin can provide any combination of these capabilities. The first major release ships with the `openvcs.git` plugin so Git workflows can stabilise before other VCS support is explored.
 
-## Features (Current)
+> [!IMPORTANT]
+> OpenVCS is in early development. Features, APIs, packaging, plugin behaviour, and UI details may change while the core Git workflow stabilises.
 
-- 🔗 **Git support** via the built-in `openvcs.git` plugin (System Git execution).
-- 📁 **Repo workflows:** clone, open existing repos, recent repos list, optional reopen of last repo on launch.
-- ✅ **Status & diffs:** working tree status, per-file diff, commit diff, discard changes.
-- 🧩 **Staging & commits:** stage files, partial staging/commits via patch, commit from index.
-- 🌿 **Branches:** list local/remote, create, checkout, rename, delete, set upstream tracking.
-- 🔀 **Merge & conflicts:** merge branches, conflict details, checkout ours/theirs, save merged result, launch external merge tool, abort/continue merge.
-- 🧳 **Stash:** list, push, apply, pop, drop, show.
-- 🌐 **Sync & remotes:** set remote URL, fetch (single/all), pull (fast-forward only), push.
-- 🗃 **Git LFS helpers:** fetch/pull/prune, track/untrack, inspect tracked paths.
-- 🔐 **SSH helpers:** trust host keys, list/add SSH agent keys, key discovery.
-- 🎨 **Themes:** built-in light/dark themes, plus plugin-provided themes (standalone theme `.zip` packs are not supported).
-- 🧩 **Plugins (early):** config-driven npm or local-path plugins synchronized into the app on startup.
-- 🔄 **Updater & logs:** update check/install, VCS output log window, app log tail/clear.
-
-## Planned / Exploratory
-
-- 🔌 **More VCS backends** via the existing backend abstraction.
-- 🧩 **Plugin & theme store** (distribution/discovery UX).
-- 🖼 **More UI workflows** and keyboard-first polish.
-
-> Priorities may shift as we iterate on feedback and stabilize the core Git workflows.
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <h3>⚡ Fast by design</h3>
+      <p>Rust and Tauri keep the app lightweight while still allowing native desktop integration.</p>
+    </td>
+    <td align="center" width="33%">
+      <h3>🧩 Built to extend</h3>
+      <p>VCS providers, UI extensions, themes, and extra features are delivered through plugins.</p>
+    </td>
+    <td align="center" width="33%">
+      <h3>🌿 Git first</h3>
+      <p>Git support comes from the built-in plugin, not from Git-specific client architecture.</p>
+    </td>
+  </tr>
+</table>
 
 ---
 
-## Repository Structure
+## Project Status
 
-```
-.
-├── Backend/              # Rust + Tauri backend (native logic, app entry)
-├── Frontend/             # TypeScript + Vite frontend (UI layer)
-├── Cargo.toml            # Workspace manifest
-├── LICENSE
-└── README.md
-```
+| Area               | Status      | Notes                                                               |
+| ------------------ | ----------- | ------------------------------------------------------------------- |
+| **Git plugin**     | Active      | Built-in `openvcs.git` plugin using system Git execution            |
+| **Linux AppImage** | Active      | Primary distribution target                                         |
+| **Windows builds** | Supported   | Build support exists; reliability will continue improving           |
+| **macOS builds**   | Not planned | Community interest may influence this later                         |
+| **Flatpak**        | Test build  | Released from stable builds, but provided as experimental/test-only |
+| **Themes**         | Early       | Themes are plugins and can change application styling               |
+| **Plugins**        | Early       | Plugins can add, remove, or modify UI, themes, VCSs, and features   |
+| **Multi-VCS**      | Planned     | Future VCS support should arrive through plugins                    |
 
 ---
 
-## Getting Started
+## Quick Start
 
-### Prerequisites
+OpenVCS desktop builds are distributed through **GitHub Releases**.
 
-- [Rust](https://www.rust-lang.org/tools/install) (latest stable recommended)
-- [Cargo](https://doc.rust-lang.org/cargo/) (ships with Rust)
-- [Node.js](https://nodejs.org/) (for the frontend toolchain)
-- [npm](https://www.npmjs.com/) (package manager)
-- **Git** installation (system Git is currently required)
+### Download from GitHub Releases
 
-### Installation
+| Build                     | Best for                 | Notes                                          |
+| ------------------------- | ------------------------ | ---------------------------------------------- |
+| **Latest stable release** | Most users               | Recommended default download                   |
+| **Pre-release / nightly** | Testing upcoming changes | May contain regressions or incomplete features |
+| **Source archive**        | Reviewing release source | Use the repository directly for development    |
 
-For the automated installer, see [Quick Install (AppImage)](#quick-install-appimage).
+1. Open the [latest release](https://github.com/Open-VCS/OpenVCS/releases/latest) on GitHub.
+2. Download the appropriate asset for your platform.
+3. Run the downloaded build locally.
 
-#### Manual AppImage download
+### Linux AppImage
 
-Prefer a portable setup? Download the latest AppImage from the GitHub releases page (e.g. https://github.com/Jordonbc/OpenVCS/releases/latest), make it executable, and run it directly:
+Download the latest AppImage from GitHub Releases, make it executable, and run it directly:
 
 ```bash
 chmod +x OpenVCS-*.AppImage
 ./OpenVCS-*.AppImage
 ```
 
-Store the AppImage wherever you like; no installation step is required.
+The AppImage can be stored anywhere. No installation step is required.
 
-#### Flatpak (experimental)
+| Step            | Action                                                                  |
+| --------------- | ----------------------------------------------------------------------- |
+| Download        | Get the latest AppImage asset from GitHub Releases                      |
+| Allow execution | Run `chmod +x OpenVCS-*.AppImage`                                       |
+| Launch          | Run `./OpenVCS-*.AppImage`                                              |
+| Update          | Download a newer AppImage from GitHub Releases and replace the old file |
 
-A Flatpak manifest exists under `packaging/flatpak/`, but Flatpak support is currently **experimental** and may be broken even if the bundle builds successfully.
+### Windows
 
-Known issues/limitations:
+Download the Windows installer from GitHub Releases and run it like a standard desktop application installer.
 
-- The sandbox does not provide `git`, and OpenVCS currently relies on **system Git** via plugin execution.
-- If the frontend assets are not included correctly, the app can show a blank window / “could not connect to localhost” (dev server) instead of loading `Frontend/dist`.
+| Step      | Action                                                                           |
+| --------- | -------------------------------------------------------------------------------- |
+| Download  | Open the latest GitHub Release and download the Windows installer asset          |
+| Install   | Run the downloaded installer and follow the prompts                              |
+| Launch    | Start OpenVCS from the Start menu or desktop shortcut                            |
+| Update    | Download the newer Windows installer from GitHub Releases and run it again       |
+| Uninstall | Remove OpenVCS from Windows Settings → Apps, or use the provided uninstall entry |
 
-For local build notes see `packaging/flatpak/README.md`.
+If Windows SmartScreen warns about the installer, verify that the file came from the official GitHub Release before choosing whether to continue.
 
-#### Build from source
+### Build from source
 
-Clone the repository:
-
-```bash
-git clone https://github.com/Jordonbc/OpenVCS.git
-cd openvcs
-```
-
-Install frontend dependencies:
-
-```bash
-cd Frontend
-npm install
-```
-
-**Run in development mode (dev server):**
+For development builds, clone the repository and run OpenVCS through Tauri:
 
 ```bash
+git clone https://github.com/Open-VCS/OpenVCS.git
+cd OpenVCS
+npm --prefix Frontend install
 cd Backend
 cargo tauri dev
 ```
 
-**Build a release bundle (production):**
+### Flatpak
 
-```bash
-just tauri-build
-just tauri-build beta
+Flatpak packaging exists under `packaging/flatpak/`. Stable-channel Flatpak builds may be published, but they are provided as experimental test builds rather than a recommended install path. See the [Flatpak](#flatpak) section before relying on it for regular use.
+
+> [!NOTE]
+> Desktop builds currently continue to use the legacy shared `OpenVCS` configuration and plugin directories.
+
+---
+
+## Release Channels
+
+| Channel     | Intended use                       | Stability                     |
+| ----------- | ---------------------------------- | ----------------------------- |
+| **Stable**  | General use and manual testing     | Most reliable available build |
+| **Beta**    | Previewing upcoming release work   | May contain regressions       |
+| **Nightly** | Testing latest development changes | Experimental                  |
+
+---
+
+## Features
+
+OpenVCS keeps the README short. The full feature list lives in [docs/Features.md](docs/Features.md).
+
+Highlights:
+
+- Plugin-first and VCS-agnostic architecture
+- Plugins can add, remove, or modify UI
+- Themes are plugins
+- Additional features and VCS backends are plugins too
+
+---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/images/AddExisting-UI-Preview.png" alt="OpenVCS add existing repository screen" width="430"><br>
+      <strong>Add existing repository</strong>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/images/Settings-UI-Preview.png" alt="OpenVCS settings screen" width="430"><br>
+      <strong>Settings</strong>
+    </td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/images/PluginList.png" alt="OpenVCS plugin list screen" width="900"><br>
+      <strong>Plugin list</strong>
+    </td>
+  </tr>
+</table>
+
+> [!NOTE]
+> The interface is still evolving while the core workflows stabilise.
+
+---
+
+## Architecture
+
+OpenVCS is a plugin-first desktop framework. The client provides the application shell, core services, plugin host, and base UI. VCS integrations, themes, UI customisations, and additional features are supplied by plugins.
+
+Plugin capabilities are composable rather than split into strict plugin types. A single plugin can add themes, modify UI, provide a VCS integration, add workflows, or combine those responsibilities.
+
+The client should remain VCS-agnostic: Git is supported by the built-in `openvcs.git` plugin, not by hard-coding Git as the application's core model.
+
+```mermaid
+flowchart LR
+    Shell[Desktop shell<br/>Tauri] --> UI[Base UI<br/>TypeScript + Vite]
+    Shell --> Backend[Core framework<br/>Rust services]
+    Backend --> Host[Plugin host<br/>JSON-RPC over stdio]
+    Host --> Git[openvcs.git<br/>Git workflows]
+    Host --> PluginA[Plugin A<br/>themes + UI changes]
+    Host --> PluginB[Plugin B<br/>VCS + workflows]
+    Host --> PluginC[Plugin C<br/>mixed capabilities]
+    Host -. future .-> OtherVcs[Future plugins<br/>Mercurial / SVN / Perforce / Fossil]
 ```
 
-This wraps `cargo tauri build` with `NO_STRIP=true` to avoid AppImage
-linuxdeploy strip failures on newer Linux toolchains.
+### Architecture responsibilities
 
-`just build`, `just build stable`, `just build beta`, and `just build nightly`
-use the same channel-aware Tauri build flow.
+| Layer              | Technology        | Responsibility                                               |
+| ------------------ | ----------------- | ------------------------------------------------------------ |
+| **Desktop shell**  | Tauri             | Windowing, app lifecycle, frontend/backend bridge            |
+| **Base UI**        | TypeScript + Vite | Core interface, interaction patterns, and plugin surfaces    |
+| **Core framework** | Rust              | Native services, filesystem access, process execution        |
+| **Plugin host**    | Rust + Node.js    | Load npm/local plugins and communicate over JSON-RPC stdio   |
+| **Plugins**        | npm / local path  | Add any mix of VCS support, themes, UI changes, and features |
 
-The Tauri precommands in `Backend/tauri.conf.json` intentionally set an
-explicit hook `cwd` to `Backend/` so Tauri does not resolve them from nested
-plugin directories, and built-in plugins are materialized from the
-channel-aware `openvcs.plugins.json` into `target/openvcs/built-in-plugins/`
-before the app is built. Local development can optionally override the active
-channel list with `openvcs.plugins.local.json`.
+### Repository layout
 
-### Optional: Rust‑only build
+```text
+.
+├── Backend/              # Rust + Tauri backend, native logic, and app entry point
+├── Frontend/             # TypeScript + Vite frontend
+├── docs/                 # UX, plugin, architecture, and packaging documentation
+├── packaging/flatpak/    # Experimental Flatpak manifests and notes
+├── scripts/              # Build and plugin-materialisation helpers
+├── Cargo.toml            # Rust workspace manifest
+├── Justfile              # Common build/test/fix commands
+├── LICENSE
+└── README.md
+```
 
-If you want to verify the Rust workspace compiles independently (without running Tauri):
+### Design principles
+
+| Principle                   | Direction                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **VCS agnostic core**       | The client framework should not assume Git or any other VCS as the core model.                               |
+| **Everything is a plugin**  | VCS providers, themes, UI changes, and extra workflows should be delivered by plugins.                       |
+| **Composable capabilities** | A plugin can provide one capability or many; themes, UI, VCSs, and features are not separate plugin classes. |
+| **Extensible UI**           | Plugins can add, remove, or modify UI without requiring a fork of the client.                                |
+| **Themes are plugins**      | Themes are plugin capabilities and can change styles, presentation, and visual assets.                       |
+| **Visible operations**      | VCS commands and logs should be inspectable rather than hidden behind vague progress states.                 |
+
+---
+
+## Build from Source
+
+### Requirements
+
+| Requirement                                     | Purpose                             |
+| ----------------------------------------------- | ----------------------------------- |
+| [Rust](https://www.rust-lang.org/tools/install) | Backend and Tauri application       |
+| [Cargo](https://doc.rust-lang.org/cargo/)       | Rust package manager and build tool |
+| [Node.js](https://nodejs.org/)                  | Frontend toolchain                  |
+| [npm](https://www.npmjs.com/)                   | Frontend dependency installation    |
+| [Git](https://git-scm.com/)                     | Required by the current Git plugin  |
+| [just](https://github.com/casey/just)           | Recommended command runner          |
+
+### Developer setup
 
 ```bash
-cargo build
+git clone https://github.com/Open-VCS/OpenVCS.git
+cd OpenVCS
+npm --prefix Frontend install
+cd Backend
+cargo tauri dev
 ```
+
+### Build commands
+
+| Command                 | Description                      |
+| ----------------------- | -------------------------------- |
+| `just tauri-build`      | Build a stable production bundle |
+| `just tauri-build beta` | Build a beta channel bundle      |
+| `just build stable`     | Build stable channel output      |
+| `just build beta`       | Build beta channel output        |
+| `just build nightly`    | Build nightly channel output     |
+| `cargo build`           | Compile the Rust workspace only  |
+
+These commands wrap the Tauri build flow and set `NO_STRIP=true` to avoid AppImage `linuxdeploy` strip failures on newer Linux toolchains.
+
+---
+
+## Flatpak
+
+A Flatpak manifest exists under:
+
+```text
+packaging/flatpak/
+```
+
+| Limitation                                 | Impact                                                                  |
+| ------------------------------------------ | ----------------------------------------------------------------------- |
+| Sandbox does not currently provide `git`   | OpenVCS currently relies on system Git through plugin execution         |
+| Frontend assets must be packaged correctly | Otherwise the app may show a blank window or localhost connection error |
+| Flatpaks are stable-channel test builds    | They may be released, but remain experimental and are not recommended   |
+
+In short: Flatpak users are helping test the packaging path. Expect rough edges.
+
+For local Flatpak build notes, see:
+
+[packaging/flatpak/README.md](packaging/flatpak/README.md)
 
 ---
 
 ## Development Workflow
 
-- **Frontend:** TypeScript + Vite for a fast iteration loop.
-- **Backend:** Rust + Tauri commands for native operations.
-- **Backend contracts:** shared Rust VCS models/traits now live in `Backend/src/core/` and are owned by the backend module.
-- **Bridge:** Tauri `invoke` is used to call Rust from the UI; events are used for progress/streaming.
+### Internal paths
+
+| Path                               | Purpose                                     |
+| ---------------------------------- | ------------------------------------------- |
+| `Backend/src/core/`                | Shared VCS models and traits                |
+| `Backend/src/plugin_runtime/`      | Node.js plugin host and JSON-RPC transport  |
+| `Backend/tauri.conf.json`          | Tauri configuration and precommand hooks    |
+| `openvcs.plugins.json`             | Channel-aware built-in plugin configuration |
+| `openvcs.plugins.local.json`       | Optional local plugin override              |
+| `target/openvcs/built-in-plugins/` | Materialised built-in plugin output         |
+
+### Notes
+
+* Tauri precommands intentionally use an explicit hook `cwd` of `Backend/`.
+* This prevents Tauri from resolving hooks from nested plugin directories.
+* Built-in plugins are materialised from `openvcs.plugins.json` before app builds.
+* Local development can override the active plugin list with `openvcs.plugins.local.json`.
 
 ---
 
-## Testing
+## Testing and Quality Checks
 
-- Use `just test` to run the full project test/check flow (runs `cargo test --workspace`, then frontend typecheck and tests).
-- Use `just fix` to run formatting and clippy fixes plus a frontend typecheck.
-- Frontend-only commands (from `Frontend/`):
-  - `npm exec tsc -- -p tsconfig.json --noEmit` — TypeScript typecheck for the frontend.
-  - `npm test` — run Vitest unit tests (added to the frontend devDependencies).
+### Main commands
 
-Note: Some commands (installing Node deps, running Tauri dev/build) may require network access and native toolchain components.
+| Command                                                       | Runs                                                 |
+| ------------------------------------------------------------- | ---------------------------------------------------- |
+| just test                                                     | Full project test/check flow                         |
+| just fix                                                      | Formatting, Clippy fixes, and frontend type checking |
+| cargo fmt --all                                             | Rust formatting                                      |
+| cargo fmt --all -- --check                                  | CI formatting check                                  |
+| cargo clippy --all-targets --all-features -- -D warnings    | CI lint check                                        |
+| npm --prefix Frontend exec tsc -- -p tsconfig.json --noEmit | Frontend type checking                               |
+| npm --prefix Frontend test                                  | Frontend tests                                       |
 
-Design principles:
+### just test includes
 
-1. **Separation of concerns** - UI logic stays in the frontend; VCS logic lives in backend crates.
-2. **Backend abstraction** - a trait‑driven interface to enable multiple VCS backends over time.
-3. **Extensibility** - theming and plugin hooks are planned as part of the long‑term architecture, but will follow after the core VCS features are complete.
+| Step                     | Purpose                |
+| ------------------------ | ---------------------- |
+| cargo test --workspace   | Rust workspace tests   |
+| Frontend typecheck       | TypeScript correctness |
+| Frontend tests           | Vitest unit tests      |
+
+---
+
+## Roadmap
+
+### Near term
+
+| Item                                                     | Status |
+| -------------------------------------------------------- |:------:|
+| Stabilise core Git workflows                             | ✅     |
+| Improve Linux AppImage installation and update behaviour | ✅     |
+| Improve Windows build reliability                        | ✅     |
+| Refine the main repository UI                            | ✅     |
+| Expand backend/frontend test coverage                    | ✅     |
+
+### Medium term
+
+| Item                                                | Status |
+| --------------------------------------------------- |:------:|
+| Harden plugin loading and plugin configuration      | 🧭     |
+| Improve theme support                               | 🧭     |
+| Add more keyboard-first workflows                   | 🧭     |
+| Improve merge and conflict resolution UX            | 🧭     |
+| Expand documentation for plugin and backend authors | 🧭     |
+
+### Long term
+
+| Item                                                          | Status |
+| ------------------------------------------------------------- |:------:|
+| Add at least one non-Git VCS plugin                           | 🧭     |
+| Validate the VCS-agnostic client model with non-Git workflows | 🧭     |
+| Explore plugin and theme discovery flows                      | 🧭     |
+| Explore a plugin/theme store                                  | 🧭     |
+| Mature OpenVCS into a multi-VCS desktop client                | 🧭     |
+
+Legend: ✅ active · 🧭 planned/exploratory
+
+---
+
+## Project Repositories
+
+| Repository                                                                   | Purpose                                    |
+| ---------------------------------------------------------------------------- | ------------------------------------------ |
+| [Open-VCS](https://github.com/Open-VCS)                                    | GitHub organisation                        |
+| [OpenVCS-Plugin-Git](https://github.com/Open-VCS/OpenVCS-Plugin-Git)       | Git VCS plugin implementation              |
+| [OpenVCS-SDK](https://github.com/Open-VCS/OpenVCS-SDK)                     | SDK, runtime helpers, and shared contracts |
+| [OpenVCS-Plugin-Themes](https://github.com/Open-VCS/OpenVCS-Plugin-Themes) | Theme plugin work                          |
+| [ExamplePlugins](https://github.com/Open-VCS/ExamplePlugins)               | Example plugin implementations             |
+| [PluginTemplate](https://github.com/Open-VCS/PluginTemplate)               | Starter template for new plugins           |
 
 ---
 
 ## Contributing
 
-OpenVCS is **open source** and community‑driven. Contributions of all kinds are welcome:
+OpenVCS is open source and community-driven. Contributions are welcome across code, design, testing, documentation, and product feedback.
 
-- Bug reports & feature proposals
-- UX feedback and design mocks
-- Backend adapters for other VCS
-- Theme prototypes and early plugin experiments
+| Contribution type     | Examples                                                   |
+| --------------------- | ---------------------------------------------------------- |
+| **Bug reports**       | Broken workflows, crashes, packaging issues                |
+| **Feature proposals** | New Git workflows, UX improvements, plugin ideas           |
+| **Design feedback**   | Layout, accessibility, theme direction, interaction polish |
+| **Backend work**      | Git improvements, future VCS adapters, core contracts      |
+| **Frontend work**     | UI workflows, state handling, keyboard-first flows         |
+| **Documentation**     | Build notes, plugin notes, architecture explanations       |
+| **Themes/plugins**    | Theme prototypes and early plugin experiments              |
 
-Formatting requirement (Rust):
-- Run `cargo fmt --all` before pushing.
-- CI enforces `cargo fmt --all -- --check` and will fail if formatting is off.
-- CI also runs `cargo clippy --all-targets -- -D warnings` and will fail on warnings.
-Convenience (if you have `just` installed): `just fix`
-
-> See `CONTRIBUTING.md` (coming soon). Until then, feel free to open an issue or a discussion to propose changes.
-
-### Proposed Roadmap (High‑level)
-
-- **MVP:** Stable Git workflows; Linux and Windows builds; core UI.
-- **Theming:** Planned for later; starting with plugin-provided theme packs before exploring a gallery or store.
-- **Plugins:** Planned for later; will likely begin as simple plugin bundles (e.g. zip files in a directory) before evolving toward a store with discovery UX.
-- **Multi‑VCS:** Add at least one non‑Git backend to validate the abstraction.
+A dedicated `CONTRIBUTING.md` is planned. Until then, please open an issue or discussion before making large changes.
 
 ---
 
 ## Recommended IDE Setup
 
-- [Visual Studio Code](https://code.visualstudio.com/)
-- Extensions:
-  - [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode)
-  - [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
-  - [TypeScript ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
+| Tool                                                                                            | Purpose                   |
+| ----------------------------------------------------------------------------------------------- | ------------------------- |
+| [Visual Studio Code](https://code.visualstudio.com/)                                            | Recommended editor        |
+| [Tauri extension](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode)  | Tauri development support |
+| [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)    | Rust language support     |
+| [TypeScript ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) | Frontend linting support  |
 
 ---
 
-## Project Status
+## FAQ
 
-OpenVCS is in **early development**. Features and APIs are not yet finalised and may change frequently. Feedback will directly shape the roadmap.
+<details>
+<summary><strong>Is OpenVCS Git-only?</strong></summary>
+
+Today, the first supported backend is Git through the built-in `openvcs.git` plugin. The long-term architecture is intended to support additional VCS backends.
+
+</details>
+
+<details>
+<summary><strong>Does OpenVCS require system Git?</strong></summary>
+
+Yes. The current Git plugin executes against the system Git installation.
+
+</details>
+
+<details>
+<summary><strong>Is Flatpak supported?</strong></summary>
+
+Flatpak builds may be released from the stable channel, but they are provided as experimental test builds. The current reliance on system Git creates sandboxing limitations, so expect rough edges.
+
+</details>
+
+<details>
+<summary><strong>Can stable and nightly builds be installed together?</strong></summary>
+
+Yes. Pre-release AppImage installs use a separate launcher and install path when the selected release is branded as beta or nightly.
+
+</details>
+
+<details>
+<summary><strong>Are standalone theme zip packs supported?</strong></summary>
+
+No. OpenVCS currently supports built-in themes and plugin-provided themes, but not standalone theme `.zip` packs.
+
+</details>
+
+---
 
 ## License
 
-[GPL-3.0](LICENSE)
-
-## Screenshots / Demos
-
-The UI is actively evolving as core features take shape. Below is a small preview of the current design (subject to change):
-
-![OpenVCS UI](docs/images/Main-UI-Preview.png)
-![OpenVCS UI](docs/images/AddExisting-UI-Preview.png)
-![OpenVCS UI](docs/images/Settings-UI-Preview.png)
-
-More screenshots and demos will be shared once the design stabilises and a reliable build is ready.
+OpenVCS is licensed under the [GPL-3.0](LICENSE).
