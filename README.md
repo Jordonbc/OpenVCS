@@ -368,11 +368,11 @@ For local Flatpak build notes, see:
 
 | Item                                                     | Status |
 | -------------------------------------------------------- |:------:|
-| Stabilise core Git workflows                             | 🔄     |
-| Improve Linux AppImage installation and update behaviour | 🔄     |
-| Improve Windows build reliability                        | 🔄     |
-| Refine the main repository UI                            | 🔄     |
-| Expand backend/frontend test coverage                    | 🔄     |
+| Stabilise core Git workflows                             | ✅     |
+| Improve Linux AppImage installation and update behaviour | ✅     |
+| Improve Windows build reliability                        | ✅     |
+| Refine the main repository UI                            | ✅     |
+| Expand backend/frontend test coverage                    | ✅     |
 
 ### Medium term
 
@@ -394,7 +394,7 @@ For local Flatpak build notes, see:
 | Explore a plugin/theme store                                  | 🧭     |
 | Mature OpenVCS into a multi-VCS desktop client                | 🧭     |
 
-Legend: 🔄 active · 🧭 planned/exploratory
+Legend: ✅ active · 🧭 planned/exploratory
 
 ---
 
