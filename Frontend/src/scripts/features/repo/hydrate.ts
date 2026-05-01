@@ -235,7 +235,7 @@ export async function hydrateStash(): Promise<void> {
 }
 
 /**
- * Loads the resolved action-label map for the active backend.
+ * Loads the resolved action-label map for the active backend and notifies the UI.
  */
 export async function hydrateVcsActionLabels(): Promise<void> {
     try {
@@ -251,5 +251,7 @@ export async function hydrateVcsActionLabels(): Promise<void> {
         state.vcsActionLabels = resolved;
     } catch {
         state.vcsActionLabels = {};
+    } finally {
+        window.dispatchEvent(new CustomEvent('app:vcs-action-labels-updated'));
     }
 }
