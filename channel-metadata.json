@@ -1,5 +1,5 @@
 {
-  "repo": "https://github.com/Jordonbc/OpenVCS",
+  "repo": "https://github.com/Open-VCS/OpenVCS",
   "channels": {
     "stable": {
       "slug": "stable",
@@ -7,7 +7,7 @@
       "productName": "OpenVCS",
       "identifier": "dev.jordon.openvcs",
       "windowTitle": "OpenVCS",
-      "updaterEndpoints": ["https://github.com/Jordonbc/OpenVCS/releases/latest/download/latest.json"]
+      "updaterEndpoints": ["https://github.com/Open-VCS/OpenVCS/releases/latest/download/latest.json"]
     },
     "beta": {
       "slug": "beta",
@@ -16,8 +16,8 @@
       "identifier": "dev.jordon.openvcs.beta",
       "windowTitle": "OpenVCS Beta",
       "updaterEndpoints": [
-        "https://github.com/Jordonbc/OpenVCS/releases/download/openvcs-beta/latest.json",
-        "https://github.com/Jordonbc/OpenVCS/releases/latest/download/latest.json"
+        "https://github.com/Open-VCS/OpenVCS/releases/download/openvcs-beta/latest.json",
+        "https://github.com/Open-VCS/OpenVCS/releases/latest/download/latest.json"
       ]
     },
     "nightly": {
@@ -27,9 +27,9 @@
       "identifier": "dev.jordon.openvcs.nightly",
       "windowTitle": "OpenVCS Nightly",
       "updaterEndpoints": [
-        "https://github.com/Jordonbc/OpenVCS/releases/download/openvcs-nightly/latest.json",
-        "https://github.com/Jordonbc/OpenVCS/releases/download/openvcs-beta/latest.json",
-        "https://github.com/Jordonbc/OpenVCS/releases/latest/download/latest.json"
+        "https://github.com/Open-VCS/OpenVCS/releases/download/openvcs-nightly/latest.json",
+        "https://github.com/Open-VCS/OpenVCS/releases/download/openvcs-beta/latest.json",
+        "https://github.com/Open-VCS/OpenVCS/releases/latest/download/latest.json"
       ]
     }
   }
