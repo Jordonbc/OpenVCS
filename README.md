@@ -16,7 +16,7 @@
 
 [![Nightly](https://github.com/Jordonbc/OpenVCS/actions/workflows/nightly.yml/badge.svg?branch=Dev)](https://github.com/Jordonbc/OpenVCS/actions/workflows/nightly.yml)
 [![Beta](https://github.com/Jordonbc/OpenVCS/actions/workflows/beta.yml/badge.svg?branch=Beta)](https://github.com/Jordonbc/OpenVCS/actions/workflows/beta.yml)
-[![Stable](https://github.com/Jordonbc/OpenVCS/actions/workflows/publish-stable.yml/badge.svg?branch=Stable)](https://github.com/Jordonbc/OpenVCS/actions/workflows/publish-stable.yml)
+[![Stable](https://github.com/Jordonbc/OpenVCS/actions/workflows/publish-stable.yml/badge.svg?branch=stable)](https://github.com/Jordonbc/OpenVCS/actions/workflows/publish-stable.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 </div>
