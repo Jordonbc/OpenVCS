@@ -5,11 +5,11 @@
 <h1 align="center">OpenVCS</h1>
 
 <p align="center">
-  <strong>Your workflow, first-class.</strong>
+  <strong>A desktop client for every VCS.</strong>
 </p>
 
 <p align="center">
-  A fast, open-source, customisable desktop version control client built with Rust, Tauri, TypeScript, and Vite.
+  Plugin-based by design, starting with Git.
 </p>
 
 <div align="center">
