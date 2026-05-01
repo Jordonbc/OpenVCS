@@ -5,7 +5,7 @@
 <h1 align="center">OpenVCS</h1>
 
 <p align="center">
-  <strong>Your workflow, first-class. No fork required.</strong>
+  <strong>Your workflow, first-class.</strong>
 </p>
 
 <p align="center">
