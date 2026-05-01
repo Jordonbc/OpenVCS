@@ -267,7 +267,7 @@ flowchart LR
 | [Node.js](https://nodejs.org/)                  | Frontend toolchain                  |
 | [npm](https://www.npmjs.com/)                   | Frontend dependency installation    |
 | [Git](https://git-scm.com/)                     | Required by the current Git plugin  |
-| [`just`](https://github.com/casey/just)         | Recommended command runner          |
+| [just](https://github.com/casey/just)           | Recommended command runner          |
 
 ### Developer setup
 
@@ -344,19 +344,19 @@ For local Flatpak build notes, see:
 
 | Command                                                       | Runs                                                 |
 | ------------------------------------------------------------- | ---------------------------------------------------- |
-| `just test`                                                   | Full project test/check flow                         |
-| `just fix`                                                    | Formatting, Clippy fixes, and frontend type checking |
+| just test                                                     | Full project test/check flow                         |
+| just fix                                                      | Formatting, Clippy fixes, and frontend type checking |
 | `cargo fmt --all`                                             | Rust formatting                                      |
 | `cargo fmt --all -- --check`                                  | CI formatting check                                  |
 | `cargo clippy --all-targets --all-features -- -D warnings`    | CI lint check                                        |
 | `npm --prefix Frontend exec tsc -- -p tsconfig.json --noEmit` | Frontend type checking                               |
 | `npm --prefix Frontend test`                                  | Frontend tests                                       |
 
-### `just test` includes
+### just test includes
 
 | Step                     | Purpose                |
 | ------------------------ | ---------------------- |
-| `cargo test --workspace` | Rust workspace tests   |
+| cargo test --workspace   | Rust workspace tests   |
 | Frontend typecheck       | TypeScript correctness |
 | Frontend tests           | Vitest unit tests      |
 
