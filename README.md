@@ -182,15 +182,6 @@ Highlights:
 
 <table>
   <tr>
-    <td align="center">
-      <img src="docs/images/Main-UI-Preview.png" alt="OpenVCS main repository interface" width="900"><br>
-      <strong>Main repository interface</strong>
-    </td>
-  </tr>
-</table>
-
-<table>
-  <tr>
     <td align="center" width="50%">
       <img src="docs/images/AddExisting-UI-Preview.png" alt="OpenVCS add existing repository screen" width="430"><br>
       <strong>Add existing repository</strong>
