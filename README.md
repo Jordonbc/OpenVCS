@@ -193,6 +193,15 @@ Highlights:
   </tr>
 </table>
 
+<table>
+  <tr>
+    <td align="center">
+      <img src="docs/images/PluginList.png" alt="OpenVCS plugin list screen" width="900"><br>
+      <strong>Plugin list</strong>
+    </td>
+  </tr>
+</table>
+
 > [!NOTE]
 > The interface is still evolving while the core workflows stabilise.
 
