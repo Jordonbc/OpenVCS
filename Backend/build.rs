@@ -341,7 +341,7 @@ fn main() {
     println!("cargo:rustc-env=GIT_DESCRIBE={}", describe);
 
     // Dev builds (local/nightly) should show git branch+hash (+dirty) as version metadata.
-    // Official production builds should show the real package version.
+    // Official production builds and CI-patched prerelease builds should show the package version.
     //
     // Rules:
     // - `OPENVCS_OFFICIAL_RELEASE=1` forces "official" behavior.
@@ -376,7 +376,7 @@ fn main() {
 
     let official = is_truthy_env("OPENVCS_OFFICIAL_RELEASE") || (head_is_version_tag && !dirty);
 
-    let version = if official {
+    let version = if official || pkg_version.contains('-') {
         pkg_version.clone()
     } else {
         let branch_ident = sanitize_semver_ident(&branch);
