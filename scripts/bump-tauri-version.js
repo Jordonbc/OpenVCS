@@ -9,7 +9,7 @@
  * run number, and writes back to the manifest.
  * 
  * Usage: node scripts/bump-tauri-version.js <channel>
- *   channel: 'alpha' for nightly, 'beta' for beta releases
+ *   channel: 'nightly' for nightly releases, 'beta' for beta releases
  * 
  * Environment:
  *   GITHUB_RUN_NUMBER - used for monotonic versioning (set by GitHub Actions)
@@ -110,8 +110,8 @@ function writeVersion(newVersion) {
 function main() {
   const channel = process.argv[2];
   
-  if (!channel || !['alpha', 'beta'].includes(channel)) {
-    console.error('Usage: node bump-tauri-version.js <alpha|beta>');
+  if (!channel || !['nightly', 'beta'].includes(channel)) {
+    console.error('Usage: node bump-tauri-version.js <nightly|beta>');
     process.exit(1);
   }
   
