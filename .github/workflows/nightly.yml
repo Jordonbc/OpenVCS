@@ -231,7 +231,7 @@ jobs:
 
       # ---------- Reset rolling tag (optional but keeps things tidy) ----------
       - name: Patch version for nightly prerelease
-        run: node scripts/bump-tauri-version.js alpha
+        run: node scripts/bump-tauri-version.js nightly
 
       - name: Write channel Tauri config override
         env:
