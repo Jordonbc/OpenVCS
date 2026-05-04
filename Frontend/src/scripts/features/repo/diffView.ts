@@ -71,7 +71,9 @@ function buildUntrackedTextPatch(path: string, text: string): string[] {
 /** Highlights a row in the left list for the current tab. */
 export function highlightRow(index: number) {
     const rows = qsa<HTMLElement>((prefs.tab === 'history' ? '.row.commit' : '.row'), listEl || (undefined as any));
-    rows.forEach((el, i) => el.classList.toggle('active', i === index));
+    rows.forEach((el, i) => {
+        el.classList.toggle('active', i === index);
+    });
 }
 
 /** Loads and renders the selected file diff with selection state restored. */
@@ -293,7 +295,9 @@ export function clearDiffSelection() {
     if (state.diffSelectedFiles && state.diffSelectedFiles.size > 0) {
         state.diffSelectedFiles.clear();
         const rows = listEl.querySelectorAll<HTMLElement>('li.row.diffsel');
-        rows.forEach((r) => r.classList.remove('diffsel'));
+        rows.forEach((r) => {
+            r.classList.remove('diffsel');
+        });
     }
 }
 
@@ -301,7 +305,9 @@ export function clearDiffSelection() {
 export function clearActiveRows() {
     if (!listEl) return;
     const rows = listEl.querySelectorAll<HTMLElement>('li.row.active');
-    rows.forEach((r) => r.classList.remove('active'));
+    rows.forEach((r) => {
+        r.classList.remove('active');
+    });
 }
 
 /** Loads and renders conflict details and resolution actions. */
@@ -331,7 +337,7 @@ async function renderConflictView(file: FileStatus) {
 function renderConflictMarkup(details: ConflictDetails) {
     const binary = !!details.binary;
     const header = `<div class="conflict-header"><div class="conflict-title">Merge conflict</div>${renderConflictActions(binary)}</div>`;
-    const body = binary ? renderBinaryConflictBody(details) : renderTextConflictBody(details);
+    const body = binary ? renderBinaryConflictBody() : renderTextConflictBody(details);
     const pathAttr = escapeHtml(details.path || '');
     return `<div class="conflict-view" data-conflict-path="${pathAttr}" data-conflict-binary="${binary ? '1' : '0'}">${header}${body}</div>`;
 }
@@ -347,7 +353,7 @@ function renderConflictActions(binary: boolean) {
 }
 
 /** Renders a compact binary-conflict explanation panel. */
-function renderBinaryConflictBody(details: ConflictDetails) {
+function renderBinaryConflictBody() {
     const note = 'This file is binary. Choose which version to keep.';
     return `<div class="conflict-body"><div class="conflict-note">${escapeHtml(note)}</div></div>`;
 }
@@ -751,6 +757,10 @@ function buildDiffFragment(lines: string[]): DocumentFragment {
             const lineGutter = document.createElement('div');
             lineGutter.className = 'gutter';
             if (first === '+' || first === '-') {
+                const lineNumber = document.createElement('span');
+                lineNumber.className = 'line-number';
+                lineNumber.textContent = String(offset + i + 1);
+                lineGutter.appendChild(lineNumber);
                 const lineLabel = document.createElement('label');
                 lineLabel.className = 'pick-toggle';
                 const lineCheckbox = document.createElement('input');
@@ -766,7 +776,12 @@ function buildDiffFragment(lines: string[]): DocumentFragment {
                 lineGutter.appendChild(lineLabel);
                 lineCheckboxes[i] = lineCheckbox;
             }
-            lineGutter.appendChild(document.createTextNode(String(offset + i + 1)));
+            if (first !== '+' && first !== '-') {
+                const lineNumber = document.createElement('span');
+                lineNumber.className = 'line-number';
+                lineNumber.textContent = String(offset + i + 1);
+                lineGutter.appendChild(lineNumber);
+            }
             const code = document.createElement('div');
             code.className = 'code';
             code.innerHTML = escapeHtml(String(ln || ''));
@@ -801,9 +816,10 @@ export function renderHunksWithSelection(lines: string[]) {
         const body = hunkLines.map((ln, i) => {
             const first = (typeof ln === 'string' ? ln[0] : ' ') || ' ';
             const isChange = first === '+' || first === '-';
+            const lineNumber = `<span class="line-number">${offset + i + 1}</span>`;
             const lineCheckbox = isChange ? `<label class="pick-toggle"><input type="checkbox" class="pick-line" data-hunk="${h}" data-line="${i}" /><span class="sr-only">Include line</span></label>` : '';
             const t = first === '+' ? 'add' : first === '-' ? 'del' : '';
-            return `<div class="hline ${t}"><div class="gutter">${lineCheckbox}${offset + i + 1}</div><div class="code">${escapeHtml(String(ln))}</div></div>`;
+            return `<div class="hline ${t}"><div class="gutter">${lineNumber}${lineCheckbox}</div><div class="code">${escapeHtml(String(ln))}</div></div>`;
         }).join('');
         html += `<div class="hunk" data-hunk-index="${h}"><div class="hline"><div class="gutter"><label class="pick-toggle"><input type="checkbox" class="pick-hunk" data-hunk="${h}" /><span class="sr-only">Include hunk</span></label></div><div class="code"></div></div>${body}</div>`;
     }
