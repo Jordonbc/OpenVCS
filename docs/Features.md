@@ -20,6 +20,7 @@ OpenVCS is plugin-first and VCS-agnostic. Features, themes, UI changes, and VCS 
   <tr><td>Working tree status</td><td align="center">✅</td><td>Shows repository changes</td></tr>
   <tr><td>Per-file diff</td><td align="center">✅</td><td>File-level change inspection</td></tr>
   <tr><td>Commit diff</td><td align="center">✅</td><td>Commit-level inspection</td></tr>
+  <tr><td>Diff selection readability</td><td align="center">✅</td><td>Blue gutter stays continuous through each picked hunk, with a full-height hunk rail and bare per-line checkmarks keeping inclusion easy to scan</td></tr>
   <tr><td>Discard changes</td><td align="center">✅</td><td>Working tree cleanup</td></tr>
 </table>
 
