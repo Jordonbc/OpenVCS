@@ -32,8 +32,8 @@ export type DiffMeta = {
 
 /** References to DOM elements for a hunk. */
 export type HunkNodeRefs = {
-    hunkEl: HTMLElement;
-    hunkCheckbox: HTMLInputElement | null;
+    hunkEls: HTMLElement[];
+    hunkCheckboxes: HTMLInputElement[];
     lineCheckboxes: Record<number, HTMLInputElement>;
 };
 

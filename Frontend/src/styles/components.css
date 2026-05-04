@@ -309,36 +309,60 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
 }
 .hunk{
     padding:0;
+    position:relative;
     border-bottom:1px solid color-mix(in oklab, var(--border) 48%, transparent);
 }
 .hunk:last-child{ border-bottom:0; }
-/* Picked hunk (included in commit) — success tint */
-.hunk.picked{ background:color-mix(in oklab, var(--success) 8%, transparent); border-left:3px solid color-mix(in oklab, var(--success) 65%, transparent); }
+/* Picked hunk body (included in commit) — accent tint */
+.hunk.picked .hunk-selection-body{
+    background:color-mix(in oklab, var(--accent) 8%, transparent);
+    border-left:3px solid color-mix(in oklab, var(--accent) 65%, transparent);
+}
+.hunk-selection-body{
+    position:relative;
+}
+.hunk-selection-body > .pick-toggle{
+    position:absolute;
+    inset:0 auto 0 0;
+    width:1.45rem;
+    min-block-size:100%;
+    align-items:flex-start;
+    justify-content:center;
+    padding-top:.12rem;
+    z-index:1;
+}
 .hline{
     display:grid; grid-template-columns:minmax(3.75rem,4.7rem) minmax(0,1fr); gap:.6rem;
     padding:0 .8rem 0 0; line-height:1.5;
 }
+.hunk-selection-body > .hline{
+    padding-left:1.45rem;
+}
 .gutter{
     color:color-mix(in oklab, var(--muted) 74%, var(--text) 26%);
-    display:grid; grid-template-columns:1.45rem minmax(0,1fr); align-items:stretch; gap:0;
+    display:grid; grid-template-columns:minmax(0,1fr) 1.45rem minmax(0,1fr); align-items:stretch; gap:0;
     min-block-size:1.5em; padding-inline-end:.4rem;
     text-align:right; user-select:none; font-variant-numeric:tabular-nums; letter-spacing:-.01em;
 }
 .line-number{
     display:block;
-    grid-column:1;
+    grid-column:3;
     justify-self:end;
     align-self:center;
     padding-inline-end:.4rem;
 }
-.gutter:has(.pick-line){ grid-template-columns:minmax(0,1fr) 1.45rem; }
-.gutter:has(.pick-line) .line-number{ grid-column:1; }
-.gutter:has(.pick-line) .line-number,
-.gutter:has(.pick-line) .pick-toggle{ align-self:stretch; }
-.gutter:not(:has(.pick-toggle)){ display:block; padding-inline-end:.4rem; }
+.gutter .pick-toggle{ grid-column:2; align-self:stretch; }
+.hline.del .line-number{
+    grid-column:1;
+}
 .code{ white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; min-width:0; line-height:1.5; }
 .hline.add{ background:color-mix(in oklab, var(--success) 10%, transparent); }
 .hline.del{ background:color-mix(in oklab, var(--danger) 10%, transparent); }
+.hunk.picked .hunk-selection-body > .hline.add .gutter,
+.hunk.picked .hunk-selection-body > .hline.del .gutter{
+    background:color-mix(in oklab, var(--accent) 92%, transparent);
+    color:color-mix(in oklab, white 88%, var(--surface));
+}
 .binary-placeholder{ color:var(--muted); font-style:italic; }
 
 /* GitHub Desktop-style selection gutter: state lives in the gutter, not a box. */
@@ -355,7 +379,10 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
     border:0; border-radius:0; box-sizing:border-box;
     background:transparent; cursor:pointer;
 }
-.gutter:has(.pick-line) .pick-toggle{ grid-column:2; }
+.pick-line{
+    inline-size:100%;
+    block-size:100%;
+}
 .pick-toggle:hover,
 .pick-toggle:focus-within{ background:color-mix(in oklab, var(--accent) 28%, transparent); }
 .pick-toggle:has(input:checked),
