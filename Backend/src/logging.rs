@@ -332,13 +332,15 @@ pub fn init() {
     }
     let console_logger = builder.build();
 
-    // Ensure ./logs exists and rotate existing openvcs.log into a timestamped .zip archive
+    // Ensure logs dir exists under platform data directory; fall back to CWD-relative if unavailable.
     let logfile = {
-        let dir = std::path::Path::new("logs");
-        let _ = fs::create_dir_all(dir); // best effort
+        let dir = crate::app_identity::project_dirs()
+            .map(|pd| pd.data_dir().join("logs"))
+            .unwrap_or_else(|| std::path::PathBuf::from("logs"));
+        let _ = fs::create_dir_all(&dir); // best effort
 
-        rotate_existing_log(dir);
-        prune_archives(dir, cfg.logging.retain_archives as usize);
+        rotate_existing_log(&dir);
+        prune_archives(&dir, cfg.logging.retain_archives as usize);
 
         // Open (truncate) the active log file for this session
         let active = dir.join("openvcs.log");
