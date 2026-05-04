@@ -777,7 +777,12 @@ export function wireSettings() {
 function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
     const get = <T extends HTMLElement = HTMLElement>(sel: string) => root.querySelector<T>(sel);
 
-    const base = JSON.parse(root?.dataset.currentCfg || '{}');
+    let base: Partial<GlobalSettings> = {};
+    try {
+        base = JSON.parse(root?.dataset.currentCfg || '{}');
+    } catch {
+        // Corrupted or missing config — fall back to defaults.
+    }
 
     const o: GlobalSettings = { ...base };
 
