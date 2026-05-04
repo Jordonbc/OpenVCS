@@ -66,7 +66,13 @@ export function bindCommit() {
                     clearBusy('Ready');
                     return;
                 }
-                summary = String(hookData.summary || '').trim() || summary;
+                if (commitSummary?.maxLength === 72 && summary.length > 72) {
+                    summary = summary.slice(0, 72);
+                    commitSummary.value = summary;
+                } else {
+                    summary = String(hookData.summary || '').trim() || summary;
+                }
+                hookData.summary = summary;
                 description = String(hookData.description || '');
                 await TAURI.invoke('commit_patch_and_files', {
                     summary,

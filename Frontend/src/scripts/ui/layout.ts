@@ -250,6 +250,23 @@ export function refreshRepoActions() {
     }
 }
 
+/** Applies or clears the commit-summary 72-character cap. */
+export function applyCommitSummaryRestriction(enabled: boolean) {
+    const summary = qs<HTMLInputElement>('#commit-summary');
+    if (!summary) return;
+
+    if (enabled) {
+        summary.setAttribute('maxlength', '72');
+        summary.title = 'Commit summary is limited to 72 characters when restriction is enabled.';
+        if (summary.value.length > 72) {
+            summary.value = summary.value.slice(0, 72);
+        }
+    } else {
+        summary.removeAttribute('maxlength');
+        summary.removeAttribute('title');
+    }
+}
+
 /** Binds layout action refresh handlers to app lifecycle events. */
 export function bindLayoutActionState() {
     // Recompute on repo selection, status refresh, branch changes, and typing (when enabled)

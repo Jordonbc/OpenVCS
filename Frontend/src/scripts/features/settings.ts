@@ -6,7 +6,7 @@ import { openModal, closeModal } from '../ui/modals';
 import { toKebab } from '../lib/dom';
 import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
-import { setTheme } from '../ui/layout';
+import { setTheme, applyCommitSummaryRestriction } from '../ui/layout';
 import { collectGeneralSettings, loadGeneralSettingsIntoForm } from './settingsGeneral';
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
 import { invokePluginAction, reloadPlugins } from '../plugins';
@@ -710,6 +710,7 @@ export function wireSettings() {
                 if (mono) root.style.setProperty('--mono', mono);
                 else root.style.removeProperty('--mono');
                 applyAnimationPreference(next?.performance?.animations);
+                applyCommitSummaryRestriction(next?.general?.restrict_commit_summary !== false);
             } catch {}
 
             notify('Settings saved');
@@ -753,6 +754,7 @@ export function wireSettings() {
                 checks_on_launch: true,
                 telemetry: false,
                 crash_reports: true,
+                restrict_commit_summary: true,
             };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
@@ -764,6 +766,7 @@ export function wireSettings() {
             await TAURI.invoke('set_global_settings', { cfg: cur });
             await syncFrontendMonitoring(cur);
             applyAnimationPreference(cur.performance?.animations);
+            applyCommitSummaryRestriction(cur.general?.restrict_commit_summary !== false);
             await loadSettingsIntoForm(modal);
             setTheme('system');
             try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
@@ -907,6 +910,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elMx = get<HTMLInputElement>('#set-max-file-size-mb'); if (elMx) elMx.value = String(cfg.diff?.max_file_size_mb ?? 0);
     const elIn = get<HTMLInputElement>('#set-intraline'); if (elIn) elIn.checked = !!cfg.diff?.intraline;
     const elBp = get<HTMLInputElement>('#set-binary-placeholders'); if (elBp) elBp.checked = !!cfg.diff?.show_binary_placeholders;
+    const elRestrict = get<HTMLInputElement>('#set-restrict-commit-summary'); if (elRestrict) elRestrict.checked = cfg.general?.restrict_commit_summary !== false;
     const elMm = get<HTMLSelectElement>('#set-merge-mode');
     const elMp = get<HTMLInputElement>('#set-merge-path');
     const elMa = get<HTMLInputElement>('#set-merge-args');

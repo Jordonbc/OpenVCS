@@ -204,6 +204,7 @@ Highlights:
 
 > [!NOTE]
 > The interface is still evolving while the core workflows stabilise.
+> The settings modal includes an on-by-default commit-summary restriction toggle that caps the commit title box at 72 characters.
 
 ---
 

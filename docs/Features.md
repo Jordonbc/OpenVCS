@@ -32,6 +32,7 @@ OpenVCS is plugin-first and VCS-agnostic. Features, themes, UI changes, and VCS 
   <tr><td>Stage files</td><td align="center">✅</td><td>Standard index workflow</td></tr>
   <tr><td>Partial staging</td><td align="center">✅</td><td>Patch-based staging</td></tr>
   <tr><td>Partial commits</td><td align="center">✅</td><td>Commit selected patch content</td></tr>
+  <tr><td>Restrict commit summary</td><td align="center">✅</td><td>On-by-default setting that caps the commit title box at 72 characters</td></tr>
   <tr><td>Commit from index</td><td align="center">✅</td><td>Commit staged changes</td></tr>
 </table>
 
