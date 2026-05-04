@@ -366,12 +366,29 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
 .binary-placeholder{ color:var(--muted); font-style:italic; }
 
 /* GitHub Desktop-style selection gutter: state lives in the gutter, not a box. */
-.row input.pick, .pick-hunk, .pick-line{
+.row input.pick,
+.pick-hunk, .pick-line{
     appearance:none; -webkit-appearance:none; box-sizing:border-box;
     inline-size:1rem; block-size:1rem;
-    border:0; border-radius:0; background:transparent;
+    background:transparent;
     display:inline-grid; place-items:center;
     cursor:pointer; vertical-align:middle;
+}
+.row input.pick{
+    border:1px solid var(--border);
+    border-radius:4px;
+}
+.pick-hunk, .pick-line{
+    border:0;
+    border-radius:0;
+}
+.row input.pick:hover{
+    border-color:var(--accent);
+}
+.row input.pick:checked,
+.row input.pick:indeterminate{
+    background-color:var(--success);
+    border-color:var(--success);
 }
 .pick-toggle{
     display:inline-flex; align-items:center; justify-content:center;
