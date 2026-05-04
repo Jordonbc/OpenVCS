@@ -229,6 +229,19 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
     text-overflow:ellipsis;
 }
 .path{ font-weight:600; }
+.diff-head .path .commit-hash{
+    display:inline-flex;
+    align-items:center;
+    gap:.4rem;
+    min-width:0;
+}
+.diff-head .path .commit-hash-full{
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    font-family:var(--mono);
+}
 .diff-head .meta{ flex-shrink:0; white-space:nowrap; }
 .meta{ color:var(--muted); font-size:.85rem; display:flex; gap:.6rem; align-items:center; }
 .diff-head .meta #history-actions-btn{
@@ -397,9 +410,8 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
 
 /* ========== History (commit list) ========== */
 .row.commit{
-    display:grid; grid-template-columns:max-content 1fr max-content max-content; column-gap:.6rem; align-items:center;
+    display:grid; grid-template-columns:minmax(0,1fr) max-content max-content; column-gap:.6rem; align-items:center;
 }
-.row.commit .badge.hash { font-family: var(--mono); }
 .row.commit .file { min-width: 0; }
 .row.commit .badge.time {
     color: var(--muted);
