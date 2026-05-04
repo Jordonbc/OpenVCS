@@ -316,7 +316,7 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
 /* Picked hunk body (included in commit) — accent tint */
 .hunk.picked .hunk-selection-body{
     background:color-mix(in oklab, var(--accent) 8%, transparent);
-    border-left:3px solid color-mix(in oklab, var(--accent) 65%, transparent);
+    box-shadow:inset 3px 0 0 color-mix(in oklab, var(--accent) 65%, transparent);
 }
 .hunk-selection-body{
     position:relative;
@@ -356,8 +356,50 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
     grid-column:1;
 }
 .code{ white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; min-width:0; line-height:1.5; }
-.hline.add{ background:color-mix(in oklab, var(--success) 10%, transparent); }
-.hline.del{ background:color-mix(in oklab, var(--danger) 10%, transparent); }
+.hline.add,
+.hline.del{
+    position:relative;
+    --diff-row-top-shadow:inset 0 1px 0 transparent;
+    --diff-row-bottom-shadow:inset 0 -1px 0 transparent;
+}
+.hline.add{
+    background:color-mix(in oklab, var(--success) 10%, transparent);
+    box-shadow:
+        inset 1px 0 0 color-mix(in oklab, var(--success) 30%, transparent),
+        inset -1px 0 0 color-mix(in oklab, var(--success) 30%, transparent),
+        var(--diff-row-top-shadow),
+        var(--diff-row-bottom-shadow);
+}
+.hline.del{
+    background:color-mix(in oklab, var(--danger) 10%, transparent);
+    box-shadow:
+        inset 1px 0 0 color-mix(in oklab, var(--danger) 30%, transparent),
+        inset -1px 0 0 color-mix(in oklab, var(--danger) 30%, transparent),
+        var(--diff-row-top-shadow),
+        var(--diff-row-bottom-shadow);
+}
+.hunk-selection-body > .pick-toggle + .hline.add,
+.hline:not(.add) + .hline.add{
+    --diff-row-top-shadow:inset 0 1px 0 color-mix(in oklab, var(--success) 30%, transparent);
+    border-top-left-radius:6px;
+    border-top-right-radius:6px;
+}
+.hline.add:not(:has(+ .hline.add)){
+    --diff-row-bottom-shadow:inset 0 -1px 0 color-mix(in oklab, var(--success) 30%, transparent);
+    border-bottom-left-radius:6px;
+    border-bottom-right-radius:6px;
+}
+.hunk-selection-body > .pick-toggle + .hline.del,
+.hline:not(.del) + .hline.del{
+    --diff-row-top-shadow:inset 0 1px 0 color-mix(in oklab, var(--danger) 30%, transparent);
+    border-top-left-radius:6px;
+    border-top-right-radius:6px;
+}
+.hline.del:not(:has(+ .hline.del)){
+    --diff-row-bottom-shadow:inset 0 -1px 0 color-mix(in oklab, var(--danger) 30%, transparent);
+    border-bottom-left-radius:6px;
+    border-bottom-right-radius:6px;
+}
 .hunk.picked .hunk-selection-body > .hline.add .gutter,
 .hunk.picked .hunk-selection-body > .hline.del .gutter{
     background:color-mix(in oklab, var(--accent) 92%, transparent);
