@@ -343,6 +343,16 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
     display:grid; grid-template-columns:minmax(0,1fr) 1.45rem minmax(0,1fr); align-items:stretch; gap:0;
     min-block-size:1.5em; padding-inline-end:.4rem;
     text-align:right; user-select:none; font-variant-numeric:tabular-nums; letter-spacing:-.01em;
+    cursor:pointer;
+    position:relative;
+}
+.gutter .pick-toggle{
+    position:absolute;
+    inset:0;
+    z-index:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
 }
 .line-number{
     display:block;
@@ -350,8 +360,16 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
     justify-self:end;
     align-self:center;
     padding-inline-end:.4rem;
+    pointer-events:none;
 }
-.gutter .pick-toggle{ grid-column:2; align-self:stretch; }
+.gutter .pick-toggle{
+    grid-column:1 / -1 !important;
+    align-self:stretch;
+    z-index:1;
+    display:flex !important;
+    width:100% !important;
+    height:100% !important;
+}
 .hline.del .line-number{
     grid-column:1;
 }
@@ -433,8 +451,8 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
     border-color:var(--success);
 }
 .pick-toggle{
-    display:inline-flex; align-items:center; justify-content:center;
-    inline-size:1.45rem; min-block-size:100%; padding:0;
+    display:flex; align-items:center; justify-content:center;
+    inline-size:100%; block-size:100%; padding:0;
     border:0; border-radius:0; box-sizing:border-box;
     background:transparent; cursor:pointer;
 }
