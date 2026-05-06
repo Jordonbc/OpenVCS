@@ -79,6 +79,12 @@ export const hasRepo = (): boolean => Boolean(state.hasRepo);
 export const hasChanges = (): boolean =>
     Array.isArray(state.files) && state.files.length > 0;
 
+/** True iff a VCS status code represents an unresolved merge conflict. */
+export const isConflictStatus = (status: unknown): boolean => {
+    const s = String(status || '').trim().toUpperCase();
+    return s === 'U' || s.includes('U') || s === 'AA' || s === 'DD';
+};
+
 /**
  * Resolves a backend-provided VCS action label with a generic fallback.
  * @param actionKey - Stable namespaced action key such as `VCS.Push`.
@@ -98,6 +104,7 @@ export function resolveVcsActionLabel(actionKey: string, fallback: string): stri
  * @returns Human-readable status label
  */
 export const statusLabel = (s: string) =>
+    isConflictStatus(s) ? 'Conflicted' :
     s === 'A' ? 'Added' :
         s === '?' ? 'Untracked' :
             s === 'R' ? 'Renamed' :
@@ -114,6 +121,7 @@ export const statusLabel = (s: string) =>
  * @returns CSS class suffix used by status badges
  */
 export const statusClass = (s: string) =>
+    isConflictStatus(s) ? 'conflict' :
     s === 'A' ? 'add' :
         s === '?' ? 'untracked' :
             s === 'R' ? 'ren' :

@@ -18,6 +18,7 @@ describe('collectGeneralSettings', () => {
         <input id="set-checks-on-launch" type="checkbox" checked />
         <input id="set-crash-reports" type="checkbox" checked />
         <input id="set-restrict-commit-summary" type="checkbox" checked />
+        <input id="set-checkout-new-branch" type="checkbox" checked />
       </div>
     `;
 
@@ -25,6 +26,7 @@ describe('collectGeneralSettings', () => {
     const general = collectGeneralSettings(root, {}, () => 'dark');
     expect(general?.crash_reports).toBe(true);
     expect(general?.restrict_commit_summary).toBe(true);
+    expect(general?.checkout_new_branch).toBe(true);
     expect(general?.theme).toBe('system');
   });
 });
@@ -39,6 +41,7 @@ describe('loadGeneralSettingsIntoForm', () => {
         <input id="set-checks-on-launch" type="checkbox" />
         <input id="set-crash-reports" type="checkbox" />
         <input id="set-restrict-commit-summary" type="checkbox" />
+        <input id="set-checkout-new-branch" type="checkbox" />
       </div>
     `;
 
@@ -54,6 +57,7 @@ describe('loadGeneralSettingsIntoForm', () => {
           checks_on_launch: true,
           crash_reports: true,
           restrict_commit_summary: true,
+          checkout_new_branch: true,
         },
       },
       (value) => String(value ?? ''),
@@ -64,5 +68,6 @@ describe('loadGeneralSettingsIntoForm', () => {
     expect(refreshDefaultBackendOptions).toHaveBeenCalledWith(root, expect.any(Object));
     expect((root.querySelector('#set-crash-reports') as HTMLInputElement).checked).toBe(true);
     expect((root.querySelector('#set-restrict-commit-summary') as HTMLInputElement).checked).toBe(true);
+    expect((root.querySelector('#set-checkout-new-branch') as HTMLInputElement).checked).toBe(true);
   });
 });

@@ -10,7 +10,7 @@ function createMatchMediaMock(query: string) {
 // Set matchMedia before importing modules that touch browser media APIs.
 (globalThis as any).matchMedia = createMatchMediaMock;
 
-import { resolveVcsActionLabel, state } from './state';
+import { isConflictStatus, resolveVcsActionLabel, state } from './state';
 
 describe('resolveVcsActionLabel', () => {
   it('falls back to generic VCS text when a label is missing', () => {
@@ -21,5 +21,15 @@ describe('resolveVcsActionLabel', () => {
   it('returns the plugin-provided label when available', () => {
     state.vcsActionLabels = { 'VCS.Push': 'Ship' };
     expect(resolveVcsActionLabel('VCS.Push', 'Push')).toBe('Ship');
+  });
+});
+
+describe('isConflictStatus', () => {
+  it('accepts normalized and raw porcelain conflict states', () => {
+    expect(isConflictStatus('U')).toBe(true);
+    expect(isConflictStatus('UU')).toBe(true);
+    expect(isConflictStatus('AA')).toBe(true);
+    expect(isConflictStatus('DD')).toBe(true);
+    expect(isConflictStatus('M')).toBe(false);
   });
 });

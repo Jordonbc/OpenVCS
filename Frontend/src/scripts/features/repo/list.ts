@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { escapeHtml } from '../../lib/dom';
-import { state, prefs, statusClass, statusLabel } from '../../state/state';
+import { isConflictStatus, state, prefs, statusClass, statusLabel } from '../../state/state';
 import { refreshRepoActions } from '../../ui/layout';
 import { filterInput, listEl, countEl, diffHeadPath, diffEl } from './context';
 import { renderCombinedDiff, selectFile, toggleFilePick } from './diffView';
@@ -80,7 +80,7 @@ function renderChangesList(query: string) {
         const diffsel = state.diffSelectedFiles.has(f.path);
         const staged = !!(f as any).staged;
         const status = String((f as any)?.status || '').toUpperCase();
-        const conflicted = status === 'U';
+        const conflicted = isConflictStatus(status);
         const resolvedConflict =
             !!(f as any).resolved_conflict ||
             (state.mergeInProgress && staged && !conflicted && state.seenConflicts.has(String(f.path || '')));

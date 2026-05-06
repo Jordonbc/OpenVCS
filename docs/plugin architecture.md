@@ -164,6 +164,8 @@ back to generic VCS text when a label is missing.
 - Non-VCS module runtimes are started and stopped according to enabled state.
 - VCS backend plugin runtimes are repo-scoped and start when opening a
   repository through that backend.
+- Saving global settings preserves active repo-scoped VCS backend runtimes when
+  the backend plugin remains enabled, so the current repository stays usable.
 - Closing the main window tears down config watchers and active plugin
   runtimes so `cargo tauri dev` exits promptly instead of leaving the backend
   process alive.

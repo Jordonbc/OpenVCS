@@ -6,6 +6,7 @@ import { notify } from '../lib/notify';
 import { hydrate, openModal, closeModal } from '../ui/modals';
 import { hydrateStatus } from './repo';
 import type { FileStatus, ConflictDetails, GlobalSettings } from '../types';
+import { isConflictStatus } from '../state/state';
 
 let mergeModalWired = false;
 let currentConflict: { path: string; details: ConflictDetails } | null = null;
@@ -122,7 +123,7 @@ export async function openConflictsSummary(files: FileStatus[]): Promise<void> {
     const contBtn = modal.querySelector<HTMLButtonElement>('#conflicts-continue');
 
     const conflicted = (Array.isArray(files) ? files : [])
-        .filter((f) => String(f?.status || '').toUpperCase() === 'U' && !!f?.path);
+        .filter((f) => isConflictStatus(f?.status) && !!f?.path);
 
     const ctx = await TAURI.invoke<{ in_progress: boolean }>('vcs_merge_context').catch(() => ({ in_progress: false }));
     const inMerge = !!ctx?.in_progress;
@@ -206,7 +207,7 @@ export async function autoOpenFirstConflict(files: FileStatus[]): Promise<void> 
     if (!Array.isArray(files) || files.length === 0) return;
 
     const conflictedPaths = files
-        .filter((f) => String(f?.status || '').toUpperCase() === 'U' && !!f?.path)
+        .filter((f) => isConflictStatus(f?.status) && !!f?.path)
         .map((f) => String(f.path))
         .sort();
     const conflicted = conflictedPaths[0];

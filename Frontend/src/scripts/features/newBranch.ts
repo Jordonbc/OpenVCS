@@ -6,6 +6,7 @@ import { notify } from "../lib/notify";
 import { state } from "../state/state";
 import { closeModal } from "../ui/modals";
 import { runHook } from "../plugins";
+import type { GlobalSettings } from "../types";
 
 function fixBranchName(raw: string): string {
     // Keep the user's input intact; only normalize for creation.
@@ -54,6 +55,18 @@ function populateBaseSelect(modal: HTMLElement) {
     }
 }
 
+/** Applies the persisted default checkout choice to the create-branch form. */
+async function loadCheckoutDefault(modal: HTMLElement) {
+    const checkoutEl = modal.querySelector<HTMLInputElement>('#new-branch-checkout');
+    if (!checkoutEl) return;
+    try {
+        const cfg = await TAURI.invoke<GlobalSettings>('get_global_settings');
+        checkoutEl.checked = cfg.general?.checkout_new_branch !== false;
+    } catch {
+        checkoutEl.checked = true;
+    }
+}
+
 export function wireNewBranch() {
     const modal = document.getElementById('new-branch-modal') as HTMLElement | null;
     if (!modal || (modal as any).__wired) return;
@@ -66,6 +79,8 @@ export function wireNewBranch() {
     const createBtn  = modal.querySelector<HTMLButtonElement>('#new-branch-create');
 
     populateBaseSelect(modal);
+    void loadCheckoutDefault(modal);
+    modal.addEventListener('modal:opened', () => { void loadCheckoutDefault(modal); });
     // Refresh base list when repo/branches refresh
     window.addEventListener('app:repo-selected', () => populateBaseSelect(modal));
 

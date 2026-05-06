@@ -46,7 +46,10 @@ fn normalize_and_probe(input: &str) -> (String, bool, bool) {
 /// # Returns
 /// - `true` when the scheme is present and at least one path segment exists.
 fn has_url_path_segment(u: &str, scheme: &str) -> bool {
-    let rest = u.strip_prefix(scheme).unwrap_or_default().trim_end_matches('/');
+    let rest = u
+        .strip_prefix(scheme)
+        .unwrap_or_default()
+        .trim_end_matches('/');
     rest.split_once('/')
         .is_some_and(|(_, path)| !path.trim_matches('/').is_empty())
 }

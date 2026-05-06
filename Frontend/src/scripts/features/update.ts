@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { TAURI } from '../lib/tauri';
-import { openModal, closeModal } from '../ui/modals';
+import { openModal } from '../ui/modals';
 import { notify } from '../lib/notify';
 
 interface UpdateStatus {
@@ -12,24 +12,111 @@ interface UpdateStatus {
   date: string | null;
 }
 
+/** Update button states shown while the installer runs. */
+type UpdateInstallPhase = 'idle' | 'downloading' | 'installing' | 'done';
+
+/** Payload emitted by the backend while an update is downloading or unpacking. */
+interface UpdateProgressEvent {
+  kind: 'progress' | 'downloaded';
+  received?: number;
+  total?: number;
+}
+
+let updateInstallPhase: UpdateInstallPhase = 'idle';
+let updateProgressListenerStarted = false;
+
+/** Returns the update modal's install button when it is mounted. */
+function getUpdateInstallButton(): HTMLButtonElement | null {
+  const modal = document.getElementById('update-modal') as HTMLElement | null;
+  return modal?.querySelector('#update-install') as HTMLButtonElement | null;
+}
+
+/** Formats the download button label for the current byte progress. */
+function formatDownloadingLabel(received?: number, total?: number): string {
+  const totalBytes = Number(total ?? 0);
+  if (!Number.isFinite(totalBytes) || totalBytes <= 0) return 'Downloading…';
+
+  const receivedBytes = Number(received ?? 0);
+  const percent = Math.max(0, Math.min(100, Math.floor((receivedBytes / totalBytes) * 100)));
+  return `Downloading…${percent}%`;
+}
+
+/** Applies a visual state to the update modal's install button. */
+function setUpdateInstallPhase(phase: UpdateInstallPhase, progress?: UpdateProgressEvent) {
+  updateInstallPhase = phase;
+
+  const installBtn = getUpdateInstallButton();
+  if (!installBtn) return;
+
+  installBtn.setAttribute('aria-busy', phase === 'idle' || phase === 'done' ? 'false' : 'true');
+
+  switch (phase) {
+    case 'idle':
+      installBtn.textContent = 'Install';
+      installBtn.disabled = false;
+      return;
+    case 'downloading':
+      installBtn.textContent = formatDownloadingLabel(progress?.received, progress?.total);
+      installBtn.disabled = true;
+      return;
+    case 'installing':
+      installBtn.textContent = 'Installing';
+      installBtn.disabled = true;
+      return;
+    case 'done':
+      installBtn.textContent = 'Done, please restart';
+      installBtn.disabled = true;
+  }
+}
+
+/** Starts listening for backend download progress events once per app session. */
+function ensureUpdateProgressListener() {
+  if (updateProgressListenerStarted) return;
+  updateProgressListenerStarted = true;
+
+  void TAURI.listen<UpdateProgressEvent>('update:progress', ({ payload }) => {
+    if (!payload) return;
+
+    if (payload.kind === 'progress') {
+      if (updateInstallPhase === 'idle' || updateInstallPhase === 'downloading') {
+        setUpdateInstallPhase('downloading', payload);
+      }
+      return;
+    }
+
+    if (payload.kind === 'downloaded') {
+      setUpdateInstallPhase('installing');
+    }
+  }).catch(() => {
+    updateProgressListenerStarted = false;
+  });
+}
+
+/** Wires the update modal button and progress listeners. */
 export function wireUpdate() {
   const modal = document.getElementById('update-modal') as HTMLElement | null;
   if (!modal || (modal as any).__wired) return;
   (modal as any).__wired = true;
 
+  ensureUpdateProgressListener();
+  setUpdateInstallPhase('idle');
+
   const installBtn = modal.querySelector('#update-install') as HTMLButtonElement | null;
   installBtn?.addEventListener('click', async () => {
     try {
+      setUpdateInstallPhase('downloading');
       notify('Downloading update…');
       await TAURI.invoke('updater_install_now');
-      notify('Update installed. Restart to apply.');
-      closeModal('update-modal');
+      setUpdateInstallPhase('done');
+      notify('Update installed. Please restart.');
     } catch {
+      setUpdateInstallPhase('idle');
       notify('Update failed');
     }
   });
 }
 
+/** Opens the update modal with the latest version metadata. */
 export async function showUpdateDialog(_data: any) {
   try {
     const status = await TAURI.invoke<UpdateStatus>('get_update_status');
@@ -40,6 +127,7 @@ export async function showUpdateDialog(_data: any) {
     }
 
     openModal('update-modal');
+    setUpdateInstallPhase('idle');
     const modal = document.getElementById('update-modal') as HTMLElement | null;
     if (!modal) return;
     const verEl = modal.querySelector('#update-version');

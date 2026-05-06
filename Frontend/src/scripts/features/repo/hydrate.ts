@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { TAURI, isTauriRuntimeAvailable } from '../../lib/tauri';
-import { state, prefs } from '../../state/state';
+import { isConflictStatus, state, prefs } from '../../state/state';
 import { renderList } from './list';
 import { autoOpenFirstConflict } from '../conflicts';
 
@@ -127,7 +127,7 @@ export async function hydrateStatus() {
             if (nextMergeInProgress) {
                 nextSeenConflicts = new Set<string>();
                 nextFiles.forEach((f: any) => {
-                    if (String(f?.status || '').toUpperCase() === 'U' && f?.path) {
+                    if (isConflictStatus(f?.status) && f?.path) {
                         nextSeenConflicts.add(String(f.path));
                     }
                 });
