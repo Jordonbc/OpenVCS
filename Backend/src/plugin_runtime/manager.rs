@@ -339,15 +339,18 @@ impl PluginRuntimeManager {
                 continue;
             }
 
+            let key = plugin_id.to_ascii_lowercase();
             let is_vcs_backend = component
                 .module
                 .as_ref()
                 .is_some_and(|module| !module.vcs_backends.is_empty());
             if is_vcs_backend {
+                if cfg.is_plugin_enabled(plugin_id, component.default_enabled) {
+                    desired_running.insert(key.clone());
+                }
                 continue;
             }
 
-            let key = plugin_id.to_ascii_lowercase();
             if cfg.is_plugin_enabled(plugin_id, component.default_enabled) {
                 desired_running.insert(key.clone());
                 if let Err(err) = self.start_plugin(plugin_id) {
@@ -697,6 +700,16 @@ mod tests {
 
     const MINIMAL_NODE_MODULE: &str = "export {};\n";
 
+    struct TestRuntime;
+
+    impl PluginRuntimeInstance for TestRuntime {
+        fn ensure_running(&self) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn stop(&self) {}
+    }
+
     #[test]
     /// Verifies repeated start/stop calls keep runtime state stable.
     fn start_and_stop_are_idempotent() {
@@ -787,6 +800,28 @@ mod tests {
 
         let running = manager.processes.lock();
         assert!(!running.contains_key("git.plugin"));
+    }
+
+    #[test]
+    /// Verifies settings sync keeps an already-open VCS backend runtime alive.
+    fn sync_preserves_running_vcs_backend_plugins() {
+        let temp = tempdir().expect("tempdir");
+        write_vcs_plugin(temp.path(), "git.plugin", true);
+        let manager = PluginRuntimeManager::new(PluginBundleStore::new_at(temp.path().into()));
+        manager.processes.lock().insert(
+            "git.plugin".into(),
+            RunningPlugin {
+                runtime: Arc::new(TestRuntime),
+                workspace_root: Some(temp.path().join("repo")),
+            },
+        );
+
+        let cfg = AppConfig::default();
+        manager
+            .sync_plugin_runtime_with_config(&cfg)
+            .expect("sync succeeds");
+
+        assert!(manager.processes.lock().contains_key("git.plugin"));
     }
 
     #[test]
