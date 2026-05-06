@@ -93,6 +93,9 @@ export function bindCommit() {
             // Clear selection state
             state.selectedFiles.clear();
             state.selectedHunks = [];
+            (state as any).selectedHunksByFile = {};
+            (state as any).selectedLinesByFile = {};
+            state.diffSelectedFiles.clear();
             state.currentDiff = [];
             state.currentFile = '' as any;
             // Refresh status and commits immediately

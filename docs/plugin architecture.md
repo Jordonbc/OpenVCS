@@ -72,6 +72,10 @@ Selected-file commit flows stage repository-relative paths into the index with
 `vcs.stage_paths` before issuing `vcs.commit`. Plugins implementing selected-path
 commits should therefore support both RPCs consistently.
 
+Clone flows resolve the final target directory in the host and then invoke the
+selected backend plugin's `vcs.clone_repo` method with `{ url, dest }`, where
+`dest` is the full repository destination path.
+
 Plugin runtime requires the app-bundled Node binary; there is no fallback to a
 system `node` executable.
 

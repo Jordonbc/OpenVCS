@@ -170,31 +170,6 @@ pub fn validate_add_path(path: String) -> Validation {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::validate_vcs_url;
-
-    #[test]
-    /// Verifies common hosted HTTP clone URLs do not require `.git` suffixes.
-    fn accepts_http_clone_urls_without_git_suffix() {
-        assert!(validate_vcs_url("https://github.com/openvcs/openvcs".into()).ok);
-        assert!(validate_vcs_url("https://github.com/openvcs/openvcs.git".into()).ok);
-    }
-
-    #[test]
-    /// Verifies SSH clone URL forms do not require `.git` suffixes.
-    fn accepts_ssh_clone_urls_without_git_suffix() {
-        assert!(validate_vcs_url("ssh://git@example.com/openvcs/openvcs".into()).ok);
-        assert!(validate_vcs_url("git@example.com:openvcs/openvcs".into()).ok);
-    }
-
-    #[test]
-    /// Verifies host-only HTTP URLs are still rejected.
-    fn rejects_urls_without_repository_path() {
-        assert!(!validate_vcs_url("https://github.com".into()).ok);
-    }
-}
-
 /// Validates clone URL and destination inputs.
 ///
 /// # Parameters
@@ -248,5 +223,30 @@ pub fn validate_clone_input(url: String, dest: String) -> Validation {
     Validation {
         ok: true,
         reason: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_vcs_url;
+
+    #[test]
+    /// Verifies common hosted HTTP clone URLs do not require `.git` suffixes.
+    fn accepts_http_clone_urls_without_git_suffix() {
+        assert!(validate_vcs_url("https://github.com/openvcs/openvcs".into()).ok);
+        assert!(validate_vcs_url("https://github.com/openvcs/openvcs.git".into()).ok);
+    }
+
+    #[test]
+    /// Verifies SSH clone URL forms do not require `.git` suffixes.
+    fn accepts_ssh_clone_urls_without_git_suffix() {
+        assert!(validate_vcs_url("ssh://git@example.com/openvcs/openvcs".into()).ok);
+        assert!(validate_vcs_url("git@example.com:openvcs/openvcs".into()).ok);
+    }
+
+    #[test]
+    /// Verifies host-only HTTP URLs are still rejected.
+    fn rejects_urls_without_repository_path() {
+        assert!(!validate_vcs_url("https://github.com".into()).ok);
     }
 }

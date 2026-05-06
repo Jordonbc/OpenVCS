@@ -3,7 +3,6 @@
 use crate::plugin_bundles::{InstalledPluginComponents, PluginBundleStore};
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::node_instance::NodePluginRuntimeInstance;
-use crate::plugin_runtime::runtime_select::create_runtime_instance;
 use crate::plugin_runtime::spawn::SpawnConfig;
 use crate::settings::AppConfig;
 use log::{debug, info, trace, warn};
@@ -41,6 +40,21 @@ struct RunningPlugin {
     runtime: Arc<dyn PluginRuntimeInstance>,
     /// Workspace confinement root associated with the runtime instance.
     workspace_root: Option<PathBuf>,
+}
+
+#[cfg(test)]
+/// No-op runtime used by manager unit tests.
+struct TestPluginRuntimeInstance;
+
+#[cfg(test)]
+impl PluginRuntimeInstance for TestPluginRuntimeInstance {
+    /// Confirms the test runtime is always ready.
+    fn ensure_running(&self) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Stops the test runtime.
+    fn stop(&self) {}
 }
 
 impl Default for PluginRuntimeManager {
@@ -563,8 +577,19 @@ impl PluginRuntimeManager {
     }
 
     /// Creates a runtime instance for a resolved plugin spec.
+    #[cfg(not(test))]
     fn create_instance(spec: &ModuleRuntimeSpec) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
+        use crate::plugin_runtime::runtime_select::create_runtime_instance;
+
         create_runtime_instance(spec.spawn.clone())
+    }
+
+    /// Creates a test-only no-op runtime instance for manager unit tests.
+    #[cfg(test)]
+    fn create_instance(
+        _spec: &ModuleRuntimeSpec,
+    ) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
+        Ok(Arc::new(TestPluginRuntimeInstance))
     }
 
     /// Resolves a plugin id into a module runtime specification.

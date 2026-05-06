@@ -51,6 +51,28 @@ function buildStatusSignature(input: {
     });
 }
 
+/** Removes per-file selection cache entries that no longer match status paths. */
+function pruneSelectionMaps(currentPaths: Set<string>): void {
+    for (const path of Object.keys((state as any).selectedHunksByFile || {})) {
+        if (!currentPaths.has(path)) delete (state as any).selectedHunksByFile[path];
+    }
+    for (const path of Object.keys((state as any).selectedLinesByFile || {})) {
+        if (!currentPaths.has(path)) delete (state as any).selectedLinesByFile[path];
+    }
+    for (const path of Array.from(state.diffSelectedFiles || [])) {
+        if (!currentPaths.has(path)) state.diffSelectedFiles.delete(path);
+    }
+}
+
+/** Clears all in-memory diff and commit selection state after status failure. */
+function clearSelectionState(): void {
+    state.selectedFiles.clear();
+    state.selectedHunks = [];
+    (state as any).selectedHunksByFile = {};
+    (state as any).selectedLinesByFile = {};
+    state.diffSelectedFiles.clear();
+}
+
 let lastStatusSignature = '';
 
 /** Returns a richer log message for common repository hydration failures. */
@@ -140,6 +162,7 @@ export async function hydrateStatus() {
             state.selectionImplicitAll = false;
             state.selectedFiles.forEach((p) => { if (!currentPaths.has(p)) state.selectedFiles.delete(p); });
         }
+        pruneSelectionMaps(currentPaths);
         (state as any).ahead = nextAhead;
         (state as any).behind = nextBehind;
         renderList();
@@ -150,7 +173,7 @@ export async function hydrateStatus() {
         state.files = [];
         state.mergeInProgress = false;
         state.seenConflicts = new Set<string>();
-        state.selectedFiles.clear();
+        clearSelectionState();
         state.selectionImplicitAll = false;
         lastStatusSignature = '';
         renderList();

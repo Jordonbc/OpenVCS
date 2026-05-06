@@ -279,7 +279,7 @@ export async function renderCombinedDiff(paths: string[]) {
             if (detectBinaryDiff(fileLines)) {
                 html += renderBinaryDiffPlaceholder(p);
             } else {
-                html += renderHunksWithSelection(fileLines);
+                html += renderHunksReadonly(fileLines);
             }
         } catch {
             html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)} (failed to load diff)</div></div></div>`;
@@ -318,6 +318,9 @@ async function renderConflictView(file: FileStatus) {
     state.selectedHunks = [];
     if ((state as any).selectedHunksByFile) {
         delete (state as any).selectedHunksByFile[file.path];
+    }
+    if ((state as any).selectedLinesByFile) {
+        delete (state as any).selectedLinesByFile[file.path];
     }
     diffEl.innerHTML = '<div class="conflict-view"><div class="conflict-loading">Loading conflict…</div></div>';
     scrollDiffToTop();

@@ -623,6 +623,11 @@ impl NodePluginRuntimeInstance {
         Ok(())
     }
 
+    /// Calls `vcs.clone_repo` without requiring an opened session.
+    pub fn vcs_clone_repo(&self, url: &str, dest: &str) -> Result<(), String> {
+        self.rpc_call_unit(Methods::VCS_CLONE_REPO, json!({ "url": url, "dest": dest }))
+    }
+
     /// Calls `vcs.get-current-branch`.
     pub fn vcs_get_current_branch(&self) -> Result<Option<String>, String> {
         let params = self.session_params(Value::Object(serde_json::Map::new()))?;
