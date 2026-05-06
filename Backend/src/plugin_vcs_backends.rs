@@ -321,3 +321,53 @@ pub fn open_repo_via_plugin_vcs_backend(
 
     result
 }
+
+/// Clones a repository through a plugin VCS backend.
+///
+/// # Parameters
+/// - `runtime_manager`: Plugin runtime manager used to resolve the backend module.
+/// - `cfg`: App config snapshot used for enabled-state checks.
+/// - `backend_id`: Backend identifier selected for the clone.
+/// - `url`: Repository source URL.
+/// - `target`: Full destination path for the cloned repository.
+/// - `on`: Optional event sink for clone progress messages.
+///
+/// # Returns
+/// - `Ok(())` when the plugin clone operation succeeds.
+/// - `Err(VcsError)` when backend resolution, startup, or clone fails.
+pub fn clone_repo_via_plugin_vcs_backend(
+    runtime_manager: &PluginRuntimeManager,
+    cfg: &AppConfig,
+    backend_id: BackendId,
+    url: &str,
+    target: &Path,
+    on: Option<crate::core::models::OnEvent>,
+) -> VcsResult<()> {
+    let desc = plugin_vcs_backend_descriptor(&backend_id)
+        .map_err(|_| VcsError::Unsupported(backend_id.clone()))?;
+    let workspace_root = target.parent().unwrap_or(target).to_path_buf();
+    let spawn = runtime_manager
+        .vcs_spawn_for_workspace_with_config(cfg, &desc.plugin_id, workspace_root)
+        .map_err(|e| VcsError::Backend {
+            backend: backend_id.clone(),
+            msg: e,
+        })?;
+    let runtime = create_node_runtime_instance(spawn).map_err(|e| VcsError::Backend {
+        backend: backend_id.clone(),
+        msg: e,
+    })?;
+    runtime.ensure_running().map_err(|e| VcsError::Backend {
+        backend: backend_id.clone(),
+        msg: e,
+    })?;
+
+    runtime.set_event_sink(on);
+    let result = runtime.vcs_clone_repo(url, &target.to_string_lossy());
+    runtime.set_event_sink(None);
+    runtime.stop();
+
+    result.map_err(|e| VcsError::Backend {
+        backend: backend_id,
+        msg: e,
+    })
+}
