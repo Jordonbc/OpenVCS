@@ -279,7 +279,7 @@ export async function renderCombinedDiff(paths: string[]) {
             if (detectBinaryDiff(fileLines)) {
                 html += renderBinaryDiffPlaceholder(p);
             } else {
-                html += renderHunksWithSelection(fileLines);
+                html += renderHunksReadonly(fileLines);
             }
         } catch {
             html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)} (failed to load diff)</div></div></div>`;
