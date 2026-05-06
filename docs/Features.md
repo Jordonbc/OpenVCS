@@ -59,7 +59,7 @@ OpenVCS is plugin-first and VCS-agnostic. Features, themes, UI changes, and VCS 
     <th>Notes</th>
   </tr>
   <tr><td>Merge branch</td><td align="center">✅</td><td>Branch merge workflow</td></tr>
-  <tr><td>Inspect conflicts</td><td align="center">✅</td><td>Conflict details surfaced in UI</td></tr>
+  <tr><td>Inspect conflicts</td><td align="center">✅</td><td>Conflict details surfaced in UI for unmerged status variants</td></tr>
   <tr><td>Checkout ours/theirs</td><td align="center">✅</td><td>Conflict-side selection</td></tr>
   <tr><td>Save merged result</td><td align="center">✅</td><td>Persist resolved files</td></tr>
   <tr><td>Launch external merge tool</td><td align="center">✅</td><td>Uses configured external tooling</td></tr>

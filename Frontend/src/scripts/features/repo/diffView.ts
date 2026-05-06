@@ -5,7 +5,7 @@ import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
 import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
-import { state, prefs, disableDefaultSelectAll, DiffMeta, HunkNodeRefs } from '../../state/state';
+import { isConflictStatus, state, prefs, disableDefaultSelectAll, DiffMeta, HunkNodeRefs } from '../../state/state';
 import type { FileStatus, ConflictDetails } from '../../types';
 import { buildPatchForSelectedHunks } from '../diff';
 import { diffEl, diffHeadPath, listEl } from './context';
@@ -85,7 +85,7 @@ export async function selectFile(file: FileStatus, index: number) {
     }
     highlightRow(index);
     const status = String(file.status || '').toUpperCase();
-    if (status === 'U') {
+    if (isConflictStatus(status)) {
         diffHeadPath.textContent = `${file.path || '(unknown file)'} (conflicted)`;
         await renderConflictView(file);
         state.diffDirty = false;
