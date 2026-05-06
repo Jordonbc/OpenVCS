@@ -53,3 +53,27 @@ describe('onFileClick', () => {
     expect(Array.from(state.selectedFiles).sort()).toEqual(['a.txt', 'b.txt', 'c.txt']);
   });
 });
+
+describe('updateDragRange', () => {
+  it('preserves selected files hidden by filtering during commit drag selection', async () => {
+    const { updateDragRange } = await import('./interactions');
+    const { dragState } = await import('./context');
+    const { state } = await import('../../state/state');
+    const visible = [
+      { path: 'a.txt', status: 'M' },
+      { path: 'b.txt', status: 'M' },
+    ];
+
+    state.selectedFiles = new Set(['hidden.txt']);
+    dragState.isDragSelecting = true;
+    dragState.dragMode = 'commit';
+    dragState.dragTargetState = true;
+    dragState.dragStartIndex = 0;
+    dragState.dragCurrentIndex = 1;
+    dragState.dragPrePicked = new Set(['hidden.txt']);
+
+    updateDragRange(visible as any);
+
+    expect(Array.from(state.selectedFiles).sort()).toEqual(['a.txt', 'b.txt', 'hidden.txt']);
+  });
+});

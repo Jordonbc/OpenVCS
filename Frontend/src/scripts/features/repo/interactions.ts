@@ -163,12 +163,12 @@ export function updateDragRange(visible: FileStatus[]) {
             });
         }
     } else if (dragState.dragMode === 'commit') {
-        const next = new Set<string>();
+        const next = new Set<string>(dragState.dragPrePicked);
         for (let i = 0; i < visible.length; i++) {
             const p = visible[i]?.path; if (!p) continue;
             const inRange = i >= a && i <= b;
             const on = inRange ? dragState.dragTargetState : dragState.dragPrePicked.has(p);
-            if (on) next.add(p);
+            if (on) next.add(p); else next.delete(p);
             if (list) {
                 const row = list.querySelector<HTMLElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"]`);
                 if (row) row.classList.toggle('picked', on);
