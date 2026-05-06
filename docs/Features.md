@@ -45,7 +45,7 @@ OpenVCS is plugin-first and VCS-agnostic. Features, themes, UI changes, and VCS 
   </tr>
   <tr><td>List local branches</td><td align="center">✅</td><td>Local branch visibility</td></tr>
   <tr><td>List remote branches</td><td align="center">✅</td><td>Remote branch visibility</td></tr>
-  <tr><td>Create branch</td><td align="center">✅</td><td>Standard branch creation</td></tr>
+  <tr><td>Create branch</td><td align="center">✅</td><td>Create from current branch; optional auto-checkout default in Settings</td></tr>
   <tr><td>Checkout branch</td><td align="center">✅</td><td>Switch active branch</td></tr>
   <tr><td>Rename branch</td><td align="center">✅</td><td>Local branch rename</td></tr>
   <tr><td>Delete branch</td><td align="center">✅</td><td>Branch cleanup</td></tr>

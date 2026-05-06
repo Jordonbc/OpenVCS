@@ -96,6 +96,9 @@ pub struct General {
     /// When enabled, commit hooks may not rewrite the user-entered commit summary.
     #[serde(default = "default_true")]
     pub restrict_commit_summary: bool,
+    /// When enabled, new branch creation defaults to checking out the branch.
+    #[serde(default = "default_true")]
+    pub checkout_new_branch: bool,
 }
 impl Default for General {
     /// Returns default general settings values.
@@ -114,6 +117,7 @@ impl Default for General {
             telemetry: false,
             crash_reports: true,
             restrict_commit_summary: true,
+            checkout_new_branch: true,
         }
     }
 }
@@ -841,5 +845,19 @@ impl AppConfig {
             self.logging.retain_archives = 1;
         }
         self.logging.retain_archives = self.logging.retain_archives.clamp(1, 100);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppConfig, General};
+
+    #[test]
+    /// Verifies new branch creation checks out by default for existing configs.
+    fn checkout_new_branch_defaults_true() {
+        assert!(General::default().checkout_new_branch);
+
+        let cfg: AppConfig = toml::from_str("schema_version = 1\n[general]\n").expect("config");
+        assert!(cfg.general.checkout_new_branch);
     }
 }

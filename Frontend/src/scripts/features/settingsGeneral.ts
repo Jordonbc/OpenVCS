@@ -27,6 +27,7 @@ export function collectGeneralSettings(
         checks_on_launch: !!get<HTMLInputElement>('#set-checks-on-launch')?.checked,
         crash_reports: !!get<HTMLInputElement>('#set-crash-reports')?.checked,
         restrict_commit_summary: !!get<HTMLInputElement>('#set-restrict-commit-summary')?.checked,
+        checkout_new_branch: !!get<HTMLInputElement>('#set-checkout-new-branch')?.checked,
     };
 }
 
@@ -76,4 +77,6 @@ export async function loadGeneralSettingsIntoForm(
     if (elCrash) elCrash.checked = !!cfg.general?.crash_reports;
     const elRestrict = get<HTMLInputElement>('#set-restrict-commit-summary');
     if (elRestrict) elRestrict.checked = cfg.general?.restrict_commit_summary !== false;
+    const elCheckoutNewBranch = get<HTMLInputElement>('#set-checkout-new-branch');
+    if (elCheckoutNewBranch) elCheckoutNewBranch.checked = cfg.general?.checkout_new_branch !== false;
 }

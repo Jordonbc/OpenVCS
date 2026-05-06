@@ -755,6 +755,7 @@ export function wireSettings() {
                 telemetry: false,
                 crash_reports: true,
                 restrict_commit_summary: true,
+                checkout_new_branch: true,
             };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
@@ -911,6 +912,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elIn = get<HTMLInputElement>('#set-intraline'); if (elIn) elIn.checked = !!cfg.diff?.intraline;
     const elBp = get<HTMLInputElement>('#set-binary-placeholders'); if (elBp) elBp.checked = !!cfg.diff?.show_binary_placeholders;
     const elRestrict = get<HTMLInputElement>('#set-restrict-commit-summary'); if (elRestrict) elRestrict.checked = cfg.general?.restrict_commit_summary !== false;
+    const elCheckoutNewBranch = get<HTMLInputElement>('#set-checkout-new-branch'); if (elCheckoutNewBranch) elCheckoutNewBranch.checked = cfg.general?.checkout_new_branch !== false;
     const elMm = get<HTMLSelectElement>('#set-merge-mode');
     const elMp = get<HTMLInputElement>('#set-merge-path');
     const elMa = get<HTMLInputElement>('#set-merge-args');
