@@ -586,7 +586,9 @@ impl PluginRuntimeManager {
 
     /// Creates a test-only no-op runtime instance for manager unit tests.
     #[cfg(test)]
-    fn create_instance(_spec: &ModuleRuntimeSpec) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
+    fn create_instance(
+        _spec: &ModuleRuntimeSpec,
+    ) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
         Ok(Arc::new(TestPluginRuntimeInstance))
     }
 
