@@ -319,6 +319,9 @@ async function renderConflictView(file: FileStatus) {
     if ((state as any).selectedHunksByFile) {
         delete (state as any).selectedHunksByFile[file.path];
     }
+    if ((state as any).selectedLinesByFile) {
+        delete (state as any).selectedLinesByFile[file.path];
+    }
     diffEl.innerHTML = '<div class="conflict-view"><div class="conflict-loading">Loading conflict…</div></div>';
     scrollDiffToTop();
     try {
