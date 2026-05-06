@@ -10,7 +10,7 @@ import type { FileStatus, ConflictDetails, GlobalSettings } from '../types';
 let mergeModalWired = false;
 let currentConflict: { path: string; details: ConflictDetails } | null = null;
 let summaryModalWired = false;
-let autoOpenedPaths: Set<string> = new Set();
+let autoOpenedConflictSignature = '';
 
 const externalToolState = {
     loaded: false,
@@ -205,19 +205,24 @@ export async function openConflictsSummary(files: FileStatus[]): Promise<void> {
 export async function autoOpenFirstConflict(files: FileStatus[]): Promise<void> {
     if (!Array.isArray(files) || files.length === 0) return;
 
-    const conflicted = files.find((f) => String(f?.status || '').toUpperCase() === 'U' && !!f?.path);
-    if (!conflicted?.path) {
-        autoOpenedPaths = new Set();
+    const conflictedPaths = files
+        .filter((f) => String(f?.status || '').toUpperCase() === 'U' && !!f?.path)
+        .map((f) => String(f.path))
+        .sort();
+    const conflicted = conflictedPaths[0];
+    if (!conflicted) {
+        autoOpenedConflictSignature = '';
         return;
     }
+    const signature = conflictedPaths.join('\n');
 
-    if (autoOpenedPaths.has(conflicted.path)) return;
+    if (signature === autoOpenedConflictSignature) return;
 
     const modal = document.getElementById('merge-modal') as HTMLElement | null;
     if (modal && modal.getAttribute('aria-hidden') === 'false') return;
 
     try {
-        autoOpenedPaths.add(conflicted.path);
+        autoOpenedConflictSignature = signature;
         await openConflictsSummary(files);
     } catch (err) {
         console.error(err);
