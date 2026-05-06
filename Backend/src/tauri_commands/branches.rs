@@ -565,13 +565,13 @@ pub async fn vcs_create_branch(
     run_repo_task("vcs_create_branch", repo, move |repo| {
         let vcs = repo.inner();
 
-        if let Some(from) = from_branch.as_ref() {
-            match vcs.checkout_branch(from) {
-                Ok(_) => info!("vcs_create_branch: successfully checked out base branch '{from}'"),
-                Err(e) => {
-                    error!("vcs_create_branch: failed to checkout base branch '{from}': {e}");
-                    return Err(format!("base branch not found or cannot checkout: {e}"));
-                }
+        if let Some(from) = from_branch.as_ref().map(|value| value.trim()).filter(|value| !value.is_empty()) {
+            let current = vcs.current_branch().map_err(|e| e.to_string())?.unwrap_or_default();
+            if from != current {
+                return Err(
+                    "creating a branch from a non-current base is not supported by the active backend"
+                        .to_string(),
+                );
             }
         }
 
