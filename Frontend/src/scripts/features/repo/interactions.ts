@@ -35,8 +35,7 @@ export function onFileClick(e: MouseEvent, file: FileStatus, index: number, visi
         const b = Math.max(dragState.lastClickedIndex, index);
         for (let i = a; i <= b; i++) {
             const p = visible[i]?.path; if (!p) continue;
-            if (state.selectedFiles.has(p)) state.selectedFiles.delete(p);
-            else state.selectedFiles.add(p);
+            state.selectedFiles.add(p);
         }
         disableDefaultSelectAll();
         updateSelectAllState(visible);
@@ -334,5 +333,7 @@ function renderListAfterRangeSelect(file: FileStatus) {
 /** Applies active-row styling by index in the current list. */
 function highlightRow(index: number) {
     const rows = listEl?.querySelectorAll<HTMLElement>('li.row');
-    rows?.forEach((el, i) => el.classList.toggle('active', i === index));
+    rows?.forEach((el, i) => {
+        el.classList.toggle('active', i === index);
+    });
 }
