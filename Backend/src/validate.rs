@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 /// Regex pattern for scp-like VCS URLs.
 static SCP_LIKE_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"^[\w.-]+@[\w.-]+:[\w./-]+\.git$").unwrap());
+    LazyLock::new(|| regex::Regex::new(r"^[\w.-]+@[\w.-]+:[\w./-]+(?:\.git)?$").unwrap());
 
 /// Regex pattern for Windows absolute paths.
 static WIN_ABS_RE: LazyLock<regex::Regex> =
@@ -37,6 +37,20 @@ fn normalize_and_probe(input: &str) -> (String, bool, bool) {
     (s.clone(), p.exists(), p.is_dir())
 }
 
+/// Returns whether a URL has a non-empty repository path segment.
+///
+/// # Parameters
+/// - `u`: Candidate URL string.
+/// - `scheme`: URL scheme prefix to strip.
+///
+/// # Returns
+/// - `true` when the scheme is present and at least one path segment exists.
+fn has_url_path_segment(u: &str, scheme: &str) -> bool {
+    let rest = u.strip_prefix(scheme).unwrap_or_default().trim_end_matches('/');
+    rest.split_once('/')
+        .is_some_and(|(_, path)| !path.trim_matches('/').is_empty())
+}
+
 /// Heuristically checks whether a string looks like a VCS URL.
 ///
 /// # Parameters
@@ -51,15 +65,15 @@ fn is_probably_vcs_url(u: &str) -> bool {
         return false;
     }
 
-    // http(s)://.../*.git
-    if (u.starts_with("http://") || u.starts_with("https://")) && u.ends_with(".git") {
+    // http(s)://.../repo[.git]
+    if has_url_path_segment(u, "http://") || has_url_path_segment(u, "https://") {
         return true;
     }
-    // ssh://user@host/.../*.git
-    if u.starts_with("ssh://") && u.ends_with(".git") {
+    // ssh://user@host/.../repo[.git]
+    if has_url_path_segment(u, "ssh://") {
         return true;
     }
-    // scp-like: git@host:org/repo.git
+    // scp-like: git@host:org/repo[.git]
     if SCP_LIKE_RE.is_match(u) {
         return true;
     }
@@ -150,6 +164,31 @@ pub fn validate_add_path(path: String) -> Validation {
     Validation {
         ok: true,
         reason: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_vcs_url;
+
+    #[test]
+    /// Verifies common hosted HTTP clone URLs do not require `.git` suffixes.
+    fn accepts_http_clone_urls_without_git_suffix() {
+        assert!(validate_vcs_url("https://github.com/openvcs/openvcs".into()).ok);
+        assert!(validate_vcs_url("https://github.com/openvcs/openvcs.git".into()).ok);
+    }
+
+    #[test]
+    /// Verifies SSH clone URL forms do not require `.git` suffixes.
+    fn accepts_ssh_clone_urls_without_git_suffix() {
+        assert!(validate_vcs_url("ssh://git@example.com/openvcs/openvcs".into()).ok);
+        assert!(validate_vcs_url("git@example.com:openvcs/openvcs".into()).ok);
+    }
+
+    #[test]
+    /// Verifies host-only HTTP URLs are still rejected.
+    fn rejects_urls_without_repository_path() {
+        assert!(!validate_vcs_url("https://github.com".into()).ok);
     }
 }
 
