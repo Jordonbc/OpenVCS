@@ -55,6 +55,12 @@ jobs:
             - Trivial naming or formatting issues unless they obscure correctness
             - Missing tests for code that has no meaningful behavioural change
 
+            Output requirements:
+            - Start with review findings, not process narration
+            - Do not describe which files you read or how you investigated
+            - Every comment must be either a concrete finding or an explicit no-issues verdict
+            - If you found no blocking or important issues, say exactly that and stop
+
             For every finding:
             - Cite the specific file and changed line/range when possible
             - Explain why it is a real issue
@@ -99,7 +105,7 @@ jobs:
             - Do not infer intended behaviour from comments alone
             - If you are relying on an assumption about downstream behaviour, say so explicitly and treat it as a review concern
 
-            If there are no substantive issues, say that no blocking or important issues were found. Do not invent issues to appear useful.
+            If there are no substantive issues, say that no blocking or important issues were found. Do not invent issues to appear useful. Do not mention the review process, file reads, or search steps in the final output.
 
       - name: fallback
         if: ${{ steps.review_primary.outcome == 'failure' }}
@@ -136,6 +142,12 @@ jobs:
             - Trivial naming or formatting issues unless they obscure correctness
             - Missing tests for code that has no meaningful behavioural change
 
+            Output requirements:
+            - Start with review findings, not process narration
+            - Do not describe which files you read or how you investigated
+            - Every comment must be either a concrete finding or an explicit no-issues verdict
+            - If you found no blocking or important issues, say exactly that and stop
+
             For every finding:
             - Cite the specific file and changed line/range when possible
             - Explain why it is a real issue
@@ -180,4 +192,4 @@ jobs:
             - Do not infer intended behaviour from comments alone
             - If you are relying on an assumption about downstream behaviour, say so explicitly and treat it as a review concern
 
-            If there are no substantive issues, say that no blocking or important issues were found. Do not invent issues to appear useful.
+            If there are no substantive issues, say that no blocking or important issues were found. Do not invent issues to appear useful. Do not mention the review process, file reads, or search steps in the final output.
