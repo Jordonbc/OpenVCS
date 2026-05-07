@@ -27,6 +27,7 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCODE_PERMISSION: '{"edit":"deny","write":"deny","patch":"deny"}'
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL }}
           use_github_token: true
@@ -107,6 +108,7 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCODE_PERMISSION: '{"edit":"deny","write":"deny","patch":"deny"}'
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL_FALLBACK }}
           use_github_token: true
