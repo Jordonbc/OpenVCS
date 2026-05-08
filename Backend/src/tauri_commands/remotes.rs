@@ -480,8 +480,8 @@ pub struct PullResult {
 }
 
 #[tauri::command]
-/// Pushes the current branch to `origin`, refreshes tracking refs, and publishes
-/// the branch by setting upstream tracking on first push.
+/// Pushes the current branch to `origin`, refreshes tracking refs, and best-effort
+/// ensures the branch tracks its corresponding `origin/*` upstream.
 ///
 /// # Parameters
 /// - `window`: Calling window handle for progress/events.
