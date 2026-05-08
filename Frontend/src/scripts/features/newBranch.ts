@@ -55,7 +55,7 @@ function populateBaseSelect(modal: HTMLElement) {
 }
 
 /** Applies the default checkout choice to the create-branch form. */
-async function loadCheckoutDefault(modal: HTMLElement) {
+function loadCheckoutDefault(modal: HTMLElement) {
     const checkoutEl = modal.querySelector<HTMLInputElement>('#new-branch-checkout');
     if (!checkoutEl) return;
     checkoutEl.checked = true;
