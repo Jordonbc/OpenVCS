@@ -73,7 +73,6 @@ export interface GlobalSettings {
         telemetry?: boolean;
         crash_reports?: boolean;
         restrict_commit_summary?: boolean;
-        checkout_new_branch?: boolean;
     };
     git?: {
         backend?: string;

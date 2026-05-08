@@ -6,7 +6,6 @@ import { notify } from "../lib/notify";
 import { state } from "../state/state";
 import { closeModal } from "../ui/modals";
 import { runHook } from "../plugins";
-import type { GlobalSettings } from "../types";
 
 function fixBranchName(raw: string): string {
     // Keep the user's input intact; only normalize for creation.
@@ -55,16 +54,11 @@ function populateBaseSelect(modal: HTMLElement) {
     }
 }
 
-/** Applies the persisted default checkout choice to the create-branch form. */
-async function loadCheckoutDefault(modal: HTMLElement) {
+/** Applies the default checkout choice to the create-branch form. */
+function loadCheckoutDefault(modal: HTMLElement) {
     const checkoutEl = modal.querySelector<HTMLInputElement>('#new-branch-checkout');
     if (!checkoutEl) return;
-    try {
-        const cfg = await TAURI.invoke<GlobalSettings>('get_global_settings');
-        checkoutEl.checked = cfg.general?.checkout_new_branch !== false;
-    } catch {
-        checkoutEl.checked = true;
-    }
+    checkoutEl.checked = true;
 }
 
 export function wireNewBranch() {
