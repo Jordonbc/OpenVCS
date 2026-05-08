@@ -89,6 +89,12 @@ describe('applyGpuAccelerationPreference', () => {
 
     applyGpuAccelerationPreference(true);
     expect(document.documentElement.dataset.gpuAcceleration).toBe('on');
+
+    applyGpuAccelerationPreference(undefined);
+    expect(document.documentElement.dataset.gpuAcceleration).toBe('on');
+
+    applyGpuAccelerationPreference(null);
+    expect(document.documentElement.dataset.gpuAcceleration).toBe('on');
   });
 });
 
