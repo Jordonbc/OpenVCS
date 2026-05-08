@@ -109,7 +109,7 @@ pub fn main_window_browser_args(performance: &Performance) -> Option<String> {
     }
 
     Some(
-        "--disable-gpu --disable-gpu-compositing --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
+        "--disable-gpu --disable-gpu-compositing --disable-features=msWebOOUI,msPdfOOUI"
             .to_string(),
     )
 }
