@@ -199,10 +199,13 @@ export function refreshRepoActions() {
 
     // Push highlight + badge when there are unpushed commits
     const ahead = Number((state as any).ahead || 0);
+    const branchOnRemote = Boolean((state as any).branchOnRemote);
     if (pushBtn) {
         pushBtn.classList.toggle('attention', repoOn && ahead > 0);
         const labelEl = pushBtn.querySelector<HTMLElement>('.btn-label');
-        const base = resolveVcsActionLabel('VCS.Push', 'Push');
+        const base = branchOnRemote
+            ? resolveVcsActionLabel('VCS.Push', 'Push')
+            : resolveVcsActionLabel('VCS.Publish', 'Publish');
         const label = repoOn && ahead > 0
             ? `${base} (${ahead})`
             : base;

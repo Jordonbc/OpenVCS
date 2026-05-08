@@ -44,6 +44,29 @@ afterEach(() => {
 });
 
 describe('hydrateStatus selection reconciliation', () => {
+  it('captures branch_on_remote and refreshes when only the remote-tracking flag changes', async () => {
+    const statusResponses = [
+      { files: [{ path: 'keep.txt', status: 'M' }], branch_on_remote: true },
+      { files: [{ path: 'keep.txt', status: 'M' }], branch_on_remote: false },
+    ];
+
+    installTauriMock(async (cmd) => {
+      if (cmd === 'vcs_status') return statusResponses.shift() ?? statusResponses[statusResponses.length - 1];
+      if (cmd === 'vcs_merge_context') return { in_progress: false };
+      if (cmd === 'vcs_diff_file') return ['diff --git a/keep.txt b/keep.txt', '@@ -1 +1 @@', '-old', '+new'];
+      return [];
+    });
+
+    const { hydrateStatus } = await import('./hydrate');
+    const { state } = await import('../../state/state');
+
+    await hydrateStatus();
+    expect(state.branchOnRemote).toBe(true);
+
+    await hydrateStatus();
+    expect(state.branchOnRemote).toBe(false);
+  });
+
   it('prunes stale per-file selection maps when status changes', async () => {
     installTauriMock(async (cmd) => {
       if (cmd === 'vcs_status') return { files: [{ path: 'keep.txt', status: 'M' }] };
