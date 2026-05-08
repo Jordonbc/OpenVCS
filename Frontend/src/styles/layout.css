@@ -85,6 +85,15 @@
     box-sizing: border-box;
     overflow: hidden;
 }
+
+html[data-gpu-acceleration="on"] .menubar,
+html[data-gpu-acceleration="on"] .titlebar,
+html[data-gpu-acceleration="on"] .menubar .menu-list,
+html[data-gpu-acceleration="on"] .modal .dialog.sheet {
+    backface-visibility: hidden;
+    transform: translateZ(0);
+}
+
 .title-actions { margin-left: auto; display: flex; align-items: center; gap: .45rem; }
 .plugin-title-actions { display: flex; align-items: center; gap: .45rem; }
 

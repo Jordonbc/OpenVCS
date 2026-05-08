@@ -54,6 +54,11 @@ export function setTheme(theme: 'dark'|'light'|'system') {
     savePrefs();
 }
 
+/** Applies or clears GPU compositor hints for the app shell. */
+export function applyGpuAccelerationPreference(enabled: boolean | undefined | null) {
+    document.documentElement.dataset.gpuAcceleration = enabled === false ? 'off' : 'on';
+}
+
 /** Toggles between light and dark appearance modes. */
 export function toggleTheme() {
     const next = (prefs.theme === 'dark' ? 'light' : 'dark');

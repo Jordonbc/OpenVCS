@@ -43,12 +43,11 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Creates app state by loading persisted settings and recent repositories.
+    /// Creates app state from a preloaded settings snapshot and recent repositories.
     ///
     /// # Returns
     /// - A fully initialized [`AppState`] with config and recent repositories loaded.
-    pub fn new_with_config() -> Self {
-        let cfg = AppConfig::load_or_default(); // reads ~/.config/openvcs/openvcs.conf
+    pub fn new_with_config(cfg: AppConfig) -> Self {
         let s = Self {
             config: RwLock::new(cfg),
             repo_config: RwLock::new(RepoConfig::default()),

@@ -285,7 +285,7 @@ impl Default for Lfs {
 pub struct Performance {
     #[serde(default)]
     pub progressive_render: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub gpu_accel: bool,
     #[serde(default = "default_true")]
     pub animations: bool,

@@ -9,7 +9,7 @@ use log::{error, warn};
 use std::sync::Arc;
 use tauri::path::BaseDirectory;
 use tauri::WindowEvent;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_updater::UpdaterExt;
 
 use crate::core::BackendId;
@@ -147,11 +147,24 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     load_local_dotenv();
+    let initial_config = settings::AppConfig::load_or_default();
     workarounds::apply_linux_nvidia_workaround();
+    workarounds::apply_gpu_acceleration_preference(&initial_config.performance);
+    #[cfg(target_os = "windows")]
+    let main_window_browser_args =
+        workarounds::main_window_browser_args(&initial_config.performance);
 
     // Initialize logging after startup-only process environment adjustments.
     logging::init();
-    let app_state = state::AppState::new_with_config();
+    log::info!(
+        "performance: GPU acceleration {} at startup",
+        if initial_config.performance.gpu_accel {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    );
+    let app_state = state::AppState::new_with_config(initial_config);
     monitoring::sync_backend_monitoring(&app_state.config());
 
     println!("Running OpenVCS...");
@@ -197,6 +210,39 @@ pub fn run() {
                     crate::plugin_paths::set_resource_dir(parent.to_path_buf());
                 }
             }
+
+            if app.get_webview_window("main").is_none() {
+                #[cfg(target_os = "windows")]
+                let builder = {
+                    let mut builder = WebviewWindowBuilder::new(
+                        app,
+                        "main",
+                        WebviewUrl::App("index.html".into()),
+                    )
+                    .title("OpenVCS")
+                    .inner_size(1100.0, 600.0)
+                    .min_inner_size(1100.0, 600.0)
+                    .resizable(true);
+                    if let Some(args) = main_window_browser_args.clone() {
+                        builder = builder.additional_browser_args(args);
+                    }
+                    builder
+                };
+                #[cfg(not(target_os = "windows"))]
+                let builder = WebviewWindowBuilder::new(
+                    app,
+                    "main",
+                    WebviewUrl::App("index.html".into()),
+                )
+                .title("OpenVCS")
+                .inner_size(1100.0, 600.0)
+                .min_inner_size(1100.0, 600.0)
+                .resizable(true);
+                if let Err(err) = builder.build() {
+                    log::error!("failed to create main window: {}", err);
+                }
+            }
+
             // Keep resource lookup state populated before resolving bundled Node
             // candidates. `bundled_node_candidate_paths()` uses both the generic
             // RESOURCE_DIR base and the exact Tauri-resolved `node-runtime`

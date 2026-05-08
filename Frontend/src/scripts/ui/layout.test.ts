@@ -70,6 +70,34 @@ describe('applyCommitSummaryRestriction', () => {
   });
 });
 
+describe('applyGpuAccelerationPreference', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    Object.defineProperty(globalThis, 'matchMedia', {
+      value: createMatchMediaMock,
+      configurable: true,
+      writable: true,
+    });
+    mountLayoutDom();
+  });
+
+  it('stores the GPU acceleration preference on the document root', async () => {
+    const { applyGpuAccelerationPreference } = await import('./layout');
+
+    applyGpuAccelerationPreference(false);
+    expect(document.documentElement.dataset.gpuAcceleration).toBe('off');
+
+    applyGpuAccelerationPreference(true);
+    expect(document.documentElement.dataset.gpuAcceleration).toBe('on');
+
+    applyGpuAccelerationPreference(undefined);
+    expect(document.documentElement.dataset.gpuAcceleration).toBe('on');
+
+    applyGpuAccelerationPreference(null);
+    expect(document.documentElement.dataset.gpuAcceleration).toBe('on');
+  });
+});
+
 describe('refreshRepoActions', () => {
   beforeEach(() => {
     vi.resetModules();
