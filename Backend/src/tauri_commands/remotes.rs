@@ -391,10 +391,13 @@ pub async fn vcs_pull<R: Runtime>(
                 "Detached HEAD; cannot determine upstream".to_string()
             })?;
 
-        let upstream = repo.inner().branch_upstream(&current).map_err(|e| {
-            error!("Failed to determine upstream for branch '{current}': {e}");
-            e.to_string()
-        })?;
+        let upstream = match repo.inner().branch_upstream(&current) {
+            Ok(upstream) => upstream,
+            Err(e) => {
+                warn!("Failed to determine upstream for branch '{current}': {e}");
+                None
+            }
+        };
 
         let Some(upstream) = upstream else {
             info!("Pull skipped for branch '{current}' (no upstream configured)");
