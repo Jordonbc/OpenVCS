@@ -30,7 +30,7 @@ pub fn apply_linux_nvidia_workaround() {
         if std::env::var_os(KEY).is_none() {
             eprintln!("Applying NVIDIA Wayland workaround: {KEY}=1");
             unsafe {
-                // Safety: set once at process startup to work around driver issues.
+                // Safety: set once during process startup before app threads run.
                 std::env::set_var(KEY, "1");
             }
         }

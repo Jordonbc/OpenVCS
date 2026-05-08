@@ -65,7 +65,9 @@ export function toggleTheme() {
                 cur.general = { ...(cur.general || {}), theme: next };
                 await TAURI.invoke('set_global_settings', { cfg: cur });
             }
-        } catch {}
+        } catch (error) {
+            console.warn('Failed to persist theme setting:', error);
+        }
         setTheme(next);
     })();
 }
@@ -88,7 +90,7 @@ export function setTab(tab: 'changes'|'history'|'stash') {
     const historyActionsBtn = qs<HTMLButtonElement>('#history-actions-btn');
     if (historyActionsBtn && tab !== 'history') historyActionsBtn.hidden = true;
     if (prevTab === 'history' && tab !== 'history') {
-        (state as any).selectedCommit = null;
+        state.selectedCommit = null;
     }
     if (tab === 'changes' && prevTab !== 'changes') {
         // Force file diff repaint when leaving history/stash so commit details
@@ -114,7 +116,12 @@ export function setTab(tab: 'changes'|'history'|'stash') {
 
 /** Binds tab button clicks to an external change handler. */
 export function bindTabs(onChange: (t: 'changes'|'history'|'stash') => void) {
-    tabs.forEach(btn => btn.addEventListener('click', () => onChange((btn.dataset.tab as any) ?? 'changes')));
+    tabs.forEach((btn) => {
+        btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        onChange(tab === 'history' || tab === 'stash' ? tab : 'changes');
+        });
+    });
 }
 
 /** Enables drag-resizing for the work grid split view. */
@@ -198,8 +205,8 @@ export function refreshRepoActions() {
     if (branchBtn) branchBtn.disabled = !repoOn;
 
     // Push highlight + badge when there are unpushed commits
-    const ahead = Number((state as any).ahead || 0);
-    const branchOnRemote = Boolean((state as any).branchOnRemote);
+    const ahead = Number(state.ahead || 0);
+    const branchOnRemote = Boolean(state.branchOnRemote);
     if (pushBtn) {
         pushBtn.classList.toggle('attention', repoOn && ahead > 0);
         const labelEl = pushBtn.querySelector<HTMLElement>('.btn-label');
@@ -221,11 +228,11 @@ export function refreshRepoActions() {
     // Commit button requires: repo + changes + non-empty summary + explicit selection (files, hunks, or per-line)
     const summaryFilled = (summary?.value.trim().length ?? 0) > 0;
     // Require either selected hunks, selected lines, or selected files (commit UI selection)
-    const hunksSelected = Object.keys((state as any).selectedHunksByFile || {})
-        .some((k) => Array.isArray((state as any).selectedHunksByFile[k]) && (state as any).selectedHunksByFile[k].length > 0);
-    const linesSelected = Object.keys((state as any).selectedLinesByFile || {})
-        .some((k) => !!(state as any).selectedLinesByFile[k] && Object.keys((state as any).selectedLinesByFile[k] || {}).length > 0);
-    const filesSelected = !!((state as any).selectedFiles && (state as any).selectedFiles.size > 0);
+    const hunksSelected = Object.values(state.selectedHunksByFile || {})
+        .some((hunks) => Array.isArray(hunks) && hunks.length > 0);
+    const linesSelected = Object.values(state.selectedLinesByFile || {})
+        .some((hunks) => !!hunks && Object.keys(hunks).length > 0);
+    const filesSelected = state.selectedFiles.size > 0;
     if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && (hunksSelected || linesSelected || filesSelected));
     if (commit) {
         const commitLabel = resolveVcsActionLabel('VCS.Commit', 'Commit');
@@ -301,8 +308,8 @@ export function resetRepoHeader() {
 /** Update the small ahead/behind badge placed next to the History tab. */
 function renderAheadBehind() {
     if (!aheadBehindEl) return;
-    const a = Number((state as any).ahead || 0);
-    const b = Number((state as any).behind || 0);
+    const a = Number(state.ahead || 0);
+    const b = Number(state.behind || 0);
     const show = (hasRepo() && (a > 0 || b > 0));
     if (!show) {
         aheadBehindEl.textContent = '';

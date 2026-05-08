@@ -82,6 +82,9 @@ Relative user paths are resolved from the directory that contains
 - Plugin modals can nest `horizontal-box`, `vertical-box`, and `grid` content
   items so plugin authors can keep related controls on the same row or in the
   same multi-column section.
+- Plugin-provided menubar fragments and settings sections are sanitized before
+  insertion; avoid relying on inline event handlers, script tags, or other
+  unsafe markup.
 - The Settings > Plugins pane can still reload config manually.
 
 Config-managed plugins are auto-approved because adding them to config is the

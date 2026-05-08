@@ -199,7 +199,8 @@ async function boot() {
                     void Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 }
                 success = true;
-            } catch {
+            } catch (error) {
+                console.error('Fetch failed:', error);
                 notify('Fetch failed');
             } finally {
                 if (!keepBusy) ctl.clearBusy();
@@ -223,7 +224,8 @@ async function boot() {
                     void Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 }
                 success = true;
-            } catch {
+            } catch (error) {
+                console.error('Fetch all failed:', error);
                 notify('Fetch all failed');
             } finally {
                 if (!keepBusy) ctl.clearBusy();
@@ -238,7 +240,7 @@ async function boot() {
     }
 
     function getBehindCount(): number {
-        const behind = Number((state as any)?.behind || 0);
+        const behind = Number(state.behind || 0);
         return isFinite(behind) && behind > 0 ? behind : 0;
     }
 
@@ -548,7 +550,7 @@ async function boot() {
 
   // backend status updates (footer)
   TAURI.listen?.('status:set', ({ payload }) => {
-      try { setStatus(String((payload as any) ?? '')); } catch {}
+      setStatus(String(payload ?? ''));
   });
 
     // update available payload from backend -> open modal with notes
@@ -627,9 +629,12 @@ async function boot() {
 
     // open settings via event
       TAURI.listen?.('ui:open-settings', ({ payload }) => {
+          const rawSection = payload && typeof payload === 'object' && 'section' in payload
+              ? (payload as { section?: unknown }).section
+              : undefined;
           const section = typeof payload === 'string'
               ? String(payload)
-              : (payload && typeof payload === 'object' ? (payload as any).section : undefined);
+              : rawSection == null ? undefined : String(rawSection);
           openSettings(section);
       });
       TAURI.listen?.('ui:open-about', () => openAbout());

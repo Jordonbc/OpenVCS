@@ -54,7 +54,9 @@ async function loadBranches() {
 
         renderBranches();
         setBranchUIEnabled(!!state.branch);
-    } catch {
+    } catch (error) {
+        console.error('Failed to load branches:', error);
+        notify('Failed to load branches');
         state.branches = [];
         renderBranches();
         setBranchUIEnabled(false);

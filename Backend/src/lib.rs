@@ -147,12 +147,12 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     load_local_dotenv();
-    // Initialize logging
+    workarounds::apply_linux_nvidia_workaround();
+
+    // Initialize logging after startup-only process environment adjustments.
     logging::init();
     let app_state = state::AppState::new_with_config();
     monitoring::sync_backend_monitoring(&app_state.config());
-
-    workarounds::apply_linux_nvidia_workaround();
 
     println!("Running OpenVCS...");
 

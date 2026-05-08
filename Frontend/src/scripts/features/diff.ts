@@ -15,11 +15,9 @@ export function bindCommit() {
     commitBtn?.addEventListener('click', async () => {
         let summary = commitSummary?.value.trim() || '';
         if (!summary) { commitSummary?.focus(); notify('Summary is required'); return; }
-        const hunksMap: Record<string, number[]> = (state as any).selectedHunksByFile || {};
-        const linesMap: Record<string, Record<number, number[]>> = (state as any).selectedLinesByFile || {};
-        const hasHunks = Object.keys(hunksMap).some(p => Array.isArray(hunksMap[p]) && hunksMap[p].length > 0);
-        const selectedFiles = state.selectedFiles ? Array.from(state.selectedFiles) : [];
-        const hasFiles = selectedFiles.length > 0;
+        const hunksMap = state.selectedHunksByFile || {};
+        const linesMap = state.selectedLinesByFile || {};
+        const selectedFiles = Array.from(state.selectedFiles);
         const statusEl = document.getElementById('status');
         const setBusy = (msg: string) => {
             if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
@@ -42,13 +40,24 @@ export function bindCommit() {
 
             // Build patch only from hunk and line selections.
             let combinedPatch = '';
+            let partialLoadFailed = false;
             for (const path of partialFiles) {
                 let lines: string[] = [];
-                try { lines = await TAURI.invoke<string[]>('vcs_diff_file', { path }); } catch {}
+                try {
+                    lines = await TAURI.invoke<string[]>('vcs_diff_file', { path });
+                } catch (error) {
+                    partialLoadFailed = true;
+                    console.error('Failed to load diff for selected file:', path, error);
+                    break;
+                }
                 if (!Array.isArray(lines) || lines.length === 0) continue;
                 const selHunks = hunksMap[path] || [];
                 const selLines = linesMap[path] || {};
                 combinedPatch += buildPatchForSelected(path, lines, selHunks, selLines) + '\n';
+            }
+            if (partialLoadFailed) {
+                notify('Failed to read one or more selected diffs');
+                return;
             }
             if (combinedPatch.trim().length > 0 || selectedFiles.length > 0) {
                 const hookData = {
@@ -93,11 +102,11 @@ export function bindCommit() {
             // Clear selection state
             state.selectedFiles.clear();
             state.selectedHunks = [];
-            (state as any).selectedHunksByFile = {};
-            (state as any).selectedLinesByFile = {};
+            state.selectedHunksByFile = {};
+            state.selectedLinesByFile = {};
             state.diffSelectedFiles.clear();
             state.currentDiff = [];
-            state.currentFile = '' as any;
+            state.currentFile = '';
             // Refresh status and commits immediately
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
             await runHook('postCommit', {
@@ -199,7 +208,8 @@ function buildPatchForSelected(path: string, lines: string[], hunkIndices: numbe
         const e = starts[h+1];
         const block = rest.slice(s, e);
         const header = block[0] || '';
-        const m = /@@\s*-([0-9]+),?([0-9]*)\s*\+([0-9]+),?([0-9]*)\s*@@/.exec(header) || [] as any;
+        const m = /@@\s*-([0-9]+),?([0-9]*)\s*\+([0-9]+),?([0-9]*)\s*@@/.exec(header);
+        if (!m) continue;
         const aStart = parseInt(m[1] || '0', 10) || 0;
         const cStart = parseInt(m[3] || '0', 10) || 0;
         const content = block.slice(1);
