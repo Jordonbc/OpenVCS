@@ -96,6 +96,9 @@ pub struct StatusPayload {
     pub ahead: u32,
     /// Number of commits behind the remote.
     pub behind: u32,
+    /// Whether the current branch has a tracking reference on a remote.
+    #[serde(default)]
+    pub branch_on_remote: bool,
 }
 
 /// Lightweight commit representation for lists.

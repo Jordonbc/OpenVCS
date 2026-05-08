@@ -50,6 +50,7 @@ export const state = {
     stash: [] as StashItem[],       // stash entries
     ahead: 0 as number,             // commits ahead of upstream
     behind: 0 as number,            // commits behind upstream
+    branchOnRemote: false as boolean, // current branch has a tracking reference on a remote
     aheadIds: new Set<string>() as Set<string>, // IDs of commits ahead of upstream
     mergeInProgress: false as boolean,
     seenConflicts: new Set<string>() as Set<string>,

@@ -391,10 +391,13 @@ pub async fn vcs_pull<R: Runtime>(
                 "Detached HEAD; cannot determine upstream".to_string()
             })?;
 
-        let upstream = repo.inner().branch_upstream(&current).map_err(|e| {
-            error!("Failed to determine upstream for branch '{current}': {e}");
-            e.to_string()
-        })?;
+        let upstream = match repo.inner().branch_upstream(&current) {
+            Ok(upstream) => upstream,
+            Err(e) => {
+                warn!("Failed to determine upstream for branch '{current}': {e}");
+                None
+            }
+        };
 
         let Some(upstream) = upstream else {
             info!("Pull skipped for branch '{current}' (no upstream configured)");
@@ -480,7 +483,9 @@ pub struct PullResult {
 }
 
 #[tauri::command]
-/// Pushes the current branch to `origin` and refreshes tracking refs.
+/// Pushes the current branch to `origin`, refreshes tracking refs, and best-effort
+/// ensures the branch tracks its corresponding `origin/*` upstream when one is not
+/// already configured.
 ///
 /// # Parameters
 /// - `window`: Calling window handle for progress/events.
@@ -524,6 +529,20 @@ pub async fn vcs_push<R: Runtime>(
         let on_fetch = Some(progress_bridge(app));
         if let Err(e) = repo.inner().fetch("origin", &current, on_fetch) {
             warn!("Post-push fetch failed for branch '{current}': {e}");
+        }
+
+        let upstream = repo.inner().branch_upstream(&current).map_err(|e| {
+            error!("Failed to determine upstream for branch '{current}': {e}");
+            e.to_string()
+        })?;
+
+        if upstream.is_none() {
+            if let Err(e) = repo
+                .inner()
+                .set_branch_upstream(&current, &format!("origin/{current}"))
+            {
+                warn!("Failed to set upstream for published branch '{current}': {e}");
+            }
         }
 
         info!("Push completed successfully for '{current}'");

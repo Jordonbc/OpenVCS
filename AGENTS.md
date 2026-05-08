@@ -164,6 +164,7 @@
 
 - Run `just test` before PRs; frontend-only work should at least cover `npm --prefix Frontend exec tsc -- -p tsconfig.json --noEmit` and `npm --prefix Frontend test`.
 - Use `cargo tauri dev` to verify runtime plugin interactions (especially when touching `Backend/src/plugin_runtime/`), and make sure `docs/plugin architecture.md` stays aligned with behavior.
+- The `opencode-review.yml` workflow must produce actual review findings or an explicit no-issues verdict; process summaries such as "I read X files" are not acceptable review output.
 
 ## Commit & PR guidelines
 

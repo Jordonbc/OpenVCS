@@ -31,9 +31,11 @@ function buildStatusSignature(input: {
     files: any[];
     ahead: number;
     behind: number;
+    branchOnRemote: boolean;
     mergeInProgress: boolean;
     seenConflicts: Set<string>;
 }): string {
+    // Include branch tracking state so Publish/Push labels refresh when upstream presence changes.
     const files = normalizeFiles(input.files).map((f) => ({
         path: String(f?.path || ''),
         oldPath: String((f as any)?.old_path || ''),
@@ -46,6 +48,7 @@ function buildStatusSignature(input: {
         files,
         ahead: Number(input.ahead || 0),
         behind: Number(input.behind || 0),
+        branchOnRemote: !!input.branchOnRemote,
         mergeInProgress: !!input.mergeInProgress,
         conflicts,
     });
@@ -138,10 +141,12 @@ export async function hydrateStatus() {
         }
         const nextAhead = Number((result as any)?.ahead || 0);
         const nextBehind = Number((result as any)?.behind || 0);
+        const nextBranchOnRemote = Boolean((result as any)?.branch_on_remote || false);
         const nextSignature = buildStatusSignature({
             files: nextFiles,
             ahead: nextAhead,
             behind: nextBehind,
+            branchOnRemote: nextBranchOnRemote,
             mergeInProgress: nextMergeInProgress,
             seenConflicts: nextSeenConflicts,
         });
@@ -165,6 +170,7 @@ export async function hydrateStatus() {
         pruneSelectionMaps(currentPaths);
         (state as any).ahead = nextAhead;
         (state as any).behind = nextBehind;
+        state.branchOnRemote = nextBranchOnRemote;
         renderList();
         void autoOpenFirstConflict(state.files as any);
         window.dispatchEvent(new CustomEvent('app:status-updated'));
