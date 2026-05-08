@@ -113,16 +113,3 @@ pub fn main_window_browser_args(performance: &Performance) -> Option<String> {
             .to_string(),
     )
 }
-
-#[cfg(not(target_os = "windows"))]
-#[inline]
-/// No-op on non-Windows platforms.
-///
-/// # Parameters
-/// - `performance`: Persisted performance settings.
-///
-/// # Returns
-/// - `None`.
-pub fn main_window_browser_args(_performance: &Performance) -> Option<String> {
-    None
-}

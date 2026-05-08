@@ -150,7 +150,8 @@ pub fn run() {
     let initial_config = settings::AppConfig::load_or_default();
     workarounds::apply_linux_nvidia_workaround();
     workarounds::apply_gpu_acceleration_preference(&initial_config.performance);
-    let _main_window_browser_args =
+    #[cfg(target_os = "windows")]
+    let main_window_browser_args =
         workarounds::main_window_browser_args(&initial_config.performance);
 
     // Initialize logging after startup-only process environment adjustments.
@@ -222,7 +223,7 @@ pub fn run() {
                     .inner_size(1100.0, 600.0)
                     .min_inner_size(1100.0, 600.0)
                     .resizable(true);
-                    if let Some(args) = _main_window_browser_args.clone() {
+                    if let Some(args) = main_window_browser_args.clone() {
                         builder = builder.additional_browser_args(args);
                     }
                     builder
