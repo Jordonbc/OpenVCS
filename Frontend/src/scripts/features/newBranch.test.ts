@@ -26,13 +26,10 @@ function mountNewBranchModal() {
 }
 
 /** Installs a mocked Tauri runtime before modules capture it at import time. */
-function installTauriMock(checkoutNewBranch: boolean) {
+function installTauriMock() {
   (window as any).__TAURI__ = {
     core: {
-      invoke: vi.fn(async (cmd: string) => {
-        if (cmd === 'get_global_settings') {
-          return { general: { checkout_new_branch: checkoutNewBranch } };
-        }
+      invoke: vi.fn(async () => {
         return null;
       }),
     },
@@ -58,24 +55,19 @@ afterEach(() => {
 });
 
 describe('wireNewBranch', () => {
-  it('uses the persisted checkout-new-branch setting as the checkbox default', async () => {
-    installTauriMock(false);
+  it('defaults the checkout checkbox to enabled', async () => {
+    installTauriMock();
 
     const { wireNewBranch } = await import('./newBranch');
     wireNewBranch();
     await flushPromises();
 
     const checkout = document.getElementById('new-branch-checkout') as HTMLInputElement;
-    expect(checkout.checked).toBe(false);
+    expect(checkout.checked).toBe(true);
   });
 
   it('passes the checkout choice to branch creation', async () => {
-    const invoke = vi.fn(async (cmd: string) => {
-      if (cmd === 'get_global_settings') {
-        return { general: { checkout_new_branch: true } };
-      }
-      return null;
-    });
+    const invoke = vi.fn(async () => null);
     (window as any).__TAURI__ = {
       core: { invoke },
       event: { listen: vi.fn() },
