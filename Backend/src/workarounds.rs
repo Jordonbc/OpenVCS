@@ -1,5 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+use crate::settings::Performance;
+
 #[cfg(target_os = "linux")]
 /// Applies a runtime workaround for NVIDIA + Wayland rendering issues.
 ///
@@ -37,6 +39,38 @@ pub fn apply_linux_nvidia_workaround() {
     }
 }
 
+#[cfg(target_os = "linux")]
+/// Applies the stored GPU acceleration preference before the webview starts.
+///
+/// When disabled, this forces WebKitGTK into a software/compositing-off path.
+/// When enabled, any previously injected disable flags are removed so the host
+/// can use the default accelerated path.
+///
+/// # Parameters
+/// - `performance`: Persisted performance settings.
+///
+/// # Returns
+/// - `()`.
+pub fn apply_gpu_acceleration_preference(performance: &Performance) {
+    const COMPOSITING_KEY: &str = "WEBKIT_DISABLE_COMPOSITING_MODE";
+    const WEBGL_KEY: &str = "WEBKIT_DISABLE_WEBGL";
+
+    if performance.gpu_accel {
+        eprintln!("Clearing GPU-disable env vars where present");
+        unsafe {
+            std::env::remove_var(COMPOSITING_KEY);
+            std::env::remove_var(WEBGL_KEY);
+        }
+        return;
+    }
+
+    eprintln!("Applying GPU-disable env vars: {COMPOSITING_KEY}=1, {WEBGL_KEY}=1");
+    unsafe {
+        std::env::set_var(COMPOSITING_KEY, "1");
+        std::env::set_var(WEBGL_KEY, "1");
+    }
+}
+
 #[cfg(not(target_os = "linux"))]
 #[inline]
 /// No-op on non-Linux platforms.
@@ -45,4 +79,50 @@ pub fn apply_linux_nvidia_workaround() {
 /// - `()`.
 pub fn apply_linux_nvidia_workaround() {
     // no-op on non-Linux
+}
+
+#[cfg(not(target_os = "linux"))]
+#[inline]
+/// No-op on non-Linux platforms.
+///
+/// # Parameters
+/// - `performance`: Persisted performance settings.
+///
+/// # Returns
+/// - `()`.
+pub fn apply_gpu_acceleration_preference(_performance: &Performance) {
+    // no-op on non-Linux
+}
+
+#[cfg(target_os = "windows")]
+/// Returns additional browser arguments for the main webview when GPU acceleration is disabled.
+///
+/// # Parameters
+/// - `performance`: Persisted performance settings.
+///
+/// # Returns
+/// - Browser argument string when GPU acceleration is disabled.
+/// - `None` when no override is needed.
+pub fn main_window_browser_args(performance: &Performance) -> Option<String> {
+    if performance.gpu_accel {
+        return None;
+    }
+
+    Some(
+        "--disable-gpu --disable-gpu-compositing --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
+            .to_string(),
+    )
+}
+
+#[cfg(not(target_os = "windows"))]
+#[inline]
+/// No-op on non-Windows platforms.
+///
+/// # Parameters
+/// - `performance`: Persisted performance settings.
+///
+/// # Returns
+/// - `None`.
+pub fn main_window_browser_args(_performance: &Performance) -> Option<String> {
+    None
 }

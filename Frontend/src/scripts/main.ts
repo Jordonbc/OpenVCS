@@ -11,7 +11,7 @@ import { destroyOverlayScrollbarsFor, initOverlayScrollbarsFor, refreshOverlaySc
 import { prefs, state, hasRepo, resolveVcsActionLabel } from './state/state';
 import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
-    bindLayoutActionState, applyCommitSummaryRestriction
+    bindLayoutActionState, applyCommitSummaryRestriction, applyGpuAccelerationPreference
 } from './ui/layout';
 import { clearPluginMenubarMenus, initMenubar, refreshPluginMenubarMenus } from './ui/menubar';
 import { closeAllModals } from './ui/modals';
@@ -132,18 +132,21 @@ async function boot() {
                     const mono = String(cfg?.ux?.font_mono || '').trim();
                     if (mono) root.style.setProperty('--mono', mono);
                     applyAnimationPreference(cfg?.performance?.animations);
+                    applyGpuAccelerationPreference(cfg?.performance?.gpu_accel);
                     applyCommitSummaryRestriction(cfg?.general?.restrict_commit_summary !== false);
                 } catch { /* best-effort */ }
             } catch {
                 try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
                 setTheme(prefs.theme);
                 applyAnimationPreference(true);
+                applyGpuAccelerationPreference(true);
                 applyCommitSummaryRestriction(true);
             }
         })();
     } else {
         setTheme(prefs.theme);
         applyAnimationPreference(true);
+        applyGpuAccelerationPreference(true);
         applyCommitSummaryRestriction(true);
     }
     wireRenderListCallbacks();

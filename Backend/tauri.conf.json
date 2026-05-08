@@ -16,16 +16,7 @@
   },
   "app": {
     "withGlobalTauri": true,
-    "windows": [
-      {
-        "title": "OpenVCS",
-        "width": 1100,
-        "height": 600,
-        "resizable": true,
-        "minWidth": 1100,
-        "minHeight": 600
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     }

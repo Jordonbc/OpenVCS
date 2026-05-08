@@ -6,7 +6,7 @@ import { openModal, closeModal } from '../ui/modals';
 import { toKebab } from '../lib/dom';
 import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
-import { setTheme, applyCommitSummaryRestriction } from '../ui/layout';
+import { setTheme, applyCommitSummaryRestriction, applyGpuAccelerationPreference } from '../ui/layout';
 import { collectGeneralSettings, loadGeneralSettingsIntoForm } from './settingsGeneral';
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
 import { invokePluginAction, reloadPlugins } from '../plugins';
@@ -241,11 +241,17 @@ async function renderPluginMenus(modal: HTMLElement): Promise<void> {
     const panelsScroll = modal.querySelector('#settings-panels-scroll');
     if (!nav || !panelsScroll) return;
 
-    nav.querySelectorAll<HTMLElement>('[data-plugin-menu="true"]').forEach((node) => node.remove());
-    nav.querySelectorAll<HTMLElement>('[data-plugin-menus-wrap="true"]').forEach((node) => node.remove());
+    nav.querySelectorAll<HTMLElement>('[data-plugin-menu="true"]').forEach((node) => {
+        node.remove();
+    });
+    nav.querySelectorAll<HTMLElement>('[data-plugin-menus-wrap="true"]').forEach((node) => {
+        node.remove();
+    });
     panelsScroll
         .querySelectorAll<HTMLElement>('.panel-form[data-plugin-menu="true"]')
-        .forEach((node) => node.remove());
+        .forEach((node) => {
+            node.remove();
+        });
 
     let menus: PluginMenuPayload[] = [];
     let pluginSummaries: PluginSummary[] = [];
@@ -462,10 +468,10 @@ function activateSection(modal: HTMLElement, section: string) {
     })();
 
     const btn = nav.querySelector<HTMLElement>(`[data-section="${safeSection}"]`);
-    nav.querySelectorAll<HTMLElement>('.seg-btn').forEach(b => {
+    nav.querySelectorAll<HTMLElement>('.seg-btn').forEach((b) => {
         b.classList.toggle('active', b === btn);
     });
-    panels.querySelectorAll<HTMLElement>('.panel-form').forEach(p => {
+    panels.querySelectorAll<HTMLElement>('.panel-form').forEach((p) => {
         p.classList.toggle('hidden', p.getAttribute('data-panel') !== safeSection);
     });
 
@@ -575,7 +581,9 @@ export function wireSettings() {
         .filter((el): el is HTMLInputElement => !!el);
     const updateLfsDependentState = () => {
         const enabled = !!lfsToggle?.checked;
-        lfsDependents.forEach(input => input.disabled = !enabled);
+        lfsDependents.forEach((input) => {
+            input.disabled = !enabled;
+        });
     };
     updateLfsDependentState();
     lfsToggle?.addEventListener('change', updateLfsDependentState);
@@ -690,6 +698,14 @@ export function wireSettings() {
             }
 
             const next = collectSettingsFromForm(modal);
+            const previousCfg = (() => {
+                try {
+                    return JSON.parse(String(modal.dataset.currentCfg || '{}')) as GlobalSettings;
+                } catch {
+                    return {} as GlobalSettings;
+                }
+            })();
+            const gpuChanged = previousCfg.performance?.gpu_accel !== next.performance?.gpu_accel;
 
             await TAURI.invoke('set_global_settings', { cfg: next });
             await syncFrontendMonitoring(next);
@@ -710,10 +726,11 @@ export function wireSettings() {
                 if (mono) root.style.setProperty('--mono', mono);
                 else root.style.removeProperty('--mono');
                 applyAnimationPreference(next?.performance?.animations);
+                applyGpuAccelerationPreference(next?.performance?.gpu_accel);
                 applyCommitSummaryRestriction(next?.general?.restrict_commit_summary !== false);
             } catch {}
 
-            notify('Settings saved');
+            notify(gpuChanged ? 'Settings saved. GPU changes apply after restart.' : 'Settings saved');
             flashSavedState(settingsSave);
         } catch (e) {
             console.error('Failed to save settings:', e);
@@ -766,6 +783,7 @@ export function wireSettings() {
             await TAURI.invoke('set_global_settings', { cfg: cur });
             await syncFrontendMonitoring(cur);
             applyAnimationPreference(cur.performance?.animations);
+            applyGpuAccelerationPreference(cur.performance?.gpu_accel);
             applyCommitSummaryRestriction(cur.general?.restrict_commit_summary !== false);
             await loadSettingsIntoForm(modal);
             setTheme('system');
