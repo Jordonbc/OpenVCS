@@ -481,7 +481,8 @@ pub struct PullResult {
 
 #[tauri::command]
 /// Pushes the current branch to `origin`, refreshes tracking refs, and best-effort
-/// ensures the branch tracks its corresponding `origin/*` upstream.
+/// ensures the branch tracks its corresponding `origin/*` upstream when one is not
+/// already configured.
 ///
 /// # Parameters
 /// - `window`: Calling window handle for progress/events.
@@ -527,11 +528,18 @@ pub async fn vcs_push<R: Runtime>(
             warn!("Post-push fetch failed for branch '{current}': {e}");
         }
 
-        if let Err(e) = repo
-            .inner()
-            .set_branch_upstream(&current, &format!("origin/{current}"))
-        {
-            warn!("Failed to set upstream for published branch '{current}': {e}");
+        let upstream = repo.inner().branch_upstream(&current).map_err(|e| {
+            error!("Failed to determine upstream for branch '{current}': {e}");
+            e.to_string()
+        })?;
+
+        if upstream.is_none() {
+            if let Err(e) = repo
+                .inner()
+                .set_branch_upstream(&current, &format!("origin/{current}"))
+            {
+                warn!("Failed to set upstream for published branch '{current}': {e}");
+            }
         }
 
         info!("Push completed successfully for '{current}'");
