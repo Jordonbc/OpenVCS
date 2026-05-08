@@ -150,13 +150,18 @@ pub fn run() {
     let initial_config = settings::AppConfig::load_or_default();
     workarounds::apply_linux_nvidia_workaround();
     workarounds::apply_gpu_acceleration_preference(&initial_config.performance);
-    let _main_window_browser_args = workarounds::main_window_browser_args(&initial_config.performance);
+    let _main_window_browser_args =
+        workarounds::main_window_browser_args(&initial_config.performance);
 
     // Initialize logging after startup-only process environment adjustments.
     logging::init();
     log::info!(
         "performance: GPU acceleration {} at startup",
-        if initial_config.performance.gpu_accel { "enabled" } else { "disabled" }
+        if initial_config.performance.gpu_accel {
+            "enabled"
+        } else {
+            "disabled"
+        }
     );
     let app_state = state::AppState::new_with_config(initial_config);
     monitoring::sync_backend_monitoring(&app_state.config());
