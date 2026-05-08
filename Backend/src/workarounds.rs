@@ -108,8 +108,5 @@ pub fn main_window_browser_args(performance: &Performance) -> Option<String> {
         return None;
     }
 
-    Some(
-        "--disable-gpu --disable-gpu-compositing"
-            .to_string(),
-    )
+    Some("--disable-gpu --disable-gpu-compositing".to_string())
 }
