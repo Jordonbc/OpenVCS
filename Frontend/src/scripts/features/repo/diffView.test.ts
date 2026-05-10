@@ -65,22 +65,20 @@ describe('renderCombinedDiff', () => {
   it('renders raw textual diffs when hunk headers are missing', async () => {
     (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'vcs_diff_file') {
-        return [
-          'diff --git a/content/posts/2026/05/openvcs-announcement.md b/content/posts/2026/05/openvcs-announcement.md',
-          'index 1234567..89abcde 100644',
-          '--- a/content/posts/2026/05/openvcs-announcement.md',
-          '+++ b/content/posts/2026/05/openvcs-announcement.md',
-        ];
+        return [];
+      }
+      if (cmd === 'read_repo_file_text') {
+        return 'Title\nBody\n';
       }
       return [];
     });
 
     const { selectFile } = await import('./diffView');
 
-    await selectFile({ path: 'content/posts/2026/05/openvcs-announcement.md', status: 'M' } as FileStatus, 0);
+    await selectFile({ path: 'content/posts/2026/05/openvcs-announcement.md', status: '?' } as FileStatus, 0);
 
     const diffText = document.querySelector('#diff')?.textContent || '';
-    expect(diffText).toContain('diff --git a/content/posts/2026/05/openvcs-announcement.md b/content/posts/2026/05/openvcs-announcement.md');
-    expect(diffText).not.toContain('No textual hunks to display');
+    expect(diffText).toContain('+Title');
+    expect(diffText).toContain('+Body');
   });
 });
