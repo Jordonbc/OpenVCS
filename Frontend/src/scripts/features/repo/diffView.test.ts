@@ -1,6 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FileStatus } from '../../types';
 
 /** Provides a minimal `matchMedia` test shim used by state imports. */
 function createMatchMediaMock(query: string) {
@@ -59,5 +60,27 @@ describe('renderCombinedDiff', () => {
     expect(document.querySelector('#diff')?.innerHTML).toContain('-old');
     expect(document.querySelector('#diff .pick-hunk')).toBeNull();
     expect(document.querySelector('#diff .pick-line')).toBeNull();
+  });
+
+  it('renders raw textual diffs when hunk headers are missing', async () => {
+    (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return [
+          'diff --git a/content/posts/2026/05/openvcs-announcement.md b/content/posts/2026/05/openvcs-announcement.md',
+          'index 1234567..89abcde 100644',
+          '--- a/content/posts/2026/05/openvcs-announcement.md',
+          '+++ b/content/posts/2026/05/openvcs-announcement.md',
+        ];
+      }
+      return [];
+    });
+
+    const { selectFile } = await import('./diffView');
+
+    await selectFile({ path: 'content/posts/2026/05/openvcs-announcement.md', status: 'M' } as FileStatus, 0);
+
+    const diffText = document.querySelector('#diff')?.textContent || '';
+    expect(diffText).toContain('diff --git a/content/posts/2026/05/openvcs-announcement.md b/content/posts/2026/05/openvcs-announcement.md');
+    expect(diffText).not.toContain('No textual hunks to display');
   });
 });
