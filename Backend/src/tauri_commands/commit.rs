@@ -95,7 +95,7 @@ pub async fn commit_changes<R: Runtime>(
 }
 
 #[tauri::command]
-/// Commits only selected file paths.
+/// Stages and commits only selected file paths.
 ///
 /// # Parameters
 /// - `window`: Calling window handle for progress events.
@@ -147,7 +147,7 @@ pub async fn commit_selected<R: Runtime>(
         });
         let oid = repo
             .inner()
-            .commit(&message, &name, &email, &paths)
+            .commit_index(&message, &name, &email)
             .map_err(|e| {
                 error!("Commit (selected) failed: {e}");
                 e.to_string()
@@ -159,7 +159,7 @@ pub async fn commit_selected<R: Runtime>(
 }
 
 #[tauri::command]
-/// Applies a patch to the index and creates a commit from staged hunks.
+/// Applies a patch to the index, stages selected files, and commits the staged index.
 ///
 /// # Parameters
 /// - `window`: Calling window handle for progress events.
@@ -290,18 +290,15 @@ pub async fn commit_patch_and_files<R: Runtime>(
                 e.to_string()
             })?;
         }
-        let commit_paths: Vec<PathBuf> = if files.is_empty() {
-            stage_paths.clone()
-        } else {
-            files.iter().map(PathBuf::from).collect()
-        };
-        let oid = if commit_paths.is_empty() {
+        let has_selection = !patch.trim().is_empty() || !files.is_empty() || !stage_paths.is_empty();
+        if !has_selection {
             return Err("No commit paths provided".into());
-        } else {
-            repo.inner()
-                .commit(&message, &name, &email, &commit_paths)
-                .map_err(|e| e.to_string())?
-        };
+        }
+
+        let oid = repo
+            .inner()
+            .commit_index(&message, &name, &email)
+            .map_err(|e| e.to_string())?;
         on(VcsEvent::Info {
             msg: "Commit complete".into(),
         });

@@ -35,8 +35,16 @@ export function bindCommit() {
                 ...Object.keys(linesMap).filter(p => linesMap[p] && Object.keys(linesMap[p] || {}).length > 0),
             ]));
 
+            const selectedUntrackedFiles = new Set(
+                (state.files || [])
+                    .filter((file: any) => String(file?.status || '').includes('?'))
+                    .map((file: any) => String(file?.path || ''))
+                    .filter(Boolean),
+            );
+
             // Full-file selections are staged directly; partial selections are staged via patch.
-            const stagePaths = selectedFiles.filter(f => !partialFiles.includes(f));
+            // Untracked files still need to be staged even if the UI has synthetic hunk state.
+            const stagePaths = selectedFiles.filter(f => !partialFiles.includes(f) || selectedUntrackedFiles.has(f));
 
             // Build patch only from hunk and line selections.
             let combinedPatch = '';
