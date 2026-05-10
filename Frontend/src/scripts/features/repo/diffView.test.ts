@@ -62,7 +62,7 @@ describe('renderCombinedDiff', () => {
     expect(document.querySelector('#diff .pick-line')).toBeNull();
   });
 
-  it('renders raw textual diffs when hunk headers are missing', async () => {
+  it('synthesizes a diff for untracked files reported as ??', async () => {
     (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'vcs_diff_file') {
         return [];
@@ -75,10 +75,27 @@ describe('renderCombinedDiff', () => {
 
     const { selectFile } = await import('./diffView');
 
-    await selectFile({ path: 'content/posts/2026/05/openvcs-announcement.md', status: '?' } as FileStatus, 0);
+    await selectFile({ path: 'content/posts/2026/05/openvcs-announcement.md', status: '??' } as FileStatus, 0);
 
     const diffText = document.querySelector('#diff')?.textContent || '';
     expect(diffText).toContain('+Title');
     expect(diffText).toContain('+Body');
+  });
+
+  it('does not treat an empty diff payload as binary', async () => {
+    (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return [];
+      }
+      return [];
+    });
+
+    const { selectFile } = await import('./diffView');
+
+    await selectFile({ path: 'content/posts/2026/05/openvcs-announcement.md', status: 'M' } as FileStatus, 0);
+
+    const diffText = document.querySelector('#diff')?.textContent || '';
+    expect(diffText).toContain('No textual hunks to display');
+    expect(diffText).not.toContain('Diff not supported on this file type');
   });
 });

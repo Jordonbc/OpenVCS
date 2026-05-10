@@ -34,8 +34,11 @@ const BINARY_DIFF_INDICATORS = [
 
 /** Returns true when the diff payload should be treated as binary. */
 function detectBinaryDiff(lines: string[] = []) {
-    if (!Array.isArray(lines) || lines.length === 0) {
+    if (!Array.isArray(lines)) {
         return true;
+    }
+    if (lines.length === 0) {
+        return false;
     }
     const hasHunks = lines.some((line) => (line || '').startsWith('@@'));
     if (hasHunks) {
@@ -66,6 +69,11 @@ function buildUntrackedTextPatch(path: string, text: string): string[] {
     ];
     for (const line of body) out.push(`+${line}`);
     return out;
+}
+
+/** Returns true when a status code represents an untracked file. */
+function isUntrackedStatus(status: string) {
+    return String(status || '').includes('?');
 }
 
 /** Highlights a row in the left list for the current tab. */
@@ -102,7 +110,7 @@ export async function selectFile(file: FileStatus, index: number) {
         if (file.path) {
             lines = await TAURI.invoke<string[]>('vcs_diff_file', { path: file.path });
         }
-        if (status === '?' && file.path && (!Array.isArray(lines) || lines.length === 0)) {
+        if (isUntrackedStatus(status) && file.path && (!Array.isArray(lines) || lines.length === 0)) {
             try {
                 const text = await TAURI.invoke<string>('read_repo_file_text', { path: file.path });
                 lines = buildUntrackedTextPatch(file.path, text || '');
