@@ -15,7 +15,11 @@ fn load_local_dotenv(manifest_dir: &std::path::Path) {
 
     for (key, value) in iter.flatten() {
         if env::var_os(&key).is_none() {
-            env::set_var(key, value);
+            // SAFETY: build.rs runs during cargo's single-threaded script phase,
+            // before this process spawns any worker threads that could race on env state.
+            unsafe {
+                env::set_var(key, value);
+            }
         }
     }
 }
@@ -251,29 +255,27 @@ fn main() {
     );
 
     // Navigate: plugins.updater.endpoints
-    if let Some(plugins) = json.get_mut("plugins") {
-        if let Some(updater) = plugins.get_mut("updater") {
-            let endpoints: Vec<serde_json::Value> = channel
-                .updater_endpoints
-                .iter()
-                .map(|s| serde_json::Value::String((*s).to_string()))
-                .collect();
-            updater["endpoints"] = serde_json::Value::Array(endpoints);
-        }
+    if let Some(plugins) = json.get_mut("plugins")
+        && let Some(updater) = plugins.get_mut("updater")
+    {
+        let endpoints: Vec<serde_json::Value> = channel
+            .updater_endpoints
+            .iter()
+            .map(|s| serde_json::Value::String((*s).to_string()))
+            .collect();
+        updater["endpoints"] = serde_json::Value::Array(endpoints);
     }
 
     json["mainBinaryName"] = serde_json::Value::String(channel.main_binary_name.into());
     json["productName"] = serde_json::Value::String(channel.product_name.into());
     json["identifier"] = serde_json::Value::String(channel.identifier.into());
-    if let Some(app) = json.get_mut("app") {
-        if let Some(windows) = app
+    if let Some(app) = json.get_mut("app")
+        && let Some(windows) = app
             .get_mut("windows")
             .and_then(|value| value.as_array_mut())
-        {
-            if let Some(main_window) = windows.first_mut() {
-                main_window["title"] = serde_json::Value::String(channel.window_title.into());
-            }
-        }
+        && let Some(main_window) = windows.first_mut()
+    {
+        main_window["title"] = serde_json::Value::String(channel.window_title.into());
     }
 
     // The app should only ever point at a dev server when running `cargo tauri dev`.
@@ -283,21 +285,20 @@ fn main() {
 
     // Non-dev builds should never point at the dev server.
     // We build the frontend ahead of time and ship it as production assets.
-    if strip_dev_server {
-        if let Some(build) = json.get_mut("build") {
-            if let Some(build_obj) = build.as_object_mut() {
-                build_obj.remove("devUrl");
-                build_obj.remove("beforeDevCommand");
-            }
-        }
+    if strip_dev_server
+        && let Some(build) = json.get_mut("build")
+        && let Some(build_obj) = build.as_object_mut()
+    {
+        build_obj.remove("devUrl");
+        build_obj.remove("beforeDevCommand");
     }
 
     // Flatpak apps update via Flatpak, not the in-app updater.
     if is_flatpak_build() {
-        if let Some(plugins) = json.get_mut("plugins") {
-            if let Some(updater) = plugins.get_mut("updater") {
-                updater["active"] = serde_json::Value::Bool(false);
-            }
+        if let Some(plugins) = json.get_mut("plugins")
+            && let Some(updater) = plugins.get_mut("updater")
+        {
+            updater["active"] = serde_json::Value::Bool(false);
         }
         if let Some(bundle) = json.get_mut("bundle") {
             bundle["createUpdaterArtifacts"] = serde_json::Value::Bool(false);
@@ -341,7 +342,7 @@ fn main() {
     println!("cargo:rustc-env=GIT_DESCRIBE={}", describe);
 
     // Dev builds (local/nightly) should show git branch+hash (+dirty) as version metadata.
-    // Official production builds should show the real package version.
+    // Official production builds and CI-patched prerelease builds should show the package version.
     //
     // Rules:
     // - `OPENVCS_OFFICIAL_RELEASE=1` forces "official" behavior.
@@ -355,11 +356,11 @@ fn main() {
     println!("cargo:rerun-if-changed=.git/packed-refs");
     println!("cargo:rerun-if-changed=src");
 
-    if let Ok(head) = fs::read_to_string(".git/HEAD") {
-        if let Some(rest) = head.trim().strip_prefix("ref: ") {
-            let ref_path = format!(".git/{rest}");
-            println!("cargo:rerun-if-changed={ref_path}");
-        }
+    if let Ok(head) = fs::read_to_string(".git/HEAD")
+        && let Some(rest) = head.trim().strip_prefix("ref: ")
+    {
+        let ref_path = format!(".git/{rest}");
+        println!("cargo:rerun-if-changed={ref_path}");
     }
 
     let branch = git_branch().unwrap_or_else(|| "unknown".into());
@@ -376,7 +377,7 @@ fn main() {
 
     let official = is_truthy_env("OPENVCS_OFFICIAL_RELEASE") || (head_is_version_tag && !dirty);
 
-    let version = if official {
+    let version = if official || pkg_version.contains('-') {
         pkg_version.clone()
     } else {
         let branch_ident = sanitize_semver_ident(&branch);

@@ -32,8 +32,8 @@ export type DiffMeta = {
 
 /** References to DOM elements for a hunk. */
 export type HunkNodeRefs = {
-    hunkEl: HTMLElement;
-    hunkCheckbox: HTMLInputElement | null;
+    hunkEls: HTMLElement[];
+    hunkCheckboxes: HTMLInputElement[];
     lineCheckboxes: Record<number, HTMLInputElement>;
 };
 
@@ -45,10 +45,12 @@ export const state = {
     branches: [] as Branch[],       // list of branches
     files: [] as FileStatus[],      // working tree status
     commits: [] as CommitItem[],    // recent commits
+    vcsActionLabels: {} as Record<string, string>, // resolved action labels from the active backend
     selectedCommit: null as CommitItem | null,
     stash: [] as StashItem[],       // stash entries
     ahead: 0 as number,             // commits ahead of upstream
     behind: 0 as number,            // commits behind upstream
+    branchOnRemote: false as boolean, // current branch has a tracking reference on a remote
     aheadIds: new Set<string>() as Set<string>, // IDs of commits ahead of upstream
     mergeInProgress: false as boolean,
     seenConflicts: new Set<string>() as Set<string>,
@@ -78,12 +80,32 @@ export const hasRepo = (): boolean => Boolean(state.hasRepo);
 export const hasChanges = (): boolean =>
     Array.isArray(state.files) && state.files.length > 0;
 
+/** True iff a VCS status code represents an unresolved merge conflict. */
+export const isConflictStatus = (status: unknown): boolean => {
+    const s = String(status || '').trim().toUpperCase();
+    return s === 'U' || s.includes('U') || s === 'AA' || s === 'DD';
+};
+
+/**
+ * Resolves a backend-provided VCS action label with a generic fallback.
+ * @param actionKey - Stable namespaced action key such as `VCS.Push`.
+ * @param fallback - Generic text to use when no label is available.
+ * @returns The resolved user-facing label.
+ */
+export function resolveVcsActionLabel(actionKey: string, fallback: string): string {
+    const key = String(actionKey || '').trim();
+    if (!key) return fallback;
+    const label = state.vcsActionLabels[key];
+    return String(label || '').trim() || fallback;
+}
+
 /**
  * Get display label for a file status code.
  * @param s - Status code character
  * @returns Human-readable status label
  */
 export const statusLabel = (s: string) =>
+    isConflictStatus(s) ? 'Conflicted' :
     s === 'A' ? 'Added' :
         s === '?' ? 'Untracked' :
             s === 'R' ? 'Renamed' :
@@ -100,6 +122,7 @@ export const statusLabel = (s: string) =>
  * @returns CSS class suffix used by status badges
  */
 export const statusClass = (s: string) =>
+    isConflictStatus(s) ? 'conflict' :
     s === 'A' ? 'add' :
         s === '?' ? 'untracked' :
             s === 'R' ? 'ren' :

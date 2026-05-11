@@ -6,7 +6,7 @@
   "author": "Jordon Brooks",
   "license": "ISC",
   "dependencies": {
-    "overlayscrollbars": "^2.15.1"
+    "overlayscrollbars": "^2.16.0"
   },
   "scripts": {
     "dev": "vite",
@@ -16,11 +16,11 @@
     "preview": "vite preview --strictPort --port 1420"
   },
   "devDependencies": {
-    "@sentry/vite-plugin": "^4.5.0",
-    "@types/node": "^25.6.0",
-    "jsdom": "^29.0.2",
+    "@sentry/vite-plugin": "^5.2.1",
+    "@types/node": "^25.6.2",
+    "jsdom": "^29.1.1",
     "typescript": "^6.0.3",
-    "vite": "^8.0.9",
+    "vite": "^8.0.12",
     "vitest": "^4.1.4"
   }
 }

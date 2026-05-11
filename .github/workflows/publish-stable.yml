@@ -72,7 +72,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
 
       - name: Install Linux build deps (Ubuntu)
         if: matrix.platform == 'ubuntu-24.04'
@@ -99,6 +99,8 @@ jobs:
           flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//25.08 \
             || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//24.08 \
             || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable
+          flatpak install --user -y flathub org.freedesktop.Sdk.Extension.node24//25.08 \
+            || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.node24//24.08
 
       - name: Verify Flatpak manifest exists
         if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''

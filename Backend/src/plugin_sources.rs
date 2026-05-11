@@ -3,7 +3,7 @@
 //! Config-driven plugin source resolution and synchronization.
 
 use crate::plugin_bundles::{
-    normalize_plugin_id, InstalledPluginSourceMetadata, PluginBundleStore,
+    InstalledPluginSourceMetadata, PluginBundleStore, normalize_plugin_id,
 };
 use crate::settings::AppConfig;
 use flate2::read::GzDecoder;
@@ -363,11 +363,7 @@ fn has_non_empty_object_field(value: &serde_json::Value, field: &str) -> bool {
 /// - `npm` on Unix-like systems.
 /// - `npm.cmd` on Windows.
 fn npm_executable() -> &'static str {
-    if cfg!(windows) {
-        "npm.cmd"
-    } else {
-        "npm"
-    }
+    if cfg!(windows) { "npm.cmd" } else { "npm" }
 }
 
 /// Ensures npm is available before plugin source sync begins.

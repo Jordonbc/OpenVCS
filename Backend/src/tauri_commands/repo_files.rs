@@ -70,17 +70,17 @@ fn normalize_gitignore_entry(path: &str) -> Result<String, String> {
 /// # Returns
 /// - `Ok(())` when update succeeds.
 /// - `Err(String)` when validation or file IO fails.
-pub async fn git_add_to_gitignore_paths(
+pub async fn vcs_add_to_gitignore_paths(
     state: State<'_, AppState>,
     paths: Vec<String>,
 ) -> Result<(), String> {
-    info!("git_add_to_gitignore_paths called (count={})", paths.len());
+    info!("vcs_add_to_gitignore_paths called (count={})", paths.len());
     if paths.is_empty() {
         return Ok(());
     }
 
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("git_add_to_gitignore_paths", repo, move |repo| {
+    run_repo_task("vcs_add_to_gitignore_paths", repo, move |repo| {
         let workdir = repo.inner().workdir();
         let gitignore_path = workdir.join(".gitignore");
 

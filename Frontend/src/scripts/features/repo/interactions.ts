@@ -35,8 +35,7 @@ export function onFileClick(e: MouseEvent, file: FileStatus, index: number, visi
         const b = Math.max(dragState.lastClickedIndex, index);
         for (let i = a; i <= b; i++) {
             const p = visible[i]?.path; if (!p) continue;
-            if (state.selectedFiles.has(p)) state.selectedFiles.delete(p);
-            else state.selectedFiles.add(p);
+            state.selectedFiles.add(p);
         }
         disableDefaultSelectAll();
         updateSelectAllState(visible);
@@ -164,12 +163,12 @@ export function updateDragRange(visible: FileStatus[]) {
             });
         }
     } else if (dragState.dragMode === 'commit') {
-        const next = new Set<string>();
+        const next = new Set<string>(dragState.dragPrePicked);
         for (let i = 0; i < visible.length; i++) {
             const p = visible[i]?.path; if (!p) continue;
             const inRange = i >= a && i <= b;
             const on = inRange ? dragState.dragTargetState : dragState.dragPrePicked.has(p);
-            if (on) next.add(p);
+            if (on) next.add(p); else next.delete(p);
             if (list) {
                 const row = list.querySelector<HTMLElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"]`);
                 if (row) row.classList.toggle('picked', on);
@@ -264,7 +263,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         const ok = await confirmBool(`Add ${label} to .gitignore?`);
         if (!ok) return;
         try {
-            await TAURI.invoke('git_add_to_gitignore_paths', { paths: targets });
+            await TAURI.invoke('vcs_add_to_gitignore_paths', { paths: targets });
             notify(targets.length > 1 ? 'Added to .gitignore' : 'Added to .gitignore');
             await Promise.allSettled([hydrateStatus()]);
         } catch {
@@ -277,14 +276,14 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             const paths = selectedPaths.slice();
             const ok = await confirmBool(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
             if (!ok) return;
-            try { await TAURI.invoke('git_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
+            try { await TAURI.invoke('vcs_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
             catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
         }});
     }
     items.push({ label: 'Discard changes', action: async () => {
         const ok = await confirmBool(`Discard all changes in \n${f.path}? This cannot be undone.`);
         if (!ok) return;
-        try { await TAURI.invoke('git_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
+        try { await TAURI.invoke('vcs_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
         catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
     }});
 
@@ -334,5 +333,7 @@ function renderListAfterRangeSelect(file: FileStatus) {
 /** Applies active-row styling by index in the current list. */
 function highlightRow(index: number) {
     const rows = listEl?.querySelectorAll<HTMLElement>('li.row');
-    rows?.forEach((el, i) => el.classList.toggle('active', i === index));
+    rows?.forEach((el, i) => {
+        el.classList.toggle('active', i === index);
+    });
 }

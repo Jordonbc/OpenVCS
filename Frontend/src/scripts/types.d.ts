@@ -72,6 +72,7 @@ export interface GlobalSettings {
         checks_on_launch?: boolean;
         telemetry?: boolean;
         crash_reports?: boolean;
+        restrict_commit_summary?: boolean;
     };
     git?: {
         backend?: string;

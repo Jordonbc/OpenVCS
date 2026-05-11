@@ -72,6 +72,10 @@ Selected-file commit flows stage repository-relative paths into the index with
 `vcs.stage_paths` before issuing `vcs.commit`. Plugins implementing selected-path
 commits should therefore support both RPCs consistently.
 
+Clone flows resolve the final target directory in the host and then invoke the
+selected backend plugin's `vcs.clone_repo` method with `{ url, dest }`, where
+`dest` is the full repository destination path.
+
 Plugin runtime requires the app-bundled Node binary; there is no fallback to a
 system `node` executable.
 
@@ -144,7 +148,11 @@ The host currently consumes these manifest fields from `package.json.openvcs`:
 - `name`, `version` (optional but recommended)
 - `default_enabled` (optional)
 - `module.exec` (optional Node entry filename under `bin/`)
-- `module.vcs_backends` (optional VCS backend ids the module provides)
+- `module.vcs_backends` (optional VCS backend ids or backend objects the module provides)
+
+Backend objects may include a namespaced action-label map such as `VCS.Push`
+→ `Push`, `VCS.Pull` → `Pull`, and `VCS.Commit` → `Commit`. The client falls
+back to generic VCS text when a label is missing.
 
 `module.exec` must resolve to a `.js`, `.mjs`, or `.cjs` file inside `bin/`.
 
@@ -156,6 +164,8 @@ The host currently consumes these manifest fields from `package.json.openvcs`:
 - Non-VCS module runtimes are started and stopped according to enabled state.
 - VCS backend plugin runtimes are repo-scoped and start when opening a
   repository through that backend.
+- Saving global settings preserves active repo-scoped VCS backend runtimes when
+  the backend plugin remains enabled, so the current repository stays usable.
 - Closing the main window tears down config watchers and active plugin
   runtimes so `cargo tauri dev` exits promptly instead of leaving the backend
   process alive.

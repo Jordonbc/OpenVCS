@@ -4,19 +4,19 @@
     <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="sheet-head">
             <h3 id="settings-title" style="margin:0">Settings</h3>
-            <button class="icon close" data-close aria-label="Close">✕</button>
+            <button class="icon close" data-close type="button" aria-label="Close">✕</button>
         </div>
 
         <section class="sheet-body">
             <!-- Sidebar -->
             <nav class="list-scroll" aria-label="Settings sections">
                 <ul id="settings-nav" class="list">
-                    <li><button class="seg-btn active" data-section="general">General</button></li>
-                    <li><button class="seg-btn" data-section="diff">Diff &amp; Merge</button></li>
-                    <li><button class="seg-btn" data-section="performance">Performance</button></li>
-                    <li><button class="seg-btn" data-section="ux">UX</button></li>
-                    <li><button class="seg-btn" data-section="logging">Logging</button></li>
-                    <li><button class="seg-btn" data-section="plugins">Plugins</button></li>
+                    <li><button class="seg-btn active" type="button" data-section="general">General</button></li>
+                    <li><button class="seg-btn" type="button" data-section="diff">Diff &amp; Merge</button></li>
+                    <li><button class="seg-btn" type="button" data-section="performance">Performance</button></li>
+                    <li><button class="seg-btn" type="button" data-section="ux">UX</button></li>
+                    <li><button class="seg-btn" type="button" data-section="logging">Logging</button></li>
+                    <li><button class="seg-btn" type="button" data-section="plugins">Plugins</button></li>
                     <!-- You can add: integrations, advanced, experimental, logging, network later -->
                 </ul>
             </nav>
@@ -94,6 +94,14 @@
                             <input type="checkbox" id="set-crash-reports" />
                             Send diagnostics and crash reports
                             <span class="help-tip" title="When enabled, frontend and backend errors, startup failures, and recent diagnostic breadcrumbs can be reported to Sentry using the app's configured monitoring endpoint.">?</span>
+                        </label>
+                    </div>
+
+                    <div class="group">
+                        <label class="checkbox">
+                            <input type="checkbox" id="set-restrict-commit-summary" />
+                            Limit commit summary to 72 characters
+                            <span class="help-tip" title="When enabled, the commit summary box caps input at 72 characters so it fits a standard Git commit title. Enabled by default.">?</span>
                         </label>
                     </div>
 
@@ -176,8 +184,8 @@
                         </label>
                     </div>
                     <div class="group">
-                        <label class="checkbox"><input type="checkbox" id="set-gpu-accel" disabled /> GPU acceleration
-                            <span class="help-tip" title="Use GPU acceleration when available for smoother rendering.">?</span>
+                        <label class="checkbox"><input type="checkbox" id="set-gpu-accel" /> GPU acceleration
+                            <span class="help-tip" title="Takes effect on next app restart; enables accelerated webview compositing where supported.">?</span>
                         </label>
                     </div>
                     

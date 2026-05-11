@@ -96,6 +96,9 @@ pub struct StatusPayload {
     pub ahead: u32,
     /// Number of commits behind the remote.
     pub behind: u32,
+    /// Whether the current branch has a tracking reference on a remote.
+    #[serde(default)]
+    pub branch_on_remote: bool,
 }
 
 /// Lightweight commit representation for lists.
@@ -137,8 +140,9 @@ pub struct LogQuery {
     pub author_contains: Option<String>,
     /// Number of commits to skip.
     pub skip: u32,
-    /// Maximum number of commits to return.
-    pub limit: u32,
+    /// Maximum number of commits to return, or `None` for unlimited.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
     /// Sort in topological order.
     pub topo_order: bool,
     /// Include merge commits.
@@ -149,7 +153,7 @@ impl LogQuery {
     /// Creates a query for the HEAD commit with the given limit.
     pub fn head(limit: u32) -> Self {
         Self {
-            limit,
+            limit: Some(limit),
             ..Default::default()
         }
     }
@@ -216,7 +220,7 @@ mod tests {
     /// Verifies `LogQuery::head` sets only the limit field.
     fn log_query_head_sets_limit_and_defaults_rest() {
         let query = LogQuery::head(25);
-        assert_eq!(query.limit, 25);
+        assert_eq!(query.limit, Some(25));
         assert!(query.rev.is_none());
         assert!(query.path.is_none());
         assert_eq!(query.skip, 0);

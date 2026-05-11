@@ -6,11 +6,12 @@ import { notify } from '../lib/notify';
 import { hydrate, openModal, closeModal } from '../ui/modals';
 import { hydrateStatus } from './repo';
 import type { FileStatus, ConflictDetails, GlobalSettings } from '../types';
+import { isConflictStatus } from '../state/state';
 
 let mergeModalWired = false;
 let currentConflict: { path: string; details: ConflictDetails } | null = null;
 let summaryModalWired = false;
-let autoOpenedPaths: Set<string> = new Set();
+let autoOpenedConflictSignature = '';
 
 const externalToolState = {
     loaded: false,
@@ -30,7 +31,7 @@ async function ensureMergeModal() {
         const content = textarea?.value ?? '';
         const path = currentConflict.path;
         try {
-            await TAURI.invoke('git_save_merge_result', { path, content });
+            await TAURI.invoke('vcs_save_merge_result', { path, content });
             notify('Saved merge result');
             closeModal('merge-modal');
             await Promise.allSettled([hydrateStatus()]);
@@ -87,7 +88,7 @@ async function ensureSummaryModal() {
         const ok = await confirmBool('Abort the merge? This will discard merge progress.');
         if (!ok) return;
         try {
-            await TAURI.invoke('git_merge_abort');
+            await TAURI.invoke('vcs_merge_abort');
             notify('Merge aborted');
             closeModal('conflicts-summary-modal');
             await hydrateStatus();
@@ -98,7 +99,7 @@ async function ensureSummaryModal() {
 
     contBtn?.addEventListener('click', async () => {
         try {
-            await TAURI.invoke('git_merge_continue');
+            await TAURI.invoke('vcs_merge_continue');
             notify('Merge committed');
             closeModal('conflicts-summary-modal');
             await hydrateStatus();
@@ -122,9 +123,9 @@ export async function openConflictsSummary(files: FileStatus[]): Promise<void> {
     const contBtn = modal.querySelector<HTMLButtonElement>('#conflicts-continue');
 
     const conflicted = (Array.isArray(files) ? files : [])
-        .filter((f) => String(f?.status || '').toUpperCase() === 'U' && !!f?.path);
+        .filter((f) => isConflictStatus(f?.status) && !!f?.path);
 
-    const ctx = await TAURI.invoke<{ in_progress: boolean }>('git_merge_context').catch(() => ({ in_progress: false }));
+    const ctx = await TAURI.invoke<{ in_progress: boolean }>('vcs_merge_context').catch(() => ({ in_progress: false }));
     const inMerge = !!ctx?.in_progress;
 
     if (subEl) subEl.textContent = inMerge ? 'Resolve conflicts before committing the merge' : 'Resolve conflicts in your working tree';
@@ -167,7 +168,7 @@ export async function openConflictsSummary(files: FileStatus[]): Promise<void> {
             resolveBtn.textContent = 'Resolve…';
             resolveBtn.addEventListener('click', async () => {
                 try {
-                    const details = await TAURI.invoke<ConflictDetails>('git_conflict_details', { path: f.path });
+                    const details = await TAURI.invoke<ConflictDetails>('vcs_conflict_details', { path: f.path });
                     await openMergeModal(f, details);
                 } catch (e) {
                     notify(`Failed to open conflict: ${String(e || '')}`);
@@ -205,19 +206,24 @@ export async function openConflictsSummary(files: FileStatus[]): Promise<void> {
 export async function autoOpenFirstConflict(files: FileStatus[]): Promise<void> {
     if (!Array.isArray(files) || files.length === 0) return;
 
-    const conflicted = files.find((f) => String(f?.status || '').toUpperCase() === 'U' && !!f?.path);
-    if (!conflicted?.path) {
-        autoOpenedPaths = new Set();
+    const conflictedPaths = files
+        .filter((f) => isConflictStatus(f?.status) && !!f?.path)
+        .map((f) => String(f.path))
+        .sort();
+    const conflicted = conflictedPaths[0];
+    if (!conflicted) {
+        autoOpenedConflictSignature = '';
         return;
     }
+    const signature = conflictedPaths.join('\n');
 
-    if (autoOpenedPaths.has(conflicted.path)) return;
+    if (signature === autoOpenedConflictSignature) return;
 
     const modal = document.getElementById('merge-modal') as HTMLElement | null;
     if (modal && modal.getAttribute('aria-hidden') === 'false') return;
 
     try {
-        autoOpenedPaths.add(conflicted.path);
+        autoOpenedConflictSignature = signature;
         await openConflictsSummary(files);
     } catch (err) {
         console.error(err);
@@ -249,7 +255,7 @@ export async function launchExternalMergeTool(path: string): Promise<void> {
         return;
     }
     try {
-        await TAURI.invoke('git_launch_merge_tool', { path });
+        await TAURI.invoke('vcs_launch_merge_tool', { path });
         notify('Opened custom merge tool');
     } catch (err) {
         console.error(err);

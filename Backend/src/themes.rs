@@ -374,14 +374,12 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
                             .plugin_id
                             .trim()
                             .eq_ignore_ascii_case(theme_dir.plugin_id.trim())
+                            && let Ok(other_manifest) = read_manifest_from_directory(&other.path)
+                            && other_manifest.id.trim().eq_ignore_ascii_case(requested)
                         {
-                            if let Ok(other_manifest) = read_manifest_from_directory(&other.path) {
-                                if other_manifest.id.trim().eq_ignore_ascii_case(requested) {
-                                    matches += 1;
-                                    if matches > 0 {
-                                        break;
-                                    }
-                                }
+                            matches += 1;
+                            if matches > 0 {
+                                break;
                             }
                         }
                     }

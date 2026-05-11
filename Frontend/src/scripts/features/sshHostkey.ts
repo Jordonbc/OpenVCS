@@ -47,7 +47,7 @@ function wireModalOnce() {
     setBusy(true);
     try {
       await TAURI.invoke('ssh_trust_host', { host: current.host });
-      await TAURI.invoke('git_fetch_all', {});
+      await TAURI.invoke('vcs_fetch_all', {});
       await hydrateBranches();
       notify(`Trusted ${current.host}`);
       closeModal('ssh-hostkey-modal');

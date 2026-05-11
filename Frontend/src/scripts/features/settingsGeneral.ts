@@ -16,17 +16,18 @@ export function collectGeneralSettings(
   const themePack = get<HTMLSelectElement>('#set-theme')?.value || DEFAULT_LIGHT_THEME_ID;
   const theme = autoTheme ? 'system' : modeForTheme(themePack);
 
-  return {
-    ...base.general,
-    theme,
-    theme_pack: themePack || DEFAULT_LIGHT_THEME_ID,
-    language: get<HTMLSelectElement>('#set-language')?.value,
+    return {
+        ...base.general,
+        theme,
+        theme_pack: themePack || DEFAULT_LIGHT_THEME_ID,
+        language: get<HTMLSelectElement>('#set-language')?.value,
     default_backend: (get<HTMLSelectElement>('#set-default-backend')?.value || 'git') as any,
     update_channel: get<HTMLSelectElement>('#set-update-channel')?.value || 'stable',
-    reopen_last_repos: !!get<HTMLInputElement>('#set-reopen-last')?.checked,
-    checks_on_launch: !!get<HTMLInputElement>('#set-checks-on-launch')?.checked,
-    crash_reports: !!get<HTMLInputElement>('#set-crash-reports')?.checked,
-  };
+        reopen_last_repos: !!get<HTMLInputElement>('#set-reopen-last')?.checked,
+        checks_on_launch: !!get<HTMLInputElement>('#set-checks-on-launch')?.checked,
+        crash_reports: !!get<HTMLInputElement>('#set-crash-reports')?.checked,
+        restrict_commit_summary: !!get<HTMLInputElement>('#set-restrict-commit-summary')?.checked,
+    };
 }
 
 /** Loads the General panel settings into the settings modal form controls. */
@@ -71,6 +72,8 @@ export async function loadGeneralSettingsIntoForm(
   if (elReo) elReo.checked = !!cfg.general?.reopen_last_repos;
   const elChk = get<HTMLInputElement>('#set-checks-on-launch');
   if (elChk) elChk.checked = !!cfg.general?.checks_on_launch;
-  const elCrash = get<HTMLInputElement>('#set-crash-reports');
-  if (elCrash) elCrash.checked = !!cfg.general?.crash_reports;
+    const elCrash = get<HTMLInputElement>('#set-crash-reports');
+    if (elCrash) elCrash.checked = !!cfg.general?.crash_reports;
+    const elRestrict = get<HTMLInputElement>('#set-restrict-commit-summary');
+    if (elRestrict) elRestrict.checked = cfg.general?.restrict_commit_summary !== false;
 }

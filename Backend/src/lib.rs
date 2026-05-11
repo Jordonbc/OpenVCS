@@ -7,9 +7,9 @@
 
 use log::{error, warn};
 use std::sync::Arc;
-use tauri::path::BaseDirectory;
 use tauri::WindowEvent;
-use tauri::{Emitter, Manager};
+use tauri::path::BaseDirectory;
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_updater::UpdaterExt;
 
 use crate::core::BackendId;
@@ -147,12 +147,25 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     load_local_dotenv();
-    // Initialize logging
-    logging::init();
-    let app_state = state::AppState::new_with_config();
-    monitoring::sync_backend_monitoring(&app_state.config());
-
+    let initial_config = settings::AppConfig::load_or_default();
     workarounds::apply_linux_nvidia_workaround();
+    workarounds::apply_gpu_acceleration_preference(&initial_config.performance);
+    #[cfg(target_os = "windows")]
+    let main_window_browser_args =
+        workarounds::main_window_browser_args(&initial_config.performance);
+
+    // Initialize logging after startup-only process environment adjustments.
+    logging::init();
+    log::info!(
+        "performance: GPU acceleration {} at startup",
+        if initial_config.performance.gpu_accel {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    );
+    let app_state = state::AppState::new_with_config(initial_config);
+    monitoring::sync_backend_monitoring(&app_state.config());
 
     println!("Running OpenVCS...");
 
@@ -197,6 +210,39 @@ pub fn run() {
                     crate::plugin_paths::set_resource_dir(parent.to_path_buf());
                 }
             }
+
+            if app.get_webview_window("main").is_none() {
+                #[cfg(target_os = "windows")]
+                let builder = {
+                    let mut builder = WebviewWindowBuilder::new(
+                        app,
+                        "main",
+                        WebviewUrl::App("index.html".into()),
+                    )
+                    .title("OpenVCS")
+                    .inner_size(1100.0, 600.0)
+                    .min_inner_size(1100.0, 600.0)
+                    .resizable(true);
+                    if let Some(args) = main_window_browser_args.clone() {
+                        builder = builder.additional_browser_args(args);
+                    }
+                    builder
+                };
+                #[cfg(not(target_os = "windows"))]
+                let builder = WebviewWindowBuilder::new(
+                    app,
+                    "main",
+                    WebviewUrl::App("index.html".into()),
+                )
+                .title("OpenVCS")
+                .inner_size(1100.0, 600.0)
+                .min_inner_size(1100.0, 600.0)
+                .resizable(true);
+                if let Err(err) = builder.build() {
+                    log::error!("failed to create main window: {}", err);
+                }
+            }
+
             // Keep resource lookup state populated before resolving bundled Node
             // candidates. `bundled_node_candidate_paths()` uses both the generic
             // RESOURCE_DIR base and the exact Tauri-resolved `node-runtime`
@@ -269,14 +315,13 @@ pub fn run() {
             };
             if check_updates {
                 tauri::async_runtime::spawn(async move {
-                    if let Ok(updater) = app_handle.updater() {
-                        if let Ok(Some(_u)) = updater.check().await {
+                    if let Ok(updater) = app_handle.updater()
+                        && let Ok(Some(_u)) = updater.check().await {
                             let _ = app_handle.emit(
                                 "ui:update-available",
                                 serde_json::json!({"source":"startup"}),
                             );
                         }
-                    }
                 });
             }
 
@@ -284,13 +329,12 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             // If the main window is closed, exit the app even if auxiliary windows are open.
-            if window.label() == "main" {
-                if let WindowEvent::CloseRequested { .. } = event {
+            if window.label() == "main"
+                && let WindowEvent::CloseRequested { .. } = event {
                     let state = window.app_handle().state::<state::AppState>();
                     state.plugin_runtime().stop_all_plugins();
                     window.app_handle().exit(0);
                 }
-            }
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -305,8 +349,8 @@ pub fn run() {
 ///
 /// # Returns
 /// - Tauri invoke handler closure.
-fn build_invoke_handler<R: tauri::Runtime>(
-) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
+fn build_invoke_handler<R: tauri::Runtime>()
+-> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         tauri_commands::about_info,
         tauri_commands::show_licenses,
@@ -316,56 +360,57 @@ fn build_invoke_handler<R: tauri::Runtime>(
         tauri_commands::list_vcs_backends_cmd,
         tauri_commands::set_vcs_backend_cmd,
         tauri_commands::reopen_current_repo_cmd,
-        tauri_commands::validate_git_url,
+        tauri_commands::validate_vcs_url,
         tauri_commands::validate_add_path,
         tauri_commands::validate_clone_input,
         tauri_commands::current_repo_path,
         tauri_commands::list_recent_repos,
-        tauri_commands::git_list_branches,
-        tauri_commands::git_status,
-        tauri_commands::git_log,
-        tauri_commands::git_stash_list,
-        tauri_commands::git_stash_push,
-        tauri_commands::git_stash_apply,
-        tauri_commands::git_stash_pop,
-        tauri_commands::git_stash_drop,
-        tauri_commands::git_stash_show,
-        tauri_commands::git_head_status,
-        tauri_commands::git_checkout_branch,
-        tauri_commands::git_create_branch,
-        tauri_commands::git_rename_branch,
-        tauri_commands::git_current_branch,
+        tauri_commands::vcs_list_branches,
+        tauri_commands::current_vcs_action_labels,
+        tauri_commands::vcs_status,
+        tauri_commands::vcs_log,
+        tauri_commands::vcs_stash_list,
+        tauri_commands::vcs_stash_push,
+        tauri_commands::vcs_stash_apply,
+        tauri_commands::vcs_stash_pop,
+        tauri_commands::vcs_stash_drop,
+        tauri_commands::vcs_stash_show,
+        tauri_commands::vcs_head_status,
+        tauri_commands::vcs_checkout_branch,
+        tauri_commands::vcs_create_branch,
+        tauri_commands::vcs_rename_branch,
+        tauri_commands::vcs_current_branch,
         tauri_commands::get_repo_summary,
         tauri_commands::open_repo,
         tauri_commands::clone_repo,
-        tauri_commands::git_diff_file,
-        tauri_commands::git_conflict_details,
-        tauri_commands::git_resolve_conflict_side,
-        tauri_commands::git_save_merge_result,
-        tauri_commands::git_launch_merge_tool,
-        tauri_commands::git_delete_branch,
-        tauri_commands::git_merge_branch,
-        tauri_commands::git_merge_context,
-        tauri_commands::git_merge_abort,
-        tauri_commands::git_merge_continue,
-        tauri_commands::git_set_upstream,
-        tauri_commands::git_diff_commit,
-        tauri_commands::git_cherry_pick_to_branch,
-        tauri_commands::git_revert_commit,
+        tauri_commands::vcs_diff_file,
+        tauri_commands::vcs_conflict_details,
+        tauri_commands::vcs_resolve_conflict_side,
+        tauri_commands::vcs_save_merge_result,
+        tauri_commands::vcs_launch_merge_tool,
+        tauri_commands::vcs_delete_branch,
+        tauri_commands::vcs_merge_branch,
+        tauri_commands::vcs_merge_context,
+        tauri_commands::vcs_merge_abort,
+        tauri_commands::vcs_merge_continue,
+        tauri_commands::vcs_set_upstream,
+        tauri_commands::vcs_diff_commit,
+        tauri_commands::vcs_cherry_pick_to_branch,
+        tauri_commands::vcs_revert_commit,
         tauri_commands::commit_changes,
         tauri_commands::commit_selected,
         tauri_commands::commit_patch,
         tauri_commands::commit_patch_and_files,
-        tauri_commands::git_discard_paths,
-        tauri_commands::git_discard_patch,
-        tauri_commands::git_set_remote_url,
-        tauri_commands::git_fetch,
-        tauri_commands::git_fetch_all,
-        tauri_commands::git_pull,
-        tauri_commands::git_push,
-        tauri_commands::git_undo_since_push,
-        tauri_commands::git_undo_to_commit,
-        tauri_commands::git_add_to_gitignore_paths,
+        tauri_commands::vcs_discard_paths,
+        tauri_commands::vcs_discard_patch,
+        tauri_commands::vcs_set_remote_url,
+        tauri_commands::vcs_fetch,
+        tauri_commands::vcs_fetch_all,
+        tauri_commands::vcs_pull,
+        tauri_commands::vcs_push,
+        tauri_commands::vcs_undo_since_push,
+        tauri_commands::vcs_undo_to_commit,
+        tauri_commands::vcs_add_to_gitignore_paths,
         tauri_commands::open_repo_file,
         tauri_commands::read_repo_file_text,
         tauri_commands::list_themes,

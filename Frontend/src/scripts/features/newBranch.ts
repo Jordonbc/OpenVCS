@@ -54,6 +54,13 @@ function populateBaseSelect(modal: HTMLElement) {
     }
 }
 
+/** Applies the default checkout choice to the create-branch form. */
+function loadCheckoutDefault(modal: HTMLElement) {
+    const checkoutEl = modal.querySelector<HTMLInputElement>('#new-branch-checkout');
+    if (!checkoutEl) return;
+    checkoutEl.checked = true;
+}
+
 export function wireNewBranch() {
     const modal = document.getElementById('new-branch-modal') as HTMLElement | null;
     if (!modal || (modal as any).__wired) return;
@@ -66,6 +73,8 @@ export function wireNewBranch() {
     const createBtn  = modal.querySelector<HTMLButtonElement>('#new-branch-create');
 
     populateBaseSelect(modal);
+    void loadCheckoutDefault(modal);
+    modal.addEventListener('modal:opened', () => { void loadCheckoutDefault(modal); });
     // Refresh base list when repo/branches refresh
     window.addEventListener('app:repo-selected', () => populateBaseSelect(modal));
 
@@ -128,7 +137,7 @@ export function wireNewBranch() {
                     return;
                 }
             }
-            await TAURI.invoke('git_create_branch', { name, from, checkout });
+            await TAURI.invoke('vcs_create_branch', { name, from, checkout });
             await runHook('onBranchCreate', hookData);
             if (checkout) {
                 await runHook('onSwitchBranch', { from: state.branch, to: name });

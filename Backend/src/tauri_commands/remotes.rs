@@ -7,7 +7,7 @@ use crate::state::AppState;
 use log::{error, info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window};
 
-use super::{current_repo_or_err, progress_bridge, run_repo_task, ProgressPayload};
+use super::{ProgressPayload, current_repo_or_err, progress_bridge, run_repo_task};
 
 /// Extracts host name from common Git remote URL formats.
 ///
@@ -92,6 +92,22 @@ fn looks_like_ssh_auth_failure(msg: &str) -> bool {
         || m.contains("authentication failed")
 }
 
+/// Heuristically detects fast-forward-only divergence failures.
+///
+/// # Parameters
+/// - `msg`: Error text.
+///
+/// # Returns
+/// - `true` when text resembles a diverged ff-only pull.
+/// - `false` otherwise.
+fn looks_like_ff_only_divergence(msg: &str) -> bool {
+    let m = msg.to_lowercase();
+    m.contains("not possible to fast-forward")
+        || m.contains("can't be fast-forwarded")
+        || m.contains("cannot be fast-forwarded")
+        || (m.contains("fast-forward") && m.contains("diverg"))
+}
+
 /// Returns remote URL for a named remote.
 ///
 /// # Parameters
@@ -136,18 +152,18 @@ fn emit_ssh_prompt<R: Runtime>(app: &tauri::AppHandle<R>, remote: &str, url: &st
                 },
             );
         }
-    } else if looks_like_ssh_auth_failure(msg) {
-        if let Some(host) = host_from_remote_url(url) {
-            let _ = app.emit(
-                "ui:ssh-auth",
-                SshAuthPrompt {
-                    host,
-                    remote: remote.to_string(),
-                    url: url.to_string(),
-                    message: msg.to_string(),
-                },
-            );
-        }
+    } else if looks_like_ssh_auth_failure(msg)
+        && let Some(host) = host_from_remote_url(url)
+    {
+        let _ = app.emit(
+            "ui:ssh-auth",
+            SshAuthPrompt {
+                host,
+                remote: remote.to_string(),
+                url: url.to_string(),
+                message: msg.to_string(),
+            },
+        );
     }
 }
 
@@ -188,7 +204,7 @@ struct SshAuthPrompt {
 /// # Returns
 /// - `Ok(())` when remote is set.
 /// - `Err(String)` on validation or backend failure.
-pub async fn git_set_remote_url(
+pub async fn vcs_set_remote_url(
     state: State<'_, AppState>,
     name: String,
     url: String,
@@ -204,7 +220,7 @@ pub async fn git_set_remote_url(
         return Err("Remote URL cannot be empty".to_string());
     }
 
-    run_repo_task("git_set_remote_url", repo, move |repo| {
+    run_repo_task("vcs_set_remote_url", repo, move |repo| {
         repo.inner()
             .ensure_remote(&name, &url)
             .map_err(|e| e.to_string())?;
@@ -225,14 +241,14 @@ pub async fn git_set_remote_url(
 /// # Returns
 /// - `Ok(())` when fetch completes.
 /// - `Err(String)` when no repo/branch is selected or fetch fails.
-pub async fn git_fetch<R: Runtime>(
+pub async fn vcs_fetch<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let current = run_repo_task("git_fetch", repo, move |repo| {
-        info!("git_fetch called");
+    let current = run_repo_task("vcs_fetch", repo, move |repo| {
+        info!("vcs_fetch called");
         let on = Some(progress_bridge(app.clone()));
         let current = repo
             .inner()
@@ -276,7 +292,7 @@ pub async fn git_fetch<R: Runtime>(
     .await?;
 
     let _ = window.app_handle().emit(
-        "git-progress",
+        "vcs-progress",
         ProgressPayload {
             message: format!("Fetch complete ({current})"),
         },
@@ -294,14 +310,14 @@ pub async fn git_fetch<R: Runtime>(
 /// # Returns
 /// - `Ok(())` when all remotes fetch successfully.
 /// - `Err(String)` when one or more remotes fail.
-pub async fn git_fetch_all<R: Runtime>(
+pub async fn vcs_fetch_all<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    run_repo_task("git_fetch_all", repo, move |repo| {
-        info!("git_fetch_all called");
+    run_repo_task("vcs_fetch_all", repo, move |repo| {
+        info!("vcs_fetch_all called");
         let on = Some(progress_bridge(app.clone()));
         let remotes = repo.inner().list_remotes().map_err(|e| {
             error!("Failed to list remotes: {e}");
@@ -309,7 +325,7 @@ pub async fn git_fetch_all<R: Runtime>(
         })?;
 
         if log::log_enabled!(log::Level::Trace) {
-            log::trace!("git_fetch_all: remotes={:?}", remotes);
+            log::trace!("vcs_fetch_all: remotes={:?}", remotes);
         }
 
         let mut failures: Vec<String> = Vec::new();
@@ -336,10 +352,10 @@ pub async fn git_fetch_all<R: Runtime>(
             match repo.inner().branches() {
                 Ok(mut branches) => {
                     branches.sort_by(|a, b| a.full_ref.cmp(&b.full_ref));
-                    log::trace!("git_fetch_all: branches() returned {} refs", branches.len());
+                    log::trace!("vcs_fetch_all: branches() returned {} refs", branches.len());
                     for b in branches {
                         log::trace!(
-                            "git_fetch_all: branch ref={} name={} kind={:?} current={}",
+                            "vcs_fetch_all: branch ref={} name={} kind={:?} current={}",
                             b.full_ref,
                             b.name,
                             b.kind,
@@ -347,7 +363,7 @@ pub async fn git_fetch_all<R: Runtime>(
                         );
                     }
                 }
-                Err(e) => log::trace!("git_fetch_all: branches() failed: {e}"),
+                Err(e) => log::trace!("vcs_fetch_all: branches() failed: {e}"),
             }
         }
 
@@ -370,14 +386,14 @@ pub async fn git_fetch_all<R: Runtime>(
 /// # Returns
 /// - `Ok(PullResult)` describing whether pull executed or was skipped.
 /// - `Err(String)` when pull fails.
-pub async fn git_pull<R: Runtime>(
+pub async fn vcs_pull<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
 ) -> Result<PullResult, String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let result = run_repo_task("git_pull", repo, move |repo| {
-        info!("git_pull called");
+    let result = run_repo_task("vcs_pull", repo, move |repo| {
+        info!("vcs_pull called");
         let on = Some(progress_bridge(app.clone()));
         let current = repo
             .inner()
@@ -391,10 +407,13 @@ pub async fn git_pull<R: Runtime>(
                 "Detached HEAD; cannot determine upstream".to_string()
             })?;
 
-        let upstream = repo.inner().branch_upstream(&current).map_err(|e| {
-            error!("Failed to determine upstream for branch '{current}': {e}");
-            e.to_string()
-        })?;
+        let upstream = match repo.inner().branch_upstream(&current) {
+            Ok(upstream) => upstream,
+            Err(e) => {
+                warn!("Failed to determine upstream for branch '{current}': {e}");
+                None
+            }
+        };
 
         let Some(upstream) = upstream else {
             info!("Pull skipped for branch '{current}' (no upstream configured)");
@@ -426,10 +445,10 @@ pub async fn git_pull<R: Runtime>(
             });
         }
 
-        info!("Fast-forward pulling '{current}' from {remote}/{upstream_branch}");
+        info!("Pulling '{current}' from {remote}/{upstream_branch}");
         match repo.inner().pull_ff_only(remote, upstream_branch, on) {
             Ok(()) => {
-                info!("Pull (ff-only) completed successfully for branch '{current}'");
+                info!("Pull completed successfully for branch '{current}'");
                 Ok(PullResult {
                     pulled: true,
                     branch: current,
@@ -448,9 +467,20 @@ pub async fn git_pull<R: Runtime>(
             }
             Err(e) => {
                 let msg = e.to_string();
+                if looks_like_ff_only_divergence(&msg) {
+                    info!("Pull skipped for branch '{current}': {msg}");
+                    return Ok(PullResult {
+                        pulled: false,
+                        branch: current.clone(),
+                        reason: Some(format!(
+                            "Branch '{current}' diverged from {remote}/{upstream_branch}; fast-forward pull skipped"
+                        )),
+                    });
+                }
+
                 let url = remote_url_for(repo.inner(), remote).unwrap_or_default();
                 emit_ssh_prompt(&app, remote, &url, &msg);
-                error!("Pull (ff-only) failed for branch '{current}': {msg}");
+                error!("Pull failed for branch '{current}': {msg}");
                 Err(msg)
             }
         }
@@ -464,7 +494,7 @@ pub async fn git_pull<R: Runtime>(
     };
     let _ = window
         .app_handle()
-        .emit("git-progress", ProgressPayload { message: msg });
+        .emit("vcs-progress", ProgressPayload { message: msg });
     Ok(result)
 }
 
@@ -480,7 +510,9 @@ pub struct PullResult {
 }
 
 #[tauri::command]
-/// Pushes the current branch to `origin` and refreshes tracking refs.
+/// Pushes the current branch to `origin`, refreshes tracking refs, and best-effort
+/// ensures the branch tracks its corresponding `origin/*` upstream when one is not
+/// already configured.
 ///
 /// # Parameters
 /// - `window`: Calling window handle for progress/events.
@@ -489,14 +521,14 @@ pub struct PullResult {
 /// # Returns
 /// - `Ok(())` when push completes.
 /// - `Err(String)` when push fails.
-pub async fn git_push<R: Runtime>(
+pub async fn vcs_push<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    let current = run_repo_task("git_push", repo, move |repo| {
-        info!("git_push called");
+    let current = run_repo_task("vcs_push", repo, move |repo| {
+        info!("vcs_push called");
         let on = Some(progress_bridge(app.clone()));
 
         let current = repo
@@ -526,13 +558,28 @@ pub async fn git_push<R: Runtime>(
             warn!("Post-push fetch failed for branch '{current}': {e}");
         }
 
+        let upstream = match repo.inner().branch_upstream(&current) {
+            Ok(upstream) => upstream,
+            Err(e) => {
+                warn!("Failed to determine upstream for branch '{current}': {e}");
+                None
+            }
+        };
+
+        if upstream.is_none()
+            && let Err(e) = repo
+                .inner()
+                .set_branch_upstream(&current, &format!("origin/{current}"))
+        {
+            warn!("Failed to set upstream for published branch '{current}': {e}");
+        }
         info!("Push completed successfully for '{current}'");
         Ok(current)
     })
     .await?;
 
     let _ = window.app_handle().emit(
-        "git-progress",
+        "vcs-progress",
         ProgressPayload {
             message: format!("Push complete ({current})"),
         },
@@ -551,15 +598,15 @@ pub async fn git_push<R: Runtime>(
 /// # Returns
 /// - `Ok(())` when reset succeeds.
 /// - `Err(String)` when nothing is ahead or reset fails.
-pub async fn git_undo_since_push<R: Runtime>(
+pub async fn vcs_undo_since_push<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    info!("git_undo_since_push called");
+    info!("vcs_undo_since_push called");
 
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    run_repo_task("git_undo_since_push", repo, move |repo| {
+    run_repo_task("vcs_undo_since_push", repo, move |repo| {
         let status = repo.inner().status_payload().map_err(|e| e.to_string())?;
         if status.ahead == 0 {
             return Err("Nothing to undo (no unpushed commits)".into());
@@ -586,6 +633,31 @@ pub async fn git_undo_since_push<R: Runtime>(
     .await
 }
 
+#[cfg(test)]
+mod tests {
+    use super::looks_like_ff_only_divergence;
+
+    #[test]
+    fn detects_fast_forward_only_divergence() {
+        assert!(looks_like_ff_only_divergence(
+            "fatal: Not possible to fast-forward, aborting."
+        ));
+        assert!(looks_like_ff_only_divergence(
+            "hint: Diverging branches can't be fast-forwarded, you need to either:"
+        ));
+    }
+
+    #[test]
+    fn ignores_unrelated_pull_failures() {
+        assert!(!looks_like_ff_only_divergence(
+            "permission denied (publickey)"
+        ));
+        assert!(!looks_like_ff_only_divergence(
+            "could not resolve hostname origin"
+        ));
+    }
+}
+
 #[tauri::command]
 /// Soft-resets HEAD to a selected commit, constrained to ahead-of-upstream history.
 ///
@@ -597,16 +669,16 @@ pub async fn git_undo_since_push<R: Runtime>(
 /// # Returns
 /// - `Ok(())` when reset succeeds.
 /// - `Err(String)` when validation or reset fails.
-pub async fn git_undo_to_commit<R: Runtime>(
+pub async fn vcs_undo_to_commit<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
     id: String,
 ) -> Result<(), String> {
-    info!("git_undo_to_commit called for {id}");
+    info!("vcs_undo_to_commit called for {id}");
 
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    run_repo_task("git_undo_to_commit", repo, move |repo| {
+    run_repo_task("vcs_undo_to_commit", repo, move |repo| {
         let mut ahead_list: Vec<CommitItem> = Vec::new();
         {
             let mut q = LogQuery::head(1000);

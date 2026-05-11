@@ -41,10 +41,10 @@ function syncBranchLabelsFromState() {
 
 async function loadBranches() {
     try {
-        const branches = await TAURI.invoke<Branch[]>('git_list_branches');
+        const branches = await TAURI.invoke<Branch[]>('vcs_list_branches');
         state.branches = Array.isArray(branches) ? branches : [];
 
-        const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status');
+        const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('vcs_head_status');
         if (head?.branch) state.branch = head.branch;
         const short = (head?.commit || '').slice(0, 7);
         const label = head?.detached ? `Detached HEAD ${short ? '(' + short + ')' : ''}` : (state.branch || '—');
@@ -54,7 +54,9 @@ async function loadBranches() {
 
         renderBranches();
         setBranchUIEnabled(!!state.branch);
-    } catch {
+    } catch (error) {
+        console.error('Failed to load branches:', error);
+        notify('Failed to load branches');
         state.branches = [];
         renderBranches();
         setBranchUIEnabled(false);
@@ -173,7 +175,7 @@ export function bindBranchUI() {
             return;
         }
         try {
-            await TAURI.invoke('git_checkout_branch', { name });
+            await TAURI.invoke('vcs_checkout_branch', { name });
             await runHook('onSwitchBranch', hookData);
             await loadBranches(); // resync from backend instead of manual toggles
             if (options.closePopover) closeBranchPopover();
@@ -213,7 +215,7 @@ export function bindBranchUI() {
             const ok = await confirmBool(`Merge '${name}' into '${cur}'?`);
             if (!ok) return;
             try {
-                await TAURI.invoke('git_merge_branch', { name });
+                await TAURI.invoke('vcs_merge_branch', { name });
                 notify(`Merged branch '${name}' into '${cur}'`);
                 await Promise.allSettled([renderList(), loadBranches()]);
             } catch (e) {
@@ -262,7 +264,7 @@ export function bindBranchUI() {
                         notify(pre.reason || 'Delete cancelled');
                         return;
                     }
-                    await TAURI.invoke('git_delete_branch', { name, force: wantForce });
+                    await TAURI.invoke('vcs_delete_branch', { name, force: wantForce });
                     await runHook('onBranchDelete', hookData);
                     notify(`${wantForce ? 'Force-deleted' : 'Deleted'} '${name}'`);
                     await loadBranches();
@@ -285,7 +287,7 @@ export function bindBranchUI() {
                             notify(pre.reason || 'Delete cancelled');
                             return;
                         }
-                        await TAURI.invoke('git_delete_branch', { name, force: true });
+                        await TAURI.invoke('vcs_delete_branch', { name, force: true });
                         await runHook('onBranchDelete', hookData);
                         notify(`Force-deleted '${name}'`);
                         await loadBranches();

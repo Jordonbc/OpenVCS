@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { qs, qsa, setText } from '../lib/dom';
-import { prefs, savePrefs, state, hasRepo, hasChanges } from '../state/state';
+import { prefs, savePrefs, state, hasRepo, hasChanges, resolveVcsActionLabel } from '../state/state';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { setAppearanceMode } from '../themes';
@@ -54,6 +54,11 @@ export function setTheme(theme: 'dark'|'light'|'system') {
     savePrefs();
 }
 
+/** Applies or clears GPU compositor hints for the app shell. */
+export function applyGpuAccelerationPreference(enabled: boolean | undefined | null) {
+    document.documentElement.dataset.gpuAcceleration = enabled === false ? 'off' : 'on';
+}
+
 /** Toggles between light and dark appearance modes. */
 export function toggleTheme() {
     const next = (prefs.theme === 'dark' ? 'light' : 'dark');
@@ -65,7 +70,9 @@ export function toggleTheme() {
                 cur.general = { ...(cur.general || {}), theme: next };
                 await TAURI.invoke('set_global_settings', { cfg: cur });
             }
-        } catch {}
+        } catch (error) {
+            console.warn('Failed to persist theme setting:', error);
+        }
         setTheme(next);
     })();
 }
@@ -88,7 +95,7 @@ export function setTab(tab: 'changes'|'history'|'stash') {
     const historyActionsBtn = qs<HTMLButtonElement>('#history-actions-btn');
     if (historyActionsBtn && tab !== 'history') historyActionsBtn.hidden = true;
     if (prevTab === 'history' && tab !== 'history') {
-        (state as any).selectedCommit = null;
+        state.selectedCommit = null;
     }
     if (tab === 'changes' && prevTab !== 'changes') {
         // Force file diff repaint when leaving history/stash so commit details
@@ -114,7 +121,12 @@ export function setTab(tab: 'changes'|'history'|'stash') {
 
 /** Binds tab button clicks to an external change handler. */
 export function bindTabs(onChange: (t: 'changes'|'history'|'stash') => void) {
-    tabs.forEach(btn => btn.addEventListener('click', () => onChange((btn.dataset.tab as any) ?? 'changes')));
+    tabs.forEach((btn) => {
+        btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        onChange(tab === 'history' || tab === 'stash' ? tab : 'changes');
+        });
+    });
 }
 
 /** Enables drag-resizing for the work grid split view. */
@@ -198,13 +210,17 @@ export function refreshRepoActions() {
     if (branchBtn) branchBtn.disabled = !repoOn;
 
     // Push highlight + badge when there are unpushed commits
-    const ahead = Number((state as any).ahead || 0);
+    const ahead = Number(state.ahead || 0);
+    const branchOnRemote = Boolean(state.branchOnRemote);
     if (pushBtn) {
         pushBtn.classList.toggle('attention', repoOn && ahead > 0);
         const labelEl = pushBtn.querySelector<HTMLElement>('.btn-label');
+        const base = branchOnRemote
+            ? resolveVcsActionLabel('VCS.Push', 'Push')
+            : resolveVcsActionLabel('VCS.Publish', 'Publish');
         const label = repoOn && ahead > 0
-            ? `Push (${ahead})`
-            : 'Push';
+            ? `${base} (${ahead})`
+            : base;
         pushBtn.title = label;
         pushBtn.setAttribute('aria-label', label);
         if (labelEl) labelEl.textContent = label;
@@ -217,12 +233,18 @@ export function refreshRepoActions() {
     // Commit button requires: repo + changes + non-empty summary + explicit selection (files, hunks, or per-line)
     const summaryFilled = (summary?.value.trim().length ?? 0) > 0;
     // Require either selected hunks, selected lines, or selected files (commit UI selection)
-    const hunksSelected = Object.keys((state as any).selectedHunksByFile || {})
-        .some((k) => Array.isArray((state as any).selectedHunksByFile[k]) && (state as any).selectedHunksByFile[k].length > 0);
-    const linesSelected = Object.keys((state as any).selectedLinesByFile || {})
-        .some((k) => !!(state as any).selectedLinesByFile[k] && Object.keys((state as any).selectedLinesByFile[k] || {}).length > 0);
-    const filesSelected = !!((state as any).selectedFiles && (state as any).selectedFiles.size > 0);
+    const hunksSelected = Object.values(state.selectedHunksByFile || {})
+        .some((hunks) => Array.isArray(hunks) && hunks.length > 0);
+    const linesSelected = Object.values(state.selectedLinesByFile || {})
+        .some((hunks) => !!hunks && Object.keys(hunks).length > 0);
+    const filesSelected = state.selectedFiles.size > 0;
     if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && (hunksSelected || linesSelected || filesSelected));
+    if (commit) {
+        const commitLabel = resolveVcsActionLabel('VCS.Commit', 'Commit');
+        commit.textContent = commitLabel;
+        commit.title = commitLabel;
+        commit.setAttribute('aria-label', commitLabel);
+    }
 
     // Left-panel undo visibility (under files list)
     const showUndo = repoOn && ahead > 0 && prefs.tab === 'changes';
@@ -243,12 +265,30 @@ export function refreshRepoActions() {
     }
 }
 
+/** Applies or clears the commit-summary 72-character cap. */
+export function applyCommitSummaryRestriction(enabled: boolean) {
+    const summary = qs<HTMLInputElement>('#commit-summary');
+    if (!summary) return;
+
+    if (enabled) {
+        summary.setAttribute('maxlength', '72');
+        summary.title = 'Commit summary is limited to 72 characters when restriction is enabled.';
+        if (summary.value.length > 72) {
+            summary.value = summary.value.slice(0, 72);
+        }
+    } else {
+        summary.removeAttribute('maxlength');
+        summary.removeAttribute('title');
+    }
+}
+
 /** Binds layout action refresh handlers to app lifecycle events. */
 export function bindLayoutActionState() {
     // Recompute on repo selection, status refresh, branch changes, and typing (when enabled)
     window.addEventListener('app:repo-selected', refreshRepoActions);
     window.addEventListener('app:status-updated', () => { refreshRepoActions(); renderAheadBehind(); });
     window.addEventListener('app:branches-updated', () => { setRepoHeader(); refreshRepoActions(); renderAheadBehind(); });
+    window.addEventListener('app:vcs-action-labels-updated', refreshRepoActions);
 
     // Summary typing should re-evaluate the commit button state
     qs<HTMLInputElement>('#commit-summary')?.addEventListener('input', refreshRepoActions);
@@ -273,8 +313,8 @@ export function resetRepoHeader() {
 /** Update the small ahead/behind badge placed next to the History tab. */
 function renderAheadBehind() {
     if (!aheadBehindEl) return;
-    const a = Number((state as any).ahead || 0);
-    const b = Number((state as any).behind || 0);
+    const a = Number(state.ahead || 0);
+    const b = Number(state.behind || 0);
     const show = (hasRepo() && (a > 0 || b > 0));
     if (!show) {
         aheadBehindEl.textContent = '';

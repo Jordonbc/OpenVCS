@@ -13,6 +13,10 @@ on:
         required: false
         default: false
 
+concurrency:
+  group: openvcs-nightly
+  cancel-in-progress: true
+
 # Default to least privilege; override per-job as needed
 permissions:
   contents: read
@@ -71,9 +75,33 @@ jobs:
             echo "ahead_count=$AHEAD" >> "$GITHUB_OUTPUT"
           fi
 
+  prepare-release:
+    name: Clean existing rolling release
+    needs: check-changes
+    if: needs.check-changes.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.force == true || github.event.inputs.force == 'true'))
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Remove existing 'openvcs-nightly' release & tag
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+            const tag   = 'openvcs-nightly';
+            const releases = await github.paginate(github.rest.repos.listReleases, { owner, repo, per_page: 100 });
+            const rel = releases.find(r => r.tag_name === tag);
+            if (rel) await github.rest.repos.deleteRelease({ owner, repo, release_id: rel.id });
+            try {
+              await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
+            } catch (e) {
+              if (e.status !== 422) throw e;
+            }
+
   nightly:
     name: Build & publish Nightly (only if changed)
-    needs: check-changes
+    needs: [check-changes, prepare-release]
     if: needs.check-changes.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && (inputs.force == true || github.event.inputs.force == 'true'))
     permissions:
       contents: write      # create/delete release + tag
@@ -179,7 +207,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
 
       - name: Install Linux deps
         if: matrix.platform == 'ubuntu-24.04'
@@ -202,21 +230,8 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       # ---------- Reset rolling tag (optional but keeps things tidy) ----------
-      - name: Remove existing 'openvcs-nightly' release & tag (if any)
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo  = context.repo.repo;
-            const tag   = 'openvcs-nightly';
-            const releases = await github.paginate(github.rest.repos.listReleases, { owner, repo, per_page: 100 });
-            const rel = releases.find(r => r.tag_name === tag);
-            if (rel) await github.rest.repos.deleteRelease({ owner, repo, release_id: rel.id });
-            try {
-              await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
-            } catch (e) {
-              if (e.status !== 422) throw e;
-            }
+      - name: Patch version for nightly prerelease
+        run: node scripts/bump-tauri-version.js nightly
 
       - name: Write channel Tauri config override
         env:

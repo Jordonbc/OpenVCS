@@ -109,6 +109,8 @@ Event producers are primarily in:
 
 Frontend listeners are attached through `TAURI.listen(...)` in feature modules.
 
+The update modal now reflects installer progress directly on its primary button: it moves through `Downloading…<percent>%`, `Installing`, and finally `Done, please restart` after a successful install.
+
 ## Reliability and Safety
 
 - Command handlers return stringified errors at the Tauri boundary for predictable UI handling.

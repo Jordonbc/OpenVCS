@@ -6,7 +6,7 @@ import { openModal, closeModal } from '../ui/modals';
 import { toKebab } from '../lib/dom';
 import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
-import { setTheme } from '../ui/layout';
+import { setTheme, applyCommitSummaryRestriction, applyGpuAccelerationPreference } from '../ui/layout';
 import { collectGeneralSettings, loadGeneralSettingsIntoForm } from './settingsGeneral';
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
 import { invokePluginAction, reloadPlugins } from '../plugins';
@@ -241,11 +241,17 @@ async function renderPluginMenus(modal: HTMLElement): Promise<void> {
     const panelsScroll = modal.querySelector('#settings-panels-scroll');
     if (!nav || !panelsScroll) return;
 
-    nav.querySelectorAll<HTMLElement>('[data-plugin-menu="true"]').forEach((node) => node.remove());
-    nav.querySelectorAll<HTMLElement>('[data-plugin-menus-wrap="true"]').forEach((node) => node.remove());
+    nav.querySelectorAll<HTMLElement>('[data-plugin-menu="true"]').forEach((node) => {
+        node.remove();
+    });
+    nav.querySelectorAll<HTMLElement>('[data-plugin-menus-wrap="true"]').forEach((node) => {
+        node.remove();
+    });
     panelsScroll
         .querySelectorAll<HTMLElement>('.panel-form[data-plugin-menu="true"]')
-        .forEach((node) => node.remove());
+        .forEach((node) => {
+            node.remove();
+        });
 
     let menus: PluginMenuPayload[] = [];
     let pluginSummaries: PluginSummary[] = [];
@@ -462,10 +468,10 @@ function activateSection(modal: HTMLElement, section: string) {
     })();
 
     const btn = nav.querySelector<HTMLElement>(`[data-section="${safeSection}"]`);
-    nav.querySelectorAll<HTMLElement>('.seg-btn').forEach(b => {
+    nav.querySelectorAll<HTMLElement>('.seg-btn').forEach((b) => {
         b.classList.toggle('active', b === btn);
     });
-    panels.querySelectorAll<HTMLElement>('.panel-form').forEach(p => {
+    panels.querySelectorAll<HTMLElement>('.panel-form').forEach((p) => {
         p.classList.toggle('hidden', p.getAttribute('data-panel') !== safeSection);
     });
 
@@ -575,7 +581,9 @@ export function wireSettings() {
         .filter((el): el is HTMLInputElement => !!el);
     const updateLfsDependentState = () => {
         const enabled = !!lfsToggle?.checked;
-        lfsDependents.forEach(input => input.disabled = !enabled);
+        lfsDependents.forEach((input) => {
+            input.disabled = !enabled;
+        });
     };
     updateLfsDependentState();
     lfsToggle?.addEventListener('change', updateLfsDependentState);
@@ -690,6 +698,14 @@ export function wireSettings() {
             }
 
             const next = collectSettingsFromForm(modal);
+            const previousCfg = (() => {
+                try {
+                    return JSON.parse(String(modal.dataset.currentCfg || '{}')) as GlobalSettings;
+                } catch {
+                    return {} as GlobalSettings;
+                }
+            })();
+            const gpuChanged = previousCfg.performance?.gpu_accel !== next.performance?.gpu_accel;
 
             await TAURI.invoke('set_global_settings', { cfg: next });
             await syncFrontendMonitoring(next);
@@ -710,9 +726,11 @@ export function wireSettings() {
                 if (mono) root.style.setProperty('--mono', mono);
                 else root.style.removeProperty('--mono');
                 applyAnimationPreference(next?.performance?.animations);
+                applyGpuAccelerationPreference(next?.performance?.gpu_accel);
+                applyCommitSummaryRestriction(next?.general?.restrict_commit_summary !== false);
             } catch {}
 
-            notify('Settings saved');
+            notify(gpuChanged ? 'Settings saved. GPU changes apply after restart.' : 'Settings saved');
             flashSavedState(settingsSave);
         } catch (e) {
             console.error('Failed to save settings:', e);
@@ -753,6 +771,7 @@ export function wireSettings() {
                 checks_on_launch: true,
                 telemetry: false,
                 crash_reports: true,
+                restrict_commit_summary: true,
             };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
@@ -764,6 +783,8 @@ export function wireSettings() {
             await TAURI.invoke('set_global_settings', { cfg: cur });
             await syncFrontendMonitoring(cur);
             applyAnimationPreference(cur.performance?.animations);
+            applyGpuAccelerationPreference(cur.performance?.gpu_accel);
+            applyCommitSummaryRestriction(cur.general?.restrict_commit_summary !== false);
             await loadSettingsIntoForm(modal);
             setTheme('system');
             try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
@@ -777,7 +798,12 @@ export function wireSettings() {
 function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
     const get = <T extends HTMLElement = HTMLElement>(sel: string) => root.querySelector<T>(sel);
 
-    const base = JSON.parse(root?.dataset.currentCfg || '{}');
+    let base: Partial<GlobalSettings> = {};
+    try {
+        base = JSON.parse(root?.dataset.currentCfg || '{}');
+    } catch {
+        // Corrupted or missing config — fall back to defaults.
+    }
 
     const o: GlobalSettings = { ...base };
 
@@ -902,6 +928,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elMx = get<HTMLInputElement>('#set-max-file-size-mb'); if (elMx) elMx.value = String(cfg.diff?.max_file_size_mb ?? 0);
     const elIn = get<HTMLInputElement>('#set-intraline'); if (elIn) elIn.checked = !!cfg.diff?.intraline;
     const elBp = get<HTMLInputElement>('#set-binary-placeholders'); if (elBp) elBp.checked = !!cfg.diff?.show_binary_placeholders;
+    const elRestrict = get<HTMLInputElement>('#set-restrict-commit-summary'); if (elRestrict) elRestrict.checked = cfg.general?.restrict_commit_summary !== false;
     const elMm = get<HTMLSelectElement>('#set-merge-mode');
     const elMp = get<HTMLInputElement>('#set-merge-path');
     const elMa = get<HTMLInputElement>('#set-merge-args');

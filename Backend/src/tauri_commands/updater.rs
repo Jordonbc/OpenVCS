@@ -114,9 +114,7 @@ pub async fn updater_install_now<R: Runtime>(window: Window<R>) -> Result<(), St
                         };
                         trace!(
                             "updater_install_now: download progress {}/{} bytes ({}%)",
-                            received,
-                            total_val,
-                            percent
+                            received, total_val, percent
                         );
                         let payload = serde_json::json!({
                             "kind": "progress",

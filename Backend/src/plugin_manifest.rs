@@ -3,8 +3,8 @@
 //! Shared package.json manifest readers for OpenVCS plugins.
 
 use crate::plugin_paths::PLUGIN_PACKAGE_NAME;
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use std::fs;
 use std::path::{Path, PathBuf};
 

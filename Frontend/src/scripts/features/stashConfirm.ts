@@ -104,14 +104,14 @@ export function wireStashConfirm() {
         try {
             const payload: Record<string, unknown> = { message, includeUntracked };
             if (overridePaths && overridePaths.length) payload.paths = overridePaths;
-            await TAURI.invoke('git_stash_push', payload);
+            await TAURI.invoke('vcs_stash_push', payload);
             notify('Created stash');
             closeModal('stash-confirm-modal');
             if (typeof onSuccess === 'function') {
                 await onSuccess(message);
             }
         } catch (e) {
-            console.warn('git_stash_push failed', e);
+            console.warn('vcs_stash_push failed', e);
             notify('Failed to create stash');
         } finally {
             resetButton();

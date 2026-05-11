@@ -4,7 +4,6 @@
 //!
 //! OpenVCS now runs plugin modules as long-lived Node.js scripts.
 
-use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::node_instance::NodePluginRuntimeInstance;
 use crate::plugin_runtime::spawn::SpawnConfig;
 use log::{debug, trace};
@@ -28,9 +27,10 @@ pub fn is_node_module(path: &Path) -> bool {
 }
 
 /// Selects and creates a runtime instance for a plugin module.
+#[cfg_attr(test, allow(dead_code))]
 pub fn create_runtime_instance(
     spawn: SpawnConfig,
-) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
+) -> Result<Arc<dyn crate::plugin_runtime::instance::PluginRuntimeInstance>, String> {
     trace!(
         "create_runtime_instance: plugin_id='{}', exec_path='{}'",
         spawn.plugin_id,
@@ -44,7 +44,8 @@ pub fn create_runtime_instance(
         ));
     }
 
-    let runtime: Arc<dyn PluginRuntimeInstance> = create_node_runtime_instance(spawn)?;
+    let runtime: Arc<dyn crate::plugin_runtime::instance::PluginRuntimeInstance> =
+        create_node_runtime_instance(spawn)?;
     Ok(runtime)
 }
 

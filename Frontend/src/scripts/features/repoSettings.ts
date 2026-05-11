@@ -124,7 +124,7 @@ export async function wireRepoSettings() {
             await TAURI.invoke('set_repo_settings', { cfg: next });
             if (remotesChanged) {
                 // Remote-tracking branches only exist after a fetch; do it once after remotes are modified.
-                try { await TAURI.invoke('git_fetch_all', {}); } catch { /* ignore */ }
+                try { await TAURI.invoke('vcs_fetch_all', {}); } catch { /* ignore */ }
             }
             saveBtn.classList.add('saved-state');
             saveBtn.textContent = 'Saved!';

@@ -172,8 +172,7 @@ pub async fn set_plugin_enabled(
 ) -> Result<(), String> {
     trace!(
         "set_plugin_enabled: entering with plugin_id='{}', enabled={}",
-        plugin_id,
-        enabled
+        plugin_id, enabled
     );
 
     let plugin_id = plugin_id.trim().to_string();

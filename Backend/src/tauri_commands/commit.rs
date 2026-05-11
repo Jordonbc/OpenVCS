@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use log::{error, info};
-use tauri::{async_runtime, Manager, Runtime, State, Window};
+use tauri::{Manager, Runtime, State, Window, async_runtime};
 
 use crate::core::models::VcsEvent;
 use crate::repo::Repo;
@@ -11,20 +11,20 @@ use crate::state::AppState;
 
 use super::{current_repo_or_err, progress_bridge, run_repo_task};
 
-/// Resolves the repository commit identity from Git config.
+/// Resolves the repository commit identity from VCS config.
 ///
 /// # Parameters
 /// - `repo`: Active repository handle.
 ///
 /// # Returns
-/// - `Ok((name, email))` when Git has a configured identity.
+/// - `Ok((name, email))` when the repository has a configured identity.
 /// - `Err(String)` when the repository has no usable commit identity.
 fn commit_identity(repo: &Repo) -> Result<(String, String), String> {
     repo.inner()
         .get_identity()
         .map_err(|e| e.to_string())?
         .ok_or_else(|| {
-            "No Git commit identity configured for this repository; set user.name and user.email in Git".to_string()
+            "No VCS commit identity configured for this repository; set user.name and user.email in the repository settings".to_string()
         })
 }
 
@@ -95,7 +95,7 @@ pub async fn commit_changes<R: Runtime>(
 }
 
 #[tauri::command]
-/// Commits only selected file paths.
+/// Stages and commits only selected file paths.
 ///
 /// # Parameters
 /// - `window`: Calling window handle for progress events.
@@ -147,7 +147,7 @@ pub async fn commit_selected<R: Runtime>(
         });
         let oid = repo
             .inner()
-            .commit(&message, &name, &email, &paths)
+            .commit_index(&message, &name, &email)
             .map_err(|e| {
                 error!("Commit (selected) failed: {e}");
                 e.to_string()
@@ -159,7 +159,7 @@ pub async fn commit_selected<R: Runtime>(
 }
 
 #[tauri::command]
-/// Applies a patch to the index and creates a commit from staged hunks.
+/// Applies a patch to the index, stages selected files, and commits the staged index.
 ///
 /// # Parameters
 /// - `window`: Calling window handle for progress events.
@@ -290,18 +290,16 @@ pub async fn commit_patch_and_files<R: Runtime>(
                 e.to_string()
             })?;
         }
-        let commit_paths: Vec<PathBuf> = if files.is_empty() {
-            stage_paths.clone()
-        } else {
-            files.iter().map(PathBuf::from).collect()
-        };
-        let oid = if commit_paths.is_empty() {
+        let has_selection =
+            !patch.trim().is_empty() || !files.is_empty() || !stage_paths.is_empty();
+        if !has_selection {
             return Err("No commit paths provided".into());
-        } else {
-            repo.inner()
-                .commit(&message, &name, &email, &commit_paths)
-                .map_err(|e| e.to_string())?
-        };
+        }
+
+        let oid = repo
+            .inner()
+            .commit_index(&message, &name, &email)
+            .map_err(|e| e.to_string())?;
         on(VcsEvent::Info {
             msg: "Commit complete".into(),
         });
@@ -323,20 +321,20 @@ pub async fn commit_patch_and_files<R: Runtime>(
 /// # Returns
 /// - `Ok(())` on success.
 /// - `Err(String)` on validation or cherry-pick failure.
-pub async fn git_cherry_pick_to_branch<R: Runtime>(
+pub async fn vcs_cherry_pick_to_branch<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
     id: String,
     branch: String,
 ) -> Result<(), String> {
     info!(
-        "git_cherry_pick_to_branch called (id={}, branch={})",
+        "vcs_cherry_pick_to_branch called (id={}, branch={})",
         id, branch
     );
 
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    run_repo_task("git_cherry_pick_to_branch", repo, move |repo| {
+    run_repo_task("vcs_cherry_pick_to_branch", repo, move |repo| {
         let id = id.trim().to_string();
         let branch = branch.trim().to_string();
         if id.is_empty() {
@@ -348,7 +346,7 @@ pub async fn git_cherry_pick_to_branch<R: Runtime>(
 
         let on = progress_bridge(app);
         on(VcsEvent::Progress {
-            phase: "git".into(),
+            phase: "vcs".into(),
             detail: format!("Checking out '{branch}'…"),
         });
         repo.inner()
@@ -356,7 +354,7 @@ pub async fn git_cherry_pick_to_branch<R: Runtime>(
             .map_err(|e| e.to_string())?;
 
         on(VcsEvent::Progress {
-            phase: "git".into(),
+            phase: "vcs".into(),
             detail: format!("Cherry-picking {id}…"),
         });
         repo.inner().cherry_pick(&id).map_err(|e| e.to_string())?;
@@ -380,16 +378,16 @@ pub async fn git_cherry_pick_to_branch<R: Runtime>(
 /// # Returns
 /// - `Ok(())` on success.
 /// - `Err(String)` on validation or revert failure.
-pub async fn git_revert_commit<R: Runtime>(
+pub async fn vcs_revert_commit<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
     id: String,
 ) -> Result<(), String> {
-    info!("git_revert_commit called (id={})", id);
+    info!("vcs_revert_commit called (id={})", id);
 
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
-    run_repo_task("git_revert_commit", repo, move |repo| {
+    run_repo_task("vcs_revert_commit", repo, move |repo| {
         let id = id.trim().to_string();
         if id.is_empty() {
             return Err("Commit id cannot be empty".into());
@@ -397,7 +395,7 @@ pub async fn git_revert_commit<R: Runtime>(
 
         let on = progress_bridge(app);
         on(VcsEvent::Progress {
-            phase: "git".into(),
+            phase: "vcs".into(),
             detail: format!("Reverting {id}…"),
         });
         repo.inner()
