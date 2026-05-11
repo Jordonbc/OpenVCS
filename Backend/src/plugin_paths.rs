@@ -152,21 +152,22 @@ fn bundled_resource_base_dirs(resource_dir_name: &str) -> Vec<PathBuf> {
     let _ = resource_dir_name;
 
     if let Ok(exe) = env::current_exe()
-        && let Some(dir) = exe.parent() {
-            push_unique_path(&mut candidates, dir.join("resources"));
-            push_unique_path(&mut candidates, dir.to_path_buf());
-            if let Some(target_dir) = dir.parent() {
-                push_unique_path(&mut candidates, target_dir.join("openvcs"));
-                #[cfg(target_os = "macos")]
-                push_unique_path(&mut candidates, target_dir.join("Resources"));
-            }
-            #[cfg(target_os = "linux")]
-            push_linux_package_resource_bases(&mut candidates, dir, resource_dir_name);
-            push_unique_path(
-                &mut candidates,
-                dir.join("_up_").join("target").join("openvcs"),
-            );
+        && let Some(dir) = exe.parent()
+    {
+        push_unique_path(&mut candidates, dir.join("resources"));
+        push_unique_path(&mut candidates, dir.to_path_buf());
+        if let Some(target_dir) = dir.parent() {
+            push_unique_path(&mut candidates, target_dir.join("openvcs"));
+            #[cfg(target_os = "macos")]
+            push_unique_path(&mut candidates, target_dir.join("Resources"));
         }
+        #[cfg(target_os = "linux")]
+        push_linux_package_resource_bases(&mut candidates, dir, resource_dir_name);
+        push_unique_path(
+            &mut candidates,
+            dir.join("_up_").join("target").join("openvcs"),
+        );
+    }
 
     if let Some(resource_dir) = RESOURCE_DIR.get() {
         push_unique_path(&mut candidates, resource_dir.clone());

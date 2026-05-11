@@ -371,9 +371,10 @@ impl NodePluginRuntimeInstance {
             .ok_or_else(|| "node runtime did not initialize".to_string())?;
         let result = f(process);
         if let Err(err) = &result
-            && err.contains("disconnected") {
-                lock.take();
-            }
+            && err.contains("disconnected")
+        {
+            lock.take();
+        }
         result
     }
 

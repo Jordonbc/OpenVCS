@@ -375,9 +375,10 @@ impl PluginRuntimeManager {
         let running: Vec<String> = self.processes.lock().keys().cloned().collect();
         for plugin_id in running {
             if !desired_running.contains(&plugin_id)
-                && let Err(err) = self.stop_plugin(&plugin_id) {
-                    errors.push(format!("stop {}: {}", plugin_id, err));
-                }
+                && let Err(err) = self.stop_plugin(&plugin_id)
+            {
+                errors.push(format!("stop {}: {}", plugin_id, err));
+            }
         }
 
         let after: Vec<String> = self.processes.lock().keys().cloned().collect();
@@ -539,12 +540,13 @@ impl PluginRuntimeManager {
 
         let mut lock = self.processes.lock();
         if let Some(existing) = lock.get(&spec.key)
-            && existing.workspace_root == spec.spawn.allowed_workspace_root {
-                let runtime = Arc::clone(&existing.runtime);
-                drop(lock);
-                trace!("start_plugin_spec: found concurrent insert, reusing");
-                return runtime.ensure_running();
-            }
+            && existing.workspace_root == spec.spawn.allowed_workspace_root
+        {
+            let runtime = Arc::clone(&existing.runtime);
+            drop(lock);
+            trace!("start_plugin_spec: found concurrent insert, reusing");
+            return runtime.ensure_running();
+        }
 
         let runtime_to_stop = lock
             .get(&spec.key)

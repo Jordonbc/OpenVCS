@@ -153,17 +153,18 @@ fn emit_ssh_prompt<R: Runtime>(app: &tauri::AppHandle<R>, remote: &str, url: &st
             );
         }
     } else if looks_like_ssh_auth_failure(msg)
-        && let Some(host) = host_from_remote_url(url) {
-            let _ = app.emit(
-                "ui:ssh-auth",
-                SshAuthPrompt {
-                    host,
-                    remote: remote.to_string(),
-                    url: url.to_string(),
-                    message: msg.to_string(),
-                },
-            );
-        }
+        && let Some(host) = host_from_remote_url(url)
+    {
+        let _ = app.emit(
+            "ui:ssh-auth",
+            SshAuthPrompt {
+                host,
+                remote: remote.to_string(),
+                url: url.to_string(),
+                message: msg.to_string(),
+            },
+        );
+    }
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -569,9 +570,9 @@ pub async fn vcs_push<R: Runtime>(
             && let Err(e) = repo
                 .inner()
                 .set_branch_upstream(&current, &format!("origin/{current}"))
-            {
-                warn!("Failed to set upstream for published branch '{current}': {e}");
-            }
+        {
+            warn!("Failed to set upstream for published branch '{current}': {e}");
+        }
         info!("Push completed successfully for '{current}'");
         Ok(current)
     })
@@ -648,8 +649,12 @@ mod tests {
 
     #[test]
     fn ignores_unrelated_pull_failures() {
-        assert!(!looks_like_ff_only_divergence("permission denied (publickey)"));
-        assert!(!looks_like_ff_only_divergence("could not resolve hostname origin"));
+        assert!(!looks_like_ff_only_divergence(
+            "permission denied (publickey)"
+        ));
+        assert!(!looks_like_ff_only_divergence(
+            "could not resolve hostname origin"
+        ));
     }
 }
 

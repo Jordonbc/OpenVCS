@@ -256,14 +256,15 @@ fn main() {
 
     // Navigate: plugins.updater.endpoints
     if let Some(plugins) = json.get_mut("plugins")
-        && let Some(updater) = plugins.get_mut("updater") {
-            let endpoints: Vec<serde_json::Value> = channel
-                .updater_endpoints
-                .iter()
-                .map(|s| serde_json::Value::String((*s).to_string()))
-                .collect();
-            updater["endpoints"] = serde_json::Value::Array(endpoints);
-        }
+        && let Some(updater) = plugins.get_mut("updater")
+    {
+        let endpoints: Vec<serde_json::Value> = channel
+            .updater_endpoints
+            .iter()
+            .map(|s| serde_json::Value::String((*s).to_string()))
+            .collect();
+        updater["endpoints"] = serde_json::Value::Array(endpoints);
+    }
 
     json["mainBinaryName"] = serde_json::Value::String(channel.main_binary_name.into());
     json["productName"] = serde_json::Value::String(channel.product_name.into());
@@ -272,9 +273,10 @@ fn main() {
         && let Some(windows) = app
             .get_mut("windows")
             .and_then(|value| value.as_array_mut())
-            && let Some(main_window) = windows.first_mut() {
-                main_window["title"] = serde_json::Value::String(channel.window_title.into());
-            }
+        && let Some(main_window) = windows.first_mut()
+    {
+        main_window["title"] = serde_json::Value::String(channel.window_title.into());
+    }
 
     // The app should only ever point at a dev server when running `cargo tauri dev`.
     // In all other cases (including `cargo build`, `cargo run`, `cargo tauri build`, Flatpak, CI),
@@ -285,17 +287,19 @@ fn main() {
     // We build the frontend ahead of time and ship it as production assets.
     if strip_dev_server
         && let Some(build) = json.get_mut("build")
-            && let Some(build_obj) = build.as_object_mut() {
-                build_obj.remove("devUrl");
-                build_obj.remove("beforeDevCommand");
-            }
+        && let Some(build_obj) = build.as_object_mut()
+    {
+        build_obj.remove("devUrl");
+        build_obj.remove("beforeDevCommand");
+    }
 
     // Flatpak apps update via Flatpak, not the in-app updater.
     if is_flatpak_build() {
         if let Some(plugins) = json.get_mut("plugins")
-            && let Some(updater) = plugins.get_mut("updater") {
-                updater["active"] = serde_json::Value::Bool(false);
-            }
+            && let Some(updater) = plugins.get_mut("updater")
+        {
+            updater["active"] = serde_json::Value::Bool(false);
+        }
         if let Some(bundle) = json.get_mut("bundle") {
             bundle["createUpdaterArtifacts"] = serde_json::Value::Bool(false);
         }
@@ -353,10 +357,11 @@ fn main() {
     println!("cargo:rerun-if-changed=src");
 
     if let Ok(head) = fs::read_to_string(".git/HEAD")
-        && let Some(rest) = head.trim().strip_prefix("ref: ") {
-            let ref_path = format!(".git/{rest}");
-            println!("cargo:rerun-if-changed={ref_path}");
-        }
+        && let Some(rest) = head.trim().strip_prefix("ref: ")
+    {
+        let ref_path = format!(".git/{rest}");
+        println!("cargo:rerun-if-changed={ref_path}");
+    }
 
     let branch = git_branch().unwrap_or_else(|| "unknown".into());
     let hash = git_short_hash().unwrap_or_else(|| "nogit".into());

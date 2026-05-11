@@ -258,55 +258,57 @@ pub fn init() {
         };
 
         // Check if message contains JSON-like structure that can be extracted and formatted.
-        if msg.len() > 100 && (ts == log::Level::Debug || ts == log::Level::Trace)
-            && let (Some(start), Some(end)) = (msg.find('{'), msg.rfind('}')) {
-                let json_part = &msg[start..=end];
+        if msg.len() > 100
+            && (ts == log::Level::Debug || ts == log::Level::Trace)
+            && let (Some(start), Some(end)) = (msg.find('{'), msg.rfind('}'))
+        {
+            let json_part = &msg[start..=end];
 
-                let regex = regex::Regex::new(r#"String\("([^"]*)"\)"#).ok();
+            let regex = regex::Regex::new(r#"String\("([^"]*)"\)"#).ok();
 
-                // Strategy 1: strict conversion of common Rust debug wrappers.
-                let mut attempts: Vec<String> = Vec::with_capacity(2);
-                let mut cleaned = json_part.replace("Object ", "");
-                if let Some(re) = &regex {
-                    cleaned = re.replace_all(&cleaned, r#""$1""#).to_string();
-                }
-                attempts.push(cleaned);
-
-                // Strategy 2: aggressive conversion fallback for odd wrapper nesting.
-                let aggressive = json_part
-                    .replace("Object ", "")
-                    .replace("String(\"", "\"")
-                    .replace("\")", "\"");
-                attempts.push(aggressive);
-
-                for json_clean in attempts {
-                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_clean)
-                        && let Ok(pretty) = serde_json::to_string_pretty(&value) {
-                            let label = clean_label(&msg[..start]);
-                            let header =
-                                format!("[{}] [{}] {:5} [{}]: {} ", date, time, ts, source, label);
-                            let lines: Vec<&str> = pretty.lines().collect();
-                            return writeln!(
-                                buf,
-                                "{}{}",
-                                header,
-                                lines.join(&format!("\n{}", " ".repeat(header.len())))
-                            );
-                        }
-                }
-
-                // Fallback: non-JSON Rust debug structs (e.g., RemoteRelease { ... })
-                let label = clean_label(&msg[..start]);
-                let pretty = format_braced(json_part);
-                let header = format!("[{}] [{}] {:5} [{}]: {} ", date, time, ts, source, label);
-                let lines: Vec<&str> = pretty.lines().collect();
-                return writeln!(
-                    buf,
-                    "{}{}",
-                    header,
-                    lines.join(&format!("\n{}", " ".repeat(header.len())))
-                );
+            // Strategy 1: strict conversion of common Rust debug wrappers.
+            let mut attempts: Vec<String> = Vec::with_capacity(2);
+            let mut cleaned = json_part.replace("Object ", "");
+            if let Some(re) = &regex {
+                cleaned = re.replace_all(&cleaned, r#""$1""#).to_string();
             }
+            attempts.push(cleaned);
+
+            // Strategy 2: aggressive conversion fallback for odd wrapper nesting.
+            let aggressive = json_part
+                .replace("Object ", "")
+                .replace("String(\"", "\"")
+                .replace("\")", "\"");
+            attempts.push(aggressive);
+
+            for json_clean in attempts {
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_clean)
+                    && let Ok(pretty) = serde_json::to_string_pretty(&value)
+                {
+                    let label = clean_label(&msg[..start]);
+                    let header = format!("[{}] [{}] {:5} [{}]: {} ", date, time, ts, source, label);
+                    let lines: Vec<&str> = pretty.lines().collect();
+                    return writeln!(
+                        buf,
+                        "{}{}",
+                        header,
+                        lines.join(&format!("\n{}", " ".repeat(header.len())))
+                    );
+                }
+            }
+
+            // Fallback: non-JSON Rust debug structs (e.g., RemoteRelease { ... })
+            let label = clean_label(&msg[..start]);
+            let pretty = format_braced(json_part);
+            let header = format!("[{}] [{}] {:5} [{}]: {} ", date, time, ts, source, label);
+            let lines: Vec<&str> = pretty.lines().collect();
+            return writeln!(
+                buf,
+                "{}{}",
+                header,
+                lines.join(&format!("\n{}", " ".repeat(header.len())))
+            );
+        }
 
         writeln!(buf, "[{}] [{}] {:5} [{}]: {}", date, time, ts, source, msg)
     });
