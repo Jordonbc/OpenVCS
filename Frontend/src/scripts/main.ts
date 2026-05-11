@@ -300,8 +300,9 @@ async function boot() {
             } else {
                 notify((res?.reason ?? 'No upstream configured for this branch; pull skipped') as string);
             }
-        } catch {
-            notify('Pull failed');
+        } catch (e) {
+            const msg = String(e || '').trim();
+            notify(msg ? `Pull failed: ${msg}` : 'Pull failed');
         } finally {
             ctl.clearBusy();
         }

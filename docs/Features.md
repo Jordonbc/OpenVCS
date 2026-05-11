@@ -82,7 +82,7 @@ OpenVCS is plugin-first and VCS-agnostic. Features, themes, UI changes, and VCS 
   <tr><td>Set remote URL</td><td align="center">✅</td><td>Remote configuration</td></tr>
   <tr><td>Fetch single remote</td><td align="center">✅</td><td>Targeted fetch</td></tr>
   <tr><td>Fetch all remotes</td><td align="center">✅</td><td>Full remote update</td></tr>
-  <tr><td>Pull fast-forward only</td><td align="center">✅</td><td>Conservative pull behaviour</td></tr>
+  <tr><td>Pull</td><td align="center">✅</td><td>Merges remote changes like GitHub Desktop</td></tr>
   <tr><td>Push</td><td align="center">✅</td><td>Push local changes; branches already present on origin are treated as pushable, and first publish establishes upstream tracking</td></tr>
 </table>
 

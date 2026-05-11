@@ -92,6 +92,22 @@ fn looks_like_ssh_auth_failure(msg: &str) -> bool {
         || m.contains("authentication failed")
 }
 
+/// Heuristically detects fast-forward-only divergence failures.
+///
+/// # Parameters
+/// - `msg`: Error text.
+///
+/// # Returns
+/// - `true` when text resembles a diverged ff-only pull.
+/// - `false` otherwise.
+fn looks_like_ff_only_divergence(msg: &str) -> bool {
+    let m = msg.to_lowercase();
+    m.contains("not possible to fast-forward")
+        || m.contains("can't be fast-forwarded")
+        || m.contains("cannot be fast-forwarded")
+        || (m.contains("fast-forward") && m.contains("diverg"))
+}
+
 /// Returns remote URL for a named remote.
 ///
 /// # Parameters
@@ -428,10 +444,10 @@ pub async fn vcs_pull<R: Runtime>(
             });
         }
 
-        info!("Fast-forward pulling '{current}' from {remote}/{upstream_branch}");
+        info!("Pulling '{current}' from {remote}/{upstream_branch}");
         match repo.inner().pull_ff_only(remote, upstream_branch, on) {
             Ok(()) => {
-                info!("Pull (ff-only) completed successfully for branch '{current}'");
+                info!("Pull completed successfully for branch '{current}'");
                 Ok(PullResult {
                     pulled: true,
                     branch: current,
@@ -450,9 +466,20 @@ pub async fn vcs_pull<R: Runtime>(
             }
             Err(e) => {
                 let msg = e.to_string();
+                if looks_like_ff_only_divergence(&msg) {
+                    info!("Pull skipped for branch '{current}': {msg}");
+                    return Ok(PullResult {
+                        pulled: false,
+                        branch: current.clone(),
+                        reason: Some(format!(
+                            "Branch '{current}' diverged from {remote}/{upstream_branch}; fast-forward pull skipped"
+                        )),
+                    });
+                }
+
                 let url = remote_url_for(repo.inner(), remote).unwrap_or_default();
                 emit_ssh_prompt(&app, remote, &url, &msg);
-                error!("Pull (ff-only) failed for branch '{current}': {msg}");
+                error!("Pull failed for branch '{current}': {msg}");
                 Err(msg)
             }
         }
@@ -603,6 +630,27 @@ pub async fn vcs_undo_since_push<R: Runtime>(
         }
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::looks_like_ff_only_divergence;
+
+    #[test]
+    fn detects_fast_forward_only_divergence() {
+        assert!(looks_like_ff_only_divergence(
+            "fatal: Not possible to fast-forward, aborting."
+        ));
+        assert!(looks_like_ff_only_divergence(
+            "hint: Diverging branches can't be fast-forwarded, you need to either:"
+        ));
+    }
+
+    #[test]
+    fn ignores_unrelated_pull_failures() {
+        assert!(!looks_like_ff_only_divergence("permission denied (publickey)"));
+        assert!(!looks_like_ff_only_divergence("could not resolve hostname origin"));
+    }
 }
 
 #[tauri::command]
