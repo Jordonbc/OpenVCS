@@ -171,7 +171,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(app_state)
-        .setup(|app| {
+        .setup(move |app| {
             crate::plugin_runtime::host_api::set_status_event_emitter({
                 let app_handle = app.handle().clone();
                 move |message| {
