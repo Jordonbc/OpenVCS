@@ -6,7 +6,7 @@ authors = ["Jordon Brooks"]
 homepage = "https://bbgames.dev"
 repository = "https://github.com/Jordonbc/OpenVCS"
 license = "GPL-3.0-or-later"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
