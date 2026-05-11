@@ -15,7 +15,9 @@ fn load_local_dotenv(manifest_dir: &std::path::Path) {
 
     for (key, value) in iter.flatten() {
         if env::var_os(&key).is_none() {
-            env::set_var(key, value);
+            // SAFETY: build.rs runs during cargo's single-threaded script phase,
+            // before this process spawns any worker threads that could race on env state.
+            unsafe { env::set_var(key, value); }
         }
     }
 }
