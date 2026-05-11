@@ -224,7 +224,7 @@ pub fn run() {
                     .min_inner_size(1100.0, 600.0)
                     .resizable(true);
                     if let Some(args) = main_window_browser_args.clone() {
-                        builder = builder.additional_browser_args(args);
+                        builder = builder.additional_browser_args(&args);
                     }
                     builder
                 };
