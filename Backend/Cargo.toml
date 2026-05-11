@@ -34,7 +34,7 @@ serde = { version = "1", features = ["derive"] }
 notify = "8"
 tauri-plugin-dialog = "2.7"
 tauri-plugin-updater = "2.10"
-tokio = { version = "1.51", features = ["io-util", "process", "rt", "sync", "time"] }
+tokio = { version = "1.52", features = ["io-util", "process", "rt", "sync", "time"] }
 dirs = "6"
 regex = "1.12"
 log = "0.4"
