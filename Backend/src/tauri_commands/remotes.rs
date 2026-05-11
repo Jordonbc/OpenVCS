@@ -7,7 +7,7 @@ use crate::state::AppState;
 use log::{error, info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window};
 
-use super::{current_repo_or_err, progress_bridge, run_repo_task, ProgressPayload};
+use super::{ProgressPayload, current_repo_or_err, progress_bridge, run_repo_task};
 
 /// Extracts host name from common Git remote URL formats.
 ///
@@ -136,8 +136,8 @@ fn emit_ssh_prompt<R: Runtime>(app: &tauri::AppHandle<R>, remote: &str, url: &st
                 },
             );
         }
-    } else if looks_like_ssh_auth_failure(msg) {
-        if let Some(host) = host_from_remote_url(url) {
+    } else if looks_like_ssh_auth_failure(msg)
+        && let Some(host) = host_from_remote_url(url) {
             let _ = app.emit(
                 "ui:ssh-auth",
                 SshAuthPrompt {
@@ -148,7 +148,6 @@ fn emit_ssh_prompt<R: Runtime>(app: &tauri::AppHandle<R>, remote: &str, url: &st
                 },
             );
         }
-    }
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -539,14 +538,13 @@ pub async fn vcs_push<R: Runtime>(
             }
         };
 
-        if upstream.is_none() {
-            if let Err(e) = repo
+        if upstream.is_none()
+            && let Err(e) = repo
                 .inner()
                 .set_branch_upstream(&current, &format!("origin/{current}"))
             {
                 warn!("Failed to set upstream for published branch '{current}': {e}");
             }
-        }
         info!("Push completed successfully for '{current}'");
         Ok(current)
     })

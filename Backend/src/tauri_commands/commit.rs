@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use log::{error, info};
-use tauri::{async_runtime, Manager, Runtime, State, Window};
+use tauri::{Manager, Runtime, State, Window, async_runtime};
 
 use crate::core::models::VcsEvent;
 use crate::repo::Repo;
@@ -290,7 +290,8 @@ pub async fn commit_patch_and_files<R: Runtime>(
                 e.to_string()
             })?;
         }
-        let has_selection = !patch.trim().is_empty() || !files.is_empty() || !stage_paths.is_empty();
+        let has_selection =
+            !patch.trim().is_empty() || !files.is_empty() || !stage_paths.is_empty();
         if !has_selection {
             return Err("No commit paths provided".into());
         }

@@ -408,8 +408,8 @@ impl PluginBundleStore {
         let _lock = acquire_plugin_store_write_lock()?;
         let plugin_dir = self.root.join(&plugin_id);
 
-        if let Some(installed) = self.get_current_installed(&plugin_id)? {
-            if installed.bundle_sha256 == bundle_sha256 && installed.version == version {
+        if let Some(installed) = self.get_current_installed(&plugin_id)?
+            && installed.bundle_sha256 == bundle_sha256 && installed.version == version {
                 write_plugin_source_metadata(&plugin_dir, source_metadata)?;
                 if auto_approve {
                     self.approve_capabilities(&plugin_id, &version, true)?;
@@ -427,7 +427,6 @@ impl PluginBundleStore {
                     install_dir: plugin_dir,
                 });
             }
-        }
 
         let staging = self
             .root
@@ -612,11 +611,10 @@ impl PluginBundleStore {
             if !index_path.is_file() {
                 continue;
             }
-            if let Ok(text) = fs::read_to_string(&index_path) {
-                if let Ok(index) = serde_json::from_str::<InstalledPluginIndex>(&text) {
+            if let Ok(text) = fs::read_to_string(&index_path)
+                && let Ok(index) = serde_json::from_str::<InstalledPluginIndex>(&text) {
                     out.push(index);
                 }
-            }
         }
         out.sort_by(|a, b| a.plugin_id.cmp(&b.plugin_id));
         Ok(out)
@@ -870,11 +868,10 @@ fn read_built_in_plugin_ids() -> HashSet<String> {
             }
         };
         let id = manifest.id.trim();
-        if !id.is_empty() {
-            if let Ok(normalized) = normalize_plugin_id(id) {
+        if !id.is_empty()
+            && let Ok(normalized) = normalize_plugin_id(id) {
                 out.insert(normalized);
             }
-        }
     }
     out
 }

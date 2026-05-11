@@ -28,11 +28,10 @@ pub struct Validation {
 /// - Tuple of normalized path, exists flag, and is-dir flag.
 fn normalize_and_probe(input: &str) -> (String, bool, bool) {
     let mut s = input.trim().to_string();
-    if s.starts_with('~') {
-        if let Some(home) = dirs::home_dir() {
+    if s.starts_with('~')
+        && let Some(home) = dirs::home_dir() {
             s = s.replacen('~', home.to_string_lossy().as_ref(), 1);
         }
-    }
     let p = Path::new(&s);
     (s.clone(), p.exists(), p.is_dir())
 }
@@ -194,14 +193,13 @@ pub fn validate_clone_input(url: String, dest: String) -> Validation {
     let (norm, exists, is_dir) = normalize_and_probe(&dest);
     if !exists {
         // Allow non-existent parent? Keep strict: require parent exists.
-        if let Some(parent) = Path::new(&norm).parent() {
-            if !parent.exists() {
+        if let Some(parent) = Path::new(&norm).parent()
+            && !parent.exists() {
                 return Validation {
                     ok: false,
                     reason: Some("Parent folder does not exist".into()),
                 };
             }
-        }
         return Validation {
             ok: true,
             reason: None,

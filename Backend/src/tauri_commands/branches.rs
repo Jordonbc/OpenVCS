@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use log::{debug, error, info, warn};
 use tauri::State;
 
-use crate::core::models::{BranchItem, BranchKind};
 use crate::core::BackendId;
+use crate::core::models::{BranchItem, BranchKind};
 
 use crate::plugin_runtime::settings_store;
 use crate::plugin_vcs_backends;

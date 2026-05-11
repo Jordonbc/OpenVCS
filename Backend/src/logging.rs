@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 use time::{OffsetDateTime, UtcOffset};
-use zip::{write::FileOptions, CompressionMethod, ZipWriter};
+use zip::{CompressionMethod, ZipWriter, write::FileOptions};
 
 static ACTIVE_LOG_FILE: OnceLock<Arc<Mutex<std::fs::File>>> = OnceLock::new();
 static SENTRY_LOG_FORWARDING_ENABLED: AtomicBool = AtomicBool::new(false);
@@ -258,8 +258,8 @@ pub fn init() {
         };
 
         // Check if message contains JSON-like structure that can be extracted and formatted.
-        if msg.len() > 100 && (ts == log::Level::Debug || ts == log::Level::Trace) {
-            if let (Some(start), Some(end)) = (msg.find('{'), msg.rfind('}')) {
+        if msg.len() > 100 && (ts == log::Level::Debug || ts == log::Level::Trace)
+            && let (Some(start), Some(end)) = (msg.find('{'), msg.rfind('}')) {
                 let json_part = &msg[start..=end];
 
                 let regex = regex::Regex::new(r#"String\("([^"]*)"\)"#).ok();
@@ -280,8 +280,8 @@ pub fn init() {
                 attempts.push(aggressive);
 
                 for json_clean in attempts {
-                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_clean) {
-                        if let Ok(pretty) = serde_json::to_string_pretty(&value) {
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_clean)
+                        && let Ok(pretty) = serde_json::to_string_pretty(&value) {
                             let label = clean_label(&msg[..start]);
                             let header =
                                 format!("[{}] [{}] {:5} [{}]: {} ", date, time, ts, source, label);
@@ -293,7 +293,6 @@ pub fn init() {
                                 lines.join(&format!("\n{}", " ".repeat(header.len())))
                             );
                         }
-                    }
                 }
 
                 // Fallback: non-JSON Rust debug structs (e.g., RemoteRelease { ... })
@@ -308,7 +307,6 @@ pub fn init() {
                     lines.join(&format!("\n{}", " ".repeat(header.len())))
                 );
             }
-        }
 
         writeln!(buf, "[{}] [{}] {:5} [{}]: {}", date, time, ts, source, msg)
     });

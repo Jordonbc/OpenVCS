@@ -7,8 +7,8 @@
 
 use log::{error, warn};
 use std::sync::Arc;
-use tauri::path::BaseDirectory;
 use tauri::WindowEvent;
+use tauri::path::BaseDirectory;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_updater::UpdaterExt;
 
@@ -315,14 +315,13 @@ pub fn run() {
             };
             if check_updates {
                 tauri::async_runtime::spawn(async move {
-                    if let Ok(updater) = app_handle.updater() {
-                        if let Ok(Some(_u)) = updater.check().await {
+                    if let Ok(updater) = app_handle.updater()
+                        && let Ok(Some(_u)) = updater.check().await {
                             let _ = app_handle.emit(
                                 "ui:update-available",
                                 serde_json::json!({"source":"startup"}),
                             );
                         }
-                    }
                 });
             }
 
@@ -330,13 +329,12 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             // If the main window is closed, exit the app even if auxiliary windows are open.
-            if window.label() == "main" {
-                if let WindowEvent::CloseRequested { .. } = event {
+            if window.label() == "main"
+                && let WindowEvent::CloseRequested { .. } = event {
                     let state = window.app_handle().state::<state::AppState>();
                     state.plugin_runtime().stop_all_plugins();
                     window.app_handle().exit(0);
                 }
-            }
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -351,8 +349,8 @@ pub fn run() {
 ///
 /// # Returns
 /// - Tauri invoke handler closure.
-fn build_invoke_handler<R: tauri::Runtime>(
-) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
+fn build_invoke_handler<R: tauri::Runtime>()
+-> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         tauri_commands::about_info,
         tauri_commands::show_licenses,

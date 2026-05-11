@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::sync::Arc;
 
-use tauri::{async_runtime, AppHandle, Emitter, Manager, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State, async_runtime};
 
-use crate::core::models::VcsEvent;
 use crate::core::OnEvent;
+use crate::core::models::VcsEvent;
 use crate::output_log::{OutputLevel, OutputLogEntry};
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;

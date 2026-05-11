@@ -267,11 +267,10 @@ fn load_recents_from_disk() -> Result<Vec<PathBuf>, String> {
                     out.push(PathBuf::from(s));
                 }
                 serde_json::Value::Object(map) => {
-                    if let Some(serde_json::Value::String(s)) = map.get("path") {
-                        if !s.trim().is_empty() {
+                    if let Some(serde_json::Value::String(s)) = map.get("path")
+                        && !s.trim().is_empty() {
                             out.push(PathBuf::from(s));
                         }
-                    }
                 }
                 _ => {}
             }

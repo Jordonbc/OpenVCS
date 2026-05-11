@@ -193,12 +193,11 @@ pub fn ssh_trust_host(host: String) -> Result<(), String> {
     debug!("ssh_trust_host: known_hosts path={}", known_hosts.display());
 
     // Avoid duplicating entries if the host is already present.
-    if let Ok(existing) = fs::read_to_string(&known_hosts) {
-        if existing.lines().any(|l| l.contains(host)) {
+    if let Ok(existing) = fs::read_to_string(&known_hosts)
+        && existing.lines().any(|l| l.contains(host)) {
             debug!("ssh_trust_host: host '{}' already in known_hosts", host);
             return Ok(());
         }
-    }
 
     let scanned = keyscan(host)?;
     let mut to_append = String::new();

@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use log::{error, info, warn};
-use tauri::{async_runtime, State};
+use tauri::{State, async_runtime};
 
 use std::collections::BTreeMap;
 

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use log::{error, info, warn};
-use tauri::{async_runtime, Emitter, Manager, Runtime, State, Window};
+use tauri::{Emitter, Manager, Runtime, State, Window, async_runtime};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 

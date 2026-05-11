@@ -8,7 +8,7 @@ use crate::plugin_bundles::PluginBundleStore;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::runtime_select::create_node_runtime_instance;
 use crate::plugin_runtime::settings_store;
-use crate::plugin_runtime::{vcs_proxy::PluginVcsProxy, PluginRuntimeManager};
+use crate::plugin_runtime::{PluginRuntimeManager, vcs_proxy::PluginVcsProxy};
 use crate::settings::AppConfig;
 use log::{debug, error, info, trace, warn};
 use std::collections::BTreeMap;
@@ -35,9 +35,7 @@ fn is_plugin_enabled_in_settings(plugin_id: &str, default_enabled: bool) -> bool
     let enabled = cfg.is_plugin_enabled(plugin_id, default_enabled);
     trace!(
         "is_plugin_enabled_in_settings: plugin={}, default={}, result={}",
-        plugin_id,
-        default_enabled,
-        enabled
+        plugin_id, default_enabled, enabled
     );
     enabled
 }

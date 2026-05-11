@@ -7,8 +7,8 @@ use std::{
     env,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, Ordering},
         OnceLock,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -151,8 +151,8 @@ fn bundled_resource_base_dirs(resource_dir_name: &str) -> Vec<PathBuf> {
     #[cfg(not(target_os = "linux"))]
     let _ = resource_dir_name;
 
-    if let Ok(exe) = env::current_exe() {
-        if let Some(dir) = exe.parent() {
+    if let Ok(exe) = env::current_exe()
+        && let Some(dir) = exe.parent() {
             push_unique_path(&mut candidates, dir.join("resources"));
             push_unique_path(&mut candidates, dir.to_path_buf());
             if let Some(target_dir) = dir.parent() {
@@ -167,7 +167,6 @@ fn bundled_resource_base_dirs(resource_dir_name: &str) -> Vec<PathBuf> {
                 dir.join("_up_").join("target").join("openvcs"),
             );
         }
-    }
 
     if let Some(resource_dir) = RESOURCE_DIR.get() {
         push_unique_path(&mut candidates, resource_dir.clone());
