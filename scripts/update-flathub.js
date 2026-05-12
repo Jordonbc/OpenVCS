@@ -82,10 +82,16 @@ function updateMetainfo(path, { version }) {
   ].join('\n');
 
   // Insert after the <releases> opening tag (newest first)
+  const before = xml;
   xml = xml.replace(
     /(\s*<releases>\s*\n)/,
     `$1${releaseEntry}\n`
   );
+
+  if (xml === before) {
+    console.error('ERROR: <releases> element not found in metainfo XML — cannot insert release entry');
+    process.exit(1);
+  }
 
   fs.writeFileSync(path, xml, 'utf8');
   console.log(`  → Added metainfo release entry for v${version} (${today})`);
