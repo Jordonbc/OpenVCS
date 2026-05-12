@@ -28,7 +28,7 @@ jobs:
           path: |
             ~/.local/share/flatpak
             .flatpak-builder
-          key: flatpak-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'Frontend/package-lock.json', 'flathub/io.github.jordonbc.OpenVCS.yml') }}
+          key: flatpak-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'Frontend/package-lock.json', 'flathub/app.openvcs.OpenVCS.yml') }}
           restore-keys: flatpak-${{ runner.os }}-
 
       - name: Setup Node
@@ -72,9 +72,9 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          yq eval '(.modules[] | select(.name == "openvcs-backend") | ."build-options".env.OPENVCS_OFFICIAL_RELEASE) = "1"' -i flathub/io.github.jordonbc.OpenVCS.yml
-          flatpak-builder --user --force-clean --repo=repo build-flatpak flathub/io.github.jordonbc.OpenVCS.yml
-          flatpak build-bundle repo OpenVCS-test.flatpak io.github.jordonbc.OpenVCS
+          yq eval '(.modules[] | select(.name == "openvcs-backend") | ."build-options".env.OPENVCS_OFFICIAL_RELEASE) = "1"' -i flathub/app.openvcs.OpenVCS.yml
+          flatpak-builder --user --force-clean --repo=repo build-flatpak flathub/app.openvcs.OpenVCS.yml
+          flatpak build-bundle repo OpenVCS-test.flatpak app.openvcs.OpenVCS
 
       - name: Upload Flatpak artifact
         uses: actions/upload-artifact@v7
