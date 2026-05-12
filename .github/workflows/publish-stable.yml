@@ -220,5 +220,5 @@ jobs:
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git remote set-url origin "https://x-access-token:${{ secrets.FLATHUB_REPO_PAT }}@github.com/Open-VCS/flathub.git"
           git add io.github.jordonbc.OpenVCS.yml io.github.jordonbc.OpenVCS.metainfo.xml cargo-sources.json npm-sources-frontend.json
-          git commit -m "chore: bump to ${RELEASE_TAG}" || echo 'Nothing to commit'
+          git commit -m "chore: bump to openvcs-v${{ steps.version.outputs.version }}" || echo 'Nothing to commit'
           git push
