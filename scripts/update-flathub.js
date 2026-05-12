@@ -40,11 +40,11 @@ function updateManifest(path, { tag, commit }) {
   let yaml = fs.readFileSync(path, 'utf8');
   const countBefore = (yaml.match(/tag: /g) || []).length;
 
-  // Match the block starting with the main repo URL up to dest: .
+  // Match the block starting with the url: line for the main repo up to dest: .
   // Captures: full match replaces tag + commit lines, keeping original indentation.
   yaml = yaml.replace(
     new RegExp(
-      `(${escapeRegex(MAIN_REPO_URL)}\\n)(\\s+)tag: .*\\n(\\s+)commit: .*\\n(\\s+)dest: \\.`,
+      `(\\s+url: ${escapeRegex(MAIN_REPO_URL)}\\n)(\\s+)tag: .*\\n(\\s+)commit: .*\\n(\\s+)dest: \\.`,
       'g'
     ),
     (_, urlLine, ws1, ws2, ws3) =>
