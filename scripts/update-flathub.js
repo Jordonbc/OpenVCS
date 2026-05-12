@@ -104,11 +104,10 @@ function escapeRegex(s) {
 
 const args = parseArgs();
 const { flathubDir, version } = args;
-const tag = `openvcs-v${version}`;
 
 console.log(`Updating Flathub manifest in ${flathubDir}:`);
 
-updateManifest(path.join(flathubDir, 'io.github.jordonbc.OpenVCS.yml'), { ...args, tag });
+updateManifest(path.join(flathubDir, 'io.github.jordonbc.OpenVCS.yml'), args);
 updateMetainfo(path.join(flathubDir, 'io.github.jordonbc.OpenVCS.metainfo.xml'), { version });
 
 console.log('Done.');
