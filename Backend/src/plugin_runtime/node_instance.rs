@@ -15,20 +15,20 @@ use crate::plugin_paths;
 use crate::plugin_runtime::events;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::protocol::{
-    read_framed_message, write_framed_message, Methods, NotificationMethods, RpcError, RpcRequest,
-    RpcResponse, PROTOCOL_VERSION,
+    Methods, NotificationMethods, PROTOCOL_VERSION, RpcError, RpcRequest, RpcResponse,
+    read_framed_message, write_framed_message,
 };
 use crate::plugin_runtime::spawn::SpawnConfig;
 use base64::Engine;
 use log::{debug, info, trace, warn};
 use parking_lot::{Mutex, RwLock};
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde::de::DeserializeOwned;
+use serde_json::{Value, json};
 use std::io::BufReader;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
 use std::sync::Arc;
+use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::thread;
 use std::time::Duration;
 
@@ -370,10 +370,10 @@ impl NodePluginRuntimeInstance {
             .as_mut()
             .ok_or_else(|| "node runtime did not initialize".to_string())?;
         let result = f(process);
-        if let Err(err) = &result {
-            if err.contains("disconnected") {
-                lock.take();
-            }
+        if let Err(err) = &result
+            && err.contains("disconnected")
+        {
+            lock.take();
         }
         result
     }
@@ -551,8 +551,7 @@ impl NodePluginRuntimeInstance {
             other => {
                 trace!(
                     "plugin '{}' emitted unknown notification '{}'",
-                    self.spawn.plugin_id,
-                    other
+                    self.spawn.plugin_id, other
                 );
             }
         }
@@ -621,6 +620,11 @@ impl NodePluginRuntimeInstance {
         )?;
         *self.vcs_session_id.lock() = Some(result.session_id);
         Ok(())
+    }
+
+    /// Calls `vcs.clone_repo` without requiring an opened session.
+    pub fn vcs_clone_repo(&self, url: &str, dest: &str) -> Result<(), String> {
+        self.rpc_call_unit(Methods::VCS_CLONE_REPO, json!({ "url": url, "dest": dest }))
     }
 
     /// Calls `vcs.get-current-branch`.

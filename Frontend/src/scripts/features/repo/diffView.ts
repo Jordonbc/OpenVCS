@@ -5,7 +5,7 @@ import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
 import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
-import { state, prefs, disableDefaultSelectAll, DiffMeta, HunkNodeRefs } from '../../state/state';
+import { isConflictStatus, state, prefs, disableDefaultSelectAll, DiffMeta, HunkNodeRefs } from '../../state/state';
 import type { FileStatus, ConflictDetails } from '../../types';
 import { buildPatchForSelectedHunks } from '../diff';
 import { diffEl, diffHeadPath, listEl } from './context';
@@ -34,8 +34,11 @@ const BINARY_DIFF_INDICATORS = [
 
 /** Returns true when the diff payload should be treated as binary. */
 function detectBinaryDiff(lines: string[] = []) {
-    if (!Array.isArray(lines) || lines.length === 0) {
+    if (!Array.isArray(lines)) {
         return true;
+    }
+    if (lines.length === 0) {
+        return false;
     }
     const hasHunks = lines.some((line) => (line || '').startsWith('@@'));
     if (hasHunks) {
@@ -68,10 +71,17 @@ function buildUntrackedTextPatch(path: string, text: string): string[] {
     return out;
 }
 
+/** Returns true when a status code represents an untracked file. */
+function isUntrackedStatus(status: string) {
+    return String(status || '').includes('?');
+}
+
 /** Highlights a row in the left list for the current tab. */
 export function highlightRow(index: number) {
     const rows = qsa<HTMLElement>((prefs.tab === 'history' ? '.row.commit' : '.row'), listEl || (undefined as any));
-    rows.forEach((el, i) => el.classList.toggle('active', i === index));
+    rows.forEach((el, i) => {
+        el.classList.toggle('active', i === index);
+    });
 }
 
 /** Loads and renders the selected file diff with selection state restored. */
@@ -83,7 +93,7 @@ export async function selectFile(file: FileStatus, index: number) {
     }
     highlightRow(index);
     const status = String(file.status || '').toUpperCase();
-    if (status === 'U') {
+    if (isConflictStatus(status)) {
         diffHeadPath.textContent = `${file.path || '(unknown file)'} (conflicted)`;
         await renderConflictView(file);
         state.diffDirty = false;
@@ -98,9 +108,9 @@ export async function selectFile(file: FileStatus, index: number) {
     try {
         let lines: string[] = [];
         if (file.path) {
-            lines = await TAURI.invoke<string[]>('git_diff_file', { path: file.path });
+            lines = await TAURI.invoke<string[]>('vcs_diff_file', { path: file.path });
         }
-        if (status === '?' && file.path && (!Array.isArray(lines) || lines.length === 0)) {
+        if (isUntrackedStatus(status) && file.path && (!Array.isArray(lines) || lines.length === 0)) {
             try {
                 const text = await TAURI.invoke<string>('read_repo_file_text', { path: file.path });
                 lines = buildUntrackedTextPatch(file.path, text || '');
@@ -147,7 +157,7 @@ export async function selectFile(file: FileStatus, index: number) {
                 try {
                     const patch = buildPatchForSelectedHunks(file.path, state.currentDiff, [hi]);
                     if (patch) {
-                        await TAURI.invoke('git_discard_patch', { patch });
+                        await TAURI.invoke('vcs_discard_patch', { patch });
                         await Promise.allSettled([hydrateStatus()]);
                     }
                 } catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
@@ -160,7 +170,7 @@ export async function selectFile(file: FileStatus, index: number) {
                     try {
                         const patch = buildPatchForSelectedHunks(file.path, state.currentDiff, selected);
                         if (patch) {
-                            await TAURI.invoke('git_discard_patch', { patch });
+                            await TAURI.invoke('vcs_discard_patch', { patch });
                             await Promise.allSettled([hydrateStatus()]);
                         }
                     } catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
@@ -176,12 +186,12 @@ export async function selectFile(file: FileStatus, index: number) {
                         let patch = '';
                         for (const p of filesWithSel) {
                             let lines: string[] = [];
-                            try { lines = await TAURI.invoke<string[]>('git_diff_file', { path: p }); } catch {}
+                            try { lines = await TAURI.invoke<string[]>('vcs_diff_file', { path: p }); } catch {}
                             if (!Array.isArray(lines) || lines.length === 0) continue;
                             patch += buildPatchForSelectedHunks(p, lines, hunksMap[p]) + '\n';
                         }
                         if (patch.trim()) {
-                            await TAURI.invoke('git_discard_patch', { patch });
+                            await TAURI.invoke('vcs_discard_patch', { patch });
                             await Promise.allSettled([hydrateStatus()]);
                         }
                     } catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
@@ -248,13 +258,13 @@ export async function selectStashDiff(selector: string) {
     try {
         let lines: string[] = [];
         if (selector) {
-            lines = await TAURI.invoke<string[]>('git_stash_show', { selector });
+            lines = await TAURI.invoke<string[]>('vcs_stash_show', { selector });
         }
         state.currentDiff = lines || [];
         diffEl.innerHTML = renderHunksReadonly(state.currentDiff);
         scrollDiffToTop();
     } catch (e) {
-        console.warn('git_stash_show failed', e);
+        console.warn('vcs_stash_show failed', e);
         diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load stash diff</div></div></div>';
         scrollDiffToTop();
     }
@@ -271,13 +281,13 @@ export async function renderCombinedDiff(paths: string[]) {
     let html = '';
     for (const p of files) {
         try {
-            const lines = await TAURI.invoke<string[]>('git_diff_file', { path: p });
+            const lines = await TAURI.invoke<string[]>('vcs_diff_file', { path: p });
             html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)}</div></div></div>`;
             const fileLines = Array.isArray(lines) ? lines : [];
             if (detectBinaryDiff(fileLines)) {
                 html += renderBinaryDiffPlaceholder(p);
             } else {
-                html += renderHunksWithSelection(fileLines);
+                html += renderHunksReadonly(fileLines);
             }
         } catch {
             html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)} (failed to load diff)</div></div></div>`;
@@ -293,7 +303,9 @@ export function clearDiffSelection() {
     if (state.diffSelectedFiles && state.diffSelectedFiles.size > 0) {
         state.diffSelectedFiles.clear();
         const rows = listEl.querySelectorAll<HTMLElement>('li.row.diffsel');
-        rows.forEach((r) => r.classList.remove('diffsel'));
+        rows.forEach((r) => {
+            r.classList.remove('diffsel');
+        });
     }
 }
 
@@ -301,7 +313,9 @@ export function clearDiffSelection() {
 export function clearActiveRows() {
     if (!listEl) return;
     const rows = listEl.querySelectorAll<HTMLElement>('li.row.active');
-    rows.forEach((r) => r.classList.remove('active'));
+    rows.forEach((r) => {
+        r.classList.remove('active');
+    });
 }
 
 /** Loads and renders conflict details and resolution actions. */
@@ -313,10 +327,13 @@ async function renderConflictView(file: FileStatus) {
     if ((state as any).selectedHunksByFile) {
         delete (state as any).selectedHunksByFile[file.path];
     }
+    if ((state as any).selectedLinesByFile) {
+        delete (state as any).selectedLinesByFile[file.path];
+    }
     diffEl.innerHTML = '<div class="conflict-view"><div class="conflict-loading">Loading conflict…</div></div>';
     scrollDiffToTop();
     try {
-        const details = await TAURI.invoke<ConflictDetails>('git_conflict_details', { path: file.path });
+        const details = await TAURI.invoke<ConflictDetails>('vcs_conflict_details', { path: file.path });
         diffEl.innerHTML = renderConflictMarkup(details);
         bindConflictActions(diffEl, file, details);
         scrollDiffToTop();
@@ -331,7 +348,7 @@ async function renderConflictView(file: FileStatus) {
 function renderConflictMarkup(details: ConflictDetails) {
     const binary = !!details.binary;
     const header = `<div class="conflict-header"><div class="conflict-title">Merge conflict</div>${renderConflictActions(binary)}</div>`;
-    const body = binary ? renderBinaryConflictBody(details) : renderTextConflictBody(details);
+    const body = binary ? renderBinaryConflictBody() : renderTextConflictBody(details);
     const pathAttr = escapeHtml(details.path || '');
     return `<div class="conflict-view" data-conflict-path="${pathAttr}" data-conflict-binary="${binary ? '1' : '0'}">${header}${body}</div>`;
 }
@@ -347,7 +364,7 @@ function renderConflictActions(binary: boolean) {
 }
 
 /** Renders a compact binary-conflict explanation panel. */
-function renderBinaryConflictBody(details: ConflictDetails) {
+function renderBinaryConflictBody() {
     const note = 'This file is binary. Choose which version to keep.';
     return `<div class="conflict-body"><div class="conflict-note">${escapeHtml(note)}</div></div>`;
 }
@@ -380,7 +397,7 @@ function bindConflictActions(root: HTMLElement, file: FileStatus, details: Confl
         buttons.forEach((b) => { b.disabled = true; });
         container.setAttribute('data-busy', '1');
         try {
-            await TAURI.invoke('git_resolve_conflict_side', { path: file.path, side });
+            await TAURI.invoke('vcs_resolve_conflict_side', { path: file.path, side });
             notify(side === 'ours' ? 'Kept your version' : 'Kept their version');
             await Promise.allSettled([hydrateStatus()]);
         } catch (err) {
@@ -438,10 +455,10 @@ export function toggleFilePick(path: string, on: boolean) {
             (state as any).selectedHunksByFile[state.currentFile] = state.selectedHunks.slice();
             const rec: Record<number, number[]> = {};
             hunkNodes.forEach((refs, idx) => {
-                if (refs.hunkCheckbox) {
-                    refs.hunkCheckbox.checked = true;
-                    refs.hunkCheckbox.indeterminate = false;
-                }
+                refs.hunkCheckboxes.forEach((box) => {
+                    box.checked = true;
+                    box.indeterminate = false;
+                });
                 const picked: number[] = [];
                 Object.entries(refs.lineCheckboxes).forEach(([key, box]) => {
                     const lineIdx = Number(key);
@@ -457,10 +474,10 @@ export function toggleFilePick(path: string, on: boolean) {
             delete (state as any).selectedHunksByFile[state.currentFile];
             delete (state as any).selectedLinesByFile[state.currentFile];
             hunkNodes.forEach((refs) => {
-                if (refs.hunkCheckbox) {
-                    refs.hunkCheckbox.checked = false;
-                    refs.hunkCheckbox.indeterminate = false;
-                }
+                refs.hunkCheckboxes.forEach((box) => {
+                    box.checked = false;
+                    box.indeterminate = false;
+                });
                 Object.values(refs.lineCheckboxes).forEach((box) => { box.checked = false; });
             });
         }
@@ -478,11 +495,13 @@ export function updateHunkCheckboxes() {
         : {};
     nodes.forEach((refs, idx) => {
         const isSelected = state.selectedHunks.includes(idx);
-        if (refs.hunkCheckbox) {
-            refs.hunkCheckbox.checked = isSelected;
-            refs.hunkCheckbox.indeterminate = false;
-        }
-        refs.hunkEl.classList.toggle('picked', isSelected);
+        refs.hunkCheckboxes.forEach((box) => {
+            box.checked = isSelected;
+            box.indeterminate = false;
+        });
+        refs.hunkEls.forEach((el) => {
+            el.classList.toggle('picked', isSelected);
+        });
         if (state.currentFile) {
             const lines = rec[idx] || [];
             Object.entries(refs.lineCheckboxes).forEach(([key, box]) => {
@@ -490,15 +509,15 @@ export function updateHunkCheckboxes() {
                 const checked = Array.isArray(lines) && lines.includes(lineIdx);
                 box.checked = checked;
             });
-            if (refs.hunkCheckbox) {
-                const total = state.currentDiffMeta?.changeCounts[idx] ?? Object.keys(refs.lineCheckboxes).length;
-                const chosen = lines.length;
-                refs.hunkCheckbox.checked = total > 0 && chosen === total;
-                refs.hunkCheckbox.indeterminate = chosen > 0 && chosen < total;
-            }
+            const total = state.currentDiffMeta?.changeCounts[idx] ?? Object.keys(refs.lineCheckboxes).length;
+            const chosen = lines.length;
+            refs.hunkCheckboxes.forEach((box) => {
+                box.checked = total > 0 && chosen === total;
+                box.indeterminate = chosen > 0 && chosen < total;
+            });
         } else {
             Object.values(refs.lineCheckboxes).forEach((box) => { box.checked = false; });
-            if (refs.hunkCheckbox) refs.hunkCheckbox.indeterminate = false;
+            refs.hunkCheckboxes.forEach((box) => { box.indeterminate = false; });
         }
     });
 }
@@ -550,11 +569,13 @@ function handleHunkToggle(input: HTMLInputElement) {
     }
     (state as any).selectedLinesByFile[state.currentFile] = rec;
     const refs = state.currentDiffHunkNodes.get(idx);
-    refs?.hunkEl?.classList.toggle('picked', input.checked);
-    if (refs?.hunkCheckbox) {
-        refs.hunkCheckbox.indeterminate = false;
-        refs.hunkCheckbox.checked = input.checked;
-    }
+    refs?.hunkEls.forEach((el) => {
+        el.classList.toggle('picked', input.checked);
+    });
+    refs?.hunkCheckboxes.forEach((box) => {
+        box.indeterminate = false;
+        box.checked = input.checked;
+    });
     if (state.currentFile) {
         (state as any).selectedHunksByFile[state.currentFile] = state.selectedHunks.slice();
     }
@@ -586,17 +607,20 @@ function handleLineToggle(input: HTMLInputElement) {
     (state as any).selectedLinesByFile[state.currentFile] = rec;
     const refs = state.currentDiffHunkNodes.get(hunk);
     const total = state.currentDiffMeta?.changeCounts[hunk] ?? Object.keys(refs?.lineCheckboxes || {}).length;
-    const hunkBox = refs?.hunkCheckbox;
-    if (hunkBox) {
-        hunkBox.checked = total > 0 && next.length === total;
-        hunkBox.indeterminate = next.length > 0 && next.length < total;
-        if (hunkBox.checked) {
-            if (!state.selectedHunks.includes(hunk)) state.selectedHunks.push(hunk);
-        } else {
-            state.selectedHunks = state.selectedHunks.filter((i) => i !== hunk);
-        }
-        refs?.hunkEl?.classList.toggle('picked', hunkBox.checked);
+    const hunkChecked = total > 0 && next.length === total;
+    const hunkIndeterminate = next.length > 0 && next.length < total;
+    refs?.hunkCheckboxes.forEach((box) => {
+        box.checked = hunkChecked;
+        box.indeterminate = hunkIndeterminate;
+    });
+    if (hunkChecked) {
+        if (!state.selectedHunks.includes(hunk)) state.selectedHunks.push(hunk);
+    } else {
+        state.selectedHunks = state.selectedHunks.filter((i) => i !== hunk);
     }
+    refs?.hunkEls.forEach((el) => {
+        el.classList.toggle('picked', hunkChecked);
+    });
     if (state.currentFile) {
         (state as any).selectedHunksByFile[state.currentFile] = state.selectedHunks.slice();
     }
@@ -717,40 +741,22 @@ function buildDiffFragment(lines: string[]): DocumentFragment {
         const e = meta.starts[h + 1];
         const hunkLines = meta.rest.slice(s, e);
         const offset = meta.offset + s;
-        const hunkEl = document.createElement('div');
-        hunkEl.className = 'hunk';
-        hunkEl.dataset.hunkIndex = String(h);
-
-        const header = document.createElement('div');
-        header.className = 'hline';
-        const gutter = document.createElement('div');
-        gutter.className = 'gutter';
-        const label = document.createElement('label');
-        label.className = 'pick-toggle';
-        const hunkCheckbox = document.createElement('input');
-        hunkCheckbox.type = 'checkbox';
-        hunkCheckbox.className = 'pick-hunk';
-        hunkCheckbox.dataset.hunk = String(h);
-        label.appendChild(hunkCheckbox);
-        const srHunk = document.createElement('span');
-        srHunk.className = 'sr-only';
-        srHunk.textContent = 'Include hunk';
-        label.appendChild(srHunk);
-        gutter.appendChild(label);
-        header.appendChild(gutter);
-        const codeHeader = document.createElement('div');
-        codeHeader.className = 'code';
-        header.appendChild(codeHeader);
-        hunkEl.appendChild(header);
-
         const lineCheckboxes: Record<number, HTMLInputElement> = {};
-        hunkLines.forEach((ln, i) => {
+        const lineRows = hunkLines.map((ln, i) => {
             const first = (typeof ln === 'string' ? ln[0] : ' ') || ' ';
             const lineRow = document.createElement('div');
             lineRow.className = `hline${first === '+' ? ' add' : first === '-' ? ' del' : ''}`;
             const lineGutter = document.createElement('div');
             lineGutter.className = 'gutter';
             if (first === '+' || first === '-') {
+                const leftNumber = document.createElement('span');
+                leftNumber.className = 'line-number line-number-left';
+                const rightNumber = document.createElement('span');
+                rightNumber.className = 'line-number line-number-right';
+                const numberText = String(offset + i + 1);
+                if (first === '-') leftNumber.textContent = numberText;
+                else rightNumber.textContent = numberText;
+                lineGutter.appendChild(leftNumber);
                 const lineLabel = document.createElement('label');
                 lineLabel.className = 'pick-toggle';
                 const lineCheckbox = document.createElement('input');
@@ -764,18 +770,65 @@ function buildDiffFragment(lines: string[]): DocumentFragment {
                 srLine.textContent = 'Include line';
                 lineLabel.appendChild(srLine);
                 lineGutter.appendChild(lineLabel);
+                lineGutter.appendChild(rightNumber);
                 lineCheckboxes[i] = lineCheckbox;
             }
-            lineGutter.appendChild(document.createTextNode(String(offset + i + 1)));
+            if (first !== '+' && first !== '-') {
+                const lineNumber = document.createElement('span');
+                lineNumber.className = 'line-number line-number-right';
+                lineNumber.textContent = String(offset + i + 1);
+                lineGutter.appendChild(lineNumber);
+            }
             const code = document.createElement('div');
             code.className = 'code';
             code.innerHTML = escapeHtml(String(ln || ''));
             lineRow.appendChild(lineGutter);
             lineRow.appendChild(code);
-            hunkEl.appendChild(lineRow);
+            return lineRow;
         });
-        nodes.set(h, { hunkEl, hunkCheckbox, lineCheckboxes });
-        fragment.appendChild(hunkEl);
+        const hunkEls: HTMLElement[] = [];
+        const hunkCheckboxes: HTMLInputElement[] = [];
+        let currentSegmentRows: HTMLElement[] = [];
+        const flushSegment = () => {
+            if (currentSegmentRows.length === 0) return;
+            const hunkEl = document.createElement('div');
+            hunkEl.className = 'hunk';
+            hunkEl.dataset.hunkIndex = String(h);
+            const selectionBody = document.createElement('div');
+            selectionBody.className = 'hunk-selection-body';
+            const hunkCheckbox = document.createElement('input');
+            hunkCheckbox.type = 'checkbox';
+            hunkCheckbox.className = 'pick-hunk';
+            hunkCheckbox.dataset.hunk = String(h);
+            const label = document.createElement('label');
+            label.className = 'pick-toggle';
+            label.appendChild(hunkCheckbox);
+            const srHunk = document.createElement('span');
+            srHunk.className = 'sr-only';
+            srHunk.textContent = 'Include hunk';
+            label.appendChild(srHunk);
+            selectionBody.appendChild(label);
+            currentSegmentRows.forEach((row) => {
+                selectionBody.appendChild(row);
+            });
+            hunkEl.appendChild(selectionBody);
+            fragment.appendChild(hunkEl);
+            hunkEls.push(hunkEl);
+            hunkCheckboxes.push(hunkCheckbox);
+            currentSegmentRows = [];
+        };
+        hunkLines.forEach((ln, i) => {
+            const first = (typeof ln === 'string' ? ln[0] : ' ') || ' ';
+            const row = lineRows[i];
+            if (first === '+' || first === '-') {
+                currentSegmentRows.push(row);
+                return;
+            }
+            flushSegment();
+            fragment.appendChild(row);
+        });
+        flushSegment();
+        nodes.set(h, { hunkEls, hunkCheckboxes, lineCheckboxes });
     }
     state.currentDiffHunkNodes = nodes;
     return fragment;
@@ -801,11 +854,30 @@ export function renderHunksWithSelection(lines: string[]) {
         const body = hunkLines.map((ln, i) => {
             const first = (typeof ln === 'string' ? ln[0] : ' ') || ' ';
             const isChange = first === '+' || first === '-';
+            const numberText = `${offset + i + 1}`;
+            const leftNumber = isChange && first === '-' ? `<span class="line-number line-number-left">${numberText}</span>` : isChange ? `<span class="line-number line-number-left"></span>` : '';
+            const rightNumber = isChange && first === '+' ? `<span class="line-number line-number-right">${numberText}</span>` : isChange ? `<span class="line-number line-number-right"></span>` : `<span class="line-number line-number-right">${numberText}</span>`;
             const lineCheckbox = isChange ? `<label class="pick-toggle"><input type="checkbox" class="pick-line" data-hunk="${h}" data-line="${i}" /><span class="sr-only">Include line</span></label>` : '';
             const t = first === '+' ? 'add' : first === '-' ? 'del' : '';
-            return `<div class="hline ${t}"><div class="gutter">${lineCheckbox}${offset + i + 1}</div><div class="code">${escapeHtml(String(ln))}</div></div>`;
-        }).join('');
-        html += `<div class="hunk" data-hunk-index="${h}"><div class="hline"><div class="gutter"><label class="pick-toggle"><input type="checkbox" class="pick-hunk" data-hunk="${h}" /><span class="sr-only">Include hunk</span></label></div><div class="code"></div></div>${body}</div>`;
+            return `<div class="hline ${t}"><div class="gutter">${leftNumber}${lineCheckbox}${rightNumber}</div><div class="code">${escapeHtml(String(ln))}</div></div>`;
+        });
+        let currentSegmentRows: string[] = [];
+        const flushSegment = () => {
+            if (currentSegmentRows.length === 0) return;
+            html += `<div class="hunk" data-hunk-index="${h}"><div class="hunk-selection-body"><label class="pick-toggle"><input type="checkbox" class="pick-hunk" data-hunk="${h}" /><span class="sr-only">Include hunk</span></label>${currentSegmentRows.join('')}</div></div>`;
+            currentSegmentRows = [];
+        };
+        hunkLines.forEach((ln, i) => {
+            const first = (typeof ln === 'string' ? ln[0] : ' ') || ' ';
+            const row = body[i];
+            if (first === '+' || first === '-') {
+                currentSegmentRows.push(row);
+                return;
+            }
+            flushSegment();
+            html += row;
+        });
+        flushSegment();
     }
     return html;
 }

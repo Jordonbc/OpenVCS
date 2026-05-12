@@ -129,7 +129,9 @@ pub fn tail_app_log(max_lines: Option<usize>) -> Vec<OutputLogEntry> {
     use crate::output_log::{OutputLevel, OutputLogEntry};
 
     let max_lines = max_lines.unwrap_or(1500).clamp(1, 10_000);
-    let path = std::path::Path::new("logs").join("openvcs.log");
+    let path = crate::app_identity::project_dirs()
+        .map(|pd| pd.data_dir().join("logs/openvcs.log"))
+        .unwrap_or_else(|| std::path::PathBuf::from("logs/openvcs.log"));
 
     let Ok(lines) = read_last_lines(&path, max_lines) else {
         return vec![];

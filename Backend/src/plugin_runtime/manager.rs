@@ -3,7 +3,6 @@
 use crate::plugin_bundles::{InstalledPluginComponents, PluginBundleStore};
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::node_instance::NodePluginRuntimeInstance;
-use crate::plugin_runtime::runtime_select::create_runtime_instance;
 use crate::plugin_runtime::spawn::SpawnConfig;
 use crate::settings::AppConfig;
 use log::{debug, info, trace, warn};
@@ -41,6 +40,21 @@ struct RunningPlugin {
     runtime: Arc<dyn PluginRuntimeInstance>,
     /// Workspace confinement root associated with the runtime instance.
     workspace_root: Option<PathBuf>,
+}
+
+#[cfg(test)]
+/// No-op runtime used by manager unit tests.
+struct TestPluginRuntimeInstance;
+
+#[cfg(test)]
+impl PluginRuntimeInstance for TestPluginRuntimeInstance {
+    /// Confirms the test runtime is always ready.
+    fn ensure_running(&self) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Stops the test runtime.
+    fn stop(&self) {}
 }
 
 impl Default for PluginRuntimeManager {
@@ -266,8 +280,7 @@ impl PluginRuntimeManager {
     pub fn set_plugin_enabled(&self, plugin_id: &str, enabled: bool) -> Result<(), String> {
         trace!(
             "set_plugin_enabled: plugin_id='{}', enabled={}",
-            plugin_id,
-            enabled
+            plugin_id, enabled
         );
         let key = normalize_plugin_key(plugin_id)?;
         let is_running = self.processes.lock().contains_key(&key);
@@ -339,15 +352,18 @@ impl PluginRuntimeManager {
                 continue;
             }
 
+            let key = plugin_id.to_ascii_lowercase();
             let is_vcs_backend = component
                 .module
                 .as_ref()
                 .is_some_and(|module| !module.vcs_backends.is_empty());
             if is_vcs_backend {
+                if cfg.is_plugin_enabled(plugin_id, component.default_enabled) {
+                    desired_running.insert(key.clone());
+                }
                 continue;
             }
 
-            let key = plugin_id.to_ascii_lowercase();
             if cfg.is_plugin_enabled(plugin_id, component.default_enabled) {
                 desired_running.insert(key.clone());
                 if let Err(err) = self.start_plugin(plugin_id) {
@@ -358,10 +374,10 @@ impl PluginRuntimeManager {
 
         let running: Vec<String> = self.processes.lock().keys().cloned().collect();
         for plugin_id in running {
-            if !desired_running.contains(&plugin_id) {
-                if let Err(err) = self.stop_plugin(&plugin_id) {
-                    errors.push(format!("stop {}: {}", plugin_id, err));
-                }
+            if !desired_running.contains(&plugin_id)
+                && let Err(err) = self.stop_plugin(&plugin_id)
+            {
+                errors.push(format!("stop {}: {}", plugin_id, err));
             }
         }
 
@@ -502,8 +518,7 @@ impl PluginRuntimeManager {
     fn start_plugin_spec(&self, spec: ModuleRuntimeSpec) -> Result<(), String> {
         trace!(
             "start_plugin_spec: key='{}', workspace_root={:?}",
-            spec.key,
-            spec.spawn.allowed_workspace_root
+            spec.key, spec.spawn.allowed_workspace_root
         );
 
         if let Some(existing) = self.processes.lock().get(&spec.key) {
@@ -524,13 +539,13 @@ impl PluginRuntimeManager {
         instance.ensure_running()?;
 
         let mut lock = self.processes.lock();
-        if let Some(existing) = lock.get(&spec.key) {
-            if existing.workspace_root == spec.spawn.allowed_workspace_root {
-                let runtime = Arc::clone(&existing.runtime);
-                drop(lock);
-                trace!("start_plugin_spec: found concurrent insert, reusing");
-                return runtime.ensure_running();
-            }
+        if let Some(existing) = lock.get(&spec.key)
+            && existing.workspace_root == spec.spawn.allowed_workspace_root
+        {
+            let runtime = Arc::clone(&existing.runtime);
+            drop(lock);
+            trace!("start_plugin_spec: found concurrent insert, reusing");
+            return runtime.ensure_running();
         }
 
         let runtime_to_stop = lock
@@ -560,8 +575,19 @@ impl PluginRuntimeManager {
     }
 
     /// Creates a runtime instance for a resolved plugin spec.
+    #[cfg(not(test))]
     fn create_instance(spec: &ModuleRuntimeSpec) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
+        use crate::plugin_runtime::runtime_select::create_runtime_instance;
+
         create_runtime_instance(spec.spawn.clone())
+    }
+
+    /// Creates a test-only no-op runtime instance for manager unit tests.
+    #[cfg(test)]
+    fn create_instance(
+        _spec: &ModuleRuntimeSpec,
+    ) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
+        Ok(Arc::new(TestPluginRuntimeInstance))
     }
 
     /// Resolves a plugin id into a module runtime specification.
@@ -572,8 +598,7 @@ impl PluginRuntimeManager {
     ) -> Result<ModuleRuntimeSpec, String> {
         trace!(
             "resolve_module_runtime_spec: plugin_id='{}', workspace_root={:?}",
-            plugin_id,
-            allowed_workspace_root
+            plugin_id, allowed_workspace_root
         );
 
         let requested = plugin_id.trim();
@@ -658,7 +683,10 @@ impl PluginRuntimeManager {
                 Ok(comp)
             }
             None => {
-                warn!("find_components: no plugin found matching '{}' (plugin may exist but has no current version)", plugin_id);
+                warn!(
+                    "find_components: no plugin found matching '{}' (plugin may exist but has no current version)",
+                    plugin_id
+                );
                 Err("plugin has no current version".to_string())
             }
         }
@@ -696,6 +724,16 @@ mod tests {
     use tempfile::tempdir;
 
     const MINIMAL_NODE_MODULE: &str = "export {};\n";
+
+    struct TestRuntime;
+
+    impl PluginRuntimeInstance for TestRuntime {
+        fn ensure_running(&self) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn stop(&self) {}
+    }
 
     #[test]
     /// Verifies repeated start/stop calls keep runtime state stable.
@@ -787,6 +825,28 @@ mod tests {
 
         let running = manager.processes.lock();
         assert!(!running.contains_key("git.plugin"));
+    }
+
+    #[test]
+    /// Verifies settings sync keeps an already-open VCS backend runtime alive.
+    fn sync_preserves_running_vcs_backend_plugins() {
+        let temp = tempdir().expect("tempdir");
+        write_vcs_plugin(temp.path(), "git.plugin", true);
+        let manager = PluginRuntimeManager::new(PluginBundleStore::new_at(temp.path().into()));
+        manager.processes.lock().insert(
+            "git.plugin".into(),
+            RunningPlugin {
+                runtime: Arc::new(TestRuntime),
+                workspace_root: Some(temp.path().join("repo")),
+            },
+        );
+
+        let cfg = AppConfig::default();
+        manager
+            .sync_plugin_runtime_with_config(&cfg)
+            .expect("sync succeeds");
+
+        assert!(manager.processes.lock().contains_key("git.plugin"));
     }
 
     #[test]

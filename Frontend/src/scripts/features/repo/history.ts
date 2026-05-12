@@ -70,7 +70,7 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: C
                 const ok = await confirmBool(`Revert commit ${short}? This will create a new commit that undoes its changes.`);
                 if (!ok) return;
                 try {
-                    await TAURI.invoke('git_revert_commit', { id: commit.id });
+                    await TAURI.invoke('vcs_revert_commit', { id: commit.id });
                     notify('Revert complete');
                     await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 } catch (e) {
@@ -86,7 +86,7 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: C
         items.push({
             label: 'Undo to this commit', action: async () => {
                 try {
-                    await TAURI.invoke('git_undo_to_commit', { id: commit.id });
+                    await TAURI.invoke('vcs_undo_to_commit', { id: commit.id });
                     await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 } catch (e) { console.error('Undo failed:', e); notify('Undo failed'); }
             },
@@ -159,7 +159,6 @@ export function renderHistoryList(query: string): boolean {
         const li = document.createElement('li');
         const isIncoming = Boolean((c as any)?.incoming);
         li.className = isIncoming ? 'row commit incoming' : 'row commit';
-        const short = (c.id || '').slice(0, 7);
         const whenRaw = String(c.meta || '').split('•')[0].trim();
         const rel = formatTimeAgo(whenRaw);
         const exact = (c.meta || '').trim();
@@ -180,7 +179,6 @@ export function renderHistoryList(query: string): boolean {
                 ? `<span class=\"tag down\" title=\"${escapeHtml(`Fetched from ${remoteLabel}; pull to apply locally`)}\">↓ incoming</span>`
                 : '';
         li.innerHTML = `
-        <span class="badge hash" title="${escapeHtml(c.id || '')}">${escapeHtml(short)}</span>
         <div class="file" title="${escapeHtml(c.msg || '')}">${escapeHtml(c.msg || '(no message)')}</div>
         ${statusTag}
         <span class="badge time" title="${escapeHtml(exact)}">${escapeHtml(rel)}</span>`;
@@ -203,8 +201,11 @@ export async function selectHistory(commit: any, index: number) {
     (state as any).selectedCommit = commit || null;
     updateHistoryActionsVisibility();
     highlightRow(index);
-    const id = (commit.id || '').slice(0, 7);
-    diffHeadPath.textContent = `Commit ${id || '(unknown)'}`;
+    const id = String(commit.id || '').trim();
+    const short = id.slice(0, 7);
+    diffHeadPath.innerHTML = id
+        ? `Commit <span class="commit-hash"><span class="badge hash" title="${escapeHtml(id)}">${escapeHtml(short || id)}</span><span class="commit-hash-full">${escapeHtml(id)}</span></span>`
+        : 'Commit (unknown)';
     diffEl.innerHTML = `
     <div class="hunk">
       <div class="hline"><div class="gutter">commit</div><div class="code">${escapeHtml(commit.id || '')}</div></div>
@@ -216,7 +217,7 @@ export async function selectHistory(commit: any, index: number) {
     try {
         let lines: string[] = [];
         if (commit.id) {
-            lines = await TAURI.invoke<string[]>('git_diff_commit', { id: commit.id });
+            lines = await TAURI.invoke<string[]>('vcs_diff_commit', { id: commit.id });
         }
         const files = parseCommitDiffByFile(lines || []);
         if (files.length === 0) {
@@ -305,7 +306,7 @@ export async function selectHistory(commit: any, index: number) {
                             if (patch && !patch.endsWith('\n')) patch += '\n';
 
                             try {
-                                await TAURI.invoke('git_discard_patch', { patch });
+                                await TAURI.invoke('vcs_discard_patch', { patch });
                                 notify('Reverted file changes (review in Changes tab)');
                                 await Promise.allSettled([hydrateStatus()]);
                             } catch (e) {
@@ -320,7 +321,7 @@ export async function selectHistory(commit: any, index: number) {
             });
         }
     } catch (e) {
-        console.warn('git_diff_commit failed', e);
+        console.warn('vcs_diff_commit failed', e);
         diffEl.innerHTML += '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load diff</div></div></div>';
     }
 }

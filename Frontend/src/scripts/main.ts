@@ -8,15 +8,15 @@ import { qs } from './lib/dom';
 import { notify } from './lib/notify';
 import { setStatus } from './lib/status';
 import { destroyOverlayScrollbarsFor, initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from './lib/scrollbars';
-import { prefs, state, hasRepo } from './state/state';
+import { prefs, state, hasRepo, resolveVcsActionLabel } from './state/state';
 import {
     bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
-    bindLayoutActionState
+    bindLayoutActionState, applyCommitSummaryRestriction, applyGpuAccelerationPreference
 } from './ui/layout';
 import { clearPluginMenubarMenus, initMenubar, refreshPluginMenubarMenus } from './ui/menubar';
 import { closeAllModals } from './ui/modals';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
-import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash, yieldToPaint } from './features/repo';
+import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash, hydrateVcsActionLabels, yieldToPaint } from './features/repo';
 import { bindBranchUI } from './features/branches';
 import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
@@ -132,16 +132,22 @@ async function boot() {
                     const mono = String(cfg?.ux?.font_mono || '').trim();
                     if (mono) root.style.setProperty('--mono', mono);
                     applyAnimationPreference(cfg?.performance?.animations);
+                    applyGpuAccelerationPreference(cfg?.performance?.gpu_accel);
+                    applyCommitSummaryRestriction(cfg?.general?.restrict_commit_summary !== false);
                 } catch { /* best-effort */ }
             } catch {
                 try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
                 setTheme(prefs.theme);
                 applyAnimationPreference(true);
+                applyGpuAccelerationPreference(true);
+                applyCommitSummaryRestriction(true);
             }
         })();
     } else {
         setTheme(prefs.theme);
         applyAnimationPreference(true);
+        applyGpuAccelerationPreference(true);
+        applyCommitSummaryRestriction(true);
     }
     wireRenderListCallbacks();
     bindTabs((t) => { setTab(t); renderList(); });
@@ -188,15 +194,16 @@ async function boot() {
             const ctl = status ?? statusController();
             let success = false;
             try {
-                ctl.setBusy('Fetching…');
-                await TAURI.invoke('git_fetch', {});
+                ctl.setBusy(`${resolveVcsActionLabel('VCS.Fetch', 'Fetch')}…`);
+                await TAURI.invoke('vcs_fetch', {});
                 notify('Fetched');
                 if (hydrate) {
                     await yieldToPaint();
                     void Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 }
                 success = true;
-            } catch {
+            } catch (error) {
+                console.error('Fetch failed:', error);
                 notify('Fetch failed');
             } finally {
                 if (!keepBusy) ctl.clearBusy();
@@ -213,14 +220,15 @@ async function boot() {
             let success = false;
             try {
                 ctl.setBusy('Fetching all…');
-                await TAURI.invoke('git_fetch_all', {});
+                await TAURI.invoke('vcs_fetch_all', {});
                 notify('Fetched all remotes');
                 if (hydrate) {
                     await yieldToPaint();
                     void Promise.allSettled([hydrateStatus(), hydrateCommits()]);
                 }
                 success = true;
-            } catch {
+            } catch (error) {
+                console.error('Fetch all failed:', error);
                 notify('Fetch all failed');
             } finally {
                 if (!keepBusy) ctl.clearBusy();
@@ -235,7 +243,7 @@ async function boot() {
     }
 
     function getBehindCount(): number {
-        const behind = Number((state as any)?.behind || 0);
+        const behind = Number(state.behind || 0);
         return isFinite(behind) && behind > 0 ? behind : 0;
     }
 
@@ -243,10 +251,12 @@ async function boot() {
         const behind = getBehindCount();
         const repoOn = hasRepo();
         const canPull = repoOn;
-        const mainLabel = behind > 0 ? `Pull (${behind})` : 'Fetch';
+        const fetchLabel = resolveVcsActionLabel('VCS.Fetch', 'Fetch');
+        const pullLabel = resolveVcsActionLabel('VCS.Pull', 'Pull');
+        const mainLabel = behind > 0 ? `${pullLabel} (${behind})` : fetchLabel;
         const mainTitle = behind > 0
-            ? `Pull ${behind} commit${behind === 1 ? '' : 's'} (F5)`
-            : 'Fetch (F5)';
+            ? `${pullLabel} ${behind} commit${behind === 1 ? '' : 's'} (F5)`
+            : `${fetchLabel} (F5)`;
 
         if (fetchBtn) {
             fetchBtn.textContent = mainLabel;
@@ -262,18 +272,18 @@ async function boot() {
             fetchOnlyItem.setAttribute('aria-disabled', 'false');
             fetchOnlyItem.tabIndex = 0;
             const name = fetchOnlyItem.querySelector<HTMLElement>('.name');
-            if (name) name.textContent = 'Fetch';
+            if (name) name.textContent = fetchLabel;
         }
         if (fetchAllItem) {
             fetchAllItem.setAttribute('aria-disabled', 'false');
             fetchAllItem.tabIndex = 0;
         }
         if (pullItem) {
-            const pullLabel = behind > 0 ? `Pull (${behind})` : 'Pull';
+            const pullText = behind > 0 ? `${pullLabel} (${behind})` : pullLabel;
             pullItem.setAttribute('aria-disabled', canPull ? 'false' : 'true');
             pullItem.tabIndex = canPull ? 0 : -1;
             const name = pullItem.querySelector<HTMLElement>('.name');
-            if (name) name.textContent = pullLabel;
+            if (name) name.textContent = pullText;
         }
     }
 
@@ -283,20 +293,21 @@ async function boot() {
         if (!fetched) { ctl.clearBusy(); return; }
 
         try {
-            ctl.setBusy('Pulling…');
-            const res = await TAURI.invoke<{ pulled: boolean; branch: string; reason?: string | null }>('git_pull', {});
+            ctl.setBusy(`${resolveVcsActionLabel('VCS.Pull', 'Pull')}ing…`);
+            const res = await TAURI.invoke<{ pulled: boolean; branch: string; reason?: string | null }>('vcs_pull', {});
             if (res?.pulled) {
                 notify('Pulled latest changes');
             } else {
                 notify((res?.reason ?? 'No upstream configured for this branch; pull skipped') as string);
             }
-        } catch {
-            notify('Pull failed');
+        } catch (e) {
+            const msg = String(e || '').trim();
+            notify(msg ? `Pull failed: ${msg}` : 'Pull failed');
         } finally {
             ctl.clearBusy();
         }
 
-        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash()]);
+        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash(), hydrateVcsActionLabels()]);
     }
 
     async function defaultFetchAction() {
@@ -338,7 +349,7 @@ async function boot() {
                 notify(pre.reason || 'Push cancelled');
                 return;
             }
-            setBusy('Pushing…'); await TAURI.invoke('git_push', {});
+            setBusy('Pushing…'); await TAURI.invoke('vcs_push', {});
             await runHook('onPush', hookData);
             notify('Pushed');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
@@ -439,7 +450,7 @@ async function boot() {
         const clearBusy = () => { if (statusEl) statusEl.classList.remove('busy'); };
         try {
             setBusy('Undoing…');
-            await TAURI.invoke('git_undo_since_push', {});
+            await TAURI.invoke('vcs_undo_since_push', {});
             notify('Undid unpushed commits');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
         } catch (e) { console.error('Undo failed:', e); notify('Undo failed'); } finally { clearBusy(); }
@@ -493,7 +504,7 @@ async function boot() {
                 setBusy('Working…', focused);
             });
         };
-        TAURI.listen?.('git-progress', ({ payload }) => {
+        TAURI.listen?.('vcs-progress', ({ payload }) => {
             // Don't spam the footer with raw git output; keep it generic.
             void payload;
             // Avoid spinner-driven repaint churn for passive/background progress.
@@ -513,7 +524,7 @@ async function boot() {
 
         await hydrateBranches();
         setRepoHeader(path);
-        await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+        await Promise.allSettled([hydrateStatus(), hydrateCommits(), hydrateVcsActionLabels()]);
         updateFetchUI();
 
         // Broadcast app-level event so branch UI and actions can sync
@@ -543,7 +554,7 @@ async function boot() {
 
   // backend status updates (footer)
   TAURI.listen?.('status:set', ({ payload }) => {
-      try { setStatus(String((payload as any) ?? '')); } catch {}
+      setStatus(String(payload ?? ''));
   });
 
     // update available payload from backend -> open modal with notes
@@ -569,7 +580,7 @@ async function boot() {
         if (doFetch) {
             await fetchCurrentRemoteOnly({ hydrate: false });
         }
-        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash()]);
+        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash(), hydrateVcsActionLabels()]);
         updateFetchUI();
         })();
         try {
@@ -599,7 +610,7 @@ async function boot() {
             }
             headPollInFlight = (async () => {
                 try {
-                    const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('git_head_status');
+                    const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('vcs_head_status');
                     const key = `${head?.detached ? 1 : 0}:${String(head?.branch || '')}:${String(head?.commit || '')}`;
                     if (key === lastHeadKey) return;
 
@@ -622,9 +633,12 @@ async function boot() {
 
     // open settings via event
       TAURI.listen?.('ui:open-settings', ({ payload }) => {
+          const rawSection = payload && typeof payload === 'object' && 'section' in payload
+              ? (payload as { section?: unknown }).section
+              : undefined;
           const section = typeof payload === 'string'
               ? String(payload)
-              : (payload && typeof payload === 'object' ? (payload as any).section : undefined);
+              : rawSection == null ? undefined : String(rawSection);
           openSettings(section);
       });
       TAURI.listen?.('ui:open-about', () => openAbout());
@@ -634,6 +648,7 @@ async function boot() {
     window.addEventListener('app:status-updated', updateFetchUI);
     window.addEventListener('app:branches-updated', updateFetchUI);
     window.addEventListener('app:repo-selected', updateFetchUI);
+    window.addEventListener('app:vcs-action-labels-updated', updateFetchUI);
     window.addEventListener('app:repo-will-switch', clearPluginMenubarMenus);
 
     // fetch popover interactions

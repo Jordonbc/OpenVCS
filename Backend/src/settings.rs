@@ -93,6 +93,9 @@ pub struct General {
     pub telemetry: bool,
     #[serde(default = "default_true")]
     pub crash_reports: bool,
+    /// When enabled, commit hooks may not rewrite the user-entered commit summary.
+    #[serde(default = "default_true")]
+    pub restrict_commit_summary: bool,
 }
 impl Default for General {
     /// Returns default general settings values.
@@ -110,6 +113,7 @@ impl Default for General {
             checks_on_launch: true,
             telemetry: false,
             crash_reports: true,
+            restrict_commit_summary: true,
         }
     }
 }
@@ -281,7 +285,7 @@ impl Default for Lfs {
 pub struct Performance {
     #[serde(default)]
     pub progressive_render: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub gpu_accel: bool,
     #[serde(default = "default_true")]
     pub animations: bool,

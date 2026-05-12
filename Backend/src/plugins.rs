@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::plugin_bundles::{
-    read_plugin_source_metadata, InstalledPluginSourceMetadata, PluginBundleStore,
+    InstalledPluginSourceMetadata, PluginBundleStore, read_plugin_source_metadata,
 };
 use crate::plugin_manifest::{has_package_manifest, read_openvcs_manifest};
 use crate::plugin_paths::{ensure_dir, plugins_dir};
@@ -13,8 +13,8 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex, OnceLock, RwLock,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -256,7 +256,10 @@ impl PluginCache {
                             if !is_built_in
                                 && bundle_store.get_current_dir(&norm).ok().flatten().is_none()
                             {
-                                debug!("plugins: skipping '{}' - not properly installed (no current version)", norm);
+                                debug!(
+                                    "plugins: skipping '{}' - not properly installed (no current version)",
+                                    norm
+                                );
                                 continue;
                             }
 

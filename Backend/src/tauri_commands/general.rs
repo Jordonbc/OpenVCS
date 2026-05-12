@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use log::{error, info, warn};
-use tauri::{async_runtime, Emitter, Manager, Runtime, State, Window};
+use tauri::{Emitter, Manager, Runtime, State, Window, async_runtime};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 
@@ -64,7 +64,7 @@ pub async fn browse_directory<R: Runtime>(
 ) -> Option<String> {
     let title = match purpose.as_deref() {
         Some("clone_dest") => "Choose destination folder",
-        Some("add_repo") => "Select an existing Git repository folder",
+        Some("add_repo") => "Select an existing repository folder",
         _ => "Select a folder",
     };
     utilities::browse_directory_async(window.app_handle().clone(), title).await
@@ -231,8 +231,6 @@ pub async fn clone_repo<R: Runtime>(
         .ok_or_else(|| {
             "No VCS backend is available (install/enable a backend plugin)".to_string()
         })?;
-    let _prefer_plugin = plugin_vcs_backends::has_plugin_vcs_backend(&be);
-
     let folder = infer_repo_dir_from_url(&url);
     if folder.is_empty() {
         return Err("Cannot infer target directory from URL".into());
@@ -241,9 +239,11 @@ pub async fn clone_repo<R: Runtime>(
 
     fs::create_dir_all(&dest).map_err(|e| format!("Failed to create dest: {e}"))?;
 
-    let _clone_url = url.clone();
+    let clone_url = url.clone();
     let clone_target = target.clone();
     let be_label = be.as_ref().to_string();
+    let runtime_manager = state.plugin_runtime();
+    let cfg = crate::settings::AppConfig::load_or_default();
     let app_handle = window.app_handle().clone();
     let handle = async_runtime::spawn_blocking(move || {
         let on = Some(progress_bridge(app_handle));
@@ -252,11 +252,14 @@ pub async fn clone_repo<R: Runtime>(
             be_label,
             clone_target.display()
         );
-        // Plugin backends currently do not support clone in the host.
-        let _ = on;
-        Err(crate::core::VcsError::Unsupported(BackendId::from(
-            be_label.as_str(),
-        )))
+        plugin_vcs_backends::clone_repo_via_plugin_vcs_backend(
+            runtime_manager.as_ref(),
+            &cfg,
+            BackendId::from(be_label.as_str()),
+            &clone_url,
+            &clone_target,
+            on,
+        )
     });
     handle
         .await
@@ -267,15 +270,15 @@ pub async fn clone_repo<R: Runtime>(
 }
 
 #[tauri::command]
-/// Validates a user-entered Git URL.
+/// Validates a user-entered VCS URL.
 ///
 /// # Parameters
 /// - `url`: Candidate URL string.
 ///
 /// # Returns
 /// - Validation result describing whether the URL is acceptable.
-pub fn validate_git_url(url: String) -> validate::Validation {
-    validate::validate_git_url(url)
+pub fn validate_vcs_url(url: String) -> validate::Validation {
+    validate::validate_vcs_url(url)
 }
 
 #[tauri::command]

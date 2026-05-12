@@ -44,6 +44,7 @@ Backend:
   Feature-facing backend API lives under `Backend/src/tauri_commands/`.
 - Backend/plugin boundary:
   Backend communicates with plugin processes over JSON-RPC over stdio.
+- Repo-open UI labels can be resolved from the active backend via backend-provided action-label maps; generic VCS text remains the fallback.
 - Settings boundary:
   Backend persists/loads app configuration and mediates environment application.
 

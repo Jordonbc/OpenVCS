@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use log::{error, info, warn};
-use tauri::{async_runtime, State};
+use tauri::{State, async_runtime};
 
 use std::collections::BTreeMap;
 
@@ -65,6 +65,24 @@ pub fn list_vcs_backends_cmd(state: State<'_, AppState>) -> Vec<(String, String)
     }
 
     backends
+}
+
+#[tauri::command]
+/// Returns the action-label map for the currently selected backend.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - A list of `(action_key, label)` tuples for the active backend.
+pub fn current_vcs_action_labels(
+    state: State<'_, AppState>,
+) -> Result<Vec<(String, String)>, String> {
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let desc = plugin_vcs_backends::plugin_vcs_backend_descriptor(&repo.id())?;
+    Ok(desc.action_labels.into_iter().collect())
 }
 
 #[tauri::command]

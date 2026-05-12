@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::sync::Arc;
 
-use tauri::{async_runtime, AppHandle, Emitter, Manager, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State, async_runtime};
 
-use crate::core::models::VcsEvent;
 use crate::core::OnEvent;
+use crate::core::models::VcsEvent;
 use crate::output_log::{OutputLevel, OutputLogEntry};
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
@@ -45,12 +45,12 @@ pub(crate) fn progress_bridge<R: Runtime>(app: AppHandle<R>) -> OnEvent {
         };
 
         let ts_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
-        let entry = OutputLogEntry::new(ts_ms as i64, level, "git", msg.clone());
+        let entry = OutputLogEntry::new(ts_ms as i64, level, "vcs", msg.clone());
         let state = app.state::<AppState>();
         state.push_output_log(entry.clone());
 
         let _ = app.emit("vcs:log", entry);
-        let _ = app.emit("git-progress", ProgressPayload { message: msg });
+        let _ = app.emit("vcs-progress", ProgressPayload { message: msg });
     })
 }
 

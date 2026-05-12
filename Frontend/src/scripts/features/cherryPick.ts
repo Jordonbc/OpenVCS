@@ -31,7 +31,7 @@ export function wireCherryPick() {
     const branch = (branchEl?.value || '').trim();
     if (!commit || !branch) return;
     try {
-      await TAURI.invoke('git_cherry_pick_to_branch', { id: commit, branch });
+      await TAURI.invoke('vcs_cherry_pick_to_branch', { id: commit, branch });
       notify(`Cherry-picked onto ${branch}`);
       closeModal('cherry-pick-modal');
       await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits()]);

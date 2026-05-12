@@ -8,9 +8,9 @@ jobs:
   review:
     if: github.event.pull_request.user.login == 'Jordonbc'
     runs-on: ubuntu-latest
+
     permissions:
-      id-token: write
-      contents: write
+      contents: read
       pull-requests: write
       issues: write
 
@@ -27,16 +27,85 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCODE_PERMISSION: '{"edit":"deny","write":"deny","patch":"deny"}'
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL }}
           use_github_token: true
           prompt: |
-            Before anything else, read and follow AGENTS.md for this repository and module.
-            Review this pull request:
-            - Check for code quality issues
-            - Look for potential bugs
-            - Suggest improvements
-            - If you make any code edits, run 'cd Client && just test' to verify they compile and pass tests before committing.
+            Before doing anything else, read and follow AGENTS.md for this repository and for any affected module.
+
+            You are reviewing this pull request only. Do not edit files, do not commit changes, and do not attempt to rewrite the PR.
+
+            Review only the changes introduced by this pull request, using surrounding repository context only when needed to understand correctness.
+
+            Focus on:
+            - Correctness bugs
+            - Regressions
+            - Unsafe assumptions
+            - Error handling problems
+            - API misuse
+            - Race conditions, lifetime issues, ownership issues, or resource leaks
+            - Test coverage gaps where the changed behaviour is not adequately covered
+            - Maintainability issues that would realistically matter in this codebase
+
+            Do not comment on:
+            - Pure style preferences unless AGENTS.md or existing repository conventions clearly require them
+            - Hypothetical rewrites
+            - Broad architecture advice unrelated to this PR
+            - Trivial naming or formatting issues unless they obscure correctness
+            - Missing tests for code that has no meaningful behavioural change
+
+            Output requirements:
+            - Start with review findings, not process narration
+            - Do not describe which files you read or how you investigated
+            - Every comment must be either a concrete finding or an explicit no-issues verdict
+            - If you found no blocking or important issues, say exactly that and stop
+
+            For every finding:
+            - Cite the specific file and changed line/range when possible
+            - Explain why it is a real issue
+            - Explain the likely impact
+            - Suggest the smallest reasonable fix
+            - State confidence as High, Medium, or Low
+
+            Use this severity scale:
+            - Blocking: correctness, data loss, security, build failure, test failure, serious regression
+            - Important: likely bug, maintainability risk, missing validation, meaningful test gap, or unproven cross-layer behaviour
+            - Minor: small cleanup with clear value
+
+            Prefer fewer, higher-confidence comments over many speculative comments.
+
+            Pay special attention to semantic mismatches:
+            - Comments that do not match the code behaviour
+            - Variable names that imply different behaviour than the implementation
+            - Function names that imply different behaviour than the implementation
+            - Frontend/backend/plugin contract mismatches
+            - Changed values passed across process, IPC, API, or plugin boundaries
+            - Sentinel values such as 0, -1, null, undefined, empty strings, and empty arrays
+            - Type-safe code that may still be behaviourally wrong
+
+            When reviewing sentinel values:
+            - Do not assume 0 means "unlimited", "default", "disabled", or "empty" unless the implementation explicitly proves it
+            - Do not assume null, undefined, empty strings, or empty arrays preserve existing/default behaviour unless the implementation explicitly proves it
+            - Trace the changed value through every visible layer before deciding it is safe
+            - If a changed value crosses frontend/backend/plugin boundaries and its final meaning is not explicitly proven, flag it as an Important finding
+            - If behaviour depends on a downstream plugin, backend, external command, or runtime convention that is not visible in the PR, flag the assumption instead of treating it as safe
+            - Treat contradictions between comments and runtime behaviour as review-worthy
+
+            Treat contradictory intent as a real bug:
+            - If a comment, variable name, function name, or PR intent says the code should do one thing, but the implementation appears to do another, flag it as an Important finding
+            - Do not rationalise contradictions as intentional unless the implementation explicitly proves that interpretation
+            - Do not describe contradictory behaviour as correct
+            - Example: if code claims to load "full history" but passes `limit: 0`, and the visible backend preserves `0` as `0`, you must flag that as a potential bug unless another visible layer explicitly maps `0` to unlimited
+
+            Before concluding that there are no substantive issues:
+            - Re-check any finding where the code behaviour appears to contradict a comment, variable name, function name, or stated intent
+            - Re-check every changed sentinel value that crosses a frontend/backend/plugin boundary
+            - Do not treat "the code compiles" as evidence that behaviour is correct
+            - Do not infer intended behaviour from comments alone
+            - If you are relying on an assumption about downstream behaviour, say so explicitly and treat it as a review concern
+
+            If there are no substantive issues, say that no blocking or important issues were found. Do not invent issues to appear useful. Do not mention the review process, file reads, or search steps in the final output.
 
       - name: fallback
         if: ${{ steps.review_primary.outcome == 'failure' }}
@@ -45,13 +114,82 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.ZEN_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCODE_PERMISSION: '{"edit":"deny","write":"deny","patch":"deny"}'
         with:
           model: ${{ vars.OPENCODE_REVIEW_MODEL_FALLBACK }}
           use_github_token: true
           prompt: |
-            Before anything else, read and follow AGENTS.md for this repository and module.
-            Review this pull request:
-            - Check for code quality issues
-            - Look for potential bugs
-            - Suggest improvements
-            - If you make any code edits, run 'cd Client && just test' to verify they compile and pass tests before committing.
+            Before doing anything else, read and follow AGENTS.md for this repository and for any affected module.
+
+            You are reviewing this pull request only. Do not edit files, do not commit changes, and do not attempt to rewrite the PR.
+
+            Review only the changes introduced by this pull request, using surrounding repository context only when needed to understand correctness.
+
+            Focus on:
+            - Correctness bugs
+            - Regressions
+            - Unsafe assumptions
+            - Error handling problems
+            - API misuse
+            - Race conditions, lifetime issues, ownership issues, or resource leaks
+            - Test coverage gaps where the changed behaviour is not adequately covered
+            - Maintainability issues that would realistically matter in this codebase
+
+            Do not comment on:
+            - Pure style preferences unless AGENTS.md or existing repository conventions clearly require them
+            - Hypothetical rewrites
+            - Broad architecture advice unrelated to this PR
+            - Trivial naming or formatting issues unless they obscure correctness
+            - Missing tests for code that has no meaningful behavioural change
+
+            Output requirements:
+            - Start with review findings, not process narration
+            - Do not describe which files you read or how you investigated
+            - Every comment must be either a concrete finding or an explicit no-issues verdict
+            - If you found no blocking or important issues, say exactly that and stop
+
+            For every finding:
+            - Cite the specific file and changed line/range when possible
+            - Explain why it is a real issue
+            - Explain the likely impact
+            - Suggest the smallest reasonable fix
+            - State confidence as High, Medium, or Low
+
+            Use this severity scale:
+            - Blocking: correctness, data loss, security, build failure, test failure, serious regression
+            - Important: likely bug, maintainability risk, missing validation, meaningful test gap, or unproven cross-layer behaviour
+            - Minor: small cleanup with clear value
+
+            Prefer fewer, higher-confidence comments over many speculative comments.
+
+            Pay special attention to semantic mismatches:
+            - Comments that do not match the code behaviour
+            - Variable names that imply different behaviour than the implementation
+            - Function names that imply different behaviour than the implementation
+            - Frontend/backend/plugin contract mismatches
+            - Changed values passed across process, IPC, API, or plugin boundaries
+            - Sentinel values such as 0, -1, null, undefined, empty strings, and empty arrays
+            - Type-safe code that may still be behaviourally wrong
+
+            When reviewing sentinel values:
+            - Do not assume 0 means "unlimited", "default", "disabled", or "empty" unless the implementation explicitly proves it
+            - Do not assume null, undefined, empty strings, or empty arrays preserve existing/default behaviour unless the implementation explicitly proves it
+            - Trace the changed value through every visible layer before deciding it is safe
+            - If a changed value crosses frontend/backend/plugin boundaries and its final meaning is not explicitly proven, flag it as an Important finding
+            - If behaviour depends on a downstream plugin, backend, external command, or runtime convention that is not visible in the PR, flag the assumption instead of treating it as safe
+            - Treat contradictions between comments and runtime behaviour as review-worthy
+
+            Treat contradictory intent as a real bug:
+            - If a comment, variable name, function name, or PR intent says the code should do one thing, but the implementation appears to do another, flag it as an Important finding
+            - Do not rationalise contradictions as intentional unless the implementation explicitly proves that interpretation
+            - Do not describe contradictory behaviour as correct
+            - Example: if code claims to load "full history" but passes `limit: 0`, and the visible backend preserves `0` as `0`, you must flag that as a potential bug unless another visible layer explicitly maps `0` to unlimited
+
+            Before concluding that there are no substantive issues:
+            - Re-check any finding where the code behaviour appears to contradict a comment, variable name, function name, or stated intent
+            - Re-check every changed sentinel value that crosses a frontend/backend/plugin boundary
+            - Do not treat "the code compiles" as evidence that behaviour is correct
+            - Do not infer intended behaviour from comments alone
+            - If you are relying on an assumption about downstream behaviour, say so explicitly and treat it as a review concern
+
+            If there are no substantive issues, say that no blocking or important issues were found. Do not invent issues to appear useful. Do not mention the review process, file reads, or search steps in the final output.
