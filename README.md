@@ -246,7 +246,6 @@ flowchart LR
 ├── Frontend/             # TypeScript + Vite frontend
 ├── docs/                 # UX, plugin, architecture, and packaging documentation
 ├── scripts/              # Build and plugin-materialisation helpers
-├── scripts/              # Build and plugin-materialisation helpers
 ├── Cargo.toml            # Rust workspace manifest
 ├── Justfile              # Common build/test/fix commands
 ├── LICENSE
