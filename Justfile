@@ -27,6 +27,7 @@ test:
 tauri-build channel="stable":
   FRONTEND_SKIP_BUILD=1 NO_STRIP=true OPENVCS_UPDATE_CHANNEL={{channel}} node scripts/tauri-build.js
 
+# Requires Open-VCS/flathub cloned as a sibling directory: git clone git@github.com:Open-VCS/flathub.git ../flathub
 build-flatpak install="":
   @if [ "{{install}}" = "-i" ]; then \
     flatpak-builder --force-clean --user --install build-flatpak ../flathub/io.github.jordonbc.OpenVCS.yml; \
