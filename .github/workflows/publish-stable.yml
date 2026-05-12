@@ -215,7 +215,8 @@ jobs:
             "${{ steps.version.outputs.version }}" \
             "$(git rev-parse HEAD)"
 
-          # Commit and push (requires FLATHUB_REPO_PAT secret with write access to Open-VCS/flathub)
+          # Git operations must run inside the flathub checkout, not the main repo.
+          cd flathub
           git config user.name  'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git remote set-url origin "https://x-access-token:${{ secrets.FLATHUB_REPO_PAT }}@github.com/Open-VCS/flathub.git"
