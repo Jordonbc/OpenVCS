@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=OpenVCS
-Comment=A simple, cross-platform GUI for Git.
-Exec=openvcs
-Icon=io.github.jordonbc.OpenVCS
-Terminal=false
-Categories=Development;RevisionControl;
-Keywords=git;vcs;version control;
