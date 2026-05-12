@@ -148,7 +148,7 @@ cargo tauri dev
 
 ### Flatpak
 
-Flatpak packaging exists under `packaging/flatpak/`. Stable-channel Flatpak builds may be published, but they are provided as experimental test builds rather than a recommended install path. See the [Flatpak](#flatpak) section before relying on it for regular use.
+Flatpak packaging lives in the sibling [`Open-VCS/flathub`](https://github.com/Open-VCS/flathub) repo. Stable-channel Flatpak builds may be published, but they are provided as experimental test builds rather than a recommended install path.
 
 > [!NOTE]
 > Desktop builds currently continue to use the legacy shared `OpenVCS` configuration and plugin directories.
@@ -245,7 +245,7 @@ flowchart LR
 ├── Backend/              # Rust + Tauri backend, native logic, and app entry point
 ├── Frontend/             # TypeScript + Vite frontend
 ├── docs/                 # UX, plugin, architecture, and packaging documentation
-├── packaging/flatpak/    # Experimental Flatpak manifests and notes
+├── scripts/              # Build and plugin-materialisation helpers
 ├── scripts/              # Build and plugin-materialisation helpers
 ├── Cargo.toml            # Rust workspace manifest
 ├── Justfile              # Common build/test/fix commands
@@ -306,11 +306,7 @@ These commands wrap the Tauri build flow and set `NO_STRIP=true` to avoid AppIma
 
 ## Flatpak
 
-A Flatpak manifest exists under:
-
-```text
-packaging/flatpak/
-```
+A Flatpak manifest is maintained in the [`Open-VCS/flathub`](https://github.com/Open-VCS/flathub) repository. The stable release pipeline builds and deploys updates automatically.
 
 | Limitation                                 | Impact                                                                  |
 | ------------------------------------------ | ----------------------------------------------------------------------- |
@@ -320,9 +316,7 @@ packaging/flatpak/
 
 In short: Flatpak users are helping test the packaging path. Expect rough edges.
 
-For local Flatpak build notes, see:
-
-[packaging/flatpak/README.md](packaging/flatpak/README.md)
+For local Flatpak builds, clone `Open-VCS/flathub` as a sibling directory and run `just build-flatpak` from the `Client/` directory.
 
 ---
 
