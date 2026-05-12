@@ -3,6 +3,9 @@ name: flatpak-test
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-flatpak:
     runs-on: ubuntu-24.04
