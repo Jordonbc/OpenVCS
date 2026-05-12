@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euxo pipefail
           flatpak-builder \
-            --env=OPENVCS_OFFICIAL_RELEASE=1 \
+            --build-env=OPENVCS_OFFICIAL_RELEASE=1 \
             --user --force-clean --repo=repo build-flatpak flathub/io.github.jordonbc.OpenVCS.yml
           flatpak build-bundle repo OpenVCS-test.flatpak io.github.jordonbc.OpenVCS
 
