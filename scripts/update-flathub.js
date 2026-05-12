@@ -107,7 +107,7 @@ const { flathubDir, version } = args;
 
 console.log(`Updating Flathub manifest in ${flathubDir}:`);
 
-updateManifest(path.join(flathubDir, 'io.github.jordonbc.OpenVCS.yml'), args);
-updateMetainfo(path.join(flathubDir, 'io.github.jordonbc.OpenVCS.metainfo.xml'), { version });
+updateManifest(path.join(flathubDir, 'app.openvcs.OpenVCS.yml'), args);
+updateMetainfo(path.join(flathubDir, 'app.openvcs.OpenVCS.metainfo.xml'), { version });
 
 console.log('Done.');
