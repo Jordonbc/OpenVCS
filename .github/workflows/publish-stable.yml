@@ -34,6 +34,13 @@ jobs:
           lfs: true
           fetch-depth: 0
 
+      - name: Checkout Flathub manifest repo
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: Open-VCS/flathub
+          path: flathub
+
       - name: Compute version tag
         id: version
         shell: bash
@@ -86,7 +93,7 @@ jobs:
 
       # ---------- Flatpak (Linux only; artifact) ----------
       - name: Install Flatpak tooling
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('flathub/io.github.jordonbc.OpenVCS.yml') != ''
         shell: bash
         run: |
           set -euxo pipefail
@@ -103,25 +110,25 @@ jobs:
             || flatpak install --user -y flathub org.freedesktop.Sdk.Extension.node24//24.08
 
       - name: Verify Flatpak manifest exists
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('flathub/io.github.jordonbc.OpenVCS.yml') != ''
         shell: bash
         run: |
           set -euxo pipefail
-          ls -la packaging/flatpak
-          test -f packaging/flatpak/io.github.jordonbc.OpenVCS.yml
+          ls -la flathub
+          test -f flathub/io.github.jordonbc.OpenVCS.yml
 
       - name: Build Flatpak bundle
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('flathub/io.github.jordonbc.OpenVCS.yml') != ''
         shell: bash
         run: |
           set -euxo pipefail
           # Stable production builds should report the plain package version (not git metadata).
           export OPENVCS_OFFICIAL_RELEASE='1'
-          flatpak-builder --user --force-clean --repo=repo build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml
+          flatpak-builder --user --force-clean --repo=repo build-flatpak flathub/io.github.jordonbc.OpenVCS.yml
           flatpak build-bundle repo OpenVCS.flatpak io.github.jordonbc.OpenVCS
 
       - name: Upload Flatpak bundle (artifact)
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('flathub/io.github.jordonbc.OpenVCS.yml') != ''
         uses: actions/upload-artifact@v7
         with:
           name: OpenVCS-flatpak-stable
@@ -174,7 +181,56 @@ jobs:
           # bundles: ''           # e.g. 'deb,appimage,msi,nsis' if you want to restrict output
 
       - name: Upload Flatpak bundle to GitHub Release
-        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('packaging/flatpak/io.github.jordonbc.OpenVCS.yml') != ''
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('flathub/io.github.jordonbc.OpenVCS.yml') != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ steps.version.outputs.tag }}" OpenVCS.flatpak --clobber
+
+      # ---------- Update Flathub repo for next PR ----------
+      - name: Install flatpak generator tools
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('flathub/io.github.jordonbc.OpenVCS.yml') != ''
+        shell: bash
+        run: |
+          set -euxo pipefail
+          pip install flatpak-cargo-generator flatpak-node-generator
+
+      - name: Regenerate Flatpak vendor sources
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('flathub/io.github.jordonbc.OpenVCS.yml') != ''
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # cargo-sources.json from workspace Cargo.lock
+          CARGO_GEN="$(python3 -c 'import flatpak_cargo_generator.script; print(flatpak_cargo_generator.script.__file__)')"
+          python3 "$CARGO_GEN" Cargo.lock -o flathub/cargo-sources.json
+          # npm-sources for Frontend
+          python3 -m flatpak_node_generator npm Frontend/package-lock.json -o flathub/npm-sources-frontend.json
+          echo "Vendor sources regenerated."
+
+      - name: Update Flathub manifest and metadata
+        if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1' && hashFiles('flathub/io.github.jordonbc.OpenVCS.yml') != ''
+        shell: bash
+        run: |
+          set -euxo pipefail
+          RELEASE_TAG="openvcs-v${{ steps.version.outputs.version }}"
+          RELEASE_COMMIT="$(git rev-parse HEAD)"
+          TODAY="$(date +%Y-%m-%d)"
+
+          cd flathub
+
+          # Pin the main repo tag+commit in the manifest.
+          sed -i "/url: https:\/\/github.com\/Open-VCS\/OpenVCS.git/,/dest: \./{
+            s|tag: .*|tag: ${RELEASE_TAG}|
+            s|commit: .*|commit: ${RELEASE_COMMIT}|
+          }" io.github.jordonbc.OpenVCS.yml
+
+          # Add a new release entry to metainfo (before the closing </releases> tag).
+          RELEASE_XML="    <release version=\"${{ steps.version.outputs.version }}\" date=\"${TODAY}\">\n      <description>\n        <p>Release ${{ steps.version.outputs.version }}</p>\n      </description>\n    </release>"
+          sed -i "/<\/releases>/i ${RELEASE_XML}" io.github.jordonbc.OpenVCS.metainfo.xml
+
+          # Commit and push (requires FLATHUB_REPO_PAT secret with write access to Open-VCS/flathub)
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git remote set-url origin "https://x-access-token:${{ secrets.FLATHUB_REPO_PAT }}@github.com/Open-VCS/flathub.git"
+          git add io.github.jordonbc.OpenVCS.yml io.github.jordonbc.OpenVCS.metainfo.xml cargo-sources.json npm-sources-frontend.json npm-sources-git-plugin.json
+          git commit -m "chore: bump to ${RELEASE_TAG}" || echo 'Nothing to commit'
+          git push
