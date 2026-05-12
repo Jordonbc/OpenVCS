@@ -7,7 +7,7 @@
 - `Frontend/`: TypeScript + Vite UI code (`src/scripts/`, `src/styles/`, `src/modals/`), with Vitest tests colocated as `*.test.ts` files.
 - OpenVCS is desktop-only: there is no web app, no standalone browser mode, and no supported web browser/WebView deployment target.
 - `docs/`: UX docs, plugin architecture notes, and plugin/theme packaging guides referenced by contributors.
-- `packaging/flatpak/`: Flatpak manifests and Flatpak-specific build notes.
+- Flatpak packaging is maintained in the sibling [`Open-VCS/flathub`](https://github.com/Open-VCS/flathub) repository.
 - Supporting files at the repo root include the workspace `Cargo.toml`, `Justfile`, `README.md`, `ARCHITECTURE.md`, `SECURITY.md`, and installer scripts.
 
 ## Build, test, and development commands
