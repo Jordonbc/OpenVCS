@@ -309,7 +309,7 @@ A Flatpak manifest is maintained in the [`Open-VCS/flathub`](https://github.com/
 
 | Limitation                                 | Impact                                                                  |
 | ------------------------------------------ | ----------------------------------------------------------------------- |
-| Sandbox does not currently provide `git`   | OpenVCS currently relies on system Git through plugin execution         |
+| Sandbox is still being audited for file access       | Git repos may need `--filesystem=host` to work outside portals                |
 | Frontend assets must be packaged correctly | Otherwise the app may show a blank window or localhost connection error |
 | Flatpaks are stable-channel test builds    | They may be released, but remain experimental and are not recommended   |
 
