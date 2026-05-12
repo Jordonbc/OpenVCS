@@ -211,21 +211,9 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          RELEASE_TAG="openvcs-v${{ steps.version.outputs.version }}"
-          RELEASE_COMMIT="$(git rev-parse HEAD)"
-          TODAY="$(date +%Y-%m-%d)"
-
-          cd flathub
-
-          # Pin the main repo tag+commit in the manifest.
-          sed -i "/url: https:\/\/github.com\/Open-VCS\/OpenVCS.git/,/dest: \./{
-            s|tag: .*|tag: ${RELEASE_TAG}|
-            s|commit: .*|commit: ${RELEASE_COMMIT}|
-          }" io.github.jordonbc.OpenVCS.yml
-
-          # Add a new release entry to metainfo (before the closing </releases> tag).
-          RELEASE_XML="    <release version=\"${{ steps.version.outputs.version }}\" date=\"${TODAY}\">\n      <description>\n        <p>Release ${{ steps.version.outputs.version }}</p>\n      </description>\n    </release>"
-          sed -i "/<\/releases>/i ${RELEASE_XML}" io.github.jordonbc.OpenVCS.metainfo.xml
+          node scripts/update-flathub.js flathub \
+            "${{ steps.version.outputs.version }}" \
+            "$(git rev-parse HEAD)"
 
           # Commit and push (requires FLATHUB_REPO_PAT secret with write access to Open-VCS/flathub)
           git config user.name  'github-actions[bot]'
