@@ -1,0 +1,103 @@
+#!/usr/bin/env node
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+/**
+ * Updates the Flathub manifest repo for a new release.
+ *
+ * Usage:
+ *   node scripts/update-flathub.js <flathub-dir> <version> <commit>
+ *
+ *   <flathub-dir>  Path to the checked-out flathub repo
+ *   <version>      Semver string, e.g. "0.5.0"
+ *   <commit>       Full git commit hash of the release
+ *
+ * What it does:
+ *   1. Bumps tag + commit in the main repo git sources in the YAML manifest.
+ *   2. Adds a release entry to the AppStream metainfo XML.
+ *   3. Prints a summary of changes.
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+// ---- config ----
+
+const MAIN_REPO_URL = 'https://github.com/Open-VCS/OpenVCS.git';
+
+// ---- helpers ----
+
+function parseArgs() {
+  const [, , flathubDir, version, commit] = process.argv;
+  if (!flathubDir || !version || !commit) {
+    console.error('Usage: node scripts/update-flathub.js <flathub-dir> <version> <commit>');
+    process.exit(1);
+  }
+  return { flathubDir, version, commit, tag: `openvcs-v${version}` };
+}
+
+function updateManifest(path, { tag, commit }) {
+  let yaml = fs.readFileSync(path, 'utf8');
+  const countBefore = (yaml.match(/tag: /g) || []).length;
+
+  // Match the block starting with the main repo URL up to dest: .
+  // Captures: full match replaces tag + commit lines, keeping original indentation.
+  yaml = yaml.replace(
+    new RegExp(
+      `(${escapeRegex(MAIN_REPO_URL)}\\n)(\\s+)tag: .*\\n(\\s+)commit: .*\\n(\\s+)dest: \\.`,
+      'g'
+    ),
+    (_, urlLine, ws1, ws2, ws3) =>
+      `${urlLine}${ws1}tag: ${tag}\n${ws2}commit: ${commit}\n${ws3}dest: .`
+  );
+
+  const countAfter = (yaml.match(/tag: /g) || []).length;
+  fs.writeFileSync(path, yaml, 'utf8');
+
+  // Validate the substitution worked (same number of tag: lines means no corruption)
+  if (countBefore !== countAfter) {
+    console.error(`ERROR: tag count changed (${countBefore} → ${countAfter}) — manifest may be corrupted`);
+    process.exit(1);
+  }
+
+  console.log(`  → Bumped tag → ${tag}, commit → ${commit.slice(0, 12)}…`);
+}
+
+function updateMetainfo(path, { version }) {
+  const today = new Date().toISOString().slice(0, 10);
+  let xml = fs.readFileSync(path, 'utf8');
+
+  const releaseEntry = [
+    `    <release version="${version}" date="${today}">`,
+    `      <description>`,
+    `        <p>Release ${version}</p>`,
+    `      </description>`,
+    `    </release>`,
+  ].join('\n');
+
+  // Insert after the <releases> opening tag (newest first)
+  xml = xml.replace(
+    /(\s*<releases>\s*\n)/,
+    `$1${releaseEntry}\n`
+  );
+
+  fs.writeFileSync(path, xml, 'utf8');
+  console.log(`  → Added metainfo release entry for v${version} (${today})`);
+}
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ---- main ----
+
+const args = parseArgs();
+const { flathubDir, version } = args;
+const tag = `openvcs-v${version}`;
+
+console.log(`Updating Flathub manifest in ${flathubDir}:`);
+
+updateManifest(path.join(flathubDir, 'io.github.jordonbc.OpenVCS.yml'), { ...args, tag });
+updateMetainfo(path.join(flathubDir, 'io.github.jordonbc.OpenVCS.metainfo.xml'), { version });
+
+console.log('Done.');
