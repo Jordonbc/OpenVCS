@@ -38,28 +38,27 @@ function parseArgs() {
 
 function updateManifest(path, { tag, commit }) {
   let yaml = fs.readFileSync(path, 'utf8');
-  const countBefore = (yaml.match(/tag: /g) || []).length;
 
-  // Match the block starting with the url: line for the main repo up to dest: .
-  // Captures: full match replaces tag + commit lines, keeping original indentation.
+  // Track whether any replacements were made.
+  let matched = false;
   yaml = yaml.replace(
     new RegExp(
       `(\\s+url: ${escapeRegex(MAIN_REPO_URL)}\\n)(\\s+)tag: .*\\n(\\s+)commit: .*\\n(\\s+)dest: \\.`,
       'g'
     ),
-    (_, urlLine, ws1, ws2, ws3) =>
-      `${urlLine}${ws1}tag: ${tag}\n${ws2}commit: ${commit}\n${ws3}dest: .`
+    (...args) => {
+      matched = true;
+      const [, urlLine, ws1, ws2, ws3] = args;
+      return `${urlLine}${ws1}tag: ${tag}\n${ws2}commit: ${commit}\n${ws3}dest: .`;
+    }
   );
 
-  const countAfter = (yaml.match(/tag: /g) || []).length;
-  fs.writeFileSync(path, yaml, 'utf8');
-
-  // Validate the substitution worked (same number of tag: lines means no corruption)
-  if (countBefore !== countAfter) {
-    console.error(`ERROR: tag count changed (${countBefore} → ${countAfter}) — manifest may be corrupted`);
+  if (!matched) {
+    console.error(`ERROR: no match for "${MAIN_REPO_URL}" in manifest — manifest format may have changed`);
     process.exit(1);
   }
 
+  fs.writeFileSync(path, yaml, 'utf8');
   console.log(`  → Bumped tag → ${tag}, commit → ${commit.slice(0, 12)}…`);
 }
 
