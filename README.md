@@ -315,7 +315,7 @@ A Flatpak manifest is maintained in the [`Open-VCS/flathub`](https://github.com/
 
 In short: Flatpak users are helping test the packaging path. Expect rough edges.
 
-For local Flatpak builds, clone `Open-VCS/flathub` as a sibling directory and run `just build-flatpak` from the `Client/` directory.
+For local Flatpak builds, clone `Open-VCS/flathub` as a sibling directory and run `just build-flatpak` from this directory.
 
 ---
 
