@@ -67,6 +67,12 @@ function updateMetainfo(path, { version }) {
   const today = new Date().toISOString().slice(0, 10);
   let xml = fs.readFileSync(path, 'utf8');
 
+  // Skip if a release for this version already exists (re-run safety).
+  if (new RegExp(`release version="${escapeRegex(version)}"`).test(xml)) {
+    console.log(`  → Release v${version} already in metainfo, skipping`);
+    return;
+  }
+
   const releaseEntry = [
     `    <release version="${version}" date="${today}">`,
     `      <description>`,
