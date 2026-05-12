@@ -29,12 +29,12 @@ tauri-build channel="stable":
 
 build-flatpak install="":
   @if [ "{{install}}" = "-i" ]; then \
-    flatpak-builder --force-clean --user --install build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml; \
+    flatpak-builder --force-clean --user --install build-flatpak ../flathub/io.github.jordonbc.OpenVCS.yml; \
   elif [ -n "{{install}}" ]; then \
     echo "Usage: just build-flatpak [-i]"; \
     exit 2; \
   else \
-    flatpak-builder --force-clean --user build-flatpak packaging/flatpak/io.github.jordonbc.OpenVCS.yml; \
+    flatpak-builder --force-clean --user build-flatpak ../flathub/io.github.jordonbc.OpenVCS.yml; \
   fi
 
 fix:
