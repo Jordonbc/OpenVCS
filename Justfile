@@ -30,12 +30,12 @@ tauri-build channel="stable":
 # Requires Open-VCS/flathub cloned as a sibling directory: git clone git@github.com:Open-VCS/flathub.git ../flathub
 build-flatpak install="":
   @if [ "{{install}}" = "-i" ]; then \
-    flatpak-builder --force-clean --user --install build-flatpak ../flathub/io.github.jordonbc.OpenVCS.yml; \
+    flatpak-builder --force-clean --user --install build-flatpak ../flathub/app.openvcs.OpenVCS.yml; \
   elif [ -n "{{install}}" ]; then \
     echo "Usage: just build-flatpak [-i]"; \
     exit 2; \
   else \
-    flatpak-builder --force-clean --user build-flatpak ../flathub/io.github.jordonbc.OpenVCS.yml; \
+    flatpak-builder --force-clean --user build-flatpak ../flathub/app.openvcs.OpenVCS.yml; \
   fi
 
 fix:
