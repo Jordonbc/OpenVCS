@@ -123,8 +123,10 @@ jobs:
         run: |
           set -euxo pipefail
           # Stable production builds should report the plain package version (not git metadata).
-          export OPENVCS_OFFICIAL_RELEASE='1'
-          flatpak-builder --user --force-clean --repo=repo build-flatpak flathub/io.github.jordonbc.OpenVCS.yml
+          # --env is required because flatpak-builder sandboxes don't inherit host env vars.
+          flatpak-builder \
+            --env=OPENVCS_OFFICIAL_RELEASE=1 \
+            --user --force-clean --repo=repo build-flatpak flathub/io.github.jordonbc.OpenVCS.yml
           flatpak build-bundle repo OpenVCS.flatpak io.github.jordonbc.OpenVCS
 
       - name: Upload Flatpak bundle (artifact)
