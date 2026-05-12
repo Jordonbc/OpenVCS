@@ -219,7 +219,9 @@ jobs:
           cd flathub
           git config user.name  'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
+          set +x  # avoid leaking the PAT in logs
           git remote set-url origin "https://x-access-token:${{ secrets.FLATHUB_REPO_PAT }}@github.com/Open-VCS/flathub.git"
+          set -x
           git add io.github.jordonbc.OpenVCS.yml io.github.jordonbc.OpenVCS.metainfo.xml cargo-sources.json npm-sources-frontend.json
           git commit -m "chore: bump to openvcs-v${{ steps.version.outputs.version }}" || echo 'Nothing to commit'
           git push
