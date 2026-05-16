@@ -270,10 +270,12 @@ fn copy_directory_recursive(source: &Path, dest: &Path) -> Result<(), String> {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                let _ = fs::set_permissions(
+                if let Err(e) = fs::set_permissions(
                     &dest_path,
                     fs::Permissions::from_mode(metadata.permissions().mode()),
-                );
+                ) {
+                    warn!("copy_recursive: failed to set permissions on '{}': {e}", dest_path.display());
+                }
             }
         }
     }
