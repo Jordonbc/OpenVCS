@@ -5,11 +5,11 @@ use std::sync::LazyLock;
 
 /// Regex pattern for scp-like VCS URLs.
 static SCP_LIKE_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"^[\w.-]+@[\w.-]+:[\w./-]+(?:\.git)?$").unwrap());
+    LazyLock::new(|| regex::Regex::new(r"^[\w.-]+@[\w.-]+:[\w./-]+(?:\.git)?$").expect("hardcoded SCP-like regex is valid"));
 
 /// Regex pattern for Windows absolute paths.
 static WIN_ABS_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"^[A-Za-z]:[\\/]").unwrap());
+    LazyLock::new(|| regex::Regex::new(r"^[A-Za-z]:[\\/]").expect("hardcoded Windows path regex is valid"));
 
 #[derive(serde::Serialize)]
 pub struct Validation {
