@@ -454,7 +454,9 @@ impl PluginBundleStore {
                 plugin_dir.display()
             )
         })?;
-        let _ = fs::remove_dir_all(&staging);
+        if let Err(e) = fs::remove_dir_all(&staging) {
+            warn!("install_plugin_dir: failed to remove staging directory '{}': {e}", staging.display());
+        }
         write_plugin_source_metadata(&plugin_dir, source_metadata)?;
 
         let approval = if auto_approve {
