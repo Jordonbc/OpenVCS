@@ -56,7 +56,7 @@ const commitBtn = qs<HTMLButtonElement>('#commit-btn');
         }
         pluginMenuRefreshTimer = window.setTimeout(() => {
             pluginMenuRefreshTimer = null;
-            refreshPluginMenubarMenus().catch(() => {});
+            refreshPluginMenubarMenus().catch((err) => console.warn('Plugin menu refresh failed:', err));
         }, delayMs);
     }
 
@@ -414,7 +414,7 @@ async function boot() {
                 }
                 break;
             }
-            case 'exit': TAURI.invoke('exit_app', {}).catch(() => {}); break;
+            case 'exit': TAURI.invoke('exit_app', {}).catch((err) => console.error('Failed to exit app:', err)); break;
             default: {
                 if (!id) break;
                 const handled = await runPluginAction(id);
@@ -424,7 +424,7 @@ async function boot() {
     }
 
     // title actions
-    fetchBtn?.addEventListener('click', () => { defaultFetchAction().catch(() => {}); });
+    fetchBtn?.addEventListener('click', () => { defaultFetchAction().catch((err) => console.warn('Fetch action failed:', err)); });
     fetchCaret?.addEventListener('click', (e) => {
         if (!fetchPop) return;
         if (fetchPop.hidden) openFetchPopover(); else closeFetchPopover();
@@ -550,7 +550,7 @@ async function boot() {
         await refreshPluginMenubarMenus().catch(() => {});
         schedulePluginMenuRefresh();
       })
-      .catch(() => {});
+      .catch((err) => console.warn('Failed to restore initial repository state:', err));
 
   // backend status updates (footer)
   TAURI.listen?.('status:set', ({ payload }) => {
@@ -658,9 +658,9 @@ async function boot() {
         if (li.getAttribute('aria-disabled') === 'true') return;
         const action = li.dataset.action || '';
         closeFetchPopover();
-        if (action === 'fetch-only') fetchOnly().catch(() => {});
-        else if (action === 'fetch-all') fetchAllRemotesOnly().catch(() => {});
-        else if (action === 'pull') fetchAndPull().catch(() => {});
+        if (action === 'fetch-only') fetchOnly().catch((err) => console.warn('Fetch only failed:', err));
+        else if (action === 'fetch-all') fetchAllRemotesOnly().catch((err) => console.warn('Fetch all failed:', err));
+        else if (action === 'pull') fetchAndPull().catch((err) => console.warn('Pull failed:', err));
     });
 
     document.addEventListener('click', (e) => {
