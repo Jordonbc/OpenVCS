@@ -18,7 +18,7 @@ fn measures_elapsed_time() {
 fn clears_active_log_file_contents() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let path = dir.path().join("openvcs.log");
-    let mut file = OpenOptions::new().create(true).read(true).write(true).open(&path).expect("open log file");
+    let mut file = OpenOptions::new().create(true).truncate(true).read(true).write(true).open(&path).expect("open log file");
     writeln!(file, "hello").expect("seed log file");
     let shared = Arc::new(Mutex::new(file));
     let _ = ACTIVE_LOG_FILE.set(shared);

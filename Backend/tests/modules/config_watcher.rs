@@ -10,7 +10,7 @@ use std::time::Duration;
 /// Verifies watcher path matching covers config file and temp sibling names.
 fn matches_config_and_temp_paths() {
     let config = PathBuf::from("/tmp/openvcs/config.toml");
-    assert!(event_targets_config(&[config.clone()], &config));
+    assert!(event_targets_config(std::slice::from_ref(&config), &config));
     assert!(event_targets_config(&[PathBuf::from("/tmp/openvcs/config.toml.tmp")], &config));
     assert!(!event_targets_config(&[PathBuf::from("/tmp/openvcs/other.toml")], &config));
 }
