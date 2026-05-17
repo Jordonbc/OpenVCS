@@ -1,6 +1,10 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-use std::{fs, path::PathBuf, process::Command};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use log::{debug, error, info, trace, warn};
 use serde::Serialize;
@@ -105,6 +109,60 @@ fn run_command(cmd: &str, args: &[&str]) -> Result<SshCommandOutput, String> {
     }
 
     Ok(result)
+}
+
+fn is_executable(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+
+    if !metadata.is_file() {
+        return false;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn resolve_command(candidate: &Path) -> Option<PathBuf> {
+    if candidate.parent().is_some() {
+        return is_executable(candidate).then(|| candidate.to_path_buf());
+    }
+
+    let path = env::var_os("PATH")?;
+    env::split_paths(&path)
+        .map(|dir| dir.join(candidate))
+        .find(|path| is_executable(path))
+}
+
+fn resolve_ssh_askpass() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Some(path) = env::var_os("SSH_ASKPASS") {
+        candidates.push(PathBuf::from(path));
+    }
+
+    candidates.extend([
+        PathBuf::from("/usr/bin/ksshaskpass"),
+        PathBuf::from("/usr/bin/ssh-askpass"),
+        PathBuf::from("/usr/bin/x11-ssh-askpass"),
+        PathBuf::from("/usr/bin/gnome-ssh-askpass"),
+        PathBuf::from("/usr/bin/lxqt-openssh-askpass"),
+        PathBuf::from("/usr/libexec/openssh/ssh-askpass"),
+        PathBuf::from("/usr/lib/ssh/ssh-askpass"),
+    ]);
+
+    candidates
+        .into_iter()
+        .find_map(|candidate| resolve_command(candidate.as_path()))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -338,13 +396,44 @@ pub fn ssh_add_key(path: String) -> Result<SshCommandOutput, String> {
         return Err("Path cannot be empty".to_string());
     }
 
-    let result = run_command("ssh-add", &[p])?;
+    let result = if let Some(askpass) = resolve_ssh_askpass() {
+        debug!("ssh_add_key: using SSH_ASKPASS='{}'", askpass.display());
+        let start = std::time::Instant::now();
+        let out = Command::new("ssh-add")
+            .env("SSH_ASKPASS", &askpass)
+            .arg(p)
+            .output()
+            .map_err(|e| {
+                error!("ssh_add_key: failed to spawn ssh-add: {}", e);
+                format!("Failed to run ssh-add: {e}")
+            })?;
 
-    if result.code == 0 {
-        debug!("ssh_add_key: key added successfully");
+        let elapsed = start.elapsed();
+        let result = SshCommandOutput {
+            code: out.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&out.stdout).trim().to_string(),
+            stderr: String::from_utf8_lossy(&out.stderr).trim().to_string(),
+        };
+
+        if out.status.success() {
+            debug!(
+                "ssh_add_key: key added successfully in {:?} (code={})",
+                elapsed, result.code
+            );
+        } else {
+            warn!(
+                "ssh_add_key: failed to add key in {:?} (code={}): {}",
+                elapsed, result.code, result.stderr
+            );
+        }
+
+        result
     } else {
-        warn!("ssh_add_key: failed to add key: {}", result.stderr);
-    }
+        warn!(
+            "ssh_add_key: no usable SSH_ASKPASS found; encrypted keys may require terminal prompt"
+        );
+        run_command("ssh-add", &[p])?
+    };
 
     Ok(result)
 }
