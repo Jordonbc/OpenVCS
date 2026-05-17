@@ -984,4 +984,70 @@ mod tests {
             Some("Push")
         );
     }
+
+    #[test]
+    fn normalizes_plugin_ids_and_capabilities() {
+        assert_eq!(normalize_plugin_id("  My.Plugin  ").unwrap(), "my.plugin");
+        assert!(normalize_plugin_id("   ").is_err());
+
+        let caps = normalize_capabilities(vec![" One ".into(), "one".into(), "Two".into(), "".into()]);
+        assert_eq!(caps, vec!["One".to_string(), "Two".to_string(), "one".to_string()]);
+    }
+
+    #[test]
+    fn serializes_approval_state_variants() {
+        let pending = serde_json::to_value(ApprovalState::Pending).expect("pending");
+        assert_eq!(pending, serde_json::json!("pending"));
+
+        let approved = ApprovalState::Approved {
+            capabilities: vec!["vcs.status".into()],
+            approved_at_unix_ms: 123,
+        };
+        let approved_json = serde_json::to_value(&approved).expect("approved");
+        assert_eq!(approved_json["approved"]["approved_at_unix_ms"], 123);
+        assert_eq!(approved_json["approved"]["capabilities"][0], "vcs.status");
+    }
+
+    #[test]
+    fn derives_install_versions_and_normalizes_exec_values() {
+        let manifest = PluginManifest {
+            id: "demo".into(),
+            name: Some("Demo".into()),
+            version: Some(" 1.2.3 ".into()),
+            default_enabled: false,
+            capabilities: vec![],
+            module: None,
+            functions: None,
+        };
+        assert_eq!(derive_install_version(&manifest, "abcdef0123456789"), "1.2.3");
+
+        let versionless = PluginManifest {
+            version: Some("  ".into()),
+            ..manifest
+        };
+        assert_eq!(derive_install_version(&versionless, "abcdef0123456789"), "sha256-abcdef012345");
+        assert_eq!(normalize_exec(Some(" plugin.mjs ".into())).as_deref(), Some("plugin.mjs"));
+        assert_eq!(normalize_exec(Some("   ".into())), None);
+        assert_eq!(platform_exec_name("plugin.mjs"), "plugin.mjs");
+    }
+
+    #[test]
+    fn validates_entrypoints_and_metadata() {
+        let dir = tempdir().unwrap();
+        let version_dir = dir.path();
+        fs::create_dir_all(version_dir.join("bin")).unwrap();
+        fs::write(version_dir.join("bin").join("plugin.mjs"), "export {};").unwrap();
+
+        assert!(validate_entrypoint(version_dir, Some("plugin.mjs"), "module").is_ok());
+        assert!(validate_entrypoint(version_dir, Some("plugin.txt"), "module").is_err());
+        assert!(validate_entrypoint(version_dir, None, "module").is_ok());
+
+        let meta = InstalledPluginSourceMetadata {
+            managed_by: "user-config".into(),
+            kind: "path".into(),
+            spec: "./demo".into(),
+        };
+        write_plugin_source_metadata(version_dir, &meta).unwrap();
+        assert_eq!(read_plugin_source_metadata(version_dir), Some(meta));
+    }
 }
