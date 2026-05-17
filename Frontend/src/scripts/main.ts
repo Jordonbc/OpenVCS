@@ -503,8 +503,7 @@ async function boot() {
             if (busyFrame !== null) return;
             busyFrame = window.requestAnimationFrame(() => {
                 busyFrame = null;
-                const focused = document.visibilityState === 'visible' && document.hasFocus();
-                setBusy('Working…', focused);
+                setBusy('Working…', true);
             });
         };
         TAURI.listen?.('vcs-progress', ({ payload }) => {
