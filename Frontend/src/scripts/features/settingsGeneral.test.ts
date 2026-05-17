@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { collectGeneralSettings, loadGeneralSettingsIntoForm } from './settingsGeneral';
-import { DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID } from '../themes';
+import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID } from '../themes';
 
 describe('collectGeneralSettings', () => {
   it('captures the crash report toggle from the general settings panel', () => {
@@ -109,5 +109,94 @@ describe('loadGeneralSettingsIntoForm', () => {
       forceReload: true,
     });
     expect((root.querySelector('#set-theme') as HTMLSelectElement).disabled).toBe(false);
+  });
+
+  it('expands the default theme id to the dark built-in theme in dark mode', async () => {
+    document.body.innerHTML = `
+      <div>
+        <input id="set-theme-auto" type="checkbox" />
+        <select id="set-theme"><option value="default" selected>Default</option></select>
+        <select id="set-language"><option value="system">System</option></select>
+        <select id="set-update-channel"><option value="stable">Stable</option></select>
+        <input id="set-reopen-last" type="checkbox" />
+        <input id="set-checks-on-launch" type="checkbox" />
+        <input id="set-crash-reports" type="checkbox" />
+        <input id="set-restrict-commit-summary" type="checkbox" />
+      </div>
+    `;
+
+    const root = document.body.firstElementChild as HTMLElement;
+    const refreshDefaultBackendOptions = vi.fn().mockResolvedValue(undefined);
+    const rebuildThemePackOptions = vi.fn().mockResolvedValue(undefined);
+
+    await loadGeneralSettingsIntoForm(
+      root,
+      {
+        general: {
+          theme: 'dark',
+          theme_pack: DEFAULT_THEME_ID,
+          language: 'system',
+          update_channel: 'stable',
+          reopen_last_repos: false,
+          checks_on_launch: false,
+          crash_reports: false,
+          restrict_commit_summary: true,
+        },
+      },
+      (value) => String(value ?? ''),
+      refreshDefaultBackendOptions,
+      rebuildThemePackOptions,
+    );
+
+    expect(rebuildThemePackOptions).toHaveBeenCalledWith(expect.any(HTMLSelectElement), {
+      desiredId: DEFAULT_DARK_THEME_ID,
+      forceReload: true,
+    });
+    expect((root.querySelector('#set-theme') as HTMLSelectElement).disabled).toBe(false);
+  });
+
+  it('disables theme selection when system theme is active', async () => {
+    document.body.innerHTML = `
+      <div>
+        <input id="set-theme-auto" type="checkbox" />
+        <select id="set-theme"><option value="acme-theme" selected>Acme</option></select>
+        <select id="set-language"><option value="system">System</option></select>
+        <select id="set-update-channel"><option value="stable">Stable</option></select>
+        <input id="set-reopen-last" type="checkbox" />
+        <input id="set-checks-on-launch" type="checkbox" />
+        <input id="set-crash-reports" type="checkbox" />
+        <input id="set-restrict-commit-summary" type="checkbox" />
+      </div>
+    `;
+
+    const root = document.body.firstElementChild as HTMLElement;
+    const refreshDefaultBackendOptions = vi.fn().mockResolvedValue(undefined);
+    const rebuildThemePackOptions = vi.fn().mockResolvedValue(undefined);
+
+    await loadGeneralSettingsIntoForm(
+      root,
+      {
+        general: {
+          theme: 'system',
+          theme_pack: 'acme-theme',
+          language: 'system',
+          update_channel: 'stable',
+          reopen_last_repos: false,
+          checks_on_launch: false,
+          crash_reports: false,
+          restrict_commit_summary: true,
+        },
+      },
+      (value) => String(value ?? ''),
+      refreshDefaultBackendOptions,
+      rebuildThemePackOptions,
+    );
+
+    expect(rebuildThemePackOptions).toHaveBeenCalledWith(expect.any(HTMLSelectElement), {
+      desiredId: 'acme-theme',
+      forceReload: true,
+    });
+    expect((root.querySelector('#set-theme') as HTMLSelectElement).disabled).toBe(true);
+    expect((root.querySelector('#set-theme-auto') as HTMLInputElement).checked).toBe(true);
   });
 });

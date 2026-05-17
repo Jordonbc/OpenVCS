@@ -66,6 +66,49 @@ describe('wireNewBranch', () => {
     expect(checkout.checked).toBe(true);
   });
 
+  it('shows normalized branch name when spaces collapse to dashes', async () => {
+    installTauriMock();
+
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    await flushPromises();
+
+    const name = document.getElementById('new-branch-name') as HTMLInputElement;
+    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
+    const create = document.getElementById('new-branch-create') as HTMLButtonElement;
+
+    name.value = '  feature  branch  ';
+    name.dispatchEvent(new Event('input'));
+    await flushPromises();
+
+    expect(hint.hidden).toBe(false);
+    expect(hint.classList.contains('error')).toBe(false);
+    expect(hint.textContent).toContain('Will be created as');
+    expect(hint.querySelector('code')?.textContent).toBe('feature-branch');
+    expect(create.disabled).toBe(false);
+  });
+
+  it('rejects branch names with invalid characters', async () => {
+    installTauriMock();
+
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    await flushPromises();
+
+    const name = document.getElementById('new-branch-name') as HTMLInputElement;
+    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
+    const create = document.getElementById('new-branch-create') as HTMLButtonElement;
+
+    name.value = 'bad~branch';
+    name.dispatchEvent(new Event('input'));
+    await flushPromises();
+
+    expect(hint.hidden).toBe(false);
+    expect(hint.classList.contains('error')).toBe(true);
+    expect(hint.textContent).toBe('Branch name contains invalid characters');
+    expect(create.disabled).toBe(true);
+  });
+
   it('passes the checkout choice to branch creation', async () => {
     const invoke = vi.fn(async () => null);
     (window as any).__TAURI__ = {
