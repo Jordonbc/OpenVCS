@@ -130,6 +130,7 @@ pub fn sync_configured_plugins(state: State<'_, AppState>) -> Result<(), String>
     state.set_config(cfg.clone())?;
     PluginBundleStore::new_default().sync_built_in_plugins()?;
     crate::plugin_sources::sync_configured_plugins(&cfg)?;
+    crate::plugin_vcs_backends::invalidate_plugin_vcs_backend_cache();
     state.plugin_runtime().sync_plugin_runtime_with_config(&cfg)
 }
 
@@ -146,6 +147,7 @@ pub fn uninstall_plugin(state: State<'_, AppState>, plugin_id: String) -> Result
     let plugin_id = plugin_id.trim().to_string();
     state.plugin_runtime().stop_plugin(&plugin_id)?;
     PluginBundleStore::new_default().uninstall_plugin(&plugin_id)?;
+    crate::plugin_vcs_backends::invalidate_plugin_vcs_backend_cache();
     info!("plugin: uninstalled '{}'", plugin_id);
     Ok(())
 }
@@ -278,6 +280,7 @@ pub fn set_plugin_approval(
 
     let store = PluginBundleStore::new_default();
     store.approve_capabilities(&plugin_id, &version, approved)?;
+    crate::plugin_vcs_backends::invalidate_plugin_vcs_backend_cache();
 
     if approved {
         if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {

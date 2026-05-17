@@ -83,8 +83,8 @@ export function bindCommit() {
                     clearBusy('Ready');
                     return;
                 }
-                if (commitSummary?.maxLength === 72 && summary.length > 72) {
-                    summary = summary.slice(0, 72);
+                if (commitSummary?.maxLength === 72 && String(hookData.summary || '').length > 72) {
+                    summary = String(hookData.summary || '').trim().slice(0, 72);
                     commitSummary.value = summary;
                 } else {
                     summary = String(hookData.summary || '').trim() || summary;

@@ -77,4 +77,26 @@ describe('confirmBool', () => {
 
     await expect(confirmBool('Discard changes?')).resolves.toBe(false);
   });
+
+  it('coerces numeric confirm results', async () => {
+    document.body.innerHTML = '';
+    Object.defineProperty(window, 'confirm', {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockReturnValue(0),
+    });
+
+    await expect(confirmBool('Discard changes?')).resolves.toBe(false);
+  });
+
+  it('coerces object confirm results via result field', async () => {
+    document.body.innerHTML = '';
+    Object.defineProperty(window, 'confirm', {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockReturnValue({ result: 'ok' }),
+    });
+
+    await expect(confirmBool('Discard changes?')).resolves.toBe(true);
+  });
 });

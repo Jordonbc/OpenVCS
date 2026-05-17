@@ -448,7 +448,7 @@ export function openSettings(section?: string){
         }
 
     loadSettingsIntoForm(modal)
-        .catch(console.error)
+        .catch((err) => { console.error('Failed to load settings into form:', err); })
         .finally(() => {
             modal.removeAttribute('aria-busy');
             const setThemeAuto = modal.querySelector<HTMLInputElement>('#set-theme-auto');

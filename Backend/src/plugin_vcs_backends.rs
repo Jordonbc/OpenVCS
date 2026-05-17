@@ -12,9 +12,36 @@ use crate::plugin_runtime::{PluginRuntimeManager, vcs_proxy::PluginVcsProxy};
 use crate::settings::AppConfig;
 use log::{debug, error, info, trace, warn};
 use std::collections::BTreeMap;
-use std::{path::Path, sync::Arc};
+use std::path::Path;
+use std::sync::{Arc, OnceLock, RwLock};
 
 const MODULE: &str = "plugin_vcs_backends";
+
+static BACKEND_CACHE: OnceLock<RwLock<Option<Vec<PluginBackendDescriptor>>>> = OnceLock::new();
+
+fn backend_cache() -> &'static RwLock<Option<Vec<PluginBackendDescriptor>>> {
+    BACKEND_CACHE.get_or_init(|| RwLock::new(None))
+}
+
+fn cached_backends() -> Option<Vec<PluginBackendDescriptor>> {
+    backend_cache()
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+fn store_backends(backends: Vec<PluginBackendDescriptor>) {
+    *backend_cache()
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(backends);
+}
+
+/// Clears cached VCS backend discovery results.
+pub fn invalidate_plugin_vcs_backend_cache() {
+    *backend_cache()
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+}
 
 /// Returns plugin-scoped open config for a VCS backend plugin.
 fn plugin_open_config(plugin_id: &str) -> serde_json::Value {
@@ -72,6 +99,20 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
     let _timer = LogTimer::new(MODULE, "list_plugin_vcs_backends");
     info!("list_plugin_vcs_backends: discovering VCS backends",);
 
+    if let Some(cached) = cached_backends() {
+        trace!(
+            "list_plugin_vcs_backends: returning {} cached backend(s)",
+            cached.len()
+        );
+        return Ok(cached);
+    }
+
+    let discovered = discover_plugin_vcs_backends()?;
+    store_backends(discovered.clone());
+    Ok(discovered)
+}
+
+fn discover_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
     let store = PluginBundleStore::new_default();
     if let Err(err) = store.sync_built_in_plugins() {
         warn!(
