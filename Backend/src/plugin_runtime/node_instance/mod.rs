@@ -14,9 +14,7 @@ use crate::core::ui::Menu;
 use crate::plugin_paths;
 use crate::plugin_runtime::events;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
-use crate::plugin_runtime::protocol::{
-    Methods, NotificationMethods, PROTOCOL_VERSION,
-};
+use crate::plugin_runtime::protocol::{Methods, NotificationMethods, PROTOCOL_VERSION};
 use crate::plugin_runtime::spawn::SpawnConfig;
 use log::{debug, info, trace, warn};
 use parking_lot::{Mutex, RwLock};

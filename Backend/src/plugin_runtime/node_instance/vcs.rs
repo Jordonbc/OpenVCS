@@ -7,7 +7,7 @@
 
 use super::NodePluginRuntimeInstance;
 use crate::core::models::{
-    BranchItem, CommitItem, ConflictDetails, ConflictSide, LogQuery, StatusPayload, StashItem,
+    BranchItem, CommitItem, ConflictDetails, ConflictSide, LogQuery, StashItem, StatusPayload,
 };
 use crate::plugin_runtime::protocol::Methods;
 use base64::Engine;
@@ -49,8 +49,7 @@ impl NodePluginRuntimeInstance {
         let config_value = if config.is_empty() {
             Value::Object(serde_json::Map::new())
         } else {
-            serde_json::from_slice(config)
-                .unwrap_or_else(|_| Value::Object(serde_json::Map::new()))
+            serde_json::from_slice(config).unwrap_or_else(|_| Value::Object(serde_json::Map::new()))
         };
         let result: OpenSessionResponse = self.rpc_call(
             Methods::VCS_OPEN,
@@ -195,11 +194,7 @@ impl NodePluginRuntimeInstance {
     }
 
     /// Calls `vcs.checkout-conflict-side`.
-    pub fn vcs_checkout_conflict_side(
-        &self,
-        path: &str,
-        side: ConflictSide,
-    ) -> Result<(), String> {
+    pub fn vcs_checkout_conflict_side(&self, path: &str, side: ConflictSide) -> Result<(), String> {
         let params = self.session_params(json!({ "path": path, "side": side }))?;
         self.rpc_call_unit(Methods::VCS_CHECKOUT_CONFLICT_SIDE, params)
     }
@@ -251,11 +246,7 @@ impl NodePluginRuntimeInstance {
     }
 
     /// Calls `vcs.merge-into-current`.
-    pub fn vcs_merge_into_current(
-        &self,
-        name: &str,
-        message: Option<&str>,
-    ) -> Result<(), String> {
+    pub fn vcs_merge_into_current(&self, name: &str, message: Option<&str>) -> Result<(), String> {
         let params = self.session_params(json!({ "name": name, "message": message }))?;
         self.rpc_call_unit(Methods::VCS_MERGE_INTO_CURRENT, params)
     }
@@ -279,11 +270,7 @@ impl NodePluginRuntimeInstance {
     }
 
     /// Calls `vcs.set-branch-upstream`.
-    pub fn vcs_set_branch_upstream(
-        &self,
-        branch: &str,
-        upstream: &str,
-    ) -> Result<(), String> {
+    pub fn vcs_set_branch_upstream(&self, branch: &str, upstream: &str) -> Result<(), String> {
         let params = self.session_params(json!({ "branch": branch, "upstream": upstream }))?;
         self.rpc_call_unit(Methods::VCS_SET_BRANCH_UPSTREAM, params)
     }

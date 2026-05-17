@@ -6,7 +6,7 @@ use crate::app_identity;
 use std::path::PathBuf;
 use std::{fs, io};
 
-use super::{default_theme_pack, AppConfig, GitSshBinary};
+use super::{AppConfig, GitSshBinary, default_theme_pack};
 
 impl AppConfig {
     /// ~/.config/openvcs/openvcs.conf (XDG/macOS/Windows aware)

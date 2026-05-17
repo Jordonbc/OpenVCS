@@ -118,11 +118,6 @@ pub fn clear_active_log_file() -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    include!("../tests/modules/logging.rs");
-}
-
 /// Initialize logging: console (env_logger) + append to `./logs/openvcs.log`.
 /// Respects `RUST_LOG` for filtering; sets a sensible default if missing.
 ///
@@ -526,4 +521,9 @@ fn prune_archives(dir: &std::path::Path, keep: usize) {
     for (path, _) in entries.into_iter().take(to_delete) {
         let _ = fs::remove_file(path);
     }
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/logging.rs");
 }

@@ -11,14 +11,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::types::{
-    acquire_plugin_store_write_lock, built_in_plugin_ids, copy_directory_recursive,
-    derive_install_version, normalize_capabilities, normalize_exec, normalize_plugin_id,
-    now_unix_ms, platform_exec_name, read_manifest_from_plugin_dir, read_plugin_source_metadata,
-    sha256_hex_directory, validate_entrypoint, write_plugin_source_metadata, ApprovalState,
-    CurrentPointer, InstalledPlugin, InstalledPluginIndex, InstalledPluginSourceMetadata,
-    InstalledPluginComponents, InstalledPluginVersion, ModuleComponent, ModuleVcsBackend,
-    VcsBackendProvide,
-    INVALID_PLUGIN_ID, MODULE,
+    ApprovalState, CurrentPointer, INVALID_PLUGIN_ID, InstalledPlugin, InstalledPluginComponents,
+    InstalledPluginIndex, InstalledPluginSourceMetadata, InstalledPluginVersion, MODULE,
+    ModuleComponent, ModuleVcsBackend, VcsBackendProvide, acquire_plugin_store_write_lock,
+    built_in_plugin_ids, copy_directory_recursive, derive_install_version, normalize_capabilities,
+    normalize_exec, normalize_plugin_id, now_unix_ms, platform_exec_name,
+    read_manifest_from_plugin_dir, read_plugin_source_metadata, sha256_hex_directory,
+    validate_entrypoint, write_plugin_source_metadata,
 };
 
 /// Filesystem-backed store for installed plugins.

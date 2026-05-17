@@ -9,7 +9,10 @@ use std::sync::{Mutex, OnceLock};
 /// Inserts a plugin-event subscription for tests.
 fn test_subscribe(plugin_id: &str, event: &str) {
     if let Ok(mut lock) = registry().lock() {
-        lock.subs.entry(plugin_id.to_string()).or_default().insert(event.to_string());
+        lock.subs
+            .entry(plugin_id.to_string())
+            .or_default()
+            .insert(event.to_string());
     }
 }
 

@@ -6,9 +6,7 @@
 //! process, frames JSON-RPC 2.0 messages over stdio using an LSP-style
 //! `Content-Length` header, and dispatches responses with timeout tracking.
 
-use crate::plugin_runtime::protocol::{
-    RpcError, RpcRequest, RpcResponse, write_framed_message,
-};
+use crate::plugin_runtime::protocol::{RpcError, RpcRequest, RpcResponse, write_framed_message};
 use log::debug;
 use parking_lot::Mutex;
 use serde::de::DeserializeOwned;
