@@ -14,3 +14,8 @@ pub struct SpawnConfig {
     /// Whether this plugin exports a VCS backend interface.
     pub is_vcs_backend: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/plugin_runtime/spawn.rs");
+}

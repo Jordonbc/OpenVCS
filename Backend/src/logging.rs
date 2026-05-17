@@ -337,7 +337,12 @@ pub fn init() {
         let dir = crate::app_identity::project_dirs()
             .map(|pd| pd.data_dir().join("logs"))
             .unwrap_or_else(|| std::path::PathBuf::from("logs"));
-        let _ = fs::create_dir_all(&dir); // best effort
+        if let Err(e) = fs::create_dir_all(&dir) {
+            log::warn!(
+                "logging: failed to create log directory '{}': {e}",
+                dir.display()
+            );
+        }
 
         rotate_existing_log(&dir);
         prune_archives(&dir, cfg.logging.retain_archives as usize);
@@ -516,4 +521,9 @@ fn prune_archives(dir: &std::path::Path, keep: usize) {
     for (path, _) in entries.into_iter().take(to_delete) {
         let _ = fs::remove_file(path);
     }
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/logging.rs");
 }

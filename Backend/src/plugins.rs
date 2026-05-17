@@ -780,3 +780,8 @@ pub fn plugin_theme_dirs() -> Vec<PluginThemeDir> {
 
     out
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/plugins.rs");
+}

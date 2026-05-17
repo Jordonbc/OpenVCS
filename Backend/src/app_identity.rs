@@ -30,10 +30,5 @@ pub fn project_dirs() -> Option<ProjectDirs> {
 
 #[cfg(test)]
 mod tests {
-    use super::persistence_name;
-
-    #[test]
-    fn exposes_persistence_names() {
-        assert_eq!(persistence_name(), "OpenVCS");
-    }
+    include!("../tests/modules/app_identity.rs");
 }

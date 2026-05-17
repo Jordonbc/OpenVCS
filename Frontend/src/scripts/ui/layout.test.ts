@@ -111,11 +111,12 @@ describe('refreshRepoActions', () => {
 
   it('switches the push button label between Publish and Push based on branchOnRemote', async () => {
     const { refreshRepoActions } = await import('./layout');
-    const { state } = await import('../state/state');
+    const { state, setGlobalSettings } = await import('../state/state');
     const pushBtn = document.getElementById('push-btn') as HTMLButtonElement;
     const label = pushBtn.querySelector('.btn-label') as HTMLSpanElement;
     const files: FileStatus[] = [{ path: 'keep.txt', status: 'M' }];
 
+    setGlobalSettings(null);
     state.hasRepo = true;
     state.files = files;
     state.ahead = 0;
@@ -133,5 +134,31 @@ describe('refreshRepoActions', () => {
     expect(label.textContent).toBe('Push');
     expect(pushBtn.title).toBe('Push');
     expect(pushBtn.getAttribute('aria-label')).toBe('Push');
+  });
+
+  it('enables commit button when one-file hint is available', async () => {
+    const { refreshRepoActions } = await import('./layout');
+    const { state, setGlobalSettings } = await import('../state/state');
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    setGlobalSettings(null);
+    setGlobalSettings({
+      commit: {
+        commit_message_template_enabled: true,
+        restrict_commit_summary: true,
+        commit_templates: {
+          commit_message_template_create: 'Create {file:name}',
+          commit_message_template_update: 'Update {file:name}',
+          commit_message_template_delete: 'Delete {file:name}',
+        },
+      },
+    });
+    state.hasRepo = true;
+    state.files = [{ path: 'src/test.cpp', status: 'M' } as FileStatus];
+    state.selectedFiles = new Set(['src/test.cpp']);
+
+    refreshRepoActions();
+
+    expect(commitBtn.disabled).toBe(false);
   });
 });

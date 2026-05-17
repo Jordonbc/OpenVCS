@@ -13,6 +13,7 @@
                 <ul id="settings-nav" class="list">
                     <li><button class="seg-btn active" type="button" data-section="general">General</button></li>
                     <li><button class="seg-btn" type="button" data-section="diff">Diff &amp; Merge</button></li>
+                    <li><button class="seg-btn" type="button" data-section="commit">Commit</button></li>
                     <li><button class="seg-btn" type="button" data-section="performance">Performance</button></li>
                     <li><button class="seg-btn" type="button" data-section="ux">UX</button></li>
                     <li><button class="seg-btn" type="button" data-section="logging">Logging</button></li>
@@ -97,14 +98,6 @@
                         </label>
                     </div>
 
-                    <div class="group">
-                        <label class="checkbox">
-                            <input type="checkbox" id="set-restrict-commit-summary" />
-                            Limit commit summary to 72 characters
-                            <span class="help-tip" title="When enabled, the commit summary box caps input at 72 characters so it fits a standard Git commit title. Enabled by default.">?</span>
-                        </label>
-                    </div>
-
                 </form>
 
                 <!-- Diff -->
@@ -168,6 +161,46 @@
                             <span class="help-tip" title="Use placeholders like {mine}, {theirs}, and {merged}.">?</span>
                         </label>
                         <input id="set-merge-args" type="text" placeholder="--arg {mine} {theirs} {merged}" />
+                    </div>
+                </form>
+
+                <!-- Commit -->
+                <form class="panel-form hidden" data-panel="commit">
+                    <div class="group">
+                        <label class="checkbox">
+                            <input type="checkbox" id="set-commit-message-template-enabled" />
+                            Prefill commit summary from file status
+                            <span class="help-tip" title="When enabled, a single full-file selection can fill the commit summary from the templates below. Enabled by default.">?</span>
+                        </label>
+                    </div>
+
+                    <div class="group">
+                        <label class="checkbox">
+                            <input type="checkbox" id="set-restrict-commit-summary" />
+                            Limit commit summary to 72 characters
+                            <span class="help-tip" title="When enabled, the commit summary box caps input at 72 characters so it fits a standard Git commit title. Enabled by default.">?</span>
+                        </label>
+                    </div>
+
+                    <div class="group">
+                        <label for="set-commit-message-template-create">Create template
+                            <span class="help-tip" title="Used for new and untracked files.">?</span>
+                        </label>
+                        <input id="set-commit-message-template-create" type="text" placeholder="Create {file:name}" />
+                    </div>
+
+                    <div class="group">
+                        <label for="set-commit-message-template-update">Update template
+                            <span class="help-tip" title="Used for modified, renamed, and copied files.">?</span>
+                        </label>
+                        <input id="set-commit-message-template-update" type="text" placeholder="Update {file:name}" />
+                    </div>
+
+                    <div class="group">
+                        <label for="set-commit-message-template-delete">Delete template
+                            <span class="help-tip" title="Used for deleted files.">?</span>
+                        </label>
+                        <input id="set-commit-message-template-delete" type="text" placeholder="Delete {file:name}" />
                     </div>
                 </form>
 

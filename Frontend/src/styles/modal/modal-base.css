@@ -80,7 +80,7 @@
     box-shadow:0 0 0 2px color-mix(in oklab, var(--accent) 45%, transparent);
 }
 .modal button.icon.close:disabled{
-    opacity:.55; cursor:not-allowed; pointer-events:none; transform:none!important;
+    opacity:.55; cursor:not-allowed; pointer-events:none; transform:none;
 }
 .sheet-body{ padding:1rem; display:grid; gap:1rem; }
 .sheet-actions{
@@ -89,6 +89,22 @@
     border-top:1px solid var(--border);
     background:var(--surface);
     flex-wrap:wrap;
+}
+
+#update-install[aria-busy="true"]{
+    display:inline-flex;
+    align-items:center;
+    gap:.5rem;
+}
+
+#update-install[aria-busy="true"]::after{
+    content:"";
+    width:12px;
+    height:12px;
+    border:2px solid currentColor;
+    border-top-color:transparent;
+    border-radius:50%;
+    animation:status-spin .8s linear infinite;
 }
 
 .modal-note{

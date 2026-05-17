@@ -102,8 +102,8 @@ export function wireSshKeys() {
       if (out.code === 0) {
         notify('Key added to ssh-agent');
         await refresh();
-      } else if (/enter passphrase|bad passphrase|passphrase/i.test(msg)) {
-        notify('Key is encrypted; run ssh-add in a terminal to enter the passphrase');
+      } else if (/ssh_askpass_exec|askpass.*no such file or directory|enter passphrase|bad passphrase|passphrase/i.test(msg)) {
+        notify('Passphrase prompt app missing; install ssh-askpass or ksshaskpass, or run ssh-add in a terminal');
       } else {
         notify(msg || `ssh-add failed (code ${out.code})`);
       }
@@ -126,4 +126,3 @@ export function openSshKeysModal(preselectPath?: string) {
   const modal = document.getElementById('ssh-keys-modal') as any;
   modal?.__open?.(preselectPath);
 }
-

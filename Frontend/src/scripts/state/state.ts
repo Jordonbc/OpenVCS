@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 // src/state/state.ts
-import type { AppPrefs, Branch, CommitItem, FileStatus, StashItem } from '../types';
+import type { AppPrefs, Branch, CommitItem, FileStatus, GlobalSettings, StashItem } from '../types';
 
 /** Default application preferences. */
 export const defaultPrefs: AppPrefs = {
@@ -13,6 +13,15 @@ export const defaultPrefs: AppPrefs = {
 // In-memory-only UI prefs. Persisted preferences now live in native Rust config.
 /** Current application preferences. */
 export let prefs: AppPrefs = { ...defaultPrefs };
+
+/** Latest global settings snapshot for synchronous frontend reads. */
+export let globalSettings: GlobalSettings | null = null;
+
+/** Stores latest global settings snapshot. */
+export function setGlobalSettings(cfg: GlobalSettings | null) {
+    globalSettings = cfg;
+}
+
 /**
  * Save preferences to storage.
  * @deprecated Web prefs are not persisted; native settings handle persistence

@@ -8,9 +8,9 @@ import { qs } from './lib/dom';
 import { notify } from './lib/notify';
 import { setStatus } from './lib/status';
 import { destroyOverlayScrollbarsFor, initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from './lib/scrollbars';
-import { prefs, state, hasRepo, resolveVcsActionLabel } from './state/state';
+import { prefs, state, hasRepo, resolveVcsActionLabel, setGlobalSettings } from './state/state';
 import {
-    bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
+    bindTabs, initResizer, refreshRepoActions, setRepoHeader, setTab, setTheme,
     bindLayoutActionState, applyCommitSummaryRestriction, applyGpuAccelerationPreference
 } from './ui/layout';
 import { clearPluginMenubarMenus, initMenubar, refreshPluginMenubarMenus } from './ui/menubar';
@@ -56,7 +56,7 @@ const commitBtn = qs<HTMLButtonElement>('#commit-btn');
         }
         pluginMenuRefreshTimer = window.setTimeout(() => {
             pluginMenuRefreshTimer = null;
-            refreshPluginMenubarMenus().catch(() => {});
+            refreshPluginMenubarMenus().catch((err) => console.warn('Plugin menu refresh failed:', err));
         }, delayMs);
     }
 
@@ -101,6 +101,7 @@ function forceCloseTransientUi() {
 async function boot() {
     assertDesktopRuntime();
     const cfg = await loadInitialGlobalSettings();
+    setGlobalSettings(cfg ?? null);
     await syncFrontendMonitoring(cfg);
 
     // If launched as the Output Log window, render that view and skip the main app UI.
@@ -133,7 +134,7 @@ async function boot() {
                     if (mono) root.style.setProperty('--mono', mono);
                     applyAnimationPreference(cfg?.performance?.animations);
                     applyGpuAccelerationPreference(cfg?.performance?.gpu_accel);
-                    applyCommitSummaryRestriction(cfg?.general?.restrict_commit_summary !== false);
+                    applyCommitSummaryRestriction(cfg?.commit?.restrict_commit_summary !== false);
                 } catch { /* best-effort */ }
             } catch {
                 try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
@@ -349,7 +350,9 @@ async function boot() {
                 notify(pre.reason || 'Push cancelled');
                 return;
             }
-            setBusy('Pushing…'); await TAURI.invoke('vcs_push', {});
+            setBusy('Pushing…');
+            await yieldToPaint();
+            await TAURI.invoke('vcs_push', {});
             await runHook('onPush', hookData);
             notify('Pushed');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
@@ -414,7 +417,7 @@ async function boot() {
                 }
                 break;
             }
-            case 'exit': TAURI.invoke('exit_app', {}).catch(() => {}); break;
+            case 'exit': TAURI.invoke('exit_app', {}).catch((err) => console.error('Failed to exit app:', err)); break;
             default: {
                 if (!id) break;
                 const handled = await runPluginAction(id);
@@ -424,7 +427,7 @@ async function boot() {
     }
 
     // title actions
-    fetchBtn?.addEventListener('click', () => { defaultFetchAction().catch(() => {}); });
+    fetchBtn?.addEventListener('click', () => { defaultFetchAction().catch((err) => console.warn('Fetch action failed:', err)); });
     fetchCaret?.addEventListener('click', (e) => {
         if (!fetchPop) return;
         if (fetchPop.hidden) openFetchPopover(); else closeFetchPopover();
@@ -464,13 +467,13 @@ async function boot() {
     updateFetchUI();
 
     // initial data
-    hydrateBranches().then(() => setRepoHeader());
+    hydrateBranches().then(() => setRepoHeader()).catch((err) => console.warn('Failed to hydrate branches on startup:', err));
     hydrateStatus();
     hydrateCommits();
     hydrateStash();
 
     initMenubar(runMenuAction);
-    refreshPluginMenubarMenus().catch(() => {});
+    refreshPluginMenubarMenus().catch((err) => console.warn('Plugin menu refresh failed:', err));
     schedulePluginMenuRefresh(PLUGIN_MENU_REFRESH_SETTLE_MS);
 
     TAURI.listen?.('menu', async ({ payload: id }) => {
@@ -500,8 +503,11 @@ async function boot() {
             if (busyFrame !== null) return;
             busyFrame = window.requestAnimationFrame(() => {
                 busyFrame = null;
-                const focused = document.visibilityState === 'visible' && document.hasFocus();
-                setBusy('Working…', focused);
+                const s = document.getElementById('status');
+                if (!s) return;
+                const current = String(s.textContent || '');
+                if (s.classList.contains('busy') && !current.startsWith('Working')) return;
+                setBusy('Working…', true);
             });
         };
         TAURI.listen?.('vcs-progress', ({ payload }) => {
@@ -530,7 +536,7 @@ async function boot() {
         // Broadcast app-level event so branch UI and actions can sync
         window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
         refreshRepoActions();
-        await refreshPluginMenubarMenus().catch(() => {});
+        await refreshPluginMenubarMenus().catch((err) => console.warn('Plugin menu refresh failed:', err));
         schedulePluginMenuRefresh();
     });
 
@@ -547,10 +553,10 @@ async function boot() {
         window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
         refreshRepoActions();
         updateFetchUI();
-        await refreshPluginMenubarMenus().catch(() => {});
+        await refreshPluginMenubarMenus().catch((err) => console.warn('Plugin menu refresh failed:', err));
         schedulePluginMenuRefresh();
       })
-      .catch(() => {});
+      .catch((err) => console.warn('Failed to restore initial repository state:', err));
 
   // backend status updates (footer)
   TAURI.listen?.('status:set', ({ payload }) => {
@@ -658,9 +664,9 @@ async function boot() {
         if (li.getAttribute('aria-disabled') === 'true') return;
         const action = li.dataset.action || '';
         closeFetchPopover();
-        if (action === 'fetch-only') fetchOnly().catch(() => {});
-        else if (action === 'fetch-all') fetchAllRemotesOnly().catch(() => {});
-        else if (action === 'pull') fetchAndPull().catch(() => {});
+        if (action === 'fetch-only') fetchOnly().catch((err) => console.warn('Fetch only failed:', err));
+        else if (action === 'fetch-all') fetchAllRemotesOnly().catch((err) => console.warn('Fetch all failed:', err));
+        else if (action === 'pull') fetchAndPull().catch((err) => console.warn('Pull failed:', err));
     });
 
     document.addEventListener('click', (e) => {

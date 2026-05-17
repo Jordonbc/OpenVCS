@@ -121,7 +121,9 @@ pub async fn updater_install_now<R: Runtime>(window: Window<R>) -> Result<(), St
                             "received": received,
                             "total": total_val
                         });
-                        let _ = app2.emit("update:progress", payload);
+                        if let Err(e) = app2.emit("update:progress", payload) {
+                            log::warn!("updater_install_now: failed to emit progress: {e}");
+                        }
                     },
                     || {
                         let download_elapsed = download_start.elapsed();
@@ -129,10 +131,12 @@ pub async fn updater_install_now<R: Runtime>(window: Window<R>) -> Result<(), St
                             "updater_install_now: download completed in {:?}",
                             download_elapsed
                         );
-                        let _ = app2.emit(
+                        if let Err(e) = app2.emit(
                             "update:progress",
                             serde_json::json!({ "kind": "downloaded" }),
-                        );
+                        ) {
+                            log::warn!("updater_install_now: failed to emit downloaded event: {e}");
+                        }
                     },
                 )
                 .await

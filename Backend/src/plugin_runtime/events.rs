@@ -5,6 +5,28 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
+#[cfg(test)]
+/// Inserts a plugin-event subscription for tests.
+fn test_subscribe(plugin_id: &str, event: &str) {
+    if let Ok(mut lock) = registry().lock() {
+        lock.subs
+            .entry(plugin_id.to_string())
+            .or_default()
+            .insert(event.to_string());
+    }
+}
+
+#[cfg(test)]
+/// Returns subscribed event names for tests.
+fn test_subscribers(plugin_id: &str) -> Vec<String> {
+    registry()
+        .lock()
+        .ok()
+        .and_then(|lock| lock.subs.get(plugin_id).cloned())
+        .map(|set| set.into_iter().collect())
+        .unwrap_or_default()
+}
+
 /// In-memory mapping of plugin subscriptions by plugin id.
 struct Registry {
     /// Event names subscribed by each plugin id.
@@ -80,4 +102,9 @@ pub fn emit_to_plugins(origin_plugin_id: Option<&str>, name: &str, payload: Valu
             })
             .collect::<Vec<_>>();
     }
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/plugin_runtime/events.rs");
 }

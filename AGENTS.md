@@ -7,7 +7,7 @@
 - `Frontend/`: TypeScript + Vite UI code (`src/scripts/`, `src/styles/`, `src/modals/`), with Vitest tests colocated as `*.test.ts` files.
 - OpenVCS is desktop-only: there is no web app, no standalone browser mode, and no supported web browser/WebView deployment target.
 - `docs/`: UX docs, plugin architecture notes, and plugin/theme packaging guides referenced by contributors.
-- `packaging/flatpak/`: Flatpak manifests and Flatpak-specific build notes.
+- Flatpak packaging is maintained in the sibling [`Open-VCS/flathub`](https://github.com/Open-VCS/flathub) repository.
 - Supporting files at the repo root include the workspace `Cargo.toml`, `Justfile`, `README.md`, `ARCHITECTURE.md`, `SECURITY.md`, and installer scripts.
 
 ## Build, test, and development commands
@@ -36,6 +36,7 @@
 - `cargo test --lib`: run only library tests (not integration tests)
 - `cargo test --lib -- branch`: run tests matching "branch" in name
 - `cargo test --lib -- --test-threads=1`: run tests sequentially (for flaky tests)
+- All backend Rust tests must live in `Backend/tests/`; do not add Rust tests inside `Backend/src/` unless there is an explicit exception.
 
 ### Linting and formatting
 
@@ -96,7 +97,7 @@
   - Rust: Use doc comments (`///` for items, `//!` for modules) for all functions, structs, enums, traits, and fields.
   - TypeScript: Use JSDoc comments (`/** ... */`) for all functions, classes, interfaces, and types.
 - All functions must include documentation comments.
-- All code files MUST be no more than 1000 lines; split files before they exceed this limit.
+- All code files MUST be no more than 800 lines; split files before they exceed this limit.
 - When you change behavior, workflows, commands, paths, config, or plugin/runtime expectations, ALWAYS update the relevant documentation in the same change, even if the user does not explicitly ask.
 - Include usage examples for complex functions.
 - Keep README files in sync with code changes.

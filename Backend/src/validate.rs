@@ -4,12 +4,15 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 /// Regex pattern for scp-like VCS URLs.
-static SCP_LIKE_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"^[\w.-]+@[\w.-]+:[\w./-]+(?:\.git)?$").unwrap());
+static SCP_LIKE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"^[\w.-]+@[\w.-]+:[\w./-]+(?:\.git)?$")
+        .expect("hardcoded SCP-like regex is valid")
+});
 
 /// Regex pattern for Windows absolute paths.
-static WIN_ABS_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"^[A-Za-z]:[\\/]").unwrap());
+static WIN_ABS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"^[A-Za-z]:[\\/]").expect("hardcoded Windows path regex is valid")
+});
 
 #[derive(serde::Serialize)]
 pub struct Validation {
@@ -228,25 +231,5 @@ pub fn validate_clone_input(url: String, dest: String) -> Validation {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_vcs_url;
-
-    #[test]
-    /// Verifies common hosted HTTP clone URLs do not require `.git` suffixes.
-    fn accepts_http_clone_urls_without_git_suffix() {
-        assert!(validate_vcs_url("https://github.com/openvcs/openvcs".into()).ok);
-        assert!(validate_vcs_url("https://github.com/openvcs/openvcs.git".into()).ok);
-    }
-
-    #[test]
-    /// Verifies SSH clone URL forms do not require `.git` suffixes.
-    fn accepts_ssh_clone_urls_without_git_suffix() {
-        assert!(validate_vcs_url("ssh://git@example.com/openvcs/openvcs".into()).ok);
-        assert!(validate_vcs_url("git@example.com:openvcs/openvcs".into()).ok);
-    }
-
-    #[test]
-    /// Verifies host-only HTTP URLs are still rejected.
-    fn rejects_urls_without_repository_path() {
-        assert!(!validate_vcs_url("https://github.com".into()).ok);
-    }
+    include!("../tests/modules/validate.rs");
 }

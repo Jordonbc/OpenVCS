@@ -31,6 +31,24 @@ function getUpdateInstallButton(): HTMLButtonElement | null {
   return modal?.querySelector('#update-install') as HTMLButtonElement | null;
 }
 
+/** Returns the footer status element used for global busy indication. */
+function getFooterStatus(): HTMLElement | null {
+  return document.getElementById('status') as HTMLElement | null;
+}
+
+/** Applies busy styling to the footer status bar for update activity. */
+function setUpdateBusy(text: string | null) {
+  const statusEl = getFooterStatus();
+  if (!statusEl) return;
+
+  if (text) {
+    statusEl.textContent = text;
+    statusEl.classList.add('busy');
+  } else {
+    statusEl.classList.remove('busy');
+  }
+}
+
 /** Formats the download button label for the current byte progress. */
 function formatDownloadingLabel(received?: number, total?: number): string {
   const totalBytes = Number(total ?? 0);
@@ -52,18 +70,22 @@ function setUpdateInstallPhase(phase: UpdateInstallPhase, progress?: UpdateProgr
 
   switch (phase) {
     case 'idle':
+      setUpdateBusy(null);
       installBtn.textContent = 'Install';
       installBtn.disabled = false;
       return;
     case 'downloading':
+      setUpdateBusy('Downloading update…');
       installBtn.textContent = formatDownloadingLabel(progress?.received, progress?.total);
       installBtn.disabled = true;
       return;
     case 'installing':
+      setUpdateBusy('Installing update…');
       installBtn.textContent = 'Installing';
       installBtn.disabled = true;
       return;
     case 'done':
+      setUpdateBusy(null);
       installBtn.textContent = 'Done, please restart';
       installBtn.disabled = true;
   }

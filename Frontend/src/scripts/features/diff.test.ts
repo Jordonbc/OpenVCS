@@ -25,6 +25,7 @@ vi.mock('../lib/tauri', () => {
 vi.mock('./repo', () => ({
   hydrateStatus: vi.fn(async () => {}),
   hydrateCommits: vi.fn(async () => {}),
+  yieldToPaint: vi.fn(async () => {}),
 }));
 
 let state: typeof import('../state/state').state;
@@ -82,5 +83,21 @@ describe('bindCommit', () => {
       files: ['content/posts/2026/05/openvcs-announcement.md'],
       stagePaths: ['content/posts/2026/05/openvcs-announcement.md'],
     });
+  });
+
+  it('yields to paint before committing', async () => {
+    const repo = await import('./repo');
+    const { bindCommit } = await import('./diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'Add post';
+    commitBtn.disabled = false;
+
+    bindCommit();
+    commitBtn.click();
+
+    await Promise.resolve();
+    expect(vi.mocked(repo.yieldToPaint)).toHaveBeenCalled();
   });
 });

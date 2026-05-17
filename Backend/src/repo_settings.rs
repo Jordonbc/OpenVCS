@@ -30,3 +30,8 @@ pub struct RepoConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remotes: Option<Vec<RemoteConfig>>,
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/repo_settings.rs");
+}
