@@ -36,6 +36,7 @@
 - `cargo test --lib`: run only library tests (not integration tests)
 - `cargo test --lib -- branch`: run tests matching "branch" in name
 - `cargo test --lib -- --test-threads=1`: run tests sequentially (for flaky tests)
+- All backend Rust tests must live in `Backend/tests/`; do not add Rust tests inside `Backend/src/` unless there is an explicit exception.
 
 ### Linting and formatting
 
