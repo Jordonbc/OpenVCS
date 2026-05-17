@@ -163,6 +163,128 @@ describe('updateCommitButton', () => {
     expect(summary.placeholder).toBe('Summary (required)');
   });
 
+  it('suppresses hint when template feature is disabled', async () => {
+    const { updateCommitButton } = await import('./commit');
+
+    setGlobalSettings({
+      commit: {
+        commit_message_template_enabled: false,
+        commit_templates: {
+          commit_message_template_create: 'Create {file:name}',
+          commit_message_template_update: 'Update {file:name}',
+          commit_message_template_delete: 'Delete {file:name}',
+        },
+      },
+    });
+    state.files = [{ path: 'src/test.cpp', status: 'M' } as FileStatus];
+    state.selectedFiles = new Set(['src/test.cpp']);
+    const summary = document.getElementById('commit-summary') as HTMLInputElement;
+
+    updateCommitButton();
+
+    expect(summary.placeholder).toBe('Summary (required)');
+  });
+
+  it('does not truncate when commit summary restriction is disabled', async () => {
+    const { updateCommitButton } = await import('./commit');
+
+    setGlobalSettings({
+      commit: {
+        commit_message_template_enabled: true,
+        restrict_commit_summary: false,
+        commit_templates: {
+          commit_message_template_create: 'Create {file:name}',
+          commit_message_template_update: 'Update {file:name} with extra detail beyond seventy two characters and more text for truncation',
+          commit_message_template_delete: 'Delete {file:name}',
+        },
+      },
+    });
+    state.files = [{ path: 'src/test.cpp', status: 'M' } as FileStatus];
+    state.selectedFiles = new Set(['src/test.cpp']);
+    const summary = document.getElementById('commit-summary') as HTMLInputElement;
+
+    updateCommitButton();
+
+    expect(summary.placeholder).toBe('Update test.cpp with extra detail beyond seventy two characters and more text for truncation');
+    expect(summary.placeholder).not.toContain('...');
+  });
+
+  it('suppresses hint when multiple files are selected', async () => {
+    const { updateCommitButton } = await import('./commit');
+
+    setGlobalSettings({
+      commit: {
+        commit_message_template_enabled: true,
+        commit_templates: {
+          commit_message_template_create: 'Create {file:name}',
+          commit_message_template_update: 'Update {file:name}',
+          commit_message_template_delete: 'Delete {file:name}',
+        },
+      },
+    });
+    state.files = [
+      { path: 'src/test.cpp', status: 'M' } as FileStatus,
+      { path: 'src/other.cpp', status: 'A' } as FileStatus,
+    ];
+    state.selectedFiles = new Set(['src/test.cpp', 'src/other.cpp']);
+    const summary = document.getElementById('commit-summary') as HTMLInputElement;
+
+    updateCommitButton();
+
+    expect(summary.placeholder).toBe('Summary (required)');
+  });
+
+  it('expands file path placeholder', async () => {
+    const { updateCommitButton } = await import('./commit');
+
+    setGlobalSettings({
+      commit: {
+        commit_message_template_enabled: true,
+        commit_templates: {
+          commit_message_template_create: 'Create {file:path}',
+          commit_message_template_update: 'Update {file:path}',
+          commit_message_template_delete: 'Delete {file:path}',
+        },
+      },
+    });
+    state.files = [{ path: 'src/deep/test.cpp', status: 'M' } as FileStatus];
+    state.selectedFiles = new Set(['src/deep/test.cpp']);
+    const summary = document.getElementById('commit-summary') as HTMLInputElement;
+
+    updateCommitButton();
+
+    expect(summary.placeholder).toBe('Update src/deep/test.cpp');
+  });
+
+  it('selects templates by status branch', async () => {
+    const { updateCommitButton } = await import('./commit');
+
+    setGlobalSettings({
+      commit: {
+        commit_message_template_enabled: true,
+        commit_templates: {
+          commit_message_template_create: 'Create {file:name}',
+          commit_message_template_update: 'Update {file:name}',
+          commit_message_template_delete: 'Delete {file:name}',
+        },
+      },
+    });
+    const cases: Array<[FileStatus['status'], string]> = [
+      ['A', 'Create test.cpp'],
+      ['D', 'Delete test.cpp'],
+      ['?', 'Create test.cpp'],
+      ['??', 'Create test.cpp'],
+      ['M', 'Update test.cpp'],
+    ];
+
+    for (const [status, expected] of cases) {
+      state.files = [{ path: 'src/test.cpp', status } as FileStatus];
+      state.selectedFiles = new Set(['src/test.cpp']);
+      updateCommitButton();
+      expect((document.getElementById('commit-summary') as HTMLInputElement).placeholder).toBe(expected);
+    }
+  });
+
   it('keeps commit disabled without repo or changes', async () => {
     const { updateCommitButton } = await import('./commit');
 
