@@ -18,14 +18,12 @@ describe('collectGeneralSettings', () => {
         <input id="set-reopen-last" type="checkbox" checked />
         <input id="set-checks-on-launch" type="checkbox" checked />
         <input id="set-crash-reports" type="checkbox" checked />
-        <input id="set-restrict-commit-summary" type="checkbox" checked />
       </div>
     `;
 
     const root = document.body.firstElementChild as HTMLElement;
     const general = collectGeneralSettings(root, {}, () => 'dark');
     expect(general?.crash_reports).toBe(true);
-    expect(general?.restrict_commit_summary).toBe(true);
     expect(general?.theme).toBe('system');
   });
 });
@@ -39,7 +37,6 @@ describe('loadGeneralSettingsIntoForm', () => {
         <input id="set-reopen-last" type="checkbox" />
         <input id="set-checks-on-launch" type="checkbox" />
         <input id="set-crash-reports" type="checkbox" />
-        <input id="set-restrict-commit-summary" type="checkbox" />
       </div>
     `;
 
@@ -52,11 +49,10 @@ describe('loadGeneralSettingsIntoForm', () => {
           language: 'system',
           update_channel: 'stable',
           reopen_last_repos: true,
-          checks_on_launch: true,
-          crash_reports: true,
-          restrict_commit_summary: true,
+            checks_on_launch: true,
+            crash_reports: true,
+          },
         },
-      },
       (value) => String(value ?? ''),
       refreshDefaultBackendOptions,
       vi.fn().mockResolvedValue(undefined),
@@ -64,7 +60,6 @@ describe('loadGeneralSettingsIntoForm', () => {
 
     expect(refreshDefaultBackendOptions).toHaveBeenCalledWith(root, expect.any(Object));
     expect((root.querySelector('#set-crash-reports') as HTMLInputElement).checked).toBe(true);
-    expect((root.querySelector('#set-restrict-commit-summary') as HTMLInputElement).checked).toBe(true);
   });
 
   it('expands the default theme id to the light built-in theme in light mode', async () => {
@@ -77,7 +72,6 @@ describe('loadGeneralSettingsIntoForm', () => {
         <input id="set-reopen-last" type="checkbox" />
         <input id="set-checks-on-launch" type="checkbox" />
         <input id="set-crash-reports" type="checkbox" />
-        <input id="set-restrict-commit-summary" type="checkbox" />
       </div>
     `;
 
@@ -96,7 +90,6 @@ describe('loadGeneralSettingsIntoForm', () => {
           reopen_last_repos: false,
           checks_on_launch: false,
           crash_reports: false,
-          restrict_commit_summary: true,
         },
       },
       (value) => String(value ?? ''),
@@ -121,7 +114,6 @@ describe('loadGeneralSettingsIntoForm', () => {
         <input id="set-reopen-last" type="checkbox" />
         <input id="set-checks-on-launch" type="checkbox" />
         <input id="set-crash-reports" type="checkbox" />
-        <input id="set-restrict-commit-summary" type="checkbox" />
       </div>
     `;
 
@@ -140,7 +132,6 @@ describe('loadGeneralSettingsIntoForm', () => {
           reopen_last_repos: false,
           checks_on_launch: false,
           crash_reports: false,
-          restrict_commit_summary: true,
         },
       },
       (value) => String(value ?? ''),
@@ -165,7 +156,6 @@ describe('loadGeneralSettingsIntoForm', () => {
         <input id="set-reopen-last" type="checkbox" />
         <input id="set-checks-on-launch" type="checkbox" />
         <input id="set-crash-reports" type="checkbox" />
-        <input id="set-restrict-commit-summary" type="checkbox" />
       </div>
     `;
 
@@ -184,7 +174,6 @@ describe('loadGeneralSettingsIntoForm', () => {
           reopen_last_repos: false,
           checks_on_launch: false,
           crash_reports: false,
-          restrict_commit_summary: true,
         },
       },
       (value) => String(value ?? ''),

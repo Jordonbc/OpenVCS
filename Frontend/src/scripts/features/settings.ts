@@ -8,11 +8,21 @@ import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
 import { setTheme, applyCommitSummaryRestriction, applyGpuAccelerationPreference } from '../ui/layout';
 import { collectGeneralSettings, loadGeneralSettingsIntoForm } from './settingsGeneral';
-import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
+import {
+    collectCommitSettings,
+    collectCommitTemplateSettings,
+    DEFAULT_COMMIT_MESSAGE_CREATE,
+    DEFAULT_COMMIT_MESSAGE_DELETE,
+    DEFAULT_COMMIT_MESSAGE_UPDATE,
+    loadCommitSettingsIntoForm,
+} from './settingsCommit';
+import { DEFAULT_LIGHT_THEME_ID, getActiveThemeId, getAvailableThemes, refreshAvailableThemes, selectThemePack } from '../themes';
 import { invokePluginAction, reloadPlugins } from '../plugins';
 import type { PluginSummary } from '../plugins';
 import { applyPluginSettingsSections } from '../plugins';
 import type { GlobalSettings, ThemeSummary } from '../types';
+import { setGlobalSettings } from '../state/state';
+import { updateCommitButton } from './repo/commit';
 
 const THEME_PACK_HINT = 'Install a theme ZIP into the themes folder, or install a plugin that provides themes.';
 const SYSTEM_DARK_MQ = matchMedia('(prefers-color-scheme: dark)');
@@ -708,6 +718,7 @@ export function wireSettings() {
             const gpuChanged = previousCfg.performance?.gpu_accel !== next.performance?.gpu_accel;
 
             await TAURI.invoke('set_global_settings', { cfg: next });
+            setGlobalSettings(next);
             await syncFrontendMonitoring(next);
 
             modal.dataset.currentCfg = JSON.stringify(next);
@@ -727,7 +738,8 @@ export function wireSettings() {
                 else root.style.removeProperty('--mono');
                 applyAnimationPreference(next?.performance?.animations);
                 applyGpuAccelerationPreference(next?.performance?.gpu_accel);
-                applyCommitSummaryRestriction(next?.general?.restrict_commit_summary !== false);
+                applyCommitSummaryRestriction(next?.commit?.restrict_commit_summary !== false);
+                updateCommitButton();
             } catch {}
 
             notify(gpuChanged ? 'Settings saved. GPU changes apply after restart.' : 'Settings saved');
@@ -771,7 +783,15 @@ export function wireSettings() {
                 checks_on_launch: true,
                 telemetry: false,
                 crash_reports: true,
+            };
+            cur.commit = {
+                commit_message_template_enabled: true,
                 restrict_commit_summary: true,
+                commit_templates: {
+                    commit_message_template_create: DEFAULT_COMMIT_MESSAGE_CREATE,
+                    commit_message_template_update: DEFAULT_COMMIT_MESSAGE_UPDATE,
+                    commit_message_template_delete: DEFAULT_COMMIT_MESSAGE_DELETE,
+                },
             };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
             cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
@@ -781,10 +801,12 @@ export function wireSettings() {
             cur.plugins = { disabled: [], enabled: [] };
 
             await TAURI.invoke('set_global_settings', { cfg: cur });
+            setGlobalSettings(cur);
             await syncFrontendMonitoring(cur);
             applyAnimationPreference(cur.performance?.animations);
             applyGpuAccelerationPreference(cur.performance?.gpu_accel);
-            applyCommitSummaryRestriction(cur.general?.restrict_commit_summary !== false);
+            applyCommitSummaryRestriction(cur.commit?.restrict_commit_summary !== false);
+            updateCommitButton();
             await loadSettingsIntoForm(modal);
             setTheme('system');
             try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}
@@ -808,6 +830,14 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
     const o: GlobalSettings = { ...base };
 
     o.general = collectGeneralSettings(root, o, modeForTheme);
+    o.commit = {
+        ...o.commit,
+        ...collectCommitSettings(root),
+        commit_templates: {
+            ...(o.commit?.commit_templates || {}),
+            ...collectCommitTemplateSettings(root),
+        },
+    };
 
     o.diff = {
         ...o.diff,
@@ -921,6 +951,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     await loadPluginsIntoForm(m, cfg);
 
     await loadGeneralSettingsIntoForm(m, cfg, toKebab, refreshDefaultBackendOptions, rebuildThemePackOptions);
+    loadCommitSettingsIntoForm(m, cfg);
     const elRl = get<HTMLInputElement>('#set-recents-limit'); if (elRl) elRl.value = String(cfg.ux?.recents_limit ?? 10);
 
     const elTw = get<HTMLInputElement>('#set-tab-width'); if (elTw) elTw.value = String(cfg.diff?.tab_width ?? 0);
@@ -928,7 +959,7 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
     const elMx = get<HTMLInputElement>('#set-max-file-size-mb'); if (elMx) elMx.value = String(cfg.diff?.max_file_size_mb ?? 0);
     const elIn = get<HTMLInputElement>('#set-intraline'); if (elIn) elIn.checked = !!cfg.diff?.intraline;
     const elBp = get<HTMLInputElement>('#set-binary-placeholders'); if (elBp) elBp.checked = !!cfg.diff?.show_binary_placeholders;
-    const elRestrict = get<HTMLInputElement>('#set-restrict-commit-summary'); if (elRestrict) elRestrict.checked = cfg.general?.restrict_commit_summary !== false;
+    const elRestrict = get<HTMLInputElement>('#set-restrict-commit-summary'); if (elRestrict) elRestrict.checked = cfg.commit?.restrict_commit_summary !== false;
     const elMm = get<HTMLSelectElement>('#set-merge-mode');
     const elMp = get<HTMLInputElement>('#set-merge-path');
     const elMa = get<HTMLInputElement>('#set-merge-args');

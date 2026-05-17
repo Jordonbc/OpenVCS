@@ -8,9 +8,9 @@ import { qs } from './lib/dom';
 import { notify } from './lib/notify';
 import { setStatus } from './lib/status';
 import { destroyOverlayScrollbarsFor, initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from './lib/scrollbars';
-import { prefs, state, hasRepo, resolveVcsActionLabel } from './state/state';
+import { prefs, state, hasRepo, resolveVcsActionLabel, setGlobalSettings } from './state/state';
 import {
-    bindTabs, initResizer, refreshRepoActions, setRepoHeader, resetRepoHeader, setTab, setTheme,
+    bindTabs, initResizer, refreshRepoActions, setRepoHeader, setTab, setTheme,
     bindLayoutActionState, applyCommitSummaryRestriction, applyGpuAccelerationPreference
 } from './ui/layout';
 import { clearPluginMenubarMenus, initMenubar, refreshPluginMenubarMenus } from './ui/menubar';
@@ -101,6 +101,7 @@ function forceCloseTransientUi() {
 async function boot() {
     assertDesktopRuntime();
     const cfg = await loadInitialGlobalSettings();
+    setGlobalSettings(cfg ?? null);
     await syncFrontendMonitoring(cfg);
 
     // If launched as the Output Log window, render that view and skip the main app UI.
@@ -133,7 +134,7 @@ async function boot() {
                     if (mono) root.style.setProperty('--mono', mono);
                     applyAnimationPreference(cfg?.performance?.animations);
                     applyGpuAccelerationPreference(cfg?.performance?.gpu_accel);
-                    applyCommitSummaryRestriction(cfg?.general?.restrict_commit_summary !== false);
+                    applyCommitSummaryRestriction(cfg?.commit?.restrict_commit_summary !== false);
                 } catch { /* best-effort */ }
             } catch {
                 try { await selectThemePack(DEFAULT_LIGHT_THEME_ID, { silent: true, mode: 'system' }); } catch {}

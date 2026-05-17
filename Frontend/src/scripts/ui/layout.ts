@@ -5,6 +5,7 @@ import { prefs, savePrefs, state, hasRepo, hasChanges, resolveVcsActionLabel } f
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { setAppearanceMode } from '../themes';
+import { updateCommitButton } from '../features/repo/commit';
 
 const workGrid = qs<HTMLElement>('.work');
 const resizer  = qs<HTMLElement>('#resizer');
@@ -190,6 +191,7 @@ export function initResizer() {
 
 /** Recomputes enablement and labels for repo-scoped UI actions. */
 export function refreshRepoActions() {
+    updateCommitButton();
     const repoOn       = hasRepo();
     const changesOn    = hasChanges();
 
