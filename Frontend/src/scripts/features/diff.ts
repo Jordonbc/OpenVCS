@@ -7,6 +7,7 @@ import { state } from '../state/state';
 import { hydrateStatus, hydrateCommits } from './repo';
 import { runHook } from '../plugins';
 import { getCommitSummaryHint } from './repo/commit';
+import { yieldToPaint } from './repo';
 
 export function bindCommit() {
     const commitBtn     = qs<HTMLButtonElement>('#commit-btn');
@@ -28,6 +29,7 @@ export function bindCommit() {
         };
         try {
             setBusy('Committing…');
+            await yieldToPaint();
             let description = commitDesc?.value || '';
 
             // Build a combined patch when any file has partial hunks/lines selected.

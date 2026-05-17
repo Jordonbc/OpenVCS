@@ -350,7 +350,9 @@ async function boot() {
                 notify(pre.reason || 'Push cancelled');
                 return;
             }
-            setBusy('Pushing…'); await TAURI.invoke('vcs_push', {});
+            setBusy('Pushing…');
+            await yieldToPaint();
+            await TAURI.invoke('vcs_push', {});
             await runHook('onPush', hookData);
             notify('Pushed');
             await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
