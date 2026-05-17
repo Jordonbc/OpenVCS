@@ -162,4 +162,28 @@ describe('updateCommitButton', () => {
 
     expect(summary.placeholder).toBe('Summary (required)');
   });
+
+  it('keeps commit disabled without repo or changes', async () => {
+    const { updateCommitButton } = await import('./commit');
+
+    setGlobalSettings({
+      commit: {
+        commit_message_template_enabled: true,
+        commit_templates: {
+          commit_message_template_create: 'Create {file:name}',
+          commit_message_template_update: 'Update {file:name}',
+          commit_message_template_delete: 'Delete {file:name}',
+        },
+      },
+    });
+    state.hasRepo = false;
+    state.files = [];
+    state.selectedFiles = new Set(['src/test.cpp']);
+    const summary = document.getElementById('commit-summary') as HTMLInputElement;
+
+    updateCommitButton();
+
+    expect(summary.placeholder).toBe('Update test.cpp');
+    expect((document.getElementById('commit-btn') as HTMLButtonElement).disabled).toBe(true);
+  });
 });

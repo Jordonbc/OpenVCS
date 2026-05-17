@@ -79,6 +79,8 @@ export function updateCommitButton() {
     if (!btn) return;
     const summary = document.getElementById('commit-summary') as HTMLInputElement | null;
     const hint = getCommitSummaryHint();
+    const repoOn = state.hasRepo;
+    const changesOn = Array.isArray(state.files) && state.files.length > 0;
 
     if (summary) {
         summary.placeholder = hint || 'Summary (required)';
@@ -90,5 +92,5 @@ export function updateCommitButton() {
     const linesSelected = Object.keys((state as any).selectedLinesByFile || {})
         .some((k) => !!(state as any).selectedLinesByFile[k] && Object.keys((state as any).selectedLinesByFile[k] || {}).length > 0);
     const filesSelected = !!(state.selectedFiles && state.selectedFiles.size > 0);
-    btn.disabled = !(summaryFilled && (hunksSelected || linesSelected || filesSelected));
+    btn.disabled = !(repoOn && changesOn && summaryFilled && (hunksSelected || linesSelected || filesSelected));
 }
