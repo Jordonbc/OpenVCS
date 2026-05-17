@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::*;
+use std::fs;
+use std::path::Path;
 use tempfile::tempdir;
 
 /// Writes a minimal prepared plugin directory for tests.
