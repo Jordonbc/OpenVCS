@@ -140,4 +140,26 @@ describe('updateCommitButton', () => {
     expect(summary.placeholder.endsWith('...')).toBe(true);
     expect(summary.placeholder.startsWith('Update test.cpp with extra detail beyond seventy two')).toBe(true);
   });
+
+  it('does not fall back to default for empty template strings', async () => {
+    const { updateCommitButton } = await import('./commit');
+
+    setGlobalSettings({
+      commit: {
+        commit_message_template_enabled: true,
+        commit_templates: {
+          commit_message_template_create: '',
+          commit_message_template_update: '',
+          commit_message_template_delete: '',
+        },
+      },
+    });
+    state.files = [{ path: 'src/test.cpp', status: 'M' } as FileStatus];
+    state.selectedFiles = new Set(['src/test.cpp']);
+    const summary = document.getElementById('commit-summary') as HTMLInputElement;
+
+    updateCommitButton();
+
+    expect(summary.placeholder).toBe('Summary (required)');
+  });
 });

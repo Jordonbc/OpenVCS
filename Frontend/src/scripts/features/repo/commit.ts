@@ -41,12 +41,12 @@ function selectedCommitFileStatus(filePath: string): string {
 function selectedCommitTemplate(filePath: string): string {
     const status = selectedCommitFileStatus(filePath);
     if (status === 'A' || status === '?' || status.includes('?')) {
-        return globalSettings?.commit?.commit_templates?.commit_message_template_create || DEFAULT_COMMIT_MESSAGE_CREATE;
+        return globalSettings?.commit?.commit_templates?.commit_message_template_create ?? DEFAULT_COMMIT_MESSAGE_CREATE;
     }
     if (status === 'D') {
-        return globalSettings?.commit?.commit_templates?.commit_message_template_delete || DEFAULT_COMMIT_MESSAGE_DELETE;
+        return globalSettings?.commit?.commit_templates?.commit_message_template_delete ?? DEFAULT_COMMIT_MESSAGE_DELETE;
     }
-    return globalSettings?.commit?.commit_templates?.commit_message_template_update || DEFAULT_COMMIT_MESSAGE_UPDATE;
+    return globalSettings?.commit?.commit_templates?.commit_message_template_update ?? DEFAULT_COMMIT_MESSAGE_UPDATE;
 }
 
 /** Expands commit template placeholders for one selected file. */
