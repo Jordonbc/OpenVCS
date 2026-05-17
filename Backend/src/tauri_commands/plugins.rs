@@ -280,6 +280,7 @@ pub fn set_plugin_approval(
 
     let store = PluginBundleStore::new_default();
     store.approve_capabilities(&plugin_id, &version, approved)?;
+    crate::plugin_vcs_backends::invalidate_plugin_vcs_backend_cache();
 
     if approved {
         if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {

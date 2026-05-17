@@ -470,7 +470,7 @@ async function boot() {
     hydrateStash();
 
     initMenubar(runMenuAction);
-    refreshPluginMenubarMenus().catch(() => {});
+    refreshPluginMenubarMenus().catch((err) => console.warn('Plugin menu refresh failed:', err));
     schedulePluginMenuRefresh(PLUGIN_MENU_REFRESH_SETTLE_MS);
 
     TAURI.listen?.('menu', async ({ payload: id }) => {
@@ -530,7 +530,7 @@ async function boot() {
         // Broadcast app-level event so branch UI and actions can sync
         window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
         refreshRepoActions();
-        await refreshPluginMenubarMenus().catch(() => {});
+        await refreshPluginMenubarMenus().catch((err) => console.warn('Plugin menu refresh failed:', err));
         schedulePluginMenuRefresh();
     });
 
@@ -547,7 +547,7 @@ async function boot() {
         window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
         refreshRepoActions();
         updateFetchUI();
-        await refreshPluginMenubarMenus().catch(() => {});
+        await refreshPluginMenubarMenus().catch((err) => console.warn('Plugin menu refresh failed:', err));
         schedulePluginMenuRefresh();
       })
       .catch((err) => console.warn('Failed to restore initial repository state:', err));

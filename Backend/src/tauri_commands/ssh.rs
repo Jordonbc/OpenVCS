@@ -133,7 +133,7 @@ fn is_executable(path: &Path) -> bool {
 }
 
 fn resolve_command(candidate: &Path) -> Option<PathBuf> {
-    if candidate.parent().is_some() {
+    if candidate.is_absolute() || candidate.components().count() > 1 {
         return is_executable(candidate).then(|| candidate.to_path_buf());
     }
 

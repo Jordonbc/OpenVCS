@@ -453,8 +453,6 @@ export function openSettings(section?: string){
             modal.removeAttribute('aria-busy');
             const setThemeAuto = modal.querySelector<HTMLInputElement>('#set-theme-auto');
             if (setThemeAuto) setThemeAuto.disabled = false;
-            const setThemeSel = modal.querySelector<HTMLSelectElement>('#set-theme');
-            if (setThemeSel) setThemeSel.disabled = false;
         });
 }
 
