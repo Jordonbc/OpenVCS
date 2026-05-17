@@ -338,7 +338,10 @@ pub fn init() {
             .map(|pd| pd.data_dir().join("logs"))
             .unwrap_or_else(|| std::path::PathBuf::from("logs"));
         if let Err(e) = fs::create_dir_all(&dir) {
-            log::warn!("logging: failed to create log directory '{}': {e}", dir.display());
+            log::warn!(
+                "logging: failed to create log directory '{}': {e}",
+                dir.display()
+            );
         }
 
         rotate_existing_log(&dir);

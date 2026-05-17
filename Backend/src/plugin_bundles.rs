@@ -274,7 +274,10 @@ fn copy_directory_recursive(source: &Path, dest: &Path) -> Result<(), String> {
                     &dest_path,
                     fs::Permissions::from_mode(metadata.permissions().mode()),
                 ) {
-                    warn!("copy_recursive: failed to set permissions on '{}': {e}", dest_path.display());
+                    warn!(
+                        "copy_recursive: failed to set permissions on '{}': {e}",
+                        dest_path.display()
+                    );
                 }
             }
         }
@@ -455,7 +458,10 @@ impl PluginBundleStore {
             )
         })?;
         if let Err(e) = fs::remove_dir_all(&staging) {
-            warn!("install_plugin_dir: failed to remove staging directory '{}': {e}", staging.display());
+            warn!(
+                "install_plugin_dir: failed to remove staging directory '{}': {e}",
+                staging.display()
+            );
         }
         write_plugin_source_metadata(&plugin_dir, source_metadata)?;
 
