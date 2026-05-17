@@ -31,4 +31,16 @@ describe('notify', () => {
     vi.advanceTimersByTime(2200);
     expect(status.textContent).toBe('Ready');
   });
+
+  it('does not restore Ready while status is busy', async () => {
+    const { notify } = await import('./notify');
+    const status = document.getElementById('status') as HTMLElement;
+
+    status.classList.add('busy');
+    notify('Downloading update…');
+    expect(status.textContent).toBe('Downloading update…');
+
+    vi.advanceTimersByTime(2200);
+    expect(status.textContent).toBe('Downloading update…');
+  });
 });

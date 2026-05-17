@@ -503,6 +503,10 @@ async function boot() {
             if (busyFrame !== null) return;
             busyFrame = window.requestAnimationFrame(() => {
                 busyFrame = null;
+                const s = document.getElementById('status');
+                if (!s) return;
+                const current = String(s.textContent || '');
+                if (s.classList.contains('busy') && !current.startsWith('Working')) return;
                 setBusy('Working…', true);
             });
         };
