@@ -628,3 +628,8 @@ fn read_text_file_from_directory(base: &Path, name: &str) -> Result<String, Stri
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/themes.rs");
+}

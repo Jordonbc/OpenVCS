@@ -105,3 +105,8 @@ pub async fn browse_file_async<R: tauri::Runtime>(
 
     rx.await.unwrap_or(None)
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/modules/utilities.rs");
+}
