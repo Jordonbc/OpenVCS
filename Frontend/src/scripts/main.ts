@@ -464,7 +464,7 @@ async function boot() {
     updateFetchUI();
 
     // initial data
-    hydrateBranches().then(() => setRepoHeader()).catch(() => console.warn('Failed to hydrate branches on startup'));
+    hydrateBranches().then(() => setRepoHeader()).catch((err) => console.warn('Failed to hydrate branches on startup:', err));
     hydrateStatus();
     hydrateCommits();
     hydrateStash();
