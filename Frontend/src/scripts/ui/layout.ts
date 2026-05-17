@@ -5,6 +5,7 @@ import { prefs, savePrefs, state, hasRepo, hasChanges, resolveVcsActionLabel } f
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { setAppearanceMode } from '../themes';
+import { updateCommitButton } from '../features/repo/commit';
 
 const workGrid = qs<HTMLElement>('.work');
 const resizer  = qs<HTMLElement>('#resizer');
@@ -190,6 +191,7 @@ export function initResizer() {
 
 /** Recomputes enablement and labels for repo-scoped UI actions. */
 export function refreshRepoActions() {
+    updateCommitButton();
     const repoOn       = hasRepo();
     const changesOn    = hasChanges();
 
@@ -230,15 +232,7 @@ export function refreshRepoActions() {
     if (summary) summary.disabled = !(repoOn && changesOn);
     if (desc)    desc.disabled    = !(repoOn && changesOn);
 
-    // Commit button requires: repo + changes + non-empty summary + explicit selection (files, hunks, or per-line)
-    const summaryFilled = (summary?.value.trim().length ?? 0) > 0;
-    // Require either selected hunks, selected lines, or selected files (commit UI selection)
-    const hunksSelected = Object.values(state.selectedHunksByFile || {})
-        .some((hunks) => Array.isArray(hunks) && hunks.length > 0);
-    const linesSelected = Object.values(state.selectedLinesByFile || {})
-        .some((hunks) => !!hunks && Object.keys(hunks).length > 0);
-    const filesSelected = state.selectedFiles.size > 0;
-    if (commit)  commit.disabled  = !(repoOn && changesOn && summaryFilled && (hunksSelected || linesSelected || filesSelected));
+    // Commit button enablement handled by updateCommitButton().
     if (commit) {
         const commitLabel = resolveVcsActionLabel('VCS.Commit', 'Commit');
         commit.textContent = commitLabel;

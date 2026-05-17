@@ -63,21 +63,27 @@ describe('wireUpdate', () => {
     expect(listenCallback).toBeDefined();
 
     const button = document.getElementById('update-install') as HTMLButtonElement;
+    const status = document.getElementById('status') as HTMLDivElement;
     button.click();
 
     expect(button.textContent).toBe('Downloading…');
     expect(button.disabled).toBe(true);
+    expect(status.textContent).toBe('Downloading update…');
+    expect(status.classList.contains('busy')).toBe(true);
 
     listenCallback?.({ payload: { kind: 'progress', received: 73, total: 100 } });
     expect(button.textContent).toBe('Downloading…73%');
+    expect(status.textContent).toBe('Downloading update…');
 
     listenCallback?.({ payload: { kind: 'downloaded' } });
     expect(button.textContent).toBe('Installing');
+    expect(status.textContent).toBe('Installing update…');
 
     resolveInstall?.();
     await Promise.resolve();
 
     expect(button.textContent).toBe('Done, please restart');
     expect(button.disabled).toBe(true);
+    expect(status.classList.contains('busy')).toBe(false);
   });
 });

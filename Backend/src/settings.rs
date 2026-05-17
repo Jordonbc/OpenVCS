@@ -26,6 +26,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub git: Git,
     #[serde(default)]
+    pub commit: Commit,
+    #[serde(default)]
     pub credentials: Credentials,
     #[serde(default)]
     pub diff: Diff,
@@ -58,6 +60,7 @@ impl Default for AppConfig {
             plugin: Default::default(),
             general: Default::default(),
             git: Default::default(),
+            commit: Default::default(),
             credentials: Default::default(),
             diff: Default::default(),
             lfs: Default::default(),
@@ -93,9 +96,6 @@ pub struct General {
     pub telemetry: bool,
     #[serde(default = "default_true")]
     pub crash_reports: bool,
-    /// When enabled, commit hooks may not rewrite the user-entered commit summary.
-    #[serde(default = "default_true")]
-    pub restrict_commit_summary: bool,
 }
 impl Default for General {
     /// Returns default general settings values.
@@ -113,7 +113,6 @@ impl Default for General {
             checks_on_launch: true,
             telemetry: false,
             crash_reports: true,
-            restrict_commit_summary: true,
         }
     }
 }
@@ -177,6 +176,69 @@ impl Default for Git {
                 .into(),
         }
     }
+}
+
+/// Commit settings for commit-message prefill behavior.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Commit {
+    /// Enables commit summary prefill when one full file is selected.
+    #[serde(default = "default_true")]
+    pub commit_message_template_enabled: bool,
+    /// When enabled, commit hooks may not rewrite the user-entered commit summary.
+    #[serde(default = "default_true")]
+    pub restrict_commit_summary: bool,
+    /// Commit summary templates used for single-file prefill.
+    #[serde(default)]
+    pub commit_templates: CommitTemplates,
+}
+impl Default for Commit {
+    /// Returns default commit template settings values.
+    fn default() -> Self {
+        Self {
+            commit_message_template_enabled: true,
+            restrict_commit_summary: true,
+            commit_templates: Default::default(),
+        }
+    }
+}
+
+/// Commit template strings used for single-file prefill.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CommitTemplates {
+    /// Commit summary template used for single new-file prefill.
+    #[serde(default = "default_commit_message_create_template")]
+    pub commit_message_template_create: String,
+    /// Commit summary template used for single modified-file prefill.
+    #[serde(default = "default_commit_message_update_template")]
+    pub commit_message_template_update: String,
+    /// Commit summary template used for single deleted-file prefill.
+    #[serde(default = "default_commit_message_delete_template")]
+    pub commit_message_template_delete: String,
+}
+impl Default for CommitTemplates {
+    /// Returns default commit template strings.
+    fn default() -> Self {
+        Self {
+            commit_message_template_create: default_commit_message_create_template(),
+            commit_message_template_update: default_commit_message_update_template(),
+            commit_message_template_delete: default_commit_message_delete_template(),
+        }
+    }
+}
+
+/// Returns the default template used for creating a commit from one new file.
+fn default_commit_message_create_template() -> String {
+    "Create {file:name}".to_string()
+}
+
+/// Returns the default template used for updating a commit from one modified file.
+fn default_commit_message_update_template() -> String {
+    "Update {file:name}".to_string()
+}
+
+/// Returns the default template used for deleting a commit from one deleted file.
+fn default_commit_message_delete_template() -> String {
+    "Delete {file:name}".to_string()
 }
 
 /// Settings for authentication and signing tools.

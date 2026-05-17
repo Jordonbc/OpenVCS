@@ -6,6 +6,8 @@ import { notify } from '../lib/notify';
 import { state } from '../state/state';
 import { hydrateStatus, hydrateCommits } from './repo';
 import { runHook } from '../plugins';
+import { getCommitSummaryHint } from './repo/commit';
+import { yieldToPaint } from './repo';
 
 export function bindCommit() {
     const commitBtn     = qs<HTMLButtonElement>('#commit-btn');
@@ -13,7 +15,7 @@ export function bindCommit() {
     const commitDesc    = qs<HTMLTextAreaElement>('#commit-desc');
 
     commitBtn?.addEventListener('click', async () => {
-        let summary = commitSummary?.value.trim() || '';
+        let summary = commitSummary?.value.trim() || getCommitSummaryHint() || '';
         if (!summary) { commitSummary?.focus(); notify('Summary is required'); return; }
         const hunksMap = state.selectedHunksByFile || {};
         const linesMap = state.selectedLinesByFile || {};
@@ -27,6 +29,7 @@ export function bindCommit() {
         };
         try {
             setBusy('Committing…');
+            await yieldToPaint();
             let description = commitDesc?.value || '';
 
             // Build a combined patch when any file has partial hunks/lines selected.
