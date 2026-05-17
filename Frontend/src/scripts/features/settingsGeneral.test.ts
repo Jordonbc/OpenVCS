@@ -4,6 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { collectGeneralSettings, loadGeneralSettingsIntoForm } from './settingsGeneral';
+import { DEFAULT_LIGHT_THEME_ID, DEFAULT_THEME_ID } from '../themes';
 
 describe('collectGeneralSettings', () => {
   it('captures the crash report toggle from the general settings panel', () => {
@@ -64,5 +65,49 @@ describe('loadGeneralSettingsIntoForm', () => {
     expect(refreshDefaultBackendOptions).toHaveBeenCalledWith(root, expect.any(Object));
     expect((root.querySelector('#set-crash-reports') as HTMLInputElement).checked).toBe(true);
     expect((root.querySelector('#set-restrict-commit-summary') as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('expands the default theme id to the light built-in theme in light mode', async () => {
+    document.body.innerHTML = `
+      <div>
+        <input id="set-theme-auto" type="checkbox" />
+        <select id="set-theme"><option value="default" selected>Default</option></select>
+        <select id="set-language"><option value="system">System</option></select>
+        <select id="set-update-channel"><option value="stable">Stable</option></select>
+        <input id="set-reopen-last" type="checkbox" />
+        <input id="set-checks-on-launch" type="checkbox" />
+        <input id="set-crash-reports" type="checkbox" />
+        <input id="set-restrict-commit-summary" type="checkbox" />
+      </div>
+    `;
+
+    const root = document.body.firstElementChild as HTMLElement;
+    const refreshDefaultBackendOptions = vi.fn().mockResolvedValue(undefined);
+    const rebuildThemePackOptions = vi.fn().mockResolvedValue(undefined);
+
+    await loadGeneralSettingsIntoForm(
+      root,
+      {
+        general: {
+          theme: 'light',
+          theme_pack: DEFAULT_THEME_ID,
+          language: 'system',
+          update_channel: 'stable',
+          reopen_last_repos: false,
+          checks_on_launch: false,
+          crash_reports: false,
+          restrict_commit_summary: true,
+        },
+      },
+      (value) => String(value ?? ''),
+      refreshDefaultBackendOptions,
+      rebuildThemePackOptions,
+    );
+
+    expect(rebuildThemePackOptions).toHaveBeenCalledWith(expect.any(HTMLSelectElement), {
+      desiredId: DEFAULT_LIGHT_THEME_ID,
+      forceReload: true,
+    });
+    expect((root.querySelector('#set-theme') as HTMLSelectElement).disabled).toBe(false);
   });
 });
