@@ -46,7 +46,7 @@ jobs:
 
       - name: Cache Flatpak SDK and build
         if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.local/share/flatpak
