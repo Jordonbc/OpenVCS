@@ -213,11 +213,16 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          # flatpak-node-generator is incomplete on npm lockfile v3; regen temp v2 lockfile first.
+          TMPDIR="$(mktemp -d)"
+          trap 'rm -rf "$TMPDIR"' EXIT
+          cp Frontend/package.json Frontend/package-lock.json "$TMPDIR"/
+          (cd "$TMPDIR" && npm install --package-lock-only --lockfile-version 2 --ignore-scripts --no-audit --no-fund >/dev/null)
           # cargo-sources.json from workspace Cargo.lock
           CARGO_GEN="$(python3 -c 'import flatpak_cargo_generator.script; print(flatpak_cargo_generator.script.__file__)')"
           python3 "$CARGO_GEN" Cargo.lock -o flathub/cargo-sources.json
           # npm-sources for Frontend
-          python3 -m flatpak_node_generator npm Frontend/package-lock.json -o flathub/npm-sources-frontend.json
+          python3 -m flatpak_node_generator npm "$TMPDIR/package-lock.json" -o flathub/npm-sources-frontend.json
           echo "Vendor sources regenerated."
 
       - name: Update Flathub manifest and metadata
