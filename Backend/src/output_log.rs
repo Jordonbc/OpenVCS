@@ -51,3 +51,8 @@ impl OutputLogEntry {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/output_log.rs");
+}

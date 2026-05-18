@@ -13,6 +13,6 @@ export function notify(text: string) {
     if (!statusEl) return;
     setText(statusEl, text);
     setTimeout(() => {
-        if (statusEl.textContent === text) setText(statusEl, 'Ready');
+        if (statusEl.textContent === text && !statusEl.classList.contains('busy')) setText(statusEl, 'Ready');
     }, 2200);
 }

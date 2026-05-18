@@ -5,6 +5,11 @@
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+mod tests {
+    include!("../../tests/core/settings.rs");
+}
+
 /// A key/value entry in plugin settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SettingKv {

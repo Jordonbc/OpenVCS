@@ -210,6 +210,24 @@ function applyMarkupNodes() {
     setMarkupForTarget(document.body, BODY_MARKUP_NODES, bodyHtml);
 }
 
+/** Strips dangerous script content from theme markup while preserving style/link/meta. */
+function sanitizeThemeMarkup(root: ParentNode): void {
+    for (const node of Array.from(root.childNodes)) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        const element = node as Element;
+        if (element.tagName.toLowerCase() === 'script') {
+            element.remove();
+            continue;
+        }
+        for (const attr of Array.from(element.attributes)) {
+            if (attr.name.toLowerCase().startsWith('on')) {
+                element.removeAttribute(attr.name);
+            }
+        }
+        sanitizeThemeMarkup(element);
+    }
+}
+
 /** Replaces tracked markup nodes for a target container. */
 function setMarkupForTarget(target: ParentNode | null, store: ChildNode[], html: string | null | undefined) {
     const parent = target ?? null;
@@ -219,6 +237,7 @@ function setMarkupForTarget(target: ParentNode | null, store: ChildNode[], html:
     if (!text) return;
     const template = document.createElement('template');
     template.innerHTML = text;
+    sanitizeThemeMarkup(template.content);
     const nodes = Array.from(template.content.childNodes);
     for (const node of nodes) {
         parent.appendChild(node);

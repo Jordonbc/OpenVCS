@@ -9,6 +9,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{BufRead, Write};
 
+#[cfg(test)]
+mod tests {
+    include!("../../tests/plugin_runtime/protocol.rs");
+}
+
 /// Protocol version used by host and plugin at initialization.
 pub const PROTOCOL_VERSION: u32 = 1;
 

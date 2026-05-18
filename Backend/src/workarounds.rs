@@ -110,3 +110,8 @@ pub fn main_window_browser_args(performance: &Performance) -> Option<String> {
 
     Some("--disable-gpu --disable-gpu-compositing".to_string())
 }
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    include!("../tests/modules/workarounds.rs");
+}

@@ -8,6 +8,11 @@ use serde::de::DeserializeOwned;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/plugin_manifest.rs");
+}
+
 /// Wrapper for the `openvcs` section inside `package.json`.
 #[derive(Debug, Deserialize)]
 struct OpenvcsPackageManifest<T> {

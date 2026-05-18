@@ -170,3 +170,8 @@ fn event_targets_config(paths: &[PathBuf], config_path: &Path) -> bool {
                 .is_some_and(|name| name == config_name || name == temp_name)
     })
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/config_watcher.rs");
+}

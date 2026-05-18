@@ -26,7 +26,6 @@ export function collectGeneralSettings(
         reopen_last_repos: !!get<HTMLInputElement>('#set-reopen-last')?.checked,
         checks_on_launch: !!get<HTMLInputElement>('#set-checks-on-launch')?.checked,
         crash_reports: !!get<HTMLInputElement>('#set-crash-reports')?.checked,
-        restrict_commit_summary: !!get<HTMLInputElement>('#set-restrict-commit-summary')?.checked,
     };
 }
 
@@ -72,8 +71,6 @@ export async function loadGeneralSettingsIntoForm(
   if (elReo) elReo.checked = !!cfg.general?.reopen_last_repos;
   const elChk = get<HTMLInputElement>('#set-checks-on-launch');
   if (elChk) elChk.checked = !!cfg.general?.checks_on_launch;
-    const elCrash = get<HTMLInputElement>('#set-crash-reports');
-    if (elCrash) elCrash.checked = !!cfg.general?.crash_reports;
-    const elRestrict = get<HTMLInputElement>('#set-restrict-commit-summary');
-    if (elRestrict) elRestrict.checked = cfg.general?.restrict_commit_summary !== false;
+  const elCrash = get<HTMLInputElement>('#set-crash-reports');
+  if (elCrash) elCrash.checked = !!cfg.general?.crash_reports;
 }

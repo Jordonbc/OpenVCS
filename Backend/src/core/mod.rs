@@ -188,16 +188,5 @@ pub trait Vcs: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    /// Verifies user-facing `VcsError` formatting remains informative.
-    fn vcs_error_formats_useful_messages() {
-        let error = crate::core::VcsError::Unsupported(crate::core::BackendId::from("git"));
-        assert!(error.to_string().contains("unsupported backend"));
-
-        let error = crate::core::VcsError::Backend {
-            backend: crate::core::BackendId::from("git"),
-            msg: "boom".into(),
-        };
-        assert_eq!(error.to_string(), "git: boom");
-    }
+    include!("../../tests/core/mod.rs");
 }

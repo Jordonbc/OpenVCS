@@ -52,3 +52,8 @@ pub trait PluginRuntimeInstance: Send + Sync {
     /// Stops the runtime instance.
     fn stop(&self);
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/plugin_runtime/instance.rs");
+}

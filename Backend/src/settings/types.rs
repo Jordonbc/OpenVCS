@@ -1,10 +1,8 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Global application configuration types and persistence helpers.
+//! Global application configuration types, enums, and default values.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::{fs, io};
 
 /// Serde helper default for `true`.
 ///
@@ -25,6 +23,8 @@ pub struct AppConfig {
     pub general: General,
     #[serde(default)]
     pub git: Git,
+    #[serde(default)]
+    pub commit: Commit,
     #[serde(default)]
     pub credentials: Credentials,
     #[serde(default)]
@@ -58,6 +58,7 @@ impl Default for AppConfig {
             plugin: Default::default(),
             general: Default::default(),
             git: Default::default(),
+            commit: Default::default(),
             credentials: Default::default(),
             diff: Default::default(),
             lfs: Default::default(),
@@ -93,9 +94,6 @@ pub struct General {
     pub telemetry: bool,
     #[serde(default = "default_true")]
     pub crash_reports: bool,
-    /// When enabled, commit hooks may not rewrite the user-entered commit summary.
-    #[serde(default = "default_true")]
-    pub restrict_commit_summary: bool,
 }
 impl Default for General {
     /// Returns default general settings values.
@@ -113,7 +111,6 @@ impl Default for General {
             checks_on_launch: true,
             telemetry: false,
             crash_reports: true,
-            restrict_commit_summary: true,
         }
     }
 }
@@ -122,7 +119,7 @@ impl Default for General {
 ///
 /// # Returns
 /// - Default theme pack string.
-fn default_theme_pack() -> String {
+pub(crate) fn default_theme_pack() -> String {
     "default".to_string()
 }
 
@@ -177,6 +174,69 @@ impl Default for Git {
                 .into(),
         }
     }
+}
+
+/// Commit settings for commit-message prefill behavior.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Commit {
+    /// Enables commit summary prefill when one full file is selected.
+    #[serde(default = "default_true")]
+    pub commit_message_template_enabled: bool,
+    /// When enabled, commit hooks may not rewrite the user-entered commit summary.
+    #[serde(default = "default_true")]
+    pub restrict_commit_summary: bool,
+    /// Commit summary templates used for single-file prefill.
+    #[serde(default)]
+    pub commit_templates: CommitTemplates,
+}
+impl Default for Commit {
+    /// Returns default commit template settings values.
+    fn default() -> Self {
+        Self {
+            commit_message_template_enabled: true,
+            restrict_commit_summary: true,
+            commit_templates: Default::default(),
+        }
+    }
+}
+
+/// Commit template strings used for single-file prefill.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CommitTemplates {
+    /// Commit summary template used for single new-file prefill.
+    #[serde(default = "default_commit_message_create_template")]
+    pub commit_message_template_create: String,
+    /// Commit summary template used for single modified-file prefill.
+    #[serde(default = "default_commit_message_update_template")]
+    pub commit_message_template_update: String,
+    /// Commit summary template used for single deleted-file prefill.
+    #[serde(default = "default_commit_message_delete_template")]
+    pub commit_message_template_delete: String,
+}
+impl Default for CommitTemplates {
+    /// Returns default commit template strings.
+    fn default() -> Self {
+        Self {
+            commit_message_template_create: default_commit_message_create_template(),
+            commit_message_template_update: default_commit_message_update_template(),
+            commit_message_template_delete: default_commit_message_delete_template(),
+        }
+    }
+}
+
+/// Returns the default template used for creating a commit from one new file.
+fn default_commit_message_create_template() -> String {
+    "Create {file:name}".to_string()
+}
+
+/// Returns the default template used for updating a commit from one modified file.
+fn default_commit_message_update_template() -> String {
+    "Update {file:name}".to_string()
+}
+
+/// Returns the default template used for deleting a commit from one deleted file.
+fn default_commit_message_delete_template() -> String {
+    "Delete {file:name}".to_string()
 }
 
 /// Settings for authentication and signing tools.
@@ -311,7 +371,7 @@ pub struct Integrations {
     pub default_editor: EditorChoice,
     #[serde(default)]
     pub issue_provider: IssueProvider,
-    /// “Remote host → provider” mapping; e.g. "gitlab.myco.com" = "gitlab"
+    /// "Remote host → provider" mapping; e.g. "gitlab.myco.com" = "gitlab"
     #[serde(default)]
     pub host_overrides: std::collections::BTreeMap<String, IssueProvider>,
 }
@@ -667,179 +727,4 @@ pub enum LogLevel {
     Info,
     Warn,
     Error,
-}
-
-//
-impl AppConfig {
-    /// ~/.config/openvcs/openvcs.conf (XDG/macOS/Windows aware)
-    ///
-    /// # Returns
-    /// - Filesystem path to the global OpenVCS config file.
-    pub fn path() -> PathBuf {
-        if let Some(pd) = crate::app_identity::project_dirs() {
-            pd.config_dir().join("openvcs.conf")
-        } else {
-            PathBuf::from("openvcs.conf")
-        }
-    }
-
-    /// Load from disk or fall back to defaults; then migrate+validate.
-    ///
-    /// # Returns
-    /// - A valid [`AppConfig`] loaded from disk or synthesized from defaults.
-    pub fn load_or_default() -> Self {
-        let p = Self::path();
-        let mut cfg = match fs::read_to_string(&p) {
-            Ok(s) => toml::from_str::<AppConfig>(&s).unwrap_or_default(),
-            Err(_) => AppConfig::default(),
-        };
-        cfg.migrate();
-        cfg.validate();
-        cfg
-    }
-
-    /// Pretty TOML write with atomic-ish replace.
-    ///
-    /// # Returns
-    /// - `Ok(())` when the config file was written successfully.
-    /// - `Err(io::Error)` when writing or renaming fails.
-    pub fn save(&self) -> io::Result<()> {
-        let p = Self::path();
-        if let Some(parent) = p.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let data = toml::to_string_pretty(self).expect("serialize config");
-        let tmp = p.with_extension("conf.tmp");
-        fs::write(&tmp, data)?;
-        fs::rename(tmp, p)
-    }
-
-    /// Returns whether a plugin should be considered enabled by current settings.
-    ///
-    /// # Parameters
-    /// - `plugin_id`: Plugin id to evaluate.
-    /// - `default_enabled`: Manifest-provided default enabled flag.
-    ///
-    /// # Returns
-    /// - `true` when plugin should be active.
-    /// - `false` otherwise.
-    pub fn is_plugin_enabled(&self, plugin_id: &str, default_enabled: bool) -> bool {
-        let plugin_id = plugin_id.trim().to_ascii_lowercase();
-        if plugin_id.is_empty() {
-            return false;
-        }
-        if self
-            .plugins
-            .disabled
-            .iter()
-            .any(|id| id.trim().eq_ignore_ascii_case(&plugin_id))
-        {
-            return false;
-        }
-        default_enabled
-            || self
-                .plugins
-                .enabled
-                .iter()
-                .any(|id| id.trim().eq_ignore_ascii_case(&plugin_id))
-    }
-
-    /// Future-proof migrations between schema versions.
-    ///
-    /// # Returns
-    /// - `()`.
-    pub fn migrate(&mut self) {
-        match self.schema_version {
-            0 => { /* never shipped */ }
-            1 => { /* current */ }
-            _ => { /* future: add stepwise migrations */ }
-        }
-        // no-op
-    }
-
-    /// Clamp and normalize values so hand edits can’t break the app.
-    ///
-    /// # Returns
-    /// - `()`.
-    pub fn validate(&mut self) {
-        // General: nothing to clamp right now.
-        if self.general.theme_pack.trim().is_empty() {
-            self.general.theme_pack = default_theme_pack();
-        }
-        self.general.default_backend = self.general.default_backend.trim().to_string();
-        if self.general.default_backend.is_empty() {
-            self.general.default_backend = "git".into();
-        }
-
-        // Git
-        self.git.backend = self.git.backend.trim().to_string();
-        if self.git.default_branch.trim().is_empty() {
-            self.git.default_branch = "main".into();
-        }
-        if self.git.ssh_path.trim().is_empty() && self.git.ssh_binary == GitSshBinary::Custom {
-            self.git.ssh_binary = GitSshBinary::Auto;
-        }
-
-        // Diff
-        self.diff.tab_width = self.diff.tab_width.clamp(1, 16);
-        self.diff.max_file_size_mb = self.diff.max_file_size_mb.clamp(1, 1024);
-
-        // LFS
-        self.lfs.concurrency = self.lfs.concurrency.clamp(1, 16);
-
-        // Performance
-
-        // Plugin source list
-        {
-            let mut seen = std::collections::HashSet::new();
-            self.plugin = self
-                .plugin
-                .iter()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .filter(|s| seen.insert(s.clone()))
-                .collect();
-        }
-
-        // Plugins
-        {
-            let mut seen = std::collections::HashSet::new();
-            self.plugins.disabled = self
-                .plugins
-                .disabled
-                .iter()
-                .map(|s| s.trim().to_ascii_lowercase())
-                .filter(|s| !s.is_empty())
-                .filter(|s| seen.insert(s.clone()))
-                .collect();
-        }
-        {
-            let mut seen = std::collections::HashSet::new();
-            self.plugins.enabled = self
-                .plugins
-                .enabled
-                .iter()
-                .map(|s| s.trim().to_ascii_lowercase())
-                .filter(|s| !s.is_empty())
-                .filter(|s| seen.insert(s.clone()))
-                .collect();
-        }
-        // If a plugin is in both lists, treat it as disabled.
-        if !self.plugins.disabled.is_empty() && !self.plugins.enabled.is_empty() {
-            let disabled: std::collections::HashSet<&str> =
-                self.plugins.disabled.iter().map(|s| s.as_str()).collect();
-            self.plugins
-                .enabled
-                .retain(|id| !disabled.contains(id.as_str()));
-        }
-
-        // UX
-        self.ux.recents_limit = self.ux.recents_limit.clamp(1, 100);
-
-        // Logging
-        if self.logging.retain_archives == 0 {
-            self.logging.retain_archives = 1;
-        }
-        self.logging.retain_archives = self.logging.retain_archives.clamp(1, 100);
-    }
 }

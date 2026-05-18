@@ -318,3 +318,8 @@ pub fn set_node_executable_path(path: PathBuf) {
 pub fn node_executable_path() -> Option<PathBuf> {
     NODE_EXECUTABLE.get().cloned()
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/plugin_paths.rs");
+}

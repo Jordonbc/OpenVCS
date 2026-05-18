@@ -419,3 +419,8 @@ fn command_error_message(label: &str, stderr: &[u8]) -> String {
         format!("{label} failed: {text}")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/plugin_sources.rs");
+}

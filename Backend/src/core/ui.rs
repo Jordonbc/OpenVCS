@@ -5,6 +5,11 @@
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+mod tests {
+    include!("../../tests/core/ui.rs");
+}
+
 /// Menu surface target for rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

@@ -40,3 +40,8 @@ impl Repo {
         self.inner.id()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/repo.rs");
+}

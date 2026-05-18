@@ -86,6 +86,7 @@ impl AppState {
         next.validate();
         next.save().map_err(|e| e.to_string())?;
         crate::monitoring::sync_backend_monitoring(&next);
+        crate::plugin_vcs_backends::invalidate_plugin_vcs_backend_cache();
         *self.config.write() = next;
         self.enforce_recents_limit_and_persist();
         Ok(())
@@ -322,4 +323,9 @@ impl AppState {
             );
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/state.rs");
 }
