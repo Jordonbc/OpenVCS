@@ -428,7 +428,9 @@ OpenVCS is open source and community-driven. Contributions are welcome across co
 | **Documentation**     | Build notes, plugin notes, architecture explanations       |
 | **Themes/plugins**    | Theme prototypes and early plugin experiments              |
 
-A dedicated `CONTRIBUTING.md` is planned. Until then, please open an issue or discussion before making large changes.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, workflow, coding, testing,
+and pull request guidance. Please open an issue or discussion before making large
+changes.
 
 ---
 
