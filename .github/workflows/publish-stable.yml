@@ -33,6 +33,7 @@ jobs:
         with:
           lfs: true
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Checkout Flathub manifest repo
         if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1'
@@ -41,6 +42,7 @@ jobs:
           repository: Open-VCS/flathub
           path: flathub
           ref: OpenVCS
+          persist-credentials: false
 
       - name: Cache Flatpak SDK and build
         if: matrix.platform == 'ubuntu-24.04' && env.OPENVCS_ENABLE_FLATPAK == '1'
