@@ -27,10 +27,15 @@ use std::sync::Arc;
 use std::sync::mpsc::channel;
 use std::thread;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 use self::rpc::NodeRpcProcess;
 
 const DEFAULT_RPC_TIMEOUT_SECS: u64 = 30;
 const VCS_OPERATION_TIMEOUT_SECS: u64 = 60;
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Parsed plugin initialize response payload.
 #[derive(Debug, Deserialize)]
@@ -101,6 +106,11 @@ impl NodePluginRuntimeInstance {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .env("OPENVCS_PLUGIN_ID", self.spawn.plugin_id.trim());
+
+        #[cfg(windows)]
+        {
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
 
         let mut child = cmd.spawn().map_err(|e| {
             format!(
