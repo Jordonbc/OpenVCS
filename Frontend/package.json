@@ -15,12 +15,14 @@
     "dev": "vite",
     "test": "vitest",
     "test:watch": "vitest --watch",
+    "coverage": "vitest run --coverage",
     "build": "vite build",
     "preview": "vite preview --strictPort --port 1420"
   },
   "devDependencies": {
     "@sentry/vite-plugin": "^5.2.1",
     "@types/node": "^25.6.2",
+    "@vitest/coverage-v8": "^4.1.7",
     "jsdom": "^29.1.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.12",

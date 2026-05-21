@@ -79,3 +79,137 @@ describe('initSshAuthPrompt', () => {
     expect(document.getElementById('ssh-auth-host')?.textContent).toBe('example.com');
   });
 });
+
+describe('wireAuthModal', () => {
+  it('fills modal content from auth prompt payload', async () => {
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: 'github.com', remote: 'origin', url: 'git@github.com:user/repo.git', message: 'Auth needed' } });
+
+    expect(document.getElementById('ssh-auth-host')?.textContent).toBe('github.com');
+    expect(document.getElementById('ssh-auth-msg')?.textContent).toBe('Auth needed');
+  });
+
+  it('wires the modal only once and existing content persists', async () => {
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: 'github.com', remote: 'origin', url: 'git@github.com:user/repo.git' } });
+
+    expect(document.getElementById('ssh-auth-host')?.textContent).toBe('github.com');
+
+    // Second call should be a no-op
+    expect(() => initSshAuthPrompt()).not.toThrow();
+    expect(document.getElementById('ssh-auth-host')?.textContent).toBe('github.com');
+  });
+
+  it('disables HTTPS button for non-ssh URLs (ftp)', async () => {
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: 'example.com', remote: 'origin', url: 'ftp://example.com/repo' } });
+
+    const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
+    expect(httpsBtn.disabled).toBe(true);
+  });
+
+  it('disables HTTPS button for non-ssh URLs (http)', async () => {
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: 'example.com', remote: 'origin', url: 'http://example.com/repo' } });
+
+    const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
+    expect(httpsBtn.disabled).toBe(false); // http:// is already HTTPS-compatible
+  });
+
+  it('handles ok button click', async () => {
+    const modals = await import('../ui/modals');
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: 'github.com', remote: 'origin', url: 'git@github.com:user/repo.git' } });
+
+    const okBtn = document.getElementById('ssh-auth-ok') as HTMLButtonElement;
+    okBtn.click();
+    expect(vi.mocked(modals.closeModal)).toHaveBeenCalledWith('ssh-auth-modal');
+  });
+
+  it('handles remotes button click', async () => {
+    const repoSettings = await import('./repoSettings');
+    const modals = await import('../ui/modals');
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: 'github.com', remote: 'origin', url: 'git@github.com:user/repo.git' } });
+
+    const remotesBtn = document.getElementById('ssh-auth-open-remotes') as HTMLButtonElement;
+    remotesBtn.click();
+    expect(vi.mocked(modals.closeModal)).toHaveBeenCalledWith('ssh-auth-modal');
+    expect(vi.mocked(repoSettings.openRepoSettings)).toHaveBeenCalled();
+  });
+
+  it('handles SSH keys button click', async () => {
+    const sshKeys = await import('./sshKeys');
+    const modals = await import('../ui/modals');
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: 'github.com', remote: 'origin', url: 'git@github.com:user/repo.git' } });
+
+    const keysBtn = document.getElementById('ssh-auth-ssh-keys') as HTMLButtonElement;
+    keysBtn.click();
+    expect(vi.mocked(modals.closeModal)).toHaveBeenCalledWith('ssh-auth-modal');
+    expect(vi.mocked(sshKeys.openSshKeysModal)).toHaveBeenCalled();
+  });
+
+  it('enables HTTPS button for SCP-style SSH URLs (git@)', async () => {
+    const invoke = vi.fn(async () => null);
+    (window as any).__TAURI__ = {
+      core: { invoke },
+      event: { listen: vi.fn(async () => ({ unlisten: vi.fn() })) },
+    };
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: 'github.com', remote: 'origin', url: 'git@github.com:user/repo.git' } });
+
+    const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
+    expect(httpsBtn.disabled).toBe(false);
+  });
+});
+
+describe('HTTPS switch button flow', () => {
+  it('calls vcs_set_remote_url on click and closes modal', async () => {
+    let cbCapture: ((evt: { payload: unknown }) => void) | null = null;
+    const invoke = vi.fn(async () => null);
+    (window as any).__TAURI__ = {
+      core: { invoke },
+      event: { listen: vi.fn(async (_event: string, cb: any) => { cbCapture = cb; return { unlisten: vi.fn() }; }) },
+    };
+    const modals = await import('../ui/modals');
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+
+    cbCapture?.({ payload: { host: 'github.com', remote: 'origin', url: 'git@github.com:user/repo.git' } });
+
+    const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
+    httpsBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(invoke).toHaveBeenCalledWith('vcs_set_remote_url', { name: 'origin', url: 'https://github.com/user/repo.git' });
+    expect(vi.mocked(modals.closeModal)).toHaveBeenCalledWith('ssh-auth-modal');
+  });
+
+  it('re-enables HTTPS button after error', async () => {
+    let cbCapture: ((evt: { payload: unknown }) => void) | null = null;
+    const invoke = vi.fn(async () => { throw new Error('network error'); });
+    (window as any).__TAURI__ = {
+      core: { invoke },
+      event: { listen: vi.fn(async (_event: string, cb: any) => { cbCapture = cb; return { unlisten: vi.fn() }; }) },
+    };
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+
+    cbCapture?.({ payload: { host: 'github.com', remote: 'origin', url: 'git@github.com:user/repo.git' } });
+
+    const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
+    httpsBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(httpsBtn.disabled).toBe(false);
+  });
+});

@@ -32,3 +32,4 @@ dist-ssr
 /openvcs.plugins.local.json
 /.sisyphus
 /.omo
+/Frontend/coverage

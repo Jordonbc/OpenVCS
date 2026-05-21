@@ -1,0 +1,357 @@
+// Copyright © 2025-2026 OpenVCS Contributors
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type { PluginContextMenuItem } from './types';
+
+function setupTauri() {
+  (window as any).__TAURI__ = {
+    core: { invoke: vi.fn() },
+    event: { listen: vi.fn() },
+  };
+}
+
+function mountSettingsDom() {
+  document.body.innerHTML = `
+    <div id="settings-modal">
+      <ul id="settings-nav"></ul>
+      <div id="settings-panels-scroll"></div>
+    </div>
+  `;
+}
+
+function mountMinimalDom() {
+  document.body.innerHTML = `
+    <div id="modals-root"></div>
+    <div class="menubar"></div>
+    <ul id="plugins-menu-list"></ul>
+  `;
+}
+
+describe('applyPluginSettingsSections', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('returns early if modal element is missing', async () => {
+    const { applyPluginSettingsSections } = await import('./runtime');
+    expect(() => applyPluginSettingsSections()).not.toThrow();
+  });
+
+  it('returns early if nav or panelsScroll is missing', async () => {
+    document.body.innerHTML = '<div id="settings-modal"><div></div></div>';
+    const { applyPluginSettingsSections } = await import('./runtime');
+    expect(() => applyPluginSettingsSections()).not.toThrow();
+  });
+
+  it('does nothing when settingsSections map is empty', async () => {
+    mountSettingsDom();
+    const { applyPluginSettingsSections } = await import('./runtime');
+    applyPluginSettingsSections();
+    expect(document.querySelector('#settings-nav')?.children.length).toBe(0);
+  });
+
+  it('inserts nav buttons and panels from registered sections', async () => {
+    mountSettingsDom();
+    // Register a section via the plugin API, which triggers the fallback
+    const { _setApplyPluginSectionsFallback } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    const { upsertSettingsSection } = await import('./registration');
+    const onMount = vi.fn();
+    upsertSettingsSection('test-plugin', {
+      id: 'my-section',
+      label: 'My Section',
+      html: '<div class="panel-form"><p>Content</p></div>',
+      onMount,
+    });
+
+    const navBtn = document.querySelector('#settings-nav [data-section="my-section"]');
+    expect(navBtn).not.toBeNull();
+    expect(navBtn?.textContent).toBe('My Section');
+
+    const panel = document.querySelector('#settings-panels-scroll .panel-form[data-panel="my-section"]');
+    expect(panel).not.toBeNull();
+    expect(onMount).toHaveBeenCalledTimes(1);
+    expect(onMount).toHaveBeenCalledWith(
+      expect.objectContaining({ modal: expect.any(HTMLElement), panel: expect.any(HTMLElement) }),
+    );
+  });
+
+  it('skips duplicate insertion when nav button and panel already exist', async () => {
+    mountSettingsDom();
+    document.querySelector('#settings-nav')!.innerHTML =
+      '<li><button class="seg-btn" data-section="dup">Dup</button></li>';
+    document.querySelector('#settings-panels-scroll')!.innerHTML =
+      '<div class="panel-form" data-panel="dup"></div>';
+
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test-plugin', { id: 'dup', label: 'Duplicate', html: '<div>Content</div>' });
+    upsertSettingsSection('test-plugin', { id: 'dup', label: 'Duplicate', html: '<div>Content</div>' });
+
+    const navBtns = document.querySelectorAll('#settings-nav [data-section="dup"]');
+    expect(navBtns.length).toBe(1);
+  });
+
+  it('places nav button after "after" target', async () => {
+    mountSettingsDom();
+    document.querySelector('#settings-nav')!.innerHTML =
+      '<li><button class="seg-btn" data-section="general">General</button></li>';
+
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test', { id: 'new', label: 'New', html: '<div>C</div>', after: 'general' });
+
+    const items = Array.from(document.querySelectorAll('#settings-nav [data-section]'));
+    expect(items[0].getAttribute('data-section')).toBe('general');
+    expect(items[1].getAttribute('data-section')).toBe('new');
+  });
+
+  it('places nav button before "before" target', async () => {
+    mountSettingsDom();
+    document.querySelector('#settings-nav')!.innerHTML =
+      '<li><button class="seg-btn" data-section="general">General</button></li>';
+
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test', { id: 'new', label: 'New', html: '<div>C</div>', before: 'general' });
+
+    const items = Array.from(document.querySelectorAll('#settings-nav [data-section]'));
+    expect(items[0].getAttribute('data-section')).toBe('new');
+    expect(items[1].getAttribute('data-section')).toBe('general');
+  });
+
+  it('catches onMount errors without throwing', async () => {
+    mountSettingsDom();
+    const onMount = vi.fn().mockImplementation(() => { throw new Error('mount failed'); });
+
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test', { id: 's1', label: 'S1', html: '<div>C</div>', onMount });
+    expect(onMount).toHaveBeenCalled();
+  });
+});
+
+describe('getRegisteredThemeSummaries', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('returns empty array when no themes registered', async () => {
+    const { getRegisteredThemeSummaries } = await import('./runtime');
+    expect(getRegisteredThemeSummaries()).toEqual([]);
+  });
+
+  it('returns registered theme summaries', async () => {
+    const { registerTheme } = await import('./registration');
+    registerTheme({ summary: { id: 'theme1', name: 'Theme 1' } });
+    const { getRegisteredThemeSummaries } = await import('./runtime');
+    expect(getRegisteredThemeSummaries()).toHaveLength(1);
+    expect(getRegisteredThemeSummaries()[0].id).toBe('theme1');
+  });
+});
+
+describe('getRegisteredThemePayload', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('returns null for unknown id', async () => {
+    const { getRegisteredThemePayload } = await import('./runtime');
+    expect(getRegisteredThemePayload('unknown')).toBeNull();
+  });
+
+  it('returns the theme payload for a known id', async () => {
+    const { registerTheme } = await import('./registration');
+    registerTheme({ summary: { id: 'Theme2', name: 'T2' }, styles: 'body{}' });
+    const { getRegisteredThemePayload } = await import('./runtime');
+    const payload = getRegisteredThemePayload('Theme2');
+    expect(payload).not.toBeNull();
+    expect(payload!.summary.id).toBe('Theme2');
+  });
+});
+
+describe('runHook', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('executes registered hook handlers in order', async () => {
+    const { registerHook } = await import('./registration');
+    const order: number[] = [];
+    registerHook('p1', 'preCommit', async () => { order.push(1); });
+    registerHook('p2', 'preCommit', async () => { order.push(2); });
+
+    const { runHook } = await import('./runtime');
+    await runHook('preCommit', { files: [] });
+    expect(order).toEqual([1, 2]);
+  });
+
+  it('cancels remaining handlers when a handler cancels', async () => {
+    const { registerHook } = await import('./registration');
+    const order: number[] = [];
+    registerHook('p1', 'preCommit', (ctx) => { order.push(1); ctx.cancel('blocked'); });
+    registerHook('p2', 'preCommit', async () => { order.push(2); });
+
+    const { runHook } = await import('./runtime');
+    const ctx = await runHook('preCommit', { files: [] });
+    expect(order).toEqual([1]);
+    expect(ctx.cancelled).toBe(true);
+    expect(ctx.reason).toBe('blocked');
+  });
+
+  it('cancels and records error when a handler throws', async () => {
+    const { registerHook } = await import('./registration');
+    registerHook('p1', 'preCommit', async () => { throw new Error('fail'); });
+
+    const { runHook } = await import('./runtime');
+    const ctx = await runHook('preCommit', { files: [] });
+    expect(ctx.cancelled).toBe(true);
+    expect(ctx.reason).toContain('fail');
+  });
+
+  it('returns cancelled false when no handlers are registered', async () => {
+    const { runHook } = await import('./runtime');
+    const ctx = await runHook('postPush', {});
+    expect(ctx.cancelled).toBe(false);
+  });
+});
+
+describe('runPluginAction', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('returns false for empty action id', async () => {
+    const { runPluginAction } = await import('./runtime');
+    expect(await runPluginAction('')).toBe(false);
+    expect(await runPluginAction('  ')).toBe(false);
+  });
+
+  it('returns false for unregistered action', async () => {
+    const { runPluginAction } = await import('./runtime');
+    expect(await runPluginAction('nonexistent')).toBe(false);
+  });
+
+  it('executes registered action handler and returns true', async () => {
+    const { registerAction } = await import('./registration');
+    const handler = vi.fn();
+    registerAction('my-action', handler);
+
+    const { runPluginAction } = await import('./runtime');
+    const result = await runPluginAction('my-action', { foo: 1 });
+    expect(result).toBe(true);
+    expect(handler).toHaveBeenCalledWith({ foo: 1 });
+  });
+
+  it('catches handler errors and still returns true', async () => {
+    const { registerAction } = await import('./registration');
+    registerAction('bad-action', async () => { throw new Error('oops'); });
+
+    const { runPluginAction } = await import('./runtime');
+    const result = await runPluginAction('bad-action');
+    expect(result).toBe(true);
+  });
+});
+
+describe('getPluginContextMenuItems', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('returns empty array for unknown target', async () => {
+    const { getPluginContextMenuItems } = await import('./runtime');
+    expect(getPluginContextMenuItems('files')).toEqual([]);
+  });
+
+  it('returns registered context menu items for the target', async () => {
+    const { registerPlugin } = await import('./registration');
+    registerPlugin({
+      id: 'test',
+      contextMenus: { files: [{ label: 'Open', action: 'open-file' }] },
+    });
+
+    const { getPluginContextMenuItems } = await import('./runtime');
+    const items: PluginContextMenuItem[] = getPluginContextMenuItems('files');
+    expect(items).toHaveLength(1);
+    expect(items[0].label).toBe('Open');
+  });
+});
+
+describe('initPlugins', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountMinimalDom();
+  });
+
+  it('loads plugins from backend', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_global_settings') return Promise.resolve({ plugins: { disabled: [], enabled: [] } });
+      if (cmd === 'list_plugins') return Promise.resolve([{ id: 'plugin1', name: 'Plugin 1' }]);
+      return Promise.reject(new Error('unknown'));
+    });
+
+    const { initPlugins } = await import('./runtime');
+    await initPlugins();
+
+    expect(tauri.core.invoke).toHaveBeenCalledWith('get_global_settings', undefined);
+    expect(tauri.core.invoke).toHaveBeenCalledWith('list_plugins', undefined);
+  });
+
+  it('handles get_global_settings failure gracefully', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockImplementation((cmd: string) => {
+      if (cmd === 'list_plugins') return Promise.resolve([]);
+      return Promise.reject(new Error('fail'));
+    });
+
+    const { initPlugins } = await import('./runtime');
+    await expect(initPlugins()).resolves.toBeUndefined();
+  });
+
+  it('handles list_plugins failure gracefully', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_global_settings') return Promise.resolve({ plugins: { disabled: [], enabled: [] } });
+      return Promise.reject(new Error('fail'));
+    });
+
+    const { initPlugins } = await import('./runtime');
+    await expect(initPlugins()).resolves.toBeUndefined();
+  });
+});
+
+describe('reloadPlugins', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountMinimalDom();
+  });
+
+  it('resets initialized flag and re-initializes', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockResolvedValue({ plugins: { disabled: [], enabled: [] } });
+
+    const { reloadPlugins } = await import('./runtime');
+    await expect(reloadPlugins()).resolves.toBeUndefined();
+  });
+});

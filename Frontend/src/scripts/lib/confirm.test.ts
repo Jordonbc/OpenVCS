@@ -3,19 +3,24 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { confirmBool } from './confirm';
+const mockConfirmWithModal = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+
+vi.mock('../features/confirmModal', () => ({
+  confirmWithModal: mockConfirmWithModal,
+}));
 
 let originalConfirmDescriptor: PropertyDescriptor | undefined;
 
-/** Snapshots the current global confirm descriptor before each test. */
 beforeEach(() => {
   originalConfirmDescriptor = Object.getOwnPropertyDescriptor(window, 'confirm');
-});
-
-/** Restores the original global confirm implementation after each test. */
-afterEach(() => {
   document.body.innerHTML = '';
   vi.restoreAllMocks();
+  mockConfirmWithModal.mockReset();
+  mockConfirmWithModal.mockResolvedValue(true);
+});
+
+afterEach(() => {
+  document.body.innerHTML = '';
   if (originalConfirmDescriptor) {
     Object.defineProperty(window, 'confirm', originalConfirmDescriptor);
     return;
@@ -24,79 +29,325 @@ afterEach(() => {
 });
 
 describe('confirmBool', () => {
-  it('uses the in-app modal when the modal root exists', async () => {
+  it('uses in-app modal when modal root exists', async () => {
     document.body.innerHTML = '<div id="modals-root"></div>';
+    mockConfirmWithModal.mockResolvedValue(true);
 
-    const pending = confirmBool('Discard changes?');
-    const confirmBtn = document.getElementById('confirm-modal-confirm-btn') as HTMLButtonElement | null;
+    const { confirmBool } = await import('./confirm');
+    const result = await confirmBool('Discard changes?');
 
-    expect(document.getElementById('confirm-modal')?.getAttribute('aria-hidden')).toBe('false');
-    expect(confirmBtn?.textContent).toBe('Confirm');
-    confirmBtn?.click();
-
-    await expect(pending).resolves.toBe(true);
+    expect(result).toBe(true);
+    expect(mockConfirmWithModal).toHaveBeenCalledWith({
+      title: 'Confirm action',
+      message: 'Discard changes?',
+      hint: 'This cannot be undone.',
+      confirmLabel: 'Confirm',
+      cancelLabel: 'Cancel',
+      danger: true,
+    });
   });
 
-  it('invokes window.confirm with the window receiver', async () => {
-    document.body.innerHTML = '';
+  it('returns false when in-app modal confirms false', async () => {
+    document.body.innerHTML = '<div id="modals-root"></div>';
+    mockConfirmWithModal.mockResolvedValue(false);
+
+    const { confirmBool } = await import('./confirm');
+    const result = await confirmBool('Cancel it');
+
+    expect(result).toBe(false);
+  });
+
+  it('falls through to window.confirm when confirmWithModal rejects', async () => {
+    document.body.innerHTML = '<div id="modals-root"></div>';
+    mockConfirmWithModal.mockRejectedValue(new Error('modal error'));
+    Object.defineProperty(window, 'confirm', {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockReturnValue(true),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    const result = await confirmBool('test');
+
+    expect(result).toBe(true);
+    expect(window.confirm).toHaveBeenCalledWith('test');
+  });
+
+  it('invokes window.confirm when no modal root', async () => {
     const confirmSpy = vi.fn(function (this: Window, message: string) {
       expect(this).toBe(window);
       expect(message).toBe('Discard changes?');
       return true;
     });
-
     Object.defineProperty(window, 'confirm', {
       configurable: true,
       writable: true,
       value: confirmSpy,
     });
 
+    const { confirmBool } = await import('./confirm');
     await expect(confirmBool('Discard changes?')).resolves.toBe(true);
   });
 
-  it('supports promise-based confirm implementations', async () => {
-    document.body.innerHTML = '';
+  it('returns false when window.confirm is not a function', async () => {
     Object.defineProperty(window, 'confirm', {
       configurable: true,
       writable: true,
-      value: vi.fn().mockResolvedValue({ confirmed: true }),
+      value: 'not-a-function' as any,
     });
 
-    await expect(confirmBool('Discard changes?')).resolves.toBe(true);
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
   });
 
-  it('returns false when confirm throws', async () => {
-    document.body.innerHTML = '';
+  it('returns false when window.confirm throws', async () => {
     Object.defineProperty(window, 'confirm', {
       configurable: true,
       writable: true,
-      value: () => {
-        throw new TypeError('Illegal invocation');
-      },
+      value: () => { throw new TypeError('Illegal invocation'); },
     });
 
-    await expect(confirmBool('Discard changes?')).resolves.toBe(false);
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
   });
 
-  it('coerces numeric confirm results', async () => {
-    document.body.innerHTML = '';
+  it('coerces boolean true to true', async () => {
     Object.defineProperty(window, 'confirm', {
-      configurable: true,
-      writable: true,
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue(true),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(true);
+  });
+
+  it('coerces boolean false to false', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue(false),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
+  });
+
+  it('coerces number zero to false', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
       value: vi.fn().mockReturnValue(0),
     });
 
-    await expect(confirmBool('Discard changes?')).resolves.toBe(false);
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
   });
 
-  it('coerces object confirm results via result field', async () => {
-    document.body.innerHTML = '';
+  it('coerces non-zero number to true', async () => {
     Object.defineProperty(window, 'confirm', {
-      configurable: true,
-      writable: true,
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue(1),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(true);
+  });
+
+  it('coerces string true to true', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue('true'),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(true);
+  });
+
+  it('coerces string yes to true', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue('yes'),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(true);
+  });
+
+  it('coerces string ok to true', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue('ok'),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(true);
+  });
+
+  it('coerces string false to false', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue('false'),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
+  });
+
+  it('coerces string no to false', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue('no'),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
+  });
+
+  it('coerces string cancel to false', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue('cancel'),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
+  });
+
+  it('coerces empty string to false', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue(''),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
+  });
+
+  it('coerces whitespace string to false', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue('   '),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
+  });
+
+  it('coerces unrecognized string to false', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue('unknown_value'),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
+  });
+
+  it('coerces object with approved key', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue({ approved: 'yes' }),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(true);
+  });
+
+  it('coerces object with ok key', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue({ ok: true }),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(true);
+  });
+
+  it('coerces object with value key', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue({ value: 1 }),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(true);
+  });
+
+  it('coerces object with confirmed key to true', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue({ confirmed: true }),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(true);
+  });
+
+  it('coerces object with confirmed key to false', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue({ confirmed: false }),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
+  });
+
+  it('coerces object with result key', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
       value: vi.fn().mockReturnValue({ result: 'ok' }),
     });
 
-    await expect(confirmBool('Discard changes?')).resolves.toBe(true);
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(true);
+  });
+
+  it('returns false for object with no matching keys', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue({ unrelated: 'data' }),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
+  });
+
+  it('supports promise-based confirm returning object', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockResolvedValue({ confirmed: true }),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(true);
+  });
+
+  it('supports promise-based confirm with async reject', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockRejectedValue(new Error('async fail')),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
+  });
+
+  it('coerces null/undefined via object path to false', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue(null),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(false);
+  });
+
+  it('returns true when window.confirm returns uppercase TRUE', async () => {
+    Object.defineProperty(window, 'confirm', {
+      configurable: true, writable: true,
+      value: vi.fn().mockReturnValue('TRUE'),
+    });
+
+    const { confirmBool } = await import('./confirm');
+    await expect(confirmBool('test')).resolves.toBe(true);
   });
 });
