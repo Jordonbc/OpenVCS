@@ -16,6 +16,8 @@ const backendDir = path.resolve(scriptDir, '..');
 const repoRoot = path.resolve(backendDir, '..');
 const ensureScript = path.join(scriptDir, 'ensure-built-in-plugins.js');
 const frontendDir = path.join(repoRoot, 'Frontend');
+const npmExecutable = process.platform === 'win32' ? process.execPath : 'npm';
+const npmArgsPrefix = process.platform === 'win32' ? [resolveNpmCli()] : [];
 
 if (dryRun) {
   console.log(`mode=${mode}`);
@@ -31,8 +33,7 @@ function run(cmd, args, cwd, env) {
     spawnOpts.env = { ...process.env, ...env };
   }
 
-  const spawn = normalizeSpawnCommand(cmd, args);
-  const res = spawnSync(spawn.cmd, spawn.args, spawnOpts);
+  const res = spawnSync(cmd, args, spawnOpts);
   if (res.error) {
     console.error(`Failed to run ${cmd}:`, res.error);
     process.exit(res.status || 1);
@@ -42,28 +43,13 @@ function run(cmd, args, cwd, env) {
   }
 }
 
-function shouldUseWindowsShell(cmd) {
-  if (process.platform !== 'win32') {
-    return false;
+function resolveNpmCli() {
+  const localNodeModules = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  if (require('fs').existsSync(localNodeModules)) {
+    return localNodeModules;
   }
 
-  const lower = cmd.toLowerCase();
-  return cmd === 'npm' || lower.endsWith('.cmd') || lower.endsWith('.bat');
-}
-
-function quoteCmdArg(value) {
-  const text = String(value);
-  return `"${text.replace(/"/g, '\\"')}"`;
-}
-
-function normalizeSpawnCommand(cmd, args) {
-  if (!shouldUseWindowsShell(cmd)) {
-    return { cmd, args };
-  }
-
-  const shell = process.env.ComSpec || 'cmd.exe';
-  const commandLine = [cmd, ...args].map(quoteCmdArg).join(' ');
-  return { cmd: shell, args: ['/d', '/s', '/c', commandLine] };
+  return require.resolve('npm/bin/npm-cli.js');
 }
 
 const ensureEnv = mode === 'dev' && !process.env.OPENVCS_UPDATE_CHANNEL
@@ -76,5 +62,4 @@ if (mode === 'build' && process.env.FRONTEND_SKIP_BUILD === '1') {
   process.exit(0);
 }
 
-const npmBin = 'npm';
-run(npmBin, ['run', mode], frontendDir);
+run(npmExecutable, [...npmArgsPrefix, 'run', mode], frontendDir);
