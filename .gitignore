@@ -30,3 +30,4 @@ dist-ssr
 .env
 .opencode/
 /openvcs.plugins.local.json
+/.sisyphus
