@@ -31,3 +31,4 @@ dist-ssr
 .opencode/
 /openvcs.plugins.local.json
 /.sisyphus
+/.omo
