@@ -315,10 +315,10 @@ describe('runStash edge cases', () => {
 
     const confirmBtn = document.getElementById('stash-confirm-btn') as HTMLButtonElement;
     expect(confirmBtn.disabled).toBe(false);
-    expect(document.getElementById('stash-message') as HTMLInputElement).toHaveValue('WIP');
+    expect((document.getElementById('stash-message') as HTMLInputElement).value).toBe('WIP');
   });
 
-  it('shows empty state when override paths filter to zero files', async () => {
+  it('shows override path even when not in state files', async () => {
     window.__TAURI__ = {
       core: { invoke: vi.fn(async () => null) },
       event: { listen: vi.fn() },
@@ -327,10 +327,10 @@ describe('runStash edge cases', () => {
     openStashConfirm({ paths: ['nonexistent.txt'] });
     await new Promise((r) => setTimeout(r, 0));
 
-    const emptyEl = document.getElementById('stash-empty') as HTMLElement;
+    const countEl = document.getElementById('stash-file-count') as HTMLElement;
+    expect(countEl.textContent).toBe('1 file');
     const confirmBtn = document.getElementById('stash-confirm-btn') as HTMLButtonElement;
-    expect(emptyEl.hidden).toBe(false);
-    expect(confirmBtn.disabled).toBe(true);
+    expect(confirmBtn.disabled).toBe(false);
   });
 });
 

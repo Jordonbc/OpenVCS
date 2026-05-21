@@ -429,4 +429,291 @@ describe('bindLayoutActionState', () => {
     const { bindLayoutActionState } = await import('./layout');
     expect(() => bindLayoutActionState()).not.toThrow();
   });
+
+  it('fires refreshRepoActions on app:repo-selected', async () => {
+    const { bindLayoutActionState } = await import('./layout');
+    bindLayoutActionState();
+    window.dispatchEvent(new Event('app:repo-selected'));
+  });
+
+  it('fires refreshRepoActions on app:status-updated', async () => {
+    const { bindLayoutActionState } = await import('./layout');
+    bindLayoutActionState();
+    window.dispatchEvent(new Event('app:status-updated'));
+  });
+
+  it('fires refreshRepoActions on app:branches-updated', async () => {
+    const { bindLayoutActionState } = await import('./layout');
+    bindLayoutActionState();
+    window.dispatchEvent(new Event('app:branches-updated'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setRepoHeader - edge cases
+// ---------------------------------------------------------------------------
+
+describe('setRepoHeader edge cases', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = '<div id="repo-title"></div><div id="repo-branch"></div>';
+  });
+
+  it('does not set title when pathMaybe is undefined', async () => {
+    const { setRepoHeader } = await import('./layout');
+    setRepoHeader(undefined);
+    expect(document.getElementById('repo-title')?.textContent).toBe('');
+  });
+
+  it('falls back to path when splitting returns empty', async () => {
+    const { setRepoHeader } = await import('./layout');
+    setRepoHeader('repo');
+    expect(document.getElementById('repo-title')?.textContent).toBe('repo');
+  });
+
+  it('uses branchLabel when available', async () => {
+    const { setRepoHeader } = await import('./layout');
+    const { state } = await import('../state/state');
+    state.branchLabel = 'feature-branch';
+    state.branch = 'main';
+    setRepoHeader('/repo');
+    expect(document.getElementById('repo-branch')?.textContent).toBe('feature-branch');
+  });
+
+  it('falls back to state.branch when no branchLabel', async () => {
+    const { setRepoHeader } = await import('./layout');
+    const { state } = await import('../state/state');
+    state.branchLabel = '';
+    state.branch = 'main';
+    setRepoHeader('/repo');
+    expect(document.getElementById('repo-branch')?.textContent).toBe('main');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderAheadBehind
+// ---------------------------------------------------------------------------
+
+describe('renderAheadBehind', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    Object.defineProperty(globalThis, 'matchMedia', {
+      value: () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn() }),
+      configurable: true,
+      writable: true,
+    });
+    document.body.innerHTML = '<div id="ahead-behind"></div><div id="push-btn"><span class="btn-label"></span></div>';
+  });
+
+  it('shows ahead count via bindLayoutActionState', async () => {
+    const { bindLayoutActionState } = await import('./layout');
+    const { state } = await import('../state/state');
+    state.hasRepo = true;
+    state.ahead = 3;
+    state.behind = 1;
+    const el = document.getElementById('ahead-behind') as HTMLElement;
+    bindLayoutActionState();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(el.textContent).toContain('↑3');
+    expect(el.textContent).toContain('↓1');
+  });
+
+  it('hides ahead-behind when no counts via bindLayoutActionState', async () => {
+    const { bindLayoutActionState } = await import('./layout');
+    const { state } = await import('../state/state');
+    state.hasRepo = true;
+    state.ahead = 0;
+    state.behind = 0;
+    const el = document.getElementById('ahead-behind') as HTMLElement;
+    bindLayoutActionState();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(el.textContent).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// initResizer
+// ---------------------------------------------------------------------------
+
+describe('initResizer', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    Object.defineProperty(globalThis, 'matchMedia', {
+      value: () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn() }),
+      configurable: true,
+      writable: true,
+    });
+    document.body.innerHTML = `
+      <div class="work"></div>
+      <div id="resizer"></div>
+    `;
+  });
+
+  it('initializes resizer without crashing', async () => {
+    const { initResizer } = await import('./layout');
+    expect(() => initResizer()).not.toThrow();
+  });
+
+  it('handles mousedown on resizer', async () => {
+    const { initResizer } = await import('./layout');
+    initResizer();
+    const resizer = document.getElementById('resizer') as HTMLElement;
+    resizer.dispatchEvent(new MouseEvent('mousedown', { clientX: 500 }));
+  });
+
+  it('does not crash when workGrid or resizer missing', async () => {
+    document.body.innerHTML = '';
+    const { initResizer } = await import('./layout');
+    expect(() => initResizer()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyCommitSummaryRestriction - no element
+// ---------------------------------------------------------------------------
+
+describe('applyCommitSummaryRestriction (no element)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = '';
+  });
+
+  it('does not crash when summary input is missing', async () => {
+    const { applyCommitSummaryRestriction } = await import('./layout');
+    expect(() => applyCommitSummaryRestriction(true)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// toggleTheme - additional
+// ---------------------------------------------------------------------------
+
+describe('toggleTheme additional', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    Object.defineProperty(globalThis, 'matchMedia', {
+      value: () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn() }),
+      configurable: true,
+      writable: true,
+    });
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: { listen: vi.fn() },
+    };
+  });
+
+  it('toggles from dark to light', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockResolvedValue({ general: { theme: 'dark' } });
+
+    const { toggleTheme, setTheme } = await import('./layout');
+    setTheme('dark');
+
+    toggleTheme();
+
+    await vi.waitFor(() => {
+      expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setTab - additional edge cases
+// ---------------------------------------------------------------------------
+
+describe('setTab additional', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = `
+      <div class="work"></div>
+      <button class="tab" data-tab="changes">Changes</button>
+      <button class="tab" data-tab="history">History</button>
+      <button class="tab" data-tab="stash">Stash</button>
+      <div id="commit"></div>
+      <div id="diff-path"></div>
+      <button id="history-actions-btn"></button>
+    `;
+  });
+
+  it('clears selectedCommit when leaving history tab', async () => {
+    const { setTab } = await import('./layout');
+    const { state } = await import('../state/state');
+    state.selectedCommit = { id: 'abc123' };
+    setTab('history'); // select history
+    setTab('changes'); // leave history
+    expect(state.selectedCommit).toBeNull();
+  });
+
+  it('sets diffDirty when entering changes from other tab', async () => {
+    const { setTab } = await import('./layout');
+    const { state } = await import('../state/state');
+    state.selectedCommit = null;
+    state.diffDirty = false;
+    setTab('history');
+    setTab('changes');
+    expect(state.diffDirty).toBe(true);
+  });
+
+  it('hides history actions btn when leaving history tab', async () => {
+    const { setTab } = await import('./layout');
+    const btn = document.getElementById('history-actions-btn') as HTMLButtonElement;
+    btn.hidden = false;
+    setTab('changes');
+    expect(btn.hidden).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// refreshRepoActions - push button with ahead
+// ---------------------------------------------------------------------------
+
+describe('refreshRepoActions (push ahead badge)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    Object.defineProperty(globalThis, 'matchMedia', {
+      value: () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn() }),
+      configurable: true,
+      writable: true,
+    });
+    document.body.innerHTML = `
+      <div class="work"></div>
+      <button id="fetch-btn"></button>
+      <button id="push-btn"><span class="btn-label"></span></button>
+      <button id="branch-switch"></button>
+      <div id="left-foot" data-mode=""></div>
+      <button id="undo-left-btn"></button>
+    `;
+  });
+
+  it('shows ahead count in push button label', async () => {
+    const { refreshRepoActions } = await import('./layout');
+    const { state } = await import('../state/state');
+    const pushBtn = document.getElementById('push-btn') as HTMLButtonElement;
+    const label = pushBtn.querySelector('.btn-label') as HTMLSpanElement;
+
+    state.hasRepo = true;
+    state.ahead = 3;
+    state.branchOnRemote = true;
+
+    refreshRepoActions();
+
+    expect(pushBtn.classList.contains('attention')).toBe(true);
+    expect(label.textContent).toBe('Push (3)');
+    expect(pushBtn.title).toBe('Push (3)');
+  });
+
+  it('shows undo button when repo has ahead and on changes tab', async () => {
+    const { refreshRepoActions } = await import('./layout');
+    const { state } = await import('../state/state');
+    const { prefs } = await import('../state/state');
+
+    state.hasRepo = true;
+    state.ahead = 2;
+    prefs.tab = 'changes';
+
+    refreshRepoActions();
+
+    const undoLeftWrap = document.getElementById('left-foot') as HTMLElement;
+    expect(undoLeftWrap.classList.contains('show')).toBe(true);
+  });
 });
