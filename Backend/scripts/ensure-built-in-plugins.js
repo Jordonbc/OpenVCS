@@ -208,7 +208,7 @@ function npmPack(sourceSpec, workdir) {
 }
 
 function extractTarball(archivePath, workdir) {
-  runCommand('tar', ['-xzf', archivePath], workdir, `extract ${archivePath}`);
+  runCommand('tar', ['-xf', archivePath], workdir, `extract ${archivePath}`);
   const packageDir = path.join(workdir, 'package');
   if (!fs.existsSync(packageDir) || !fs.statSync(packageDir).isDirectory()) {
     throw new Error(`npm pack archive did not extract a package/ directory: ${archivePath}`);
