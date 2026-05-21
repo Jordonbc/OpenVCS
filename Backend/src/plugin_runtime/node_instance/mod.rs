@@ -21,7 +21,7 @@ use parking_lot::{Mutex, RwLock};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
-use std::io::BufReader;
+use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::mpsc::channel;
@@ -104,7 +104,7 @@ impl NodePluginRuntimeInstance {
         cmd.arg(&self.spawn.exec_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(Stdio::piped())
             .env("OPENVCS_PLUGIN_ID", self.spawn.plugin_id.trim());
 
         #[cfg(windows)]
@@ -155,6 +155,19 @@ impl NodePluginRuntimeInstance {
                 }
             }
         });
+
+        if let Some(stderr) = child.stderr.take() {
+            let plugin_id = self.spawn.plugin_id.clone();
+            thread::spawn(move || {
+                let reader = BufReader::new(stderr);
+                for line in reader.lines() {
+                    match line {
+                        Ok(l) => warn!("plugin '{}' stderr: {}", plugin_id, l),
+                        Err(_) => break,
+                    }
+                }
+            });
+        }
 
         let mut process = NodeRpcProcess {
             child,
