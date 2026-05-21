@@ -12,40 +12,21 @@ const builtInConfigPath = path.join(clientDir, 'openvcs.plugins.json');
 const localConfigPath = path.join(clientDir, 'openvcs.plugins.local.json');
 const builtInOutputDir = path.join(clientDir, 'target', 'openvcs', 'built-in-plugins');
 const nodeRuntimeDir = path.join(clientDir, 'target', 'openvcs', 'node-runtime');
-const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npmExecutable = process.platform === 'win32' ? process.execPath : 'npm';
+const npmArgsPrefix = process.platform === 'win32' ? [resolveNpmCli()] : [];
 
-function shouldUseWindowsShell(command) {
-  if (process.platform !== 'win32') {
-    return false;
+function resolveNpmCli() {
+  const localNodeModules = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  if (fs.existsSync(localNodeModules)) {
+    return localNodeModules;
   }
 
-  return (
-    command === 'npm' ||
-    command === 'npm.cmd' ||
-    command.toLowerCase().endsWith('.cmd') ||
-    command.toLowerCase().endsWith('.bat')
-  );
-}
-
-function quoteCmdArg(value) {
-  const text = String(value);
-  return `"${text.replace(/"/g, '\\"')}"`;
-}
-
-function normalizeSpawnCommand(command, args) {
-  if (!shouldUseWindowsShell(command)) {
-    return { command, args };
-  }
-
-  const shell = process.env.ComSpec || 'cmd.exe';
-  const commandLine = [command, ...args].map(quoteCmdArg).join(' ');
-  return { command: shell, args: ['/d', '/s', '/c', commandLine] };
+  return require.resolve('npm/bin/npm-cli.js');
 }
 
 function runCommand(command, args, cwd, label) {
   const spawnOpts = { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true };
-  const spawn = normalizeSpawnCommand(command, args);
-  const result = spawnSync(spawn.command, spawn.args, spawnOpts);
+  const result = spawnSync(command, [...npmArgsPrefix, ...args], spawnOpts);
   if (result.error) {
     throw new Error(`Failed to ${label}: ${result.error.message}`);
   }
