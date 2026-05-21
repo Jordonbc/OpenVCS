@@ -37,6 +37,13 @@ if (typeof CSS === 'undefined') {
 if (!CSS.escape) {
   CSS.escape = (s: string) => s.replace(/[!"#$%&'()*+,./:;<=>?@[\]^`{|}~]/g, '\\$&');
 }
+// Polyfill requestAnimationFrame for jsdom (used in queuePluginToggle)
+if (!window.requestAnimationFrame) {
+  window.requestAnimationFrame = (cb: FrameRequestCallback) => window.setTimeout(cb, 0) as unknown as number;
+}
+if (!window.cancelAnimationFrame) {
+  window.cancelAnimationFrame = (id: number) => window.clearTimeout(id);
+}
 
 function mountSettingsDom() {
   document.body.innerHTML = `
@@ -59,6 +66,7 @@ function mountSettingsDom() {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.resetModules();
   mountSettingsDom();
   (globalThis as any).matchMedia = createMatchMediaMock;
@@ -468,6 +476,517 @@ describe('toggle button in pane', () => {
       btn.click();
       await flushPromises();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderDetails - plugin detail panel
+// ---------------------------------------------------------------------------
+
+describe('renderDetails', () => {
+  it('renders detail panel with full metadata', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [{
+          id: 'p1', name: 'Full Plugin', version: '2.0.0', author: 'Test Author',
+          category: 'Utility', description: 'A full description', source: 'npm',
+          source_kind: 'package', source_spec: '^2.0.0', tags: ['tag1', 'tag2'],
+          icon_data_url: '', default_enabled: true,
+        }];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    const detailEl = document.getElementById('plugins-detail') as HTMLElement;
+    expect(detailEl.classList.contains('empty')).toBe(false);
+    expect(detailEl.querySelector('.plugin-detail-title .name')?.textContent).toBe('Full Plugin');
+    expect(detailEl.querySelector('.plugin-detail-kv')?.textContent).toContain('Category');
+    expect(detailEl.querySelector('.plugin-detail-kv')?.textContent).toContain('Source');
+    expect(detailEl.querySelector('.plugin-detail-kv')?.textContent).toContain('Specifier');
+    expect(detailEl.querySelector('.plugin-detail-kv')?.textContent).toContain('Tags');
+    expect(detailEl.querySelector('.plugin-detail-kv')?.textContent).toContain('Author');
+    expect(detailEl.querySelector('.plugin-detail-kv')?.textContent).toContain('Version');
+  });
+
+  it('shows detail empty state when no filtered plugins', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    const detailEl = document.getElementById('plugins-detail') as HTMLElement;
+    expect(detailEl.classList.contains('empty')).toBe(true);
+  });
+
+  it('shows enable button text for disabled plugin', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [{
+          id: 'p1', name: 'Disabled P', version: '1.0', author: 'A',
+          category: 'U', description: 'D', source: 'npm', tags: [],
+          icon_data_url: '', default_enabled: false,
+        }];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    const toggleBtn = document.getElementById('plugins-toggle-selected') as HTMLButtonElement;
+    expect(toggleBtn).not.toBeNull();
+    expect(toggleBtn.textContent).toBe('Enable');
+  });
+
+  it('shows category-only meta line when no version or author', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [{
+          id: 'p1', name: 'Minimal', version: '', author: '',
+          category: 'Tools', description: '', source: '', tags: [],
+          icon_data_url: '', default_enabled: true,
+        }];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    const metaEl = document.querySelector('.plugin-detail-title .meta') as HTMLElement;
+    expect(metaEl.textContent).toContain('Tools');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pane click - toggle button
+// ---------------------------------------------------------------------------
+
+describe('pane click - toggle button', () => {
+  it('triggers queuePluginToggle when data-plugin-toggle button is clicked', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [{ id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    // The initial toggle button shows "Disable" for enabled plugin
+    const toggleBtn = document.getElementById('plugins-toggle-selected') as HTMLButtonElement;
+    expect(toggleBtn.textContent).toBe('Disable');
+
+    // Click the toggle button in the pane (not the detail one)
+    const pane = document.getElementById('plugins-pane') as HTMLElement;
+    pane.click();
+    await flushPromises();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pane double-click
+// ---------------------------------------------------------------------------
+
+describe('pane double-click', () => {
+  it('toggles plugin on double-click row', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [
+          { id: 'p1', name: 'Alpha', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true },
+          { id: 'p2', name: 'Beta', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true },
+        ];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    const rows = document.querySelectorAll('.plugin-row[data-plugin]') as NodeListOf<HTMLElement>;
+    // First click sets lastClickAt/lastClickIdKey
+    rows[0].click();
+    // Second click within 450ms triggers double-click toggle
+    rows[0].click();
+    await flushPromises();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pane checkbox change
+// ---------------------------------------------------------------------------
+
+describe('pane checkbox change', () => {
+  it('triggers queuePluginToggle on checkbox change', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [{ id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    const checkbox = document.querySelector<HTMLInputElement>('input[type="checkbox"].plugin-check-input');
+    expect(checkbox).not.toBeNull();
+    expect(checkbox!.checked).toBe(true);
+
+    // Dispatching change on the pane triggers the change handler
+    checkbox!.checked = false;
+    checkbox!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// context menu actions
+// ---------------------------------------------------------------------------
+
+describe('context menu actions', () => {
+  it('toggle action in context menu toggles checkbox', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [{ id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    // Open context menu via right-click
+    const row = document.querySelector('.plugin-row[data-plugin]') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 100, clientY: 100 }));
+    await flushPromises();
+
+    // Click "Toggle plugin" in context menu
+    const toggleAction = document.querySelector('.plugins-context-menu-item[data-action="toggle"]') as HTMLButtonElement;
+    expect(toggleAction).not.toBeNull();
+    toggleAction.click();
+    await flushPromises();
+  });
+
+  it('remove action removes plugin successfully', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'list_plugins') return [{ id: 'p1', name: 'RemoveMe', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+      if (cmd === 'list_plugin_start_failures') return [];
+      if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+      if (cmd === 'uninstall_plugin') return null;
+      return null;
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    const row = document.querySelector('.plugin-row[data-plugin]') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 100, clientY: 100 }));
+    await flushPromises();
+
+    const removeAction = document.querySelector('.plugins-context-menu-item.destructive') as HTMLButtonElement;
+    removeAction.click();
+    await flushPromises();
+
+    expect(invoke).toHaveBeenCalledWith('uninstall_plugin', { pluginId: 'p1' });
+  });
+
+  it('remove action handles failure gracefully', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'list_plugins') return [{ id: 'p1', name: 'RemoveFail', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+      if (cmd === 'list_plugin_start_failures') return [];
+      if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+      if (cmd === 'uninstall_plugin') throw new Error('remove failed');
+      return null;
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    const row = document.querySelector('.plugin-row[data-plugin]') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 100, clientY: 100 }));
+    await flushPromises();
+
+    const removeAction = document.querySelector('.plugins-context-menu-item.destructive') as HTMLButtonElement;
+    removeAction.click();
+    await flushPromises();
+
+    const { notify } = await import('../lib/notify');
+    expect(vi.mocked(notify)).toHaveBeenCalledWith('Remove failed: Error: remove failed');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// context menu - right-click outside row
+// ---------------------------------------------------------------------------
+
+describe('context menu - right-click outside row', () => {
+  it('hides context menu when right-clicking outside plugin row', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [{ id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    // First show the context menu
+    const row = document.querySelector('.plugin-row[data-plugin]') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 100, clientY: 100 }));
+    await flushPromises();
+
+    expect(document.querySelector('.plugins-context-menu')?.classList.contains('visible')).toBe(true);
+
+    // Right-click outside any row
+    const pane = document.getElementById('plugins-pane') as HTMLElement;
+    pane.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 10 }));
+    await flushPromises();
+
+    expect(document.querySelector('.plugins-context-menu')?.classList.contains('visible')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// search filtering
+// ---------------------------------------------------------------------------
+
+describe('search filtering', () => {
+  it('filters plugins based on search query', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [
+          { id: 'p1', name: 'Alpha', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true },
+          { id: 'p2', name: 'Beta', version: '1.0', author: 'B', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: false },
+        ];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+
+    // Override search mock to return parsed query with terms
+    const searchModule = await import('./settingsPluginSearch');
+    vi.mocked(searchModule.parsePluginQuery).mockReturnValue({ terms: ['Alpha'], authors: [], tags: [] });
+    vi.mocked(searchModule.pluginSearchScore).mockImplementation((p) => p.name === 'Alpha' ? 1 : 0);
+
+    // Reset modules to pick up new mock
+    vi.resetModules();
+
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [
+          { id: 'p1', name: 'Alpha', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true },
+          { id: 'p2', name: 'Beta', version: '1.0', author: 'B', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: false },
+        ];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    const search = document.getElementById('plugins-search') as HTMLInputElement;
+    search.value = 'Alpha';
+    search.dispatchEvent(new Event('input'));
+    await flushPromises();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// enable all / disable all - state updates
+// ---------------------------------------------------------------------------
+
+describe('enable all / disable all - state updates', () => {
+  it('enable all adds all plugins to enabled set and triggers persist', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'list_plugins') return [
+        { id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: false },
+      ];
+      if (cmd === 'list_plugin_start_failures') return [];
+      if (cmd === 'get_global_settings') return { plugins: { disabled: ['p1'], enabled: [] } };
+      if (cmd === 'set_global_settings') return null;
+      return null;
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: { disabled: ['p1'] } } as any);
+    await flushPromises();
+
+    (document.getElementById('plugins-enable-all') as HTMLButtonElement).click();
+    await flushPromises();
+
+    expect(invoke).toHaveBeenCalledWith('set_global_settings', expect.anything());
+  });
+
+  it('disable all adds all plugins to disabled set and triggers persist', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'list_plugins') return [
+        { id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true },
+      ];
+      if (cmd === 'list_plugin_start_failures') return [];
+      if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+      if (cmd === 'set_global_settings') return null;
+      return null;
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    (document.getElementById('plugins-disable-all') as HTMLButtonElement).click();
+    await flushPromises();
+
+    expect(invoke).toHaveBeenCalledWith('set_global_settings', expect.anything());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// persistSinglePluginToggle - error handling
+// ---------------------------------------------------------------------------
+
+describe('persistSinglePluginToggle error handling', () => {
+  it('handles toggle failure and calls notify', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'list_plugins') return [{ id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+      if (cmd === 'list_plugin_start_failures') return [];
+      if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+      if (cmd === 'set_plugin_enabled') throw new Error('toggle failed');
+      return null;
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    const toggleBtn = document.querySelector('[data-plugin-toggle]') as HTMLButtonElement;
+    toggleBtn.click();
+
+    await vi.waitFor(async () => {
+      const { notify } = await import('../lib/notify');
+      expect(vi.mocked(notify)).toHaveBeenCalledWith('Failed to toggle plugin');
+    }, { timeout: 2000, interval: 50 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sync config error handling
+// ---------------------------------------------------------------------------
+
+describe('sync config error handling', () => {
+  it('handles sync config failure with error message', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'sync_configured_plugins') throw new Error('sync error');
+      if (cmd === 'list_plugins') return [];
+      if (cmd === 'list_plugin_start_failures') return [];
+      if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+      return null;
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    (document.getElementById('plugins-sync-config') as HTMLButtonElement).click();
+    await flushPromises();
+
+    const { notify } = await import('../lib/notify');
+    expect(vi.mocked(notify)).toHaveBeenCalledWith('Plugin sync failed: Error: sync error');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// list_plugin_start_failures error handling
+// ---------------------------------------------------------------------------
+
+describe('list_plugin_start_failures error handling', () => {
+  it('handles list_plugin_start_failures rejection gracefully', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'list_plugins') return [];
+      if (cmd === 'list_plugin_start_failures') throw new Error('failures error');
+      if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+      return null;
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await expect(loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any)).resolves.toBeUndefined();
+    await flushPromises();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// queued toggle - prevents duplicate pending toggles
+// ---------------------------------------------------------------------------
+
+describe('queued toggle deduplication', () => {
+  it('prevents duplicate pending toggles for same plugin', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'list_plugins') return [{ id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+      if (cmd === 'list_plugin_start_failures') return [];
+      if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+      return null;
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    // Click the checkbox twice rapidly - only first should queue
+    const checkbox = document.querySelector<HTMLInputElement>('input[type="checkbox"].plugin-check-input');
+    checkbox!.dispatchEvent(new Event('change', { bubbles: true }));
+    checkbox!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
   });
 });
 

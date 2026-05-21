@@ -18,7 +18,18 @@ function mountHistoryDom() {
     <div id="diff-path"></div>
     <div id="diff"></div>
     <button id="history-actions-btn"></button>
+    <button id="commit-btn"></button>
+    <input id="commit-summary" />
+    <div id="status"></div>
   `
+}
+
+/** Installs a Tauri mock for tests that invoke backend commands. */
+function installTauriMock() {
+  (window as any).__TAURI__ = {
+    core: { invoke: vi.fn(async () => []) },
+    event: { listen: vi.fn() },
+  }
 }
 
 /** Imports the history feature after the test DOM is ready. */
@@ -41,6 +52,7 @@ beforeEach(() => {
 
 afterEach(() => {
   document.body.innerHTML = ''
+  delete (window as any).__TAURI__
   vi.restoreAllMocks()
 })
 
@@ -111,6 +123,33 @@ describe('history parsing', () => {
     expect(files[1].path).toBe('b.txt')
     expect(files[1].status).toBe('M')
   })
+
+  it('skips non-diff lines before the first diff --git', async () => {
+    const { parseCommitDiffByFile } = await loadHistoryModule()
+    const lines = [
+      'some metadata line',
+      'another line',
+      'diff --git a/x.txt b/x.txt',
+      '--- a/x.txt',
+      '+++ b/x.txt',
+    ]
+    const files = parseCommitDiffByFile(lines)
+    expect(files.length).toBe(1)
+    expect(files[0].path).toBe('x.txt')
+  })
+
+  it('uses pathA when pathB is empty', async () => {
+    const { parseCommitDiffByFile } = await loadHistoryModule()
+    const lines = [
+      'diff --git a/x.txt b/x.txt',
+      'new file mode 100644',
+      '--- /dev/null',
+      '+++ b/x.txt',
+    ]
+    const files = parseCommitDiffByFile(lines)
+    expect(files.length).toBe(1)
+    expect(files[0].path).toBe('x.txt')
+  })
 })
 
 describe('formatTimeAgo', () => {
@@ -142,17 +181,11 @@ describe('formatTimeAgo', () => {
     const { formatTimeAgo } = await loadHistoryModule()
     const now = Date.now()
 
-    // just now (< 45s)
     expect(formatTimeAgo(new Date(now - 10 * 1000).toISOString())).toBe('just now')
-    // 1 minute (between 45s and 90s)
     expect(formatTimeAgo(new Date(now - 60 * 1000).toISOString())).toBe('1 minute ago')
-    // 45 minutes
     expect(formatTimeAgo(new Date(now - 45 * 60 * 1000).toISOString())).toBe('45 minutes ago')
-    // 1 hour
     expect(formatTimeAgo(new Date(now - 60 * 60 * 1000).toISOString())).toBe('1 hour ago')
-    // 23 hours
     expect(formatTimeAgo(new Date(now - 23 * 60 * 60 * 1000).toISOString())).toBe('23 hours ago')
-    // yesterday
     expect(formatTimeAgo(new Date(now - 25 * 60 * 60 * 1000).toISOString())).toBe('yesterday')
   })
 })
@@ -162,14 +195,21 @@ describe('formatTimeAgo - weeks and months', () => {
     const { formatTimeAgo } = await loadHistoryModule()
     const now = Date.now()
 
-    // 3 days
     expect(formatTimeAgo(new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString())).toBe('3 days ago')
-    // 1 week
     expect(formatTimeAgo(new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString())).toBe('1 week ago')
-    // 3 weeks
     expect(formatTimeAgo(new Date(now - 21 * 24 * 60 * 60 * 1000).toISOString())).toBe('3 weeks ago')
-    // 30 days → wk=4 (<5) so returns '4 weeks ago'
     expect(formatTimeAgo(new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString())).toBe('4 weeks ago')
+  })
+})
+
+describe('formatTimeAgo - years', () => {
+  it('formats months and years', async () => {
+    const { formatTimeAgo } = await loadHistoryModule()
+    const now = Date.now()
+
+    expect(formatTimeAgo(new Date(now - 65 * 24 * 60 * 60 * 1000).toISOString())).toBe('2 months ago')
+    expect(formatTimeAgo(new Date(now - 370 * 24 * 60 * 60 * 1000).toISOString())).toBe('1 year ago')
+    expect(formatTimeAgo(new Date(now - 1100 * 24 * 60 * 60 * 1000).toISOString())).toBe('3 years ago')
   })
 })
 
@@ -209,6 +249,23 @@ describe('renderHistoryList', () => {
     expect(listText).not.toContain('Add feature')
   })
 
+  it('filters commits by id hash', async () => {
+    const { renderHistoryList } = await loadHistoryModule()
+    const { state } = await loadStateModule()
+    state.commits = [
+      { id: 'abc123', msg: 'First', meta: new Date().toISOString() } as any,
+      { id: 'def456', msg: 'Second', meta: new Date().toISOString() } as any,
+    ]
+    state.ahead = 0
+    state.behind = 0
+    state.aheadIds = new Set<string>()
+
+    renderHistoryList('abc')
+    const listText = document.querySelector('#file-list')?.textContent || ''
+    expect(listText).toContain('First')
+    expect(listText).not.toContain('Second')
+  })
+
   it('renders behind notice when behind > 0', async () => {
     const { renderHistoryList } = await loadHistoryModule()
     const { state } = await loadStateModule()
@@ -241,6 +298,24 @@ describe('renderHistoryList', () => {
     expect(listHtml).toContain('outgoing')
   })
 
+  it('falls back to ahead count when aheadIds is empty', async () => {
+    const { renderHistoryList } = await loadHistoryModule()
+    const { state } = await loadStateModule()
+    state.commits = [
+      { id: 'aaa', msg: 'First ahead', meta: new Date().toISOString() } as any,
+      { id: 'bbb', msg: 'Second', meta: new Date().toISOString() } as any,
+    ]
+    state.ahead = 2
+    state.behind = 0
+    state.aheadIds = new Set<string>()
+
+    renderHistoryList('')
+    const listHtml = document.querySelector('#file-list')?.innerHTML || ''
+    expect(listHtml).toContain('up')
+    expect(listHtml).toContain('outgoing')
+    expect(listHtml).toContain('First ahead')
+  })
+
   it('renders incoming commits with down tag', async () => {
     const { renderHistoryList } = await loadHistoryModule()
     const { state } = await loadStateModule()
@@ -255,6 +330,22 @@ describe('renderHistoryList', () => {
     const listHtml = document.querySelector('#file-list')?.innerHTML || ''
     expect(listHtml).toContain('down')
     expect(listHtml).toContain('incoming')
+  })
+
+  it('shows incoming commits with remoteRef label', async () => {
+    const { renderHistoryList } = await loadHistoryModule()
+    const { state } = await loadStateModule()
+    state.commits = [
+      { id: 'inc-1', msg: 'From origin', meta: new Date().toISOString(), incoming: true, remoteRef: 'origin/main' } as any,
+    ]
+    state.ahead = 0
+    state.behind = 1
+    state.aheadIds = new Set<string>()
+
+    renderHistoryList('')
+    const listHtml = document.querySelector('#file-list')?.innerHTML || ''
+    expect(listHtml).toContain('incoming')
+    expect(listHtml).toContain('origin/main')
   })
 })
 
@@ -292,16 +383,147 @@ describe('history hash layout', () => {
   })
 })
 
-describe('formatTimeAgo - years', () => {
-  it('formats months and years', async () => {
-    const { formatTimeAgo } = await loadHistoryModule()
-    const now = Date.now()
+describe('selectHistory', () => {
+  it('returns early when diffEl or diffHeadPath is missing', async () => {
+    document.body.innerHTML = ''
+    const { selectHistory } = await loadHistoryModule()
+    await expect(selectHistory({ id: 'abc' }, 0)).resolves.toBeUndefined()
+  })
 
-    // 2 months
-    expect(formatTimeAgo(new Date(now - 65 * 24 * 60 * 60 * 1000).toISOString())).toBe('2 months ago')
-    // 1 year
-    expect(formatTimeAgo(new Date(now - 370 * 24 * 60 * 60 * 1000).toISOString())).toBe('1 year ago')
-    // 3 years
-    expect(formatTimeAgo(new Date(now - 1100 * 24 * 60 * 60 * 1000).toISOString())).toBe('3 years ago')
+  it('renders commit metadata and loads diff', async () => {
+    installTauriMock()
+    // Need to re-import so the tauri mock is picked up
+    const { selectHistory } = await loadHistoryModule()
+    const commit = {
+      id: 'abc123def456',
+      author: 'Test User <test@example.com>',
+      msg: 'Test commit message',
+      meta: '',
+    }
+
+    await selectHistory(commit, 0)
+
+    const diffPath = document.getElementById('diff-path') as HTMLElement
+    expect(diffPath?.textContent).toContain('abc123d')
+    expect(diffPath?.textContent).toContain('abc123def456')
+
+    const diffText = document.getElementById('diff')?.textContent || ''
+    expect(diffText).toContain('abc123def456')
+    expect(diffText).toContain('Test User')
+    expect(diffText).toContain('Test commit message')
+  })
+
+  it('handles commit with empty id', async () => {
+    installTauriMock()
+    const { selectHistory } = await loadHistoryModule()
+    const commit = { id: '', author: '', msg: '' }
+
+    await selectHistory(commit, 0)
+
+    const diffPath = document.getElementById('diff-path') as HTMLElement
+    expect(diffPath?.textContent).toContain('unknown')
+  })
+
+  it('handles vcs_diff_commit failure gracefully', async () => {
+    installTauriMock()
+    ;(window as any).__TAURI__.core.invoke.mockRejectedValue(new Error('diff fail'))
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { selectHistory } = await loadHistoryModule()
+    const commit = { id: 'abc', author: 'A', msg: 'M' }
+
+    await selectHistory(commit, 0)
+
+    const diffText = document.getElementById('diff')?.textContent || ''
+    expect(diffText).toContain('Failed to load diff')
+    warnSpy.mockRestore()
+  })
+
+  it('renders per-file diff sidebar when files are present', async () => {
+    installTauriMock()
+    ;(window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/readme.txt b/readme.txt',
+          '--- a/readme.txt',
+          '+++ b/readme.txt',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+        ]
+      }
+      return []
+    })
+    const { selectHistory } = await loadHistoryModule()
+    const commit = { id: 'abc', author: 'A', msg: 'M' }
+
+    await selectHistory(commit, 0)
+
+    const diffEl = document.getElementById('diff')!
+    const sidebar = diffEl.querySelector('.commit-files')
+    expect(sidebar).toBeTruthy()
+    expect(sidebar?.textContent).toContain('readme.txt')
+
+    const fileRows = sidebar?.querySelectorAll('.row')
+    expect(fileRows?.length).toBe(1)
+  })
+
+  it('handles file contextmenu copy path in sidebar', async () => {
+    installTauriMock()
+    ;(window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/a.txt b/a.txt',
+          '--- a/a.txt',
+          '+++ b/a.txt',
+          '@@ -1 +1 @@',
+          '-x',
+          '+y',
+        ]
+      }
+      return []
+    })
+    // jsdom may not have navigator.clipboard; mock it if absent
+    if (typeof navigator.clipboard === 'undefined') {
+      (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) }
+    }
+    const writeTextSpy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    const { selectHistory } = await loadHistoryModule()
+    const commit = { id: 'abc', author: 'A', msg: 'M' }
+
+    await selectHistory(commit, 0)
+
+    const diffEl = document.getElementById('diff')!
+    const fileRow = diffEl.querySelector('.commit-files .row')
+    expect(fileRow).toBeTruthy()
+
+    const ctxEvent = new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 10, cancelable: true })
+    fileRow!.dispatchEvent(ctxEvent)
+
+    writeTextSpy.mockRestore()
+  })
+
+  it('renders hunks when commit diff has no file separators', async () => {
+    installTauriMock()
+    ;(window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/a.txt b/a.txt',
+          '--- a/a.txt',
+          '+++ b/a.txt',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+        ]
+      }
+      return []
+    })
+    const { selectHistory } = await loadHistoryModule()
+    const commit = { id: 'abc', author: 'A', msg: 'M' }
+
+    await selectHistory(commit, 0)
+
+    const diffText = document.getElementById('diff')?.textContent || ''
+    expect(diffText).toContain('-old')
+    expect(diffText).toContain('+new')
   })
 })

@@ -221,3 +221,233 @@ describe('wireNewBranch - additional', () => {
     expect(invoke).toHaveBeenCalledWith('vcs_create_branch', expect.objectContaining({ name: 'my-branch' }));
   });
 });
+
+// ---------------------------------------------------------------------------
+// validateBranchName - edge cases
+// ---------------------------------------------------------------------------
+
+describe('validateBranchName', () => {
+  it('rejects names with control characters', async () => {
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
+    nameInput.value = 'bad\x00branch';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(hint.textContent).toContain('cannot contain spaces or control characters');
+  });
+
+  it('rejects names with tilde', async () => {
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
+    nameInput.value = 'bad~branch';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(hint.textContent).toContain('invalid characters');
+  });
+
+  it('rejects names starting with /', async () => {
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
+    nameInput.value = '/branch';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(hint.textContent).toContain('start or end with /');
+  });
+
+  it('rejects names ending with /', async () => {
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
+    nameInput.value = 'branch/';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(hint.textContent).toContain('start or end with /');
+  });
+
+  it('rejects names with ..', async () => {
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
+    nameInput.value = 'bad..branch';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(hint.textContent).toContain('..');
+  });
+
+  it('rejects names with @{', async () => {
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
+    nameInput.value = 'bad@{branch';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(hint.textContent).toContain('@{');
+  });
+
+  it('rejects names with //', async () => {
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
+    nameInput.value = 'bad//branch';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(hint.textContent).toContain('//');
+  });
+
+  it('rejects names ending with .', async () => {
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
+    nameInput.value = 'branch.';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(hint.textContent).toContain('end with "."');
+  });
+
+  it('rejects names ending with .lock', async () => {
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
+    nameInput.value = 'branch.lock';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(hint.textContent).toContain('.lock');
+  });
+
+  it('rejects names with /./', async () => {
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
+    nameInput.value = 'bad/./path';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(hint.textContent).toContain('invalid segments');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createBranch - error handling
+// ---------------------------------------------------------------------------
+
+describe('createBranch error handling', () => {
+  it('handles create branch failure', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async () => { throw new Error('create failed'); }) },
+      event: { listen: vi.fn() },
+    };
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const createBtn = document.getElementById('new-branch-create') as HTMLButtonElement;
+    nameInput.value = 'my-branch';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    createBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const { notify } = await import('../lib/notify');
+    expect(vi.mocked(notify)).toHaveBeenCalledWith('Create branch failed');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createBranch - hook cancellation
+// ---------------------------------------------------------------------------
+
+describe('createBranch hook cancellation', () => {
+  it('cancels when preBranchCreate hook returns cancelled', async () => {
+    const { runHook } = await import('../plugins');
+    vi.mocked(runHook).mockResolvedValue({ cancelled: true, reason: 'Cancelled by hook' });
+
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: { listen: vi.fn() },
+    };
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const createBtn = document.getElementById('new-branch-create') as HTMLButtonElement;
+    nameInput.value = 'my-branch';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    createBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const { notify } = await import('../lib/notify');
+    expect(vi.mocked(notify)).toHaveBeenCalledWith('Cancelled by hook');
+  });
+
+  it('cancels when preSwitchBranch hook returns cancelled', async () => {
+    const { runHook } = await import('../plugins');
+    vi.mocked(runHook)
+      .mockResolvedValueOnce({ cancelled: false })  // preBranchCreate
+      .mockResolvedValueOnce({ cancelled: true, reason: 'Switch blocked' });  // preSwitchBranch
+
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: { listen: vi.fn() },
+    };
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const checkout = document.getElementById('new-branch-checkout') as HTMLInputElement;
+    const createBtn = document.getElementById('new-branch-create') as HTMLButtonElement;
+    checkout.checked = true;
+    nameInput.value = 'my-branch';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    createBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const { notify } = await import('../lib/notify');
+    expect(vi.mocked(notify)).toHaveBeenCalledWith('Switch blocked');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// populateBaseSelect with branches
+// ---------------------------------------------------------------------------
+
+describe('populateBaseSelect', () => {
+  it('populates base select with branches from state', async () => {
+    // Set up state with branches before import
+    const stateModule = await import('../state/state');
+    (stateModule.state as any).branch = 'main';
+    (stateModule.state as any).branches = [
+      { name: 'main', current: true, kind: { type: 'local' } },
+      { name: 'develop', current: false, kind: { type: 'local' } },
+      { name: 'origin/main', current: false, kind: { type: 'remote', remote: 'origin' } },
+    ];
+
+    installTauriMock();
+    const { wireNewBranch } = await import('./newBranch');
+    wireNewBranch();
+
+    const select = document.getElementById('new-branch-base') as HTMLSelectElement;
+    expect(select.options.length).toBe(3);
+    // Current branch first
+    expect(select.options[0].textContent).toBe('main');
+    expect(select.options[0].selected).toBe(true);
+    // Remote should show origin/name
+    expect(select.options[2].textContent).toBe('origin/main');
+  });
+});

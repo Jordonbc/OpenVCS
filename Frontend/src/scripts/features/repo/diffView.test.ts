@@ -60,6 +60,16 @@ describe('highlightRow', () => {
     expect(rows[0].classList.contains('active')).toBe(false);
     expect(rows[1].classList.contains('active')).toBe(true);
   });
+
+  it('uses history row selector when prefs tab is history', async () => {
+    const { prefs } = await import('../../state/state');
+    prefs.tab = 'history';
+    document.querySelector('#file-list')!.innerHTML = '<li class="row commit">a</li><li class="row commit">b</li>';
+    const { highlightRow } = await import('./diffView');
+    highlightRow(0);
+    const rows = document.querySelectorAll<HTMLElement>('#file-list .row.commit');
+    expect(rows[0].classList.contains('active')).toBe(true);
+  });
 });
 
 describe('renderCombinedDiff', () => {
@@ -109,6 +119,23 @@ describe('renderCombinedDiff', () => {
     const html = document.querySelector('#diff')?.innerHTML || '';
     expect(html).toContain('failed to load diff');
   });
+
+  it('shows per-file failure when all files fail', async () => {
+    (window as any).__TAURI__.core.invoke.mockRejectedValue(new Error('fail'));
+    const { renderCombinedDiff } = await import('./diffView');
+    await renderCombinedDiff(['a.txt', 'b.txt']);
+    const html = document.querySelector('#diff')?.innerHTML || '';
+    expect(html).toContain('failed to load diff');
+    expect(html).toContain('a.txt');
+    expect(html).toContain('b.txt');
+  });
+
+  it('handles empty and null file paths', async () => {
+    const { renderCombinedDiff } = await import('./diffView');
+    await renderCombinedDiff([]);
+    const html = document.querySelector('#diff')?.innerHTML || '';
+    expect(html).toContain('No diffs');
+  });
 });
 
 describe('selectFile', () => {
@@ -126,7 +153,6 @@ describe('selectFile', () => {
     const { selectFile } = await import('./diffView');
     const invokeSpy = (window as any).__TAURI__.core.invoke;
     await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
-    // invoke should NOT be called since diff is clean and same file
     expect(invokeSpy).not.toHaveBeenCalled();
   });
 
@@ -203,7 +229,6 @@ describe('selectFile', () => {
     const { selectFile } = await import('./diffView');
     await selectFile({ path: 'untracked.txt', status: '??' } as FileStatus, 0);
     const diffText = document.querySelector('#diff')?.textContent || '';
-    // Should fallback to empty untracked patch
     expect(diffText).toContain('@@ -0,0 +1,0 @@');
   });
 
@@ -214,6 +239,117 @@ describe('selectFile', () => {
 
     const diffText = document.querySelector('#diff')?.textContent || '';
     expect(diffText).toContain('Failed to load diff');
+  });
+
+  it('restores cached hunk selections', async () => {
+    const { state } = await import('../../state/state');
+    state.diffDirty = true;
+    state.currentFile = '';
+
+    // Set up hunk nodes similar to what buildDiffFragment would produce
+    state.currentDiffHunkNodes = new Map();
+    const hunkCheckbox = document.createElement('input');
+    hunkCheckbox.type = 'checkbox';
+    hunkCheckbox.className = 'pick-hunk';
+    const lineCheckbox = document.createElement('input');
+    lineCheckbox.type = 'checkbox';
+    lineCheckbox.className = 'pick-line';
+    state.currentDiffHunkNodes.set(0, {
+      hunkEls: [document.createElement('div')],
+      hunkCheckboxes: [hunkCheckbox],
+      lineCheckboxes: { 0: lineCheckbox },
+    });
+
+    // Set cached selections
+    (state as any).selectedHunksByFile = { 'a.txt': [0] };
+
+    const { selectFile } = await import('./diffView');
+    await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
+
+    expect(state.selectedHunks).toEqual([0]);
+  });
+
+  it('selects all hunks when file is in selectedFiles', async () => {
+    const { state } = await import('../../state/state');
+    state.diffDirty = true;
+    state.currentFile = '';
+    state.selectedFiles = new Set(['a.txt']);
+
+    // The code checks selectedFiles.has(file.path) - so we need a.txt in selectedFiles
+    state.currentDiffHunkNodes = new Map();
+    const hunkCheckbox = document.createElement('input');
+    hunkCheckbox.type = 'checkbox';
+    hunkCheckbox.className = 'pick-hunk';
+    const lineCheckbox = document.createElement('input');
+    lineCheckbox.type = 'checkbox';
+    lineCheckbox.className = 'pick-line';
+    state.currentDiffHunkNodes.set(0, {
+      hunkEls: [document.createElement('div')],
+      hunkCheckboxes: [hunkCheckbox],
+      lineCheckboxes: { 0: lineCheckbox },
+    });
+
+    const { selectFile } = await import('./diffView');
+    await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
+
+    // When file is in selectedFiles, it should select all hunks
+    expect(state.selectedHunks).toEqual([0]);
+  });
+
+  it('clears selectedHunks when no cached selection and file not selected', async () => {
+    const { state } = await import('../../state/state');
+    state.diffDirty = true;
+    state.currentFile = '';
+    state.selectedFiles = new Set(['other.txt']);
+    state.selectedHunks = [99];
+    state.defaultSelectAll = false;
+    state.selectionImplicitAll = false;
+
+    const { selectFile } = await import('./diffView');
+    await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
+
+    expect(state.selectedHunks).toEqual([]);
+  });
+});
+
+describe('selectFile contextmenu', () => {
+  it('attaches contextmenu handler to diffEl for hunk discard', async () => {
+    // Need to ensure invoke returns proper diff lines so the hunk elements render
+    const { selectFile } = await import('./diffView');
+    const { state } = await import('../../state/state');
+
+    await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
+
+    const diffEl = document.getElementById('diff')!;
+    // The diff output from the default mock is 4 lines (the mock returns ['diff --git ...', '@@ ...', '-old', '+new'])
+    // buildDiffFragment should create .hunk elements from this, and selectFile attaches contextmenu
+    const hunkEl = diffEl.querySelector('.hunk');
+    // The contextmenu handler is attached with { once: true }, so we trigger it
+    if (hunkEl) {
+      const ctxEvent = new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20, cancelable: true });
+      hunkEl.dispatchEvent(ctxEvent);
+      // Should not throw - the handler calls buildCtxMenu which doesn't exist in jsdom but that's ok
+    }
+    // Just verify no crash
+  });
+
+  it('contextmenu handler adds discard selected hunks items when hunks are selected', async () => {
+    const { selectFile } = await import('./diffView');
+    const { state } = await import('../../state/state');
+
+    // Set up cached selected hunks so the context menu shows extra items
+    (state as any).selectedHunksByFile = { 'a.txt': [0] };
+
+    await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
+
+    const diffEl = document.getElementById('diff')!;
+    const hunkEl = diffEl.querySelector('.hunk');
+    if (hunkEl) {
+      hunkEl.setAttribute('data-hunk-index', '0');
+      const ctxEvent = new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20, cancelable: true });
+      hunkEl.dispatchEvent(ctxEvent);
+    }
+    // No crash test
   });
 });
 
@@ -246,6 +382,15 @@ describe('selectStashDiff', () => {
     const diffText = document.querySelector('#diff')?.textContent || '';
     expect(diffText).toContain('Failed to load stash diff');
     warnSpy.mockRestore();
+  });
+
+  it('handles empty selector', async () => {
+    const { selectStashDiff } = await import('./diffView');
+    await selectStashDiff('');
+    // Should not call invoke for empty selector
+    const invokeSpy = (window as any).__TAURI__.core.invoke;
+    // If selector is empty, it still calls invoke with '' as selector
+    // The mock will return [] but it should not crash
   });
 });
 

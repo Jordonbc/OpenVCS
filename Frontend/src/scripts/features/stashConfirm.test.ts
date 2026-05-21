@@ -237,3 +237,111 @@ describe('refreshFiles integration', () => {
     expect(countEl.textContent).toBe('1 file');
   });
 });
+
+// ---------------------------------------------------------------------------
+// friendlyStatus - edge codes
+// ---------------------------------------------------------------------------
+
+describe('friendlyStatus edge codes', () => {
+  it('renders R and C status codes in file list', async () => {
+    const { wireStashConfirm } = await import('./stashConfirm');
+    wireStashConfirm();
+    const { state } = await import('../state/state');
+    state.files = [
+      { path: 'renamed.txt', status: 'R' },
+      { path: 'copied.txt', status: 'C' },
+    ];
+    (document.getElementById('stash-confirm-modal') as any).refreshFiles();
+
+    const listEl = document.getElementById('stash-file-list') as HTMLElement;
+    expect(listEl.innerHTML).toContain('Renamed');
+    expect(listEl.innerHTML).toContain('Copied');
+  });
+
+  it('renders ignored status code', async () => {
+    const { wireStashConfirm } = await import('./stashConfirm');
+    wireStashConfirm();
+    const { state } = await import('../state/state');
+    state.files = [
+      { path: 'ignored.log', status: '!' },
+    ];
+    (document.getElementById('stash-confirm-modal') as any).refreshFiles();
+
+    const listEl = document.getElementById('stash-file-list') as HTMLElement;
+    expect(listEl.innerHTML).toContain('Ignored');
+  });
+
+  it('renders untracked status code', async () => {
+    const { wireStashConfirm } = await import('./stashConfirm');
+    wireStashConfirm();
+    const { state } = await import('../state/state');
+    state.files = [
+      { path: 'new.txt', status: '??' },
+    ];
+    (document.getElementById('stash-confirm-modal') as any).refreshFiles();
+
+    const listEl = document.getElementById('stash-file-list') as HTMLElement;
+    expect(listEl.innerHTML).toContain('Untracked');
+    expect(listEl.innerHTML).toContain('add');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runStash - edge cases
+// ---------------------------------------------------------------------------
+
+describe('runStash edge cases', () => {
+  it('does not run stash when confirm button is disabled', async () => {
+    const invoke = vi.fn(async () => null);
+    (window as any).__TAURI__.core.invoke = invoke;
+
+    const { wireStashConfirm } = await import('./stashConfirm');
+    wireStashConfirm();
+    const confirmBtn = document.getElementById('stash-confirm-btn') as HTMLButtonElement;
+    confirmBtn.disabled = true;
+    confirmBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('handles openStashConfirm with no options', async () => {
+    const invoke = vi.fn(async () => null);
+    (window as any).__TAURI__.core.invoke = invoke;
+
+    const { openStashConfirm } = await import('./stashConfirm');
+    openStashConfirm();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const confirmBtn = document.getElementById('stash-confirm-btn') as HTMLButtonElement;
+    expect(confirmBtn.disabled).toBe(false);
+    expect(document.getElementById('stash-message') as HTMLInputElement).toHaveValue('WIP');
+  });
+
+  it('shows empty state when override paths filter to zero files', async () => {
+    window.__TAURI__ = {
+      core: { invoke: vi.fn(async () => null) },
+      event: { listen: vi.fn() },
+    };
+    const { openStashConfirm } = await import('./stashConfirm');
+    openStashConfirm({ paths: ['nonexistent.txt'] });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const emptyEl = document.getElementById('stash-empty') as HTMLElement;
+    const confirmBtn = document.getElementById('stash-confirm-btn') as HTMLButtonElement;
+    expect(emptyEl.hidden).toBe(false);
+    expect(confirmBtn.disabled).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// wireStashConfirm - no modal
+// ---------------------------------------------------------------------------
+
+describe('wireStashConfirm no modal', () => {
+  it('does not crash when modal is missing', async () => {
+    document.body.innerHTML = '';
+    const { wireStashConfirm } = await import('./stashConfirm');
+    expect(() => wireStashConfirm()).not.toThrow();
+  });
+});

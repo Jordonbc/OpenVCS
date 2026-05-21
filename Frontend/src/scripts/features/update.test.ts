@@ -312,4 +312,58 @@ describe('ensureUpdateProgressListener', () => {
     listenCallback?.({ payload: { kind: 'downloaded' } });
     expect(button.textContent).toBe('Installing');
   });
+
+  it('handles progress with zero total', async () => {
+    let listenCallback: ((evt: { payload: unknown }) => void) | undefined;
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: {
+        listen: vi.fn((_event: string, cb: (evt: { payload: unknown }) => void) => {
+          listenCallback = cb;
+          return Promise.resolve({ unlisten: vi.fn() });
+        }),
+      },
+    };
+    const update = await import('./update');
+    update.wireUpdate();
+    await Promise.resolve();
+
+    const button = document.getElementById('update-install') as HTMLButtonElement;
+    button.click();
+
+    // progress with zero/invalid total should show generic downloading text
+    listenCallback?.({ payload: { kind: 'progress', received: 0, total: 0 } });
+    expect(button.textContent).toBe('Downloading…');
+  });
+});
+
+describe('ensureUpdateProgressListener rejects', () => {
+  it('handles listener registration failure', async () => {
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: {
+        listen: vi.fn(() => Promise.reject(new Error('listen failed'))),
+      },
+    };
+    const update = await import('./update');
+    // Should not throw - errors are caught
+    expect(() => update.wireUpdate()).not.toThrow();
+    await new Promise((r) => setTimeout(r, 0));
+  });
+});
+
+describe('missing UI elements', () => {
+  it('handles missing status element', async () => {
+    document.body.innerHTML = '<div id="update-modal"><button id="update-install">Install</button></div>';
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: { listen: vi.fn(async () => ({ unlisten: vi.fn() })) },
+    };
+    const update = await import('./update');
+    update.wireUpdate();
+    const button = document.getElementById('update-install') as HTMLButtonElement;
+    button.click();
+    await new Promise((r) => setTimeout(r, 0));
+  });
+
 });

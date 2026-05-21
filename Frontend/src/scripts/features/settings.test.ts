@@ -922,16 +922,361 @@ describe('wireSettings (theme controls)', () => {
         });
     });
 
-    it('responds to openvcs:theme-pack-changed event when auto is checked', async () => {
-        mountWithTheme();
-        document.getElementById('set-theme-auto')!.setAttribute('checked', '');
-        (document.getElementById('set-theme-auto') as HTMLInputElement).checked = true;
-        mockGetActiveThemeId.mockReturnValue('dark-theme');
-        const { wireSettings } = await load();
-        wireSettings();
-        window.dispatchEvent(new CustomEvent('openvcs:theme-pack-changed'));
-        const themeSel = document.getElementById('set-theme') as HTMLSelectElement;
-        expect(themeSel.value).toBe('dark-theme');
-        expect(themeSel.disabled).toBe(true);
+  it('responds to openvcs:theme-pack-changed event when auto is checked', async () => {
+    mountWithTheme();
+    document.getElementById('set-theme-auto')!.setAttribute('checked', '');
+    (document.getElementById('set-theme-auto') as HTMLInputElement).checked = true;
+    mockGetActiveThemeId.mockReturnValue('dark-theme');
+    const { wireSettings } = await load();
+    wireSettings();
+    window.dispatchEvent(new CustomEvent('openvcs:theme-pack-changed'));
+    const themeSel = document.getElementById('set-theme') as HTMLSelectElement;
+    expect(themeSel.value).toBe('dark-theme');
+    expect(themeSel.disabled).toBe(true);
+  });
+
+  it('ignores openvcs:theme-pack-changed event when auto is not checked', async () => {
+    mountWithTheme();
+    (document.getElementById('set-theme-auto') as HTMLInputElement).checked = false;
+    (document.getElementById('set-theme') as HTMLSelectElement).value = 'default-light';
+    const { wireSettings } = await load();
+    wireSettings();
+    window.dispatchEvent(new CustomEvent('openvcs:theme-pack-changed'));
+    const themeSel = document.getElementById('set-theme') as HTMLSelectElement;
+    // Should remain unchanged because auto is not checked
+    expect(themeSel.value).toBe('default-light');
+  });
+
+  it('rebuilds theme options on pointerdown when auto is checked (no-op)', async () => {
+    mountWithTheme();
+    (document.getElementById('set-theme-auto') as HTMLInputElement).checked = true;
+    const { wireSettings } = await load();
+    wireSettings();
+    // pointerdown with auto checked returns early before rebuildThemePackOptions
+    const themeSel = document.getElementById('set-theme') as HTMLSelectElement;
+    themeSel.dispatchEvent(new Event('pointerdown'));
+    expect(mockRebuildThemePackOptions).not.toHaveBeenCalled();
+  });
+
+  it('sets theme select disabled when auto is checked via applyThemeFromControls', async () => {
+    mountWithTheme();
+    (document.getElementById('set-theme-auto') as HTMLInputElement).checked = true;
+    mockSelectThemePack.mockResolvedValue(undefined);
+    const { wireSettings } = await load();
+    wireSettings();
+    const themeSel = document.getElementById('set-theme') as HTMLSelectElement;
+    themeSel.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => {
+      expect(mockSelectThemePack).toHaveBeenCalled();
+      expect(themeSel.disabled).toBe(true);
     });
+  });
+});
+
+/** Waits for queued promise work to settle. */
+async function flushPromises(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+// ---------------------------------------------------------------------------
+// wireSettings - SSH binary toggle (additional)
+// ---------------------------------------------------------------------------
+
+describe('wireSettings (SSH binary custom path)', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  function mountWithSsh() {
+    const modal = mountSettingsModal();
+    modal.insertAdjacentHTML('beforeend', [
+      '<select id="set-git-ssh-binary"><option value="auto">Auto</option><option value="custom">Custom</option></select>',
+      '<input id="set-git-ssh-path" type="text" value="/usr/bin/ssh" />',
+    ].join('\n'));
+    return modal;
+  }
+
+  it('clears path when switching from custom to auto', async () => {
+    mountWithSsh();
+    const { wireSettings } = await load();
+    wireSettings();
+    const select = document.getElementById('set-git-ssh-binary') as HTMLSelectElement;
+    select.value = 'auto';
+    select.dispatchEvent(new Event('change'));
+    const pathInput = document.getElementById('set-git-ssh-path') as HTMLInputElement;
+    expect(pathInput.disabled).toBe(true);
+    expect(pathInput.value).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// collectSettingsFromForm
+// ---------------------------------------------------------------------------
+
+describe('collectSettingsFromForm', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  function mountCollectDom(extra?: string) {
+    const modal = mountSettingsModal();
+    modal.dataset.currentCfg = JSON.stringify({
+      general: { theme: 'light' },
+      commit: {},
+      diff: { external_merge: { enabled: false, path: '', args: '' } },
+    });
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-gpu-accel" type="checkbox" checked />',
+      '<input id="set-animations" type="checkbox" checked />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1" />',
+      '<input id="set-font-mono" type="text" value="monospace" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" type="number" value="10" />',
+      '<input id="set-tab-width" type="number" value="4" />',
+      '<select id="set-ignore-whitespace"><option value="none">None</option></select>',
+      '<input id="set-max-file-size-mb" type="number" value="10" />',
+      '<input id="set-intraline" type="checkbox" checked />',
+      '<input id="set-binary-placeholders" type="checkbox" checked />',
+      '<select id="set-merge-mode"><option value="builtin">Built-in</option><option value="custom">Custom</option></select>',
+      '<input id="set-merge-path" type="text" value="" />',
+      '<input id="set-merge-args" type="text" value="" />',
+      '<input id="set-lfs-enabled" type="checkbox" />',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="10" />',
+      '<input id="set-restrict-commit-summary" type="checkbox" checked />',
+      extra || '',
+    ].join('\n'));
+    return modal;
+  }
+
+  it('collects settings from form with plugins state', async () => {
+    const modal = mountCollectDom();
+    (modal as any).__pluginsPanelState = {
+      list: [{ id: 'p1', name: 'P1' }],
+      disabled: new Set<string>(),
+      enabled: new Set<string>(['p1']),
+    };
+    mockCollectGeneralSettings.mockReturnValue({ theme: 'light' });
+    mockCollectCommitSettings.mockReturnValue({ restrict_commit_summary: true });
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          plugins: expect.objectContaining({ enabled: ['p1'] }),
+        }),
+      }));
+    });
+  });
+
+  it('collects plugins from DOM toggles when no plugins state', async () => {
+    const modal = mountCollectDom('<input type="checkbox" data-plugin-id="p1" checked />');
+    delete (modal as any).__pluginsPanelState;
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          plugins: expect.objectContaining({ enabled: ['p1'] }),
+        }),
+      }));
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// refreshDefaultBackendOptions
+// ---------------------------------------------------------------------------
+
+describe('refreshDefaultBackendOptions', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('populates backend options when backends are available', async () => {
+    mountSettingsModal();
+    const modal = document.getElementById('settings-modal')!;
+    modal.insertAdjacentHTML('beforeend', '<select id="set-default-backend"></select>');
+    mockInvoke.mockResolvedValue([['git', 'Git'], ['hg', 'Mercurial']]);
+    mockLoadPluginsIntoForm.mockResolvedValue(undefined);
+    mockLoadGeneralSettingsIntoForm.mockImplementation(async (_m: HTMLElement, _c: any, _k: any, refreshBackends: any) => {
+      await refreshBackends(_m, { general: { default_backend: 'git' } });
+    });
+
+    const { loadSettingsIntoForm } = await load();
+    await loadSettingsIntoForm();
+    await flushPromises();
+
+    const sel = document.getElementById('set-default-backend') as HTMLSelectElement;
+    expect(sel.options.length).toBe(2);
+    expect(sel.value).toBe('git');
+    expect(sel.disabled).toBe(false);
+  });
+
+  it('disables backend selector when no backends available', async () => {
+    mountSettingsModal();
+    const modal = document.getElementById('settings-modal')!;
+    modal.insertAdjacentHTML('beforeend', '<select id="set-default-backend"></select>');
+    mockInvoke.mockResolvedValue([]);
+    mockLoadPluginsIntoForm.mockResolvedValue(undefined);
+    mockLoadGeneralSettingsIntoForm.mockImplementation(async (_m: HTMLElement, _c: any, _k: any, refreshBackends: any) => {
+      await refreshBackends(_m, {});
+    });
+
+    const { loadSettingsIntoForm } = await load();
+    await loadSettingsIntoForm();
+
+    const sel = document.getElementById('set-default-backend') as HTMLSelectElement;
+    expect(sel.disabled).toBe(true);
+    expect(sel.options.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// collectSettingsFromForm - LFS, merge, recents edge cases
+// ---------------------------------------------------------------------------
+
+describe('collectSettingsFromForm - edge cases', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  function mountEdgeDom() {
+    const modal = mountSettingsModal();
+    modal.dataset.currentCfg = JSON.stringify({});
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-gpu-accel" type="checkbox" />',
+      '<input id="set-animations" type="checkbox" />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-lfs-enabled" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1" />',
+      '<input id="set-font-mono" type="text" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" type="number" value="" />',
+      '<input id="set-tab-width" type="number" value="0" />',
+      '<input id="set-max-file-size-mb" type="number" value="0" />',
+      '<input id="set-intraline" type="checkbox" />',
+      '<input id="set-binary-placeholders" type="checkbox" />',
+      '<select id="set-merge-mode"><option value="custom">Custom</option></select>',
+      '<input id="set-merge-path" type="text" value="/usr/bin/merge" />',
+      '<input id="set-merge-args" type="text" value="" />',
+      '<select id="set-log-level"><option value="info">Info</option></select>',
+      '<input id="set-log-keep" value="" />',
+    ].join('\n'));
+    return modal;
+  }
+
+  it('handles empty recents limit and log keep values', async () => {
+    mountEdgeDom();
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalled();
+    });
+  });
+
+  it('enables external merge when mode is custom with path', async () => {
+    mountEdgeDom();
+    // Set custom merge path
+    (document.getElementById('set-merge-path') as HTMLInputElement).value = '/usr/bin/merge';
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          diff: expect.objectContaining({
+            external_merge: expect.objectContaining({ enabled: true, path: '/usr/bin/merge' }),
+          }),
+        }),
+      }));
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// wireSettings - save button with theme and CSS props
+// ---------------------------------------------------------------------------
+
+describe('wireSettings (save applies CSS props)', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('sets CSS custom properties on save', async () => {
+    mountSettingsModal();
+    const modal = document.getElementById('settings-modal')!;
+    modal.dataset.currentCfg = JSON.stringify({
+      performance: { gpu_accel: false },
+      general: { theme: 'dark', theme_pack: 'dark-theme' },
+      diff: { tab_width: 8 },
+      ux: { ui_scale: 1.25, font_mono: 'Fira Code' },
+      commit: { restrict_commit_summary: false },
+    });
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-gpu-accel" type="checkbox" checked />',
+      '<input id="set-animations" type="checkbox" />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1.25" />',
+      '<input id="set-font-mono" type="text" value="Fira Code" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" value="10" />',
+      '<input id="set-tab-width" value="8" />',
+      '<input id="set-max-file-size-mb" value="10" />',
+      '<input id="set-intraline" type="checkbox" checked />',
+      '<input id="set-binary-placeholders" type="checkbox" checked />',
+      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="10" />',
+    ].join('\n'));
+    mockCollectGeneralSettings.mockReturnValue({ theme: 'dark', theme_pack: 'dark-theme' });
+    mockCollectCommitSettings.mockReturnValue({ restrict_commit_summary: false });
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+    mockSelectThemePack.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--tab-size')).toBe('8');
+      expect(document.documentElement.style.getPropertyValue('--ui-scale')).toBe('1.25');
+      expect(document.documentElement.style.getPropertyValue('--mono')).toBe('Fira Code');
+      expect(mockApplyAnimationPreference).toHaveBeenCalled();
+      expect(mockApplyGpuAccelerationPreference).toHaveBeenCalled();
+      expect(mockApplyCommitSummaryRestriction).toHaveBeenCalled();
+      expect(mockUpdateCommitButton).toHaveBeenCalled();
+      expect(mockNotify).toHaveBeenCalledWith('Settings saved. GPU changes apply after restart.');
+    });
+  });
 });
