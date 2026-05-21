@@ -317,6 +317,68 @@ describe('openModal no aria-hidden', () => {
 // hydrate - with already-in-DOM modal
 // ---------------------------------------------------------------------------
 
+describe('closeWithAnimation reduce-motion', () => {
+  beforeEach(() => { vi.resetModules(); mountRoot(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('closes without animation when reduce-motion preferred', async () => {
+    vi.useFakeTimers();
+    const origMM = window.matchMedia;
+    window.matchMedia = vi.fn((q: string) => ({
+      matches: q.includes('reduced-motion'), media: q, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+    })) as any;
+    const { openModal } = await import('./modals');
+    document.body.innerHTML += '<div id="m1" class="modal" aria-hidden="true"><div class="backdrop"></div></div>';
+    openModal('m1');
+    (document.querySelector('.backdrop') as HTMLElement).click();
+    expect(document.getElementById('m1')!.getAttribute('aria-hidden')).toBe('true');
+    window.matchMedia = origMM; vi.useRealTimers();
+  });
+});
+
+describe('openModal clears pending animation timer', () => {
+  beforeEach(() => { vi.resetModules(); mountRoot(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('clears timer when reopening before close animation completes', async () => {
+    vi.useFakeTimers();
+    const origMM = window.matchMedia;
+    window.matchMedia = vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })) as any;
+    const { openModal } = await import('./modals');
+    document.body.innerHTML += '<div id="m1" class="modal" aria-hidden="true"><div class="backdrop"></div></div>';
+    openModal('m1');
+    (document.querySelector('.backdrop') as HTMLElement).click();
+    openModal('m1');
+    expect(document.getElementById('m1')!.getAttribute('aria-hidden')).toBe('false');
+    window.matchMedia = origMM; vi.useRealTimers();
+  });
+});
+
+describe('hydrate specific modals', () => {
+  beforeEach(() => { vi.resetModules(); mountRoot(); });
+  it('hydrates settings-modal', async () => { const { hydrate } = await import('./modals'); expect(() => hydrate('settings-modal')).not.toThrow(); });
+  it('hydrates about-modal', async () => { const { hydrate } = await import('./modals'); expect(() => hydrate('about-modal')).not.toThrow(); });
+  it('hydrates update-modal', async () => { const { hydrate } = await import('./modals'); expect(() => hydrate('update-modal')).not.toThrow(); });
+});
+
+describe('closeModal already closed', () => {
+  beforeEach(() => { vi.resetModules(); mountRoot(); });
+  it('no-ops for already hidden modal', async () => {
+    const { closeModal } = await import('./modals');
+    document.body.innerHTML += '<div id="m1" class="modal" aria-hidden="true"></div>';
+    closeModal('m1');
+    expect(document.getElementById('m1')!.getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
+describe('closeAllModals no open modals', () => {
+  beforeEach(() => { vi.resetModules(); mountRoot(); });
+  it('no-ops when no modals are open', async () => {
+    const { closeAllModals } = await import('./modals');
+    expect(() => closeAllModals()).not.toThrow();
+  });
+});
+
 describe('hydrate with existing modal', () => {
   beforeEach(() => {
     vi.resetModules();

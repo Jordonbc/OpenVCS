@@ -18,6 +18,10 @@ export default defineConfig({
     setupFiles: ['./src/setupTests.ts'],
     coverage: {
       provider: 'v8',
+      exclude: [
+        'src/scripts/**/*.test.ts',
+        'tests/**',
+      ],
       thresholds: {
         statements: 95,
         branches: 95,
