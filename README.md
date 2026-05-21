@@ -418,6 +418,10 @@ Legend: ✅ active · 🧭 planned/exploratory
 
 OpenVCS is open source and community-driven. Contributions are welcome across code, design, testing, documentation, and product feedback.
 
+### AI-assisted workflow
+
+This project started as a way for me to learn Rust and TypeScript, and I'm aiming for the MVP, so after long workdays I began using AI to help automate PR reviews and speed up day-to-day work. I still manually inspect the codebase and review AI-generated output before anything lands.
+
 | Contribution type     | Examples                                                   |
 | --------------------- | ---------------------------------------------------------- |
 | **Bug reports**       | Broken workflows, crashes, packaging issues                |
