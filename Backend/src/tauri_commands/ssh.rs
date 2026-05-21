@@ -83,7 +83,8 @@ fn run_command(cmd: &str, args: &[&str]) -> Result<SshCommandOutput, String> {
     trace!("run_command: {} {:?}", cmd, args);
     let start = std::time::Instant::now();
 
-    let out = Command::new(cmd).args(args).output().map_err(|e| {
+    let mut command = crate::process_utils::hidden_command(cmd);
+    let out = command.args(args).output().map_err(|e| {
         error!("run_command: failed to spawn {}: {}", cmd, e);
         format!("Failed to run {cmd}: {e}")
     })?;
@@ -399,7 +400,8 @@ pub fn ssh_add_key(path: String) -> Result<SshCommandOutput, String> {
     let result = if let Some(askpass) = resolve_ssh_askpass() {
         debug!("ssh_add_key: using SSH_ASKPASS='{}'", askpass.display());
         let start = std::time::Instant::now();
-        let out = Command::new("ssh-add")
+        let mut command = crate::process_utils::hidden_command("ssh-add");
+        let out = command
             .env("SSH_ASKPASS", &askpass)
             .arg(p)
             .output()

@@ -26,18 +26,13 @@ if (dryRun) {
 }
 
 function run(cmd, args, cwd, env) {
-  const spawnOpts = { cwd, stdio: 'inherit' };
+  const spawnOpts = { cwd, stdio: 'inherit', windowsHide: true };
   if (env) {
     spawnOpts.env = { ...process.env, ...env };
   }
-  if (
-    process.platform === 'win32' &&
-    (cmd === 'npm' || cmd.toLowerCase().endsWith('.cmd') || cmd.toLowerCase().endsWith('.bat'))
-  ) {
-    spawnOpts.shell = true;
-  }
 
-  const res = spawnSync(cmd, args, spawnOpts);
+  const spawn = normalizeSpawnCommand(cmd, args);
+  const res = spawnSync(spawn.cmd, spawn.args, spawnOpts);
   if (res.error) {
     console.error(`Failed to run ${cmd}:`, res.error);
     process.exit(res.status || 1);
@@ -45,6 +40,30 @@ function run(cmd, args, cwd, env) {
   if (res.status !== 0) {
     process.exit(res.status);
   }
+}
+
+function shouldUseWindowsShell(cmd) {
+  if (process.platform !== 'win32') {
+    return false;
+  }
+
+  const lower = cmd.toLowerCase();
+  return cmd === 'npm' || lower.endsWith('.cmd') || lower.endsWith('.bat');
+}
+
+function quoteCmdArg(value) {
+  const text = String(value);
+  return `"${text.replace(/"/g, '\\"')}"`;
+}
+
+function normalizeSpawnCommand(cmd, args) {
+  if (!shouldUseWindowsShell(cmd)) {
+    return { cmd, args };
+  }
+
+  const shell = process.env.ComSpec || 'cmd.exe';
+  const commandLine = [cmd, ...args].map(quoteCmdArg).join(' ');
+  return { cmd: shell, args: ['/d', '/s', '/c', commandLine] };
 }
 
 const ensureEnv = mode === 'dev' && !process.env.OPENVCS_UPDATE_CHANNEL

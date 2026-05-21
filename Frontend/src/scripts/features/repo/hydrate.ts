@@ -190,12 +190,12 @@ export async function hydrateStatus() {
 /**
  * Loads commit history for the history pane.
  *
- * Passing `limit: 0` asks the backend for the full history.
+ * Uses a bounded initial history window so large repositories do not block startup.
  */
 export async function hydrateCommits(): Promise<void> {
     try {
         await yieldToPaint();
-        const list = await TAURI.invoke<any[]>('vcs_log', { limit: 0 });
+        const list = await TAURI.invoke<any[]>('vcs_log', { limit: 500 });
         state.hasRepo = true;
         const baseCommits = Array.isArray(list) ? (list as any) : [];
         const behindCount = Number((state as any).behind || 0);

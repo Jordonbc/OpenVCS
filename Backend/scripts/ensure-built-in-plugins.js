@@ -27,12 +27,25 @@ function shouldUseWindowsShell(command) {
   );
 }
 
-function runCommand(command, args, cwd, label) {
-  const spawnOpts = { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] };
-  if (shouldUseWindowsShell(command)) {
-    spawnOpts.shell = true;
+function quoteCmdArg(value) {
+  const text = String(value);
+  return `"${text.replace(/"/g, '\\"')}"`;
+}
+
+function normalizeSpawnCommand(command, args) {
+  if (!shouldUseWindowsShell(command)) {
+    return { command, args };
   }
-  const result = spawnSync(command, args, spawnOpts);
+
+  const shell = process.env.ComSpec || 'cmd.exe';
+  const commandLine = [command, ...args].map(quoteCmdArg).join(' ');
+  return { command: shell, args: ['/d', '/s', '/c', commandLine] };
+}
+
+function runCommand(command, args, cwd, label) {
+  const spawnOpts = { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true };
+  const spawn = normalizeSpawnCommand(command, args);
+  const result = spawnSync(spawn.command, spawn.args, spawnOpts);
   if (result.error) {
     throw new Error(`Failed to ${label}: ${result.error.message}`);
   }

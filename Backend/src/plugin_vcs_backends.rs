@@ -57,8 +57,11 @@ fn plugin_open_config(plugin_id: &str) -> serde_json::Value {
 /// # Returns
 /// - `true` when plugin should be active.
 /// - `false` otherwise.
-fn is_plugin_enabled_in_settings(plugin_id: &str, default_enabled: bool) -> bool {
-    let cfg = AppConfig::load_or_default();
+fn is_plugin_enabled_in_settings(
+    cfg: &AppConfig,
+    plugin_id: &str,
+    default_enabled: bool,
+) -> bool {
     let enabled = cfg.is_plugin_enabled(plugin_id, default_enabled);
     trace!(
         "is_plugin_enabled_in_settings: plugin={}, default={}, result={}",
@@ -88,10 +91,6 @@ pub struct PluginBackendDescriptor {
 /// plugin store at startup, so backend discovery must use installed component
 /// metadata instead of treating config sources as runtime directories.
 ///
-/// Discovery also performs a best-effort sync before listing components. This
-/// keeps packaged backends visible even if startup sync ran before bundled
-/// resources were fully ready or if the installed store later needs repair.
-///
 /// # Returns
 /// - `Ok(Vec<PluginBackendDescriptor>)` containing discovered backend descriptors.
 /// - `Err(String)` if installed plugin components cannot be loaded.
@@ -114,19 +113,7 @@ pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
 
 fn discover_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
     let store = PluginBundleStore::new_default();
-    if let Err(err) = store.sync_built_in_plugins() {
-        warn!(
-            "list_plugin_vcs_backends: built-in sync failed before discovery: {}",
-            err
-        );
-    }
     let cfg = AppConfig::load_or_default();
-    if let Err(err) = crate::plugin_sources::sync_configured_plugins(&cfg) {
-        warn!(
-            "list_plugin_vcs_backends: configured plugin sync failed before discovery: {}",
-            err
-        );
-    }
     let plugins = store.list_current_components().map_err(|e| {
         error!("list_plugin_vcs_backends: failed to list components: {}", e);
         e
@@ -139,7 +126,7 @@ fn discover_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
     let mut map: BTreeMap<String, PluginBackendDescriptor> = BTreeMap::new();
 
     for p in plugins {
-        if !is_plugin_enabled_in_settings(&p.plugin_id, p.default_enabled) {
+        if !is_plugin_enabled_in_settings(&cfg, &p.plugin_id, p.default_enabled) {
             trace!(
                 "list_plugin_vcs_backends: plugin {} is disabled",
                 p.plugin_id

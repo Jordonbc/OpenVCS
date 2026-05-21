@@ -12,7 +12,6 @@ use serde::Deserialize;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::process::Command;
 
 const MODULE: &str = "plugin_sources";
 const USER_CONFIG_MANAGED_BY: &str = "user-config";
@@ -164,9 +163,9 @@ fn resolve_local_plugin_path(spec: &str, base_dir: &Path) -> Option<PathBuf> {
 /// - `Ok(PathBuf)` absolute tarball path.
 /// - `Err(String)` when `npm pack` fails.
 fn pack_plugin_source(source: &Path, workdir: &Path) -> Result<PathBuf, String> {
-    ensure_npm_available()?;
     let source_arg = source.to_string_lossy().to_string();
-    let output = Command::new(npm_executable())
+    let mut command = crate::process_utils::hidden_command(npm_executable());
+    let output = command
         .args(["pack", "--json", &source_arg])
         .current_dir(workdir)
         .output()
@@ -296,13 +295,13 @@ fn archive_entry_path_error(reason: &str, raw: &str) -> String {
 /// - `Ok(())` when dependency installation succeeds or is not needed.
 /// - `Err(String)` when npm fails.
 fn install_plugin_runtime_dependencies(prepared_dir: &Path) -> Result<(), String> {
-    ensure_npm_available()?;
     let package_json = prepared_dir.join("package.json");
     if !package_json.is_file() || !package_has_runtime_dependencies(&package_json)? {
         return Ok(());
     }
 
-    let output = Command::new(npm_executable())
+    let mut command = crate::process_utils::hidden_command(npm_executable());
+    let output = command
         .args([
             "install",
             "--omit=dev",
@@ -389,7 +388,8 @@ fn ensure_npm_available() -> Result<String, String> {
 /// - `Ok(String)` npm version reported by `npm --version`.
 /// - `Err(String)` when npm is unavailable or the output cannot be read.
 fn npm_version() -> Result<String, String> {
-    let output = Command::new(npm_executable())
+    let mut command = crate::process_utils::hidden_command(npm_executable());
+    let output = command
         .arg("--version")
         .output()
         .map_err(|e| format!("run {} --version: {e}", npm_executable()))?;

@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::core::models::{ConflictDetails, ConflictSide};
 use log::{debug, error, info, trace, warn};
@@ -242,6 +242,13 @@ pub async fn vcs_launch_merge_tool(state: State<'_, AppState>, path: String) -> 
 
         let mut cmd = Command::new(&tool_path);
         cmd.current_dir(&repo_root);
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            crate::process_utils::hide_window(&mut cmd);
+        }
 
         let replace_tokens = |raw: &str| {
             raw.replace("{path}", abs.to_string_lossy().as_ref())

@@ -171,14 +171,26 @@ pub fn open_output_log_window<R: Runtime>(window: Window<R>) -> Result<(), Strin
         return Ok(());
     }
 
-    WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         &app,
         "output-log",
         WebviewUrl::App("index.html?view=output-log".into()),
     )
     .title("Output Log")
     .inner_size(900.0, 600.0)
-    .resizable(true)
+    .resizable(true);
+
+    #[cfg(target_os = "windows")]
+    let builder = {
+        let mut builder = builder;
+        let cfg = app.state::<AppState>().config();
+        if let Some(args) = crate::workarounds::main_window_browser_args(&cfg.performance) {
+            builder = builder.additional_browser_args(&args);
+        }
+        builder
+    };
+
+    builder
     .build()
     .map_err(|e| e.to_string())?;
 

@@ -26,6 +26,7 @@ mod plugin_paths;
 mod plugin_runtime;
 mod plugin_sources;
 mod plugin_vcs_backends;
+mod process_utils;
 mod plugins;
 mod repo;
 mod repo_settings;
