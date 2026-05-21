@@ -19,8 +19,8 @@ fn diff_configs(old_cfg: &AppConfig, new_cfg: &AppConfig) -> Vec<String> {
     if old_cfg.general != new_cfg.general {
         changes.push("general".to_string());
     }
-    if old_cfg.git != new_cfg.git {
-        changes.push("git".to_string());
+    if old_cfg.vcs != new_cfg.vcs {
+        changes.push("vcs".to_string());
     }
     if old_cfg.credentials != new_cfg.credentials {
         changes.push("credentials".to_string());

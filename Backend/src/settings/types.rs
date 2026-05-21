@@ -22,7 +22,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub general: General,
     #[serde(default)]
-    pub git: Git,
+    pub vcs: Vcs,
     #[serde(default)]
     pub commit: Commit,
     #[serde(default)]
@@ -57,7 +57,7 @@ impl Default for AppConfig {
             schema_version: 1,
             plugin: Default::default(),
             general: Default::default(),
-            git: Default::default(),
+            vcs: Default::default(),
             commit: Default::default(),
             credentials: Default::default(),
             diff: Default::default(),
@@ -123,9 +123,9 @@ pub(crate) fn default_theme_pack() -> String {
     "default".to_string()
 }
 
-/// Settings that control Git backend behavior.
+/// Settings that control VCS backend behavior.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Git {
+pub struct Vcs {
     #[serde(default)]
     pub backend: String,
     /// Default branch name used when creating new repos or inferring defaults
@@ -155,11 +155,11 @@ pub struct Git {
     #[serde(default)]
     pub merge_commit_message_template: String,
 }
-impl Default for Git {
-    /// Returns default Git settings values.
+impl Default for Vcs {
+    /// Returns default VCS settings values.
     ///
     /// # Returns
-    /// - Default [`Git`].
+    /// - Default [`Vcs`].
     fn default() -> Self {
         Self {
             backend: String::new(),

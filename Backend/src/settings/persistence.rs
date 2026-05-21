@@ -109,13 +109,13 @@ impl AppConfig {
             self.general.default_backend = "git".into();
         }
 
-        // Git
-        self.git.backend = self.git.backend.trim().to_string();
-        if self.git.default_branch.trim().is_empty() {
-            self.git.default_branch = "main".into();
+        // Vcs
+        self.vcs.backend = self.vcs.backend.trim().to_string();
+        if self.vcs.default_branch.trim().is_empty() {
+            self.vcs.default_branch = "main".into();
         }
-        if self.git.ssh_path.trim().is_empty() && self.git.ssh_binary == GitSshBinary::Custom {
-            self.git.ssh_binary = GitSshBinary::Auto;
+        if self.vcs.ssh_path.trim().is_empty() && self.vcs.ssh_binary == GitSshBinary::Custom {
+            self.vcs.ssh_binary = GitSshBinary::Auto;
         }
 
         // Diff
