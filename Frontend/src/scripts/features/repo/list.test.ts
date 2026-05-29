@@ -258,4 +258,96 @@ describe('renderChangesList', () => {
     renderList();
     expect(fileList.classList.contains('commit-list')).toBe(false);
   });
+
+  it('renders combined diff when multiple diff selections exist', async () => {
+    const diffView = await import('./diffView');
+    const { renderList } = await import('./list');
+    const { prefs, state } = await import('../../state/state');
+    prefs.tab = 'changes';
+    state.files = [
+      { path: 'a.txt', status: 'M' },
+      { path: 'b.txt', status: 'A' },
+    ] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set(['a.txt', 'b.txt']);
+
+    renderList();
+
+    expect(vi.mocked(diffView.renderCombinedDiff)).toHaveBeenCalledWith(['a.txt', 'b.txt']);
+  });
+
+  it('reselects the current file when exactly one diff selection is active', async () => {
+    const diffView = await import('./diffView');
+    const { renderList } = await import('./list');
+    const { prefs, state } = await import('../../state/state');
+    prefs.tab = 'changes';
+    state.files = [
+      { path: 'a.txt', status: 'M' },
+      { path: 'b.txt', status: 'A' },
+    ] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set(['a.txt']);
+    state.currentFile = 'b.txt';
+
+    renderList();
+
+    expect(vi.mocked(diffView.selectFile)).toHaveBeenCalledWith(expect.objectContaining({ path: 'b.txt' }), 1);
+  });
+
+  it('falls back to the first file when no current file is selected', async () => {
+    const diffView = await import('./diffView');
+    const { renderList } = await import('./list');
+    const { prefs, state } = await import('../../state/state');
+    prefs.tab = 'changes';
+    state.files = [
+      { path: 'a.txt', status: 'M' },
+      { path: 'b.txt', status: 'A' },
+    ] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+
+    renderList();
+
+    expect(vi.mocked(diffView.selectFile)).toHaveBeenCalledWith(expect.objectContaining({ path: 'a.txt' }), 0);
+  });
+
+  it('routes row hover updates while drag selection is active', async () => {
+    const interactions = await import('./interactions');
+    const { renderList } = await import('./list');
+    const { prefs, state } = await import('../../state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'drag.txt', status: 'M' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    vi.mocked(interactions.isDragSelecting).mockReturnValue(true);
+
+    renderList();
+    const row = document.querySelector('li.row') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+
+    expect(vi.mocked(interactions.setDragCurrentIndex)).toHaveBeenCalledWith(0);
+    expect(vi.mocked(interactions.updateDragRange)).toHaveBeenCalled();
+  });
+
+  it('toggles file picks from the checkbox without bubbling to row click', async () => {
+    const diffView = await import('./diffView');
+    const selectionState = await import('./selectionState');
+    const { renderList } = await import('./list');
+    const { prefs, state } = await import('../../state/state');
+    const updateSelectAllSpy = vi.spyOn(selectionState, 'updateSelectAllState');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'pick.txt', status: 'M' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+
+    renderList();
+    const checkbox = document.querySelector('input.pick') as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('click', { bubbles: true }));
+
+    expect(vi.mocked(diffView.toggleFilePick)).toHaveBeenCalledWith('pick.txt', true);
+    expect(updateSelectAllSpy).toHaveBeenCalled();
+    expect(document.querySelector('li.row')?.classList.contains('picked')).toBe(true);
+  });
 });

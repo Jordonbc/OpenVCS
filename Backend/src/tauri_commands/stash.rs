@@ -10,6 +10,30 @@ use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};
 
+/// Returns the stash message that should be used for a new stash entry.
+fn stash_message_or_default(message: Option<String>) -> String {
+    message.unwrap_or_else(|| "WIP".to_string())
+}
+
+/// Returns whether untracked files should be included in the stash command.
+fn include_untracked_or_default(include_untracked: Option<bool>) -> bool {
+    include_untracked.unwrap_or(true)
+}
+
+/// Normalizes optional stash path filters into owned path buffers.
+fn stash_paths(paths: Option<Vec<String>>) -> Vec<PathBuf> {
+    paths
+        .unwrap_or_default()
+        .into_iter()
+        .map(PathBuf::from)
+        .collect()
+}
+
+/// Normalizes optional stash selectors to the backend's empty-string convention.
+fn stash_selector_or_default(selector: Option<String>) -> String {
+    selector.unwrap_or_default()
+}
+
 #[tauri::command]
 /// Lists stash entries for the current repository.
 ///
@@ -61,13 +85,9 @@ pub async fn vcs_stash_push(
     paths: Option<Vec<String>>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
-    let msg = message.unwrap_or_else(|| "WIP".to_string());
-    let iu = include_untracked.unwrap_or(true);
-    let pathbufs: Vec<PathBuf> = paths
-        .unwrap_or_default()
-        .into_iter()
-        .map(PathBuf::from)
-        .collect();
+    let msg = stash_message_or_default(message);
+    let iu = include_untracked_or_default(include_untracked);
+    let pathbufs = stash_paths(paths);
     run_repo_task("vcs_stash_push", repo, move |repo| {
         repo.inner()
             .stash_push(&msg, iu, &pathbufs)
@@ -91,7 +111,7 @@ pub async fn vcs_stash_apply(
     selector: Option<String>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
-    let selector = selector.unwrap_or_default();
+    let selector = stash_selector_or_default(selector);
     run_repo_task("vcs_stash_apply", repo, move |repo| {
         repo.inner()
             .stash_apply(selector.as_str())
@@ -115,7 +135,7 @@ pub async fn vcs_stash_pop(
     selector: Option<String>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
-    let selector = selector.unwrap_or_default();
+    let selector = stash_selector_or_default(selector);
     run_repo_task("vcs_stash_pop", repo, move |repo| {
         repo.inner()
             .stash_pop(selector.as_str())
@@ -139,7 +159,7 @@ pub async fn vcs_stash_drop(
     selector: Option<String>,
 ) -> Result<(), String> {
     let repo = current_repo_or_err(&state)?;
-    let selector = selector.unwrap_or_default();
+    let selector = stash_selector_or_default(selector);
     run_repo_task("vcs_stash_drop", repo, move |repo| {
         info!("vcs_stash_drop: selector='{}'", selector);
         match repo.inner().stash_drop(selector.as_str()) {
@@ -171,11 +191,16 @@ pub async fn vcs_stash_show(
     selector: Option<String>,
 ) -> Result<Vec<String>, String> {
     let repo = current_repo_or_err(&state)?;
-    let selector = selector.unwrap_or_default();
+    let selector = stash_selector_or_default(selector);
     run_repo_task("vcs_stash_show", repo, move |repo| {
         repo.inner()
             .stash_show(selector.as_str())
             .map_err(|e| e.to_string())
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/stash.rs");
 }

@@ -348,12 +348,35 @@ For local Flatpak builds, clone `Open-VCS/flathub` as a sibling directory and ru
 | Command                                                       | Runs                                                 |
 | ------------------------------------------------------------- | ---------------------------------------------------- |
 | just test                                                     | Full project test/check flow                         |
+| just coverage                                                 | Backend Rust coverage gate plus frontend Vitest coverage |
+| just coverage-backend                                         | Rust workspace coverage with `cargo llvm-cov` and a 95% line gate |
+| just coverage-frontend                                        | Frontend Vitest coverage with existing 95% thresholds |
 | just fix                                                      | Formatting, Clippy fixes, and frontend type checking |
 | cargo fmt --all                                             | Rust formatting                                      |
 | cargo fmt --all -- --check                                  | CI formatting check                                  |
 | cargo clippy --all-targets --all-features -- -D warnings    | CI lint check                                        |
 | npm --prefix Frontend exec tsc -- -p tsconfig.json --noEmit | Frontend type checking                               |
 | npm --prefix Frontend test                                  | Frontend tests                                       |
+
+### Coverage tooling
+
+Backend coverage uses [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov), which wraps Rust's source-based coverage instrumentation from the Rust compiler docs.
+
+Install the tool once:
+
+```bash
+cargo install cargo-llvm-cov
+```
+
+Then run coverage from the repository root:
+
+```bash
+just coverage-backend
+just coverage-frontend
+just coverage
+```
+
+`just coverage-backend` writes an LCOV artifact to `target/llvm-cov-backend.info` and fails if backend line coverage drops below 95%. Frontend coverage continues to use the Vitest thresholds configured in `Frontend/vitest.config.ts`.
 
 ### just test includes
 

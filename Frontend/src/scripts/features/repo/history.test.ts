@@ -2,6 +2,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../../lib/menu', () => ({ buildCtxMenu: vi.fn() }))
+vi.mock('../../lib/confirm', () => ({ confirmBool: vi.fn(async () => true) }))
+vi.mock('../../lib/notify', () => ({ notify: vi.fn() }))
+vi.mock('../../plugins', () => ({
+  getPluginContextMenuItems: vi.fn(() => []),
+  runPluginAction: vi.fn(),
+}))
+vi.mock('./hydrate', () => ({
+  hydrateStatus: vi.fn().mockResolvedValue(undefined),
+  hydrateCommits: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock('./commit', () => ({ updateCommitButton: vi.fn() }))
+vi.mock('../cherryPick', () => ({ openCherryPick: vi.fn() }))
+
 /** Provides a minimal `matchMedia` test shim used by history imports. */
 function createMatchMediaMock(query: string) {
   return { matches: false, media: query, addListener: () => {}, removeListener: () => {} }
@@ -354,6 +368,123 @@ describe('renderHistoryList', () => {
     const listHtml = document.querySelector('#file-list')?.innerHTML || ''
     expect(listHtml).toContain('incoming')
     expect(listHtml).toContain('origin/main')
+  })
+
+  it('opens commit actions and runs copy, plugin, cherry-pick, revert, and undo actions', async () => {
+    installTauriMock()
+    ;(navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) }
+
+    const { renderHistoryList } = await loadHistoryModule()
+    const { state, prefs } = await loadStateModule()
+    const { buildCtxMenu } = await import('../../lib/menu')
+    const { getPluginContextMenuItems, runPluginAction } = await import('../../plugins')
+    const { notify } = await import('../../lib/notify')
+    const { openCherryPick } = await import('../cherryPick')
+    const { hydrateStatus, hydrateCommits } = await import('./hydrate')
+
+    prefs.tab = 'history'
+    vi.mocked(getPluginContextMenuItems).mockReturnValue([{ label: 'Plugin inspect', action: 'plugin.inspect' }])
+    ;(window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') return []
+      return undefined
+    })
+
+    state.commits = [
+      { id: 'abcdef123456', msg: 'Commit 1', meta: new Date().toISOString(), author: 'A', remoteRef: '@{upstream}' } as any,
+    ]
+    state.ahead = 1
+    state.behind = 0
+    state.aheadIds = new Set<string>(['abcdef123456'])
+
+    renderHistoryList('')
+    const row = document.querySelector('#file-list li.row.commit') as HTMLElement
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 }))
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || []
+    expect(items.map((item) => item.label)).toContain('Copy hash')
+    expect(items.map((item) => item.label)).toContain('Plugin inspect')
+    expect(items.map((item) => item.label)).toContain('Cherry-pick to branch…')
+    expect(items.map((item) => item.label)).toContain('Revert (reverse) commit…')
+    expect(items.map((item) => item.label)).toContain('Undo to this commit')
+
+    await items.find((item) => item.label === 'Copy hash')?.action?.()
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('abcdef123456')
+    expect(notify).toHaveBeenCalledWith('Hash copied')
+
+    await items.find((item) => item.label === 'Plugin inspect')?.action?.()
+    expect(runPluginAction).toHaveBeenCalledWith('plugin.inspect', {
+      commit: state.commits[0],
+    })
+
+    await items.find((item) => item.label === 'Cherry-pick to branch…')?.action?.()
+    expect(openCherryPick).toHaveBeenCalledWith(state.commits[0])
+
+    await items.find((item) => item.label === 'Revert (reverse) commit…')?.action?.()
+    expect((window as any).__TAURI__.core.invoke).toHaveBeenCalledWith('vcs_revert_commit', {
+      id: 'abcdef123456',
+    })
+    expect(hydrateStatus).toHaveBeenCalled()
+    expect(hydrateCommits).toHaveBeenCalled()
+
+    await items.find((item) => item.label === 'Undo to this commit')?.action?.()
+    expect((window as any).__TAURI__.core.invoke).toHaveBeenCalledWith('vcs_undo_to_commit', {
+      id: 'abcdef123456',
+    })
+  })
+})
+
+describe('selectHistory', () => {
+  it('renders file-scoped diffs and supports file-level context actions', async () => {
+    installTauriMock()
+    ;(navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) }
+
+    const { selectHistory } = await loadHistoryModule()
+    const { buildCtxMenu } = await import('../../lib/menu')
+    const { notify } = await import('../../lib/notify')
+    const { hydrateStatus } = await import('./hydrate')
+    ;(window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/src/a.ts b/src/a.ts',
+          '--- a/src/a.ts',
+          '+++ b/src/a.ts',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+        ]
+      }
+      return args?.patch ? undefined : []
+    })
+
+    await selectHistory({ id: 'abc1234', msg: 'Refactor', author: 'Dev' } as any, 0)
+
+    expect(document.querySelector('.commit-files')).not.toBeNull()
+    const row = document.querySelector('.commit-files .row[data-idx="0"]') as HTMLElement
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 6 }))
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || []
+    await items.find((item) => item.label === 'Copy path')?.action?.()
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('src/a.ts')
+    expect(notify).toHaveBeenCalledWith('Path copied')
+
+    await items.find((item) => item.label === 'Revert this file')?.action?.()
+    expect((window as any).__TAURI__.core.invoke).toHaveBeenCalledWith('vcs_discard_patch', {
+      patch: expect.stringContaining('diff --git a/src/a.ts b/src/a.ts'),
+    })
+    expect(hydrateStatus).toHaveBeenCalled()
+  })
+
+  it('shows a failed diff message when commit diff loading throws', async () => {
+    installTauriMock()
+    ;(window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') throw new Error('boom')
+      return []
+    })
+
+    const { selectHistory } = await loadHistoryModule()
+    await selectHistory({ id: 'abc1234', msg: 'Refactor', author: 'Dev' } as any, 0)
+
+    expect(document.getElementById('diff')?.textContent).toContain('Failed to load diff')
   })
 })
 

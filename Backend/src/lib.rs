@@ -38,12 +38,43 @@ mod utilities;
 mod validate;
 mod workarounds;
 
+/// Builds the development `.env` path relative to the backend crate manifest.
+fn local_dotenv_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.env")
+}
+
+/// Resolves the preferred backend from a configured default and available backend ids.
+fn resolve_preferred_backend_id(
+    configured_default: &str,
+    available_backend_ids: &[BackendId],
+) -> Option<BackendId> {
+    let desired = configured_default.trim();
+    if !desired.is_empty() {
+        let desired_backend = BackendId::from(desired.to_string());
+        if available_backend_ids
+            .iter()
+            .any(|backend| backend.as_ref() == desired_backend.as_ref())
+        {
+            return Some(desired_backend);
+        }
+    }
+
+    let mut backends = available_backend_ids.to_vec();
+    backends.sort_by(|left, right| left.as_ref().cmp(right.as_ref()));
+    backends.into_iter().next()
+}
+
+/// Returns the first recent repository path that still exists on disk.
+fn first_existing_recent_repo(paths: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
+    paths.iter().find(|path| path.exists()).cloned()
+}
+
 /// Loads `Client/.env` for local development without overwriting existing env vars.
 ///
 /// Missing .env file is silently ignored. Malformed or unreadable .env files
 /// are reported with context for debugging before structured logging is ready.
 fn load_local_dotenv() {
-    let dotenv_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.env");
+    let dotenv_path = local_dotenv_path();
 
     match dotenvy::from_path(&dotenv_path) {
         Ok(_) => {}
@@ -67,20 +98,23 @@ fn load_local_dotenv() {
 /// - `Some(BackendId)` when a backend is available.
 /// - `None` otherwise.
 fn preferred_vcs_backend_id(_cfg: &settings::AppConfig) -> Option<BackendId> {
-    let desired = _cfg.general.default_backend.trim().to_string();
-    if !desired.is_empty() {
-        let desired = BackendId::from(desired);
-        if crate::plugin_vcs_backends::has_plugin_vcs_backend(&desired) {
-            return Some(desired);
-        }
-    }
-
-    crate::plugin_vcs_backends::list_plugin_vcs_backends()
+    let available_backend_ids = crate::plugin_vcs_backends::list_plugin_vcs_backends()
         .ok()
-        .and_then(|mut backends| {
-            backends.sort_by(|a, b| a.backend_id.as_ref().cmp(b.backend_id.as_ref()));
-            backends.into_iter().next().map(|b| b.backend_id)
+        .map(|backends| {
+            backends
+                .into_iter()
+                .map(|backend| backend.backend_id)
+                .collect::<Vec<_>>()
         })
+        .unwrap_or_default();
+
+    let resolved =
+        resolve_preferred_backend_id(&_cfg.general.default_backend, &available_backend_ids)?;
+    if crate::plugin_vcs_backends::has_plugin_vcs_backend(&resolved) {
+        Some(resolved)
+    } else {
+        None
+    }
 }
 
 /// Attempt to reopen the most recent repository at startup if the
@@ -102,7 +136,7 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
     }
 
     let recents = state.recents();
-    if let Some(path) = recents.into_iter().find(|p| p.exists()) {
+    if let Some(path) = first_existing_recent_repo(&recents) {
         let Some(backend) = preferred_vcs_backend_id(&app_config) else {
             log::warn!("startup reopen: no VCS backend available");
             return;
@@ -451,4 +485,9 @@ fn build_invoke_handler<R: tauri::Runtime>()
         tauri_commands::exit_app,
         tauri_commands::check_for_updates,
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/lib.rs");
 }

@@ -15,3 +15,8 @@ pub fn report_frontend_error(payload: FrontendErrorReport) -> Result<(), String>
     crate::monitoring::capture_frontend_error(payload);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/monitoring.rs");
+}

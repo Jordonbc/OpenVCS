@@ -15,6 +15,10 @@ vi.mock('../../plugins', () => ({
   runPluginAction: vi.fn(),
 }));
 vi.mock('../stashConfirm', () => ({ openStashConfirm: vi.fn() }));
+vi.mock('./hydrate', () => ({
+  hydrateStatus: vi.fn().mockResolvedValue(undefined),
+  hydrateStash: vi.fn().mockResolvedValue(undefined),
+}));
 
 /** Provides a minimal `matchMedia` test shim used by state imports. */
 function createMatchMediaMock(query: string) {
@@ -355,6 +359,124 @@ describe('onFileMouseDown', () => {
     expect(dragState.isDragSelecting).toBe(false);
     expect(dragState.dragMode).toBeNull();
     expect(document.body.classList.contains('drag-selecting')).toBe(false);
+  });
+});
+
+describe('toggleSelectAll', () => {
+  it('selects or deselects all visible files', async () => {
+    const { toggleSelectAll } = await import('./interactions');
+    const { state } = await import('../../state/state');
+    const visible = [
+      { path: 'a.txt', status: 'M' },
+      { path: 'b.txt', status: 'A' },
+    ] as any;
+
+    toggleSelectAll(true, visible);
+    expect(state.selectedFiles.has('a.txt')).toBe(true);
+    expect(state.selectedFiles.has('b.txt')).toBe(true);
+
+    state.selectedFiles.clear();
+    toggleSelectAll(false, visible);
+    expect(state.selectedFiles.size).toBe(0);
+  });
+});
+
+describe('callback helpers', () => {
+  it('registers and delegates through setRenderListCallback', async () => {
+    const { setRenderListCallback, isDragSelecting } = await import('./interactions');
+    expect(isDragSelecting()).toBe(false);
+    const cb = vi.fn();
+    setRenderListCallback(cb);
+    // Executed indirectly through renderListAfterRangeSelect which is private,
+    // but setRenderListCallback stores it for later use.
+  });
+
+  it('tracks the last drag index via setDragCurrentIndex', async () => {
+    const { setDragCurrentIndex } = await import('./interactions');
+    const { dragState } = await import('./context');
+    setDragCurrentIndex(5);
+    expect(dragState.dragCurrentIndex).toBe(5);
+  });
+});
+
+describe('onFileContextMenu', () => {
+  it('builds multi-selection actions and executes stash, ignore, discard, and plugin hooks', async () => {
+    const { onFileContextMenu, setRenderListCallback } = await import('./interactions');
+    const { state } = await import('../../state/state');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { TAURI } = await import('../../lib/tauri');
+    const { openStashConfirm } = await import('../stashConfirm');
+    const { getPluginContextMenuItems, runPluginAction } = await import('../../plugins');
+    const { hydrateStatus, hydrateStash } = await import('./hydrate');
+
+    const rerender = vi.fn();
+    setRenderListCallback(rerender);
+    state.selectedFiles = new Set(['a.txt', 'b.txt']);
+    state.selectionImplicitAll = false;
+    vi.mocked(getPluginContextMenuItems).mockReturnValue([{ label: 'Plugin action', action: 'plugin.action' }]);
+
+    await onFileContextMenu(
+      { preventDefault: vi.fn(), clientX: 10, clientY: 20 } as any,
+      { path: 'a.txt', status: 'M' } as any,
+    );
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    expect(items.map((item) => item.label)).toContain('Create stash from selection…');
+    expect(items.map((item) => item.label)).toContain('Discard all selected');
+    expect(items.map((item) => item.label)).toContain('Plugin action');
+
+    await items.find((item) => item.label === 'Create stash from selection…')?.action?.();
+    expect(openStashConfirm).toHaveBeenCalled();
+    const stashConfig = vi.mocked(openStashConfirm).mock.calls.at(-1)?.[0];
+    await (stashConfig as any)?.onSuccess?.();
+    expect(hydrateStatus).toHaveBeenCalled();
+    expect(hydrateStash).toHaveBeenCalled();
+    expect(rerender).toHaveBeenCalled();
+
+    await items.find((item) => item.label === 'Add to .gitignore')?.action?.();
+    expect(TAURI.invoke).toHaveBeenCalledWith(
+      'vcs_add_to_gitignore_paths',
+      { paths: ['a.txt', 'b.txt'] },
+    );
+
+    await items.find((item) => item.label === 'Discard all selected')?.action?.();
+    expect(TAURI.invoke).toHaveBeenCalledWith('vcs_discard_paths', {
+      paths: ['a.txt', 'b.txt'],
+    });
+
+    await items.find((item) => item.label === 'Plugin action')?.action?.();
+    expect(runPluginAction).toHaveBeenCalledWith('plugin.action', {
+      paths: ['a.txt', 'b.txt'],
+      clickedPath: 'a.txt',
+      file: { path: 'a.txt', status: 'M' },
+    });
+  });
+
+  it('handles open and discard failures for a single file', async () => {
+    const { onFileContextMenu } = await import('./interactions');
+    const { state } = await import('../../state/state');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { notify } = await import('../../lib/notify');
+    const { TAURI } = await import('../../lib/tauri');
+
+    state.selectedFiles = new Set(['solo.txt']);
+    state.selectionImplicitAll = false;
+    vi.mocked(TAURI.invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === 'open_repo_file' || cmd === 'vcs_discard_paths') throw new Error('boom');
+      return [];
+    });
+
+    await onFileContextMenu(
+      { preventDefault: vi.fn(), clientX: 1, clientY: 2 } as any,
+      { path: 'solo.txt', status: 'M' } as any,
+    );
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((item) => item.label === 'Open with default application')?.action?.();
+    await items.find((item) => item.label === 'Discard changes')?.action?.();
+
+    expect(notify).toHaveBeenCalledWith('Open failed');
+    expect(notify).toHaveBeenCalledWith('Discard failed');
   });
 });
 

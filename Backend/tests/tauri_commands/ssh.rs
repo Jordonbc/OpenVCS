@@ -9,7 +9,16 @@ use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
 use tempfile::tempdir;
+
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    ENV_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("env lock")
+}
 
 struct EnvGuard {
     home: Option<OsString>,
@@ -58,6 +67,7 @@ fn make_executable(path: &Path) {
 
 #[test]
 fn resolves_known_hosts_and_ssh_dir_from_home() {
+    let _lock = env_lock();
     let home = tempdir().expect("tempdir");
     set_test_home_dir(home.path().to_path_buf());
 
@@ -71,6 +81,7 @@ fn resolves_known_hosts_and_ssh_dir_from_home() {
 
 #[test]
 fn detects_executable_files_and_resolves_from_path() {
+    let _lock = env_lock();
     let _guard = EnvGuard::capture();
     let dir = tempdir().expect("tempdir");
     let exe = dir.path().join("tool");
@@ -84,18 +95,23 @@ fn detects_executable_files_and_resolves_from_path() {
 
 #[test]
 fn resolves_ssh_askpass_from_environment() {
+    let _lock = env_lock();
     let _guard = EnvGuard::capture();
     let dir = tempdir().expect("tempdir");
     let askpass = dir.path().join("askpass");
     fs::write(&askpass, "#!/bin/sh\nexit 0\n").expect("write askpass");
     make_executable(&askpass);
 
-    unsafe { env::set_var("SSH_ASKPASS", &askpass) };
+    unsafe {
+        env::set_var("PATH", dir.path());
+        env::set_var("SSH_ASKPASS", "askpass");
+    };
     assert_eq!(resolve_ssh_askpass(), Some(askpass));
 }
 
 #[test]
 fn lists_private_key_candidates_from_ssh_dir() {
+    let _lock = env_lock();
     let _guard = EnvGuard::capture();
     let ssh_dir = tempdir().expect("tempdir");
 

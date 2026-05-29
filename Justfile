@@ -24,6 +24,16 @@ test:
    cd Frontend && npm exec tsc -- -p tsconfig.json --noEmit
    cd Frontend && npx vitest run
 
+coverage-frontend:
+   npm --prefix Frontend run coverage
+
+coverage-backend:
+   cargo llvm-cov --workspace --lcov --output-path target/llvm-cov-backend.info --fail-under-lines 95
+
+coverage:
+   just coverage-backend
+   just coverage-frontend
+
 tauri-build channel="stable":
   FRONTEND_SKIP_BUILD=1 NO_STRIP=true OPENVCS_UPDATE_CHANNEL={{channel}} node scripts/tauri-build.js
 

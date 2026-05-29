@@ -3,6 +3,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileStatus } from '../../types';
 
+vi.mock('../../lib/menu', () => ({ buildCtxMenu: vi.fn() }));
+vi.mock('../../lib/confirm', () => ({ confirmBool: vi.fn(async () => true) }));
+vi.mock('../../lib/notify', () => ({ notify: vi.fn() }));
+vi.mock('./hydrate', () => ({ hydrateStatus: vi.fn().mockResolvedValue(undefined) }));
+
 /** Provides a minimal `matchMedia` test shim used by state imports. */
 function createMatchMediaMock(query: string) {
   return { matches: false, media: query, addListener: () => {}, removeListener: () => {} };
@@ -350,6 +355,60 @@ describe('selectFile contextmenu', () => {
       hunkEl.dispatchEvent(ctxEvent);
     }
     // No crash test
+  });
+
+  it('discards the current hunk through the context menu action', async () => {
+    const { selectFile } = await import('./diffView');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { hydrateStatus } = await import('./hydrate');
+
+    await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
+
+    const diffEl = document.getElementById('diff')!;
+    const hunkEl = diffEl.querySelector('.hunk') as HTMLElement;
+    hunkEl.setAttribute('data-hunk-index', '0');
+    hunkEl.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20, cancelable: true }));
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((item) => item.label === 'Discard hunk')?.action?.();
+
+    expect((window as any).__TAURI__.core.invoke).toHaveBeenCalledWith('vcs_discard_patch', {
+      patch: expect.stringContaining('diff --git a/a.txt b/a.txt'),
+    });
+    expect(hydrateStatus).toHaveBeenCalled();
+  });
+
+  it('discards selected hunks across all files', async () => {
+    const { selectFile } = await import('./diffView');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { hydrateStatus } = await import('./hydrate');
+    const { state } = await import('../../state/state');
+
+    state.selectedHunksByFile = { 'a.txt': [0], 'b.txt': [0] } as any;
+    (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string, args?: Record<string, string>) => {
+      if (cmd === 'vcs_diff_file' && args?.path === 'b.txt') {
+        return ['diff --git a/b.txt b/b.txt', '@@ -1 +1 @@', '-before', '+after'];
+      }
+      if (cmd === 'vcs_diff_file') {
+        return ['diff --git a/a.txt b/a.txt', '@@ -1 +1 @@', '-old', '+new'];
+      }
+      return [];
+    });
+
+    await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
+
+    const diffEl = document.getElementById('diff')!;
+    const hunkEl = diffEl.querySelector('.hunk') as HTMLElement;
+    hunkEl.setAttribute('data-hunk-index', '0');
+    hunkEl.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20, cancelable: true }));
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((item) => item.label === 'Discard selected hunks (all files)')?.action?.();
+
+    expect((window as any).__TAURI__.core.invoke).toHaveBeenCalledWith('vcs_discard_patch', {
+      patch: expect.stringContaining('diff --git a/b.txt b/b.txt'),
+    });
+    expect(hydrateStatus).toHaveBeenCalled();
   });
 });
 

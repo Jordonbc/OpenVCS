@@ -16,6 +16,51 @@ pub struct UpdateStatus {
     pub date: Option<String>,
 }
 
+/// Builds an empty updater response when no update is available.
+fn no_update_status() -> UpdateStatus {
+    UpdateStatus {
+        available: false,
+        version: None,
+        current_version: None,
+        body: None,
+        date: None,
+    }
+}
+
+/// Builds a serializable updater payload from resolved update fields.
+fn available_update_status(
+    version: String,
+    current_version: String,
+    body: Option<String>,
+    date: Option<String>,
+) -> UpdateStatus {
+    UpdateStatus {
+        available: true,
+        version: Some(version),
+        current_version: Some(current_version),
+        body,
+        date,
+    }
+}
+
+/// Calculates integer download progress percentages while guarding zero totals.
+fn download_progress_percent(received: u64, total: u64) -> u32 {
+    if total > 0 {
+        (received as f64 / total as f64 * 100.0) as u32
+    } else {
+        0
+    }
+}
+
+/// Builds the updater progress payload emitted to the frontend.
+fn progress_payload(received: u64, total: u64) -> serde_json::Value {
+    serde_json::json!({
+        "kind": "progress",
+        "received": received,
+        "total": total,
+    })
+}
+
 #[tauri::command]
 /// Checks for available updates and returns detailed status.
 ///
@@ -34,26 +79,19 @@ pub async fn get_update_status<R: Runtime>(window: Window<R>) -> Result<UpdateSt
     match updater.check().await {
         Ok(Some(update)) => {
             let date_str = update.date.map(|d| d.to_string());
-            let status = UpdateStatus {
-                available: true,
-                version: Some(update.version.clone()),
-                current_version: Some(update.current_version.clone()),
-                body: update.body.clone(),
-                date: date_str,
-            };
+            let status = available_update_status(
+                update.version.clone(),
+                update.current_version.clone(),
+                update.body.clone(),
+                date_str,
+            );
             debug!(
                 "get_update_status: update available: {} -> {}",
                 update.current_version, update.version
             );
             Ok(status)
         }
-        Ok(None) => Ok(UpdateStatus {
-            available: false,
-            version: None,
-            current_version: None,
-            body: None,
-            date: None,
-        }),
+        Ok(None) => Ok(no_update_status()),
         Err(e) => {
             error!("get_update_status: check failed: {}", e);
             Err(e.to_string())
@@ -107,20 +145,12 @@ pub async fn updater_install_now<R: Runtime>(window: Window<R>) -> Result<(), St
                 .download_and_install(
                     |received, total| {
                         let total_val = total.unwrap_or(0);
-                        let percent = if total_val > 0 {
-                            (received as f64 / total_val as f64 * 100.0) as u32
-                        } else {
-                            0
-                        };
+                        let percent = download_progress_percent(received as u64, total_val);
                         trace!(
                             "updater_install_now: download progress {}/{} bytes ({}%)",
                             received, total_val, percent
                         );
-                        let payload = serde_json::json!({
-                            "kind": "progress",
-                            "received": received,
-                            "total": total_val
-                        });
+                        let payload = progress_payload(received as u64, total_val);
                         if let Err(e) = app2.emit("update:progress", payload) {
                             log::warn!("updater_install_now: failed to emit progress: {e}");
                         }
@@ -161,4 +191,9 @@ pub async fn updater_install_now<R: Runtime>(window: Window<R>) -> Result<(), St
             Ok(())
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/updater.rs");
 }

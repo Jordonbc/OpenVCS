@@ -20,6 +20,43 @@ use super::progress_bridge;
 
 const WIKI_URL: &str = "https://github.com/jordonbc/OpenVCS/wiki";
 
+/// Resolves the title shown by the directory picker for a given browse purpose.
+fn browse_directory_title(purpose: Option<&str>) -> &'static str {
+    match purpose {
+        Some("clone_dest") => "Choose destination folder",
+        Some("add_repo") => "Select an existing repository folder",
+        _ => "Select a folder",
+    }
+}
+
+/// Resolves the preferred default backend from configured and available backend ids.
+fn resolve_default_backend_id(
+    configured_default: &str,
+    available_backend_ids: &[BackendId],
+) -> Option<BackendId> {
+    let desired = configured_default.trim();
+    if !desired.is_empty() {
+        let desired_backend = BackendId::from(desired.to_string());
+        if available_backend_ids
+            .iter()
+            .any(|backend| backend.as_ref() == desired_backend.as_ref())
+        {
+            return Some(desired_backend);
+        }
+    }
+
+    let mut backends = available_backend_ids.to_vec();
+    backends.sort_by(|left, right| left.as_ref().cmp(right.as_ref()));
+    backends.into_iter().next()
+}
+
+/// Extracts the display name used for a recent repository entry.
+fn recent_repo_name(path: &Path) -> Option<String> {
+    path.file_name()
+        .and_then(|segment| segment.to_str())
+        .map(|segment| segment.to_string())
+}
+
 #[derive(serde::Serialize)]
 /// Event payload emitted after selecting/opening a repository.
 struct RepoSelectedPayload {
@@ -62,11 +99,7 @@ pub async fn browse_directory<R: Runtime>(
     window: Window<R>,
     purpose: Option<String>,
 ) -> Option<String> {
-    let title = match purpose.as_deref() {
-        Some("clone_dest") => "Choose destination folder",
-        Some("add_repo") => "Select an existing repository folder",
-        _ => "Select a folder",
-    };
+    let title = browse_directory_title(purpose.as_deref());
     utilities::browse_directory_async(window.app_handle().clone(), title).await
 }
 
@@ -124,19 +157,11 @@ pub async fn add_repo<R: Runtime>(
 fn default_backend_id(state: &AppState) -> Option<BackendId> {
     let mut backends = crate::plugin_vcs_backends::list_plugin_vcs_backends().ok()?;
     backends.sort_by(|a, b| a.backend_id.as_ref().cmp(b.backend_id.as_ref()));
-
-    let desired = state.config().general.default_backend.trim().to_string();
-    if !desired.is_empty() {
-        let desired = BackendId::from(desired);
-        if backends
-            .iter()
-            .any(|backend| backend.backend_id.as_ref() == desired.as_ref())
-        {
-            return Some(desired);
-        }
-    }
-
-    backends.into_iter().next().map(|b| b.backend_id)
+    let available = backends
+        .into_iter()
+        .map(|backend| backend.backend_id)
+        .collect::<Vec<_>>();
+    resolve_default_backend_id(&state.config().general.default_backend, &available)
 }
 
 /// Internal helper that opens a repository and publishes `repo:selected`.
@@ -343,10 +368,7 @@ pub fn list_recent_repos(state: State<'_, AppState>) -> Vec<RecentRepoDto> {
         .recents()
         .into_iter()
         .map(|p| {
-            let name = p
-                .file_name()
-                .and_then(|os| os.to_str())
-                .map(|s| s.to_string());
+            let name = recent_repo_name(&p);
             RecentRepoDto {
                 path: p.to_string_lossy().to_string(),
                 name,

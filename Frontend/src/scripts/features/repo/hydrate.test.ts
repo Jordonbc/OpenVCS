@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('./list', () => ({ renderList: vi.fn() }));
+vi.mock('../conflicts', () => ({ autoOpenFirstConflict: vi.fn() }));
+
 /** Provides a minimal `matchMedia` test shim used by state imports. */
 function createMatchMediaMock(query: string) {
   return { matches: false, media: query, addListener: () => {}, removeListener: () => {} };
@@ -32,6 +35,7 @@ function installTauriMock(invoke: (cmd: string) => Promise<unknown>) {
 
 beforeEach(() => {
   vi.resetModules();
+  vi.resetAllMocks();
   mountRepoDom();
   (globalThis as any).matchMedia = createMatchMediaMock;
   (globalThis as any).requestAnimationFrame = (cb: FrameRequestCallback) => window.setTimeout(cb, 0);
@@ -113,6 +117,59 @@ describe('hydrateStatus selection reconciliation', () => {
     expect(state.selectedHunksByFile).toEqual({});
     expect(state.selectedLinesByFile).toEqual({});
     expect(state.diffSelectedFiles.size).toBe(0);
+  });
+
+  it('selects all current paths when defaultSelectAll is enabled', async () => {
+    installTauriMock(async (cmd) => {
+      if (cmd === 'vcs_status') {
+        return { files: [{ path: 'a.txt', status: 'M' }, { path: 'b.txt', status: 'A' }] };
+      }
+      if (cmd === 'vcs_merge_context') return { in_progress: false };
+      return [];
+    });
+
+    const { hydrateStatus } = await import('./hydrate');
+    const { state } = await import('../../state/state');
+    state.defaultSelectAll = true;
+    state.selectedFiles = new Set();
+
+    await hydrateStatus();
+
+    expect(state.selectionImplicitAll).toBe(true);
+    expect(Array.from(state.selectedFiles).sort()).toEqual(['a.txt', 'b.txt']);
+  });
+
+  it('skips rerendering when the status signature is unchanged', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_status') return { files: [{ path: 'same.txt', status: 'M' }], ahead: 1, behind: 0 };
+      if (cmd === 'vcs_merge_context') return { in_progress: false };
+      return [];
+    });
+    installTauriMock(invoke);
+
+    const { hydrateStatus } = await import('./hydrate');
+    const list = await import('./list');
+
+    await hydrateStatus();
+    await hydrateStatus();
+
+    expect(vi.mocked(list.renderList)).toHaveBeenCalledTimes(1);
+  });
+
+  it('tolerates merge-context failures by clearing merge flags', async () => {
+    installTauriMock(async (cmd) => {
+      if (cmd === 'vcs_status') return { files: [{ path: 'keep.txt', status: 'M' }] };
+      if (cmd === 'vcs_merge_context') throw new Error('merge context failed');
+      return [];
+    });
+
+    const { hydrateStatus } = await import('./hydrate');
+    const { state } = await import('../../state/state');
+
+    await hydrateStatus();
+
+    expect(state.mergeInProgress).toBe(false);
+    expect(Array.from(state.seenConflicts)).toEqual([]);
   });
 });
 
@@ -235,6 +292,31 @@ describe('hydrateCommits', () => {
     const { state } = await import('../../state/state');
     expect(state.commits).toEqual([]);
   });
+
+  it('falls back to origin branch range and populates aheadIds', async () => {
+    const invoke = vi.fn(async (cmd: string, args?: any) => {
+      if (cmd === 'vcs_log' && args?.limit === 500) return [{ id: 'base', message: 'local' }];
+      if (cmd === 'vcs_log' && args?.rev === 'HEAD..@{upstream}') throw new Error('no upstream');
+      if (cmd === 'vcs_log' && args?.rev === 'HEAD..origin/main') return [{ id: 'incoming', message: 'remote' }];
+      if (cmd === 'vcs_log' && args?.rev === '@{upstream}..HEAD') return [{ id: 'ahead-1' }, { id: 'ahead-2' }];
+      return [];
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { hydrateCommits } = await import('./hydrate');
+    const list = await import('./list');
+    const { state, prefs } = await import('../../state/state');
+    (state as any).behind = 2;
+    (state as any).ahead = 2;
+    state.branch = 'main';
+    prefs.tab = 'history';
+
+    await hydrateCommits();
+
+    expect(state.commits.map((entry: any) => entry.id)).toEqual(['incoming', 'base']);
+    expect(Array.from((state as any).aheadIds).sort()).toEqual(['ahead-1', 'ahead-2']);
+    expect(vi.mocked(list.renderList)).toHaveBeenCalled();
+  });
 });
 
 describe('hydrateStash', () => {
@@ -261,6 +343,23 @@ describe('hydrateStash', () => {
     const { state } = await import('../../state/state');
     expect((state as any).stash).toEqual([]);
   });
+
+  it('rerenders the list when the stash tab is active', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_stash_list') return [{ id: 's1', message: 'WIP' }];
+      return [];
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { hydrateStash } = await import('./hydrate');
+    const list = await import('./list');
+    const { prefs } = await import('../../state/state');
+    prefs.tab = 'stash';
+
+    await hydrateStash();
+
+    expect(vi.mocked(list.renderList)).toHaveBeenCalled();
+  });
 });
 
 describe('hydrateVcsActionLabels', () => {
@@ -285,6 +384,21 @@ describe('hydrateVcsActionLabels', () => {
     await hydrateVcsActionLabels();
     const { state } = await import('../../state/state');
     expect(state.vcsActionLabels).toEqual({});
+  });
+
+  it('ignores malformed label pairs and always emits an update event', async () => {
+    const invoke = vi.fn(async () => [['push', 'Push'], ['broken'], ['', 'Missing key'], ['pull', '  Pull  ']]);
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const eventSpy = vi.fn();
+    window.addEventListener('app:vcs-action-labels-updated', eventSpy, { once: true });
+
+    const { hydrateVcsActionLabels } = await import('./hydrate');
+    const { state } = await import('../../state/state');
+    await hydrateVcsActionLabels();
+
+    expect(state.vcsActionLabels).toEqual({ push: 'Push', pull: 'Pull' });
+    expect(eventSpy).toHaveBeenCalledTimes(1);
   });
 });
 

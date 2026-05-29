@@ -13,6 +13,39 @@ use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::state::AppState;
 
+/// Resolves the display label shown for a backend entry.
+fn backend_display_label(
+    backend_name: Option<&str>,
+    plugin_name: Option<&str>,
+    backend_id: &BackendId,
+) -> String {
+    backend_name
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            plugin_name
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| backend_id.as_ref().to_string())
+}
+
+/// Returns the sole backend id that should become the default when exactly one backend exists.
+fn auto_default_backend_id(current_default: &str, backends: &[(String, String)]) -> Option<String> {
+    if backends.len() != 1 {
+        return None;
+    }
+
+    let only_backend_id = backends[0].0.trim();
+    if only_backend_id.is_empty() || current_default.trim() == only_backend_id {
+        None
+    } else {
+        Some(only_backend_id.to_string())
+    }
+}
+
 #[tauri::command]
 /// Lists VCS backends currently available from plugins.
 ///
@@ -28,11 +61,11 @@ pub fn list_vcs_backends_cmd(state: State<'_, AppState>) -> Vec<(String, String)
 
     if let Ok(plugin_bes) = plugin_vcs_backends::list_plugin_vcs_backends() {
         for p in plugin_bes {
-            let label = p
-                .backend_name
-                .clone()
-                .or_else(|| p.plugin_name.clone())
-                .unwrap_or_else(|| p.backend_id.as_ref().to_string());
+            let label = backend_display_label(
+                p.backend_name.as_deref(),
+                p.plugin_name.as_deref(),
+                &p.backend_id,
+            );
             // Prefer plugin-provided VCS backends when IDs overlap.
             map.insert(p.backend_id.as_ref().to_string(), label);
         }
@@ -40,22 +73,21 @@ pub fn list_vcs_backends_cmd(state: State<'_, AppState>) -> Vec<(String, String)
 
     let backends: Vec<(String, String)> = map.into_iter().collect();
 
-    if backends.len() == 1 {
-        let only_backend_id = backends[0].0.as_str();
+    if let Some(only_backend_id) =
+        auto_default_backend_id(&state.config().general.default_backend, &backends)
+    {
         let mut cfg = state.config();
-        if cfg.general.default_backend.trim() != only_backend_id {
-            cfg.general.default_backend = only_backend_id.to_string();
-            if let Err(err) = state.set_config(cfg) {
-                warn!(
-                    "list_vcs_backends_cmd: failed to persist auto default backend `{}`: {}",
-                    only_backend_id, err
-                );
-            } else {
-                info!(
-                    "list_vcs_backends_cmd: auto-selected sole backend `{}` as default",
-                    only_backend_id
-                );
-            }
+        cfg.general.default_backend = only_backend_id.clone();
+        if let Err(err) = state.set_config(cfg) {
+            warn!(
+                "list_vcs_backends_cmd: failed to persist auto default backend `{}`: {}",
+                only_backend_id, err
+            );
+        } else {
+            info!(
+                "list_vcs_backends_cmd: auto-selected sole backend `{}` as default",
+                only_backend_id
+            );
         }
     }
 
@@ -194,4 +226,9 @@ pub async fn reopen_current_repo_cmd(state: State<'_, AppState>) -> Result<(), S
     let new_repo = Arc::new(Repo::new(handle));
     state.set_current_repo(new_repo);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/backends.rs");
 }
