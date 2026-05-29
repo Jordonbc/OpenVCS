@@ -20,3 +20,9 @@ fn normalize_log_limit_treats_zero_as_unlimited() {
 fn normalize_log_limit_clamps_large_values() {
     assert_eq!(normalize_log_limit(Some(2_000)), Some(1_000));
 }
+
+#[test]
+fn normalize_log_limit_preserves_in_range_values() {
+    assert_eq!(normalize_log_limit(Some(25)), Some(25));
+    assert_eq!(normalize_log_limit(Some(1_000)), Some(1_000));
+}

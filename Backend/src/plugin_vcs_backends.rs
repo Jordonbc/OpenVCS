@@ -393,3 +393,8 @@ pub fn clone_repo_via_plugin_vcs_backend(
         msg: e,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/plugin_vcs_backends.rs");
+}

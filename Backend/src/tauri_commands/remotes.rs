@@ -376,6 +376,11 @@ pub async fn vcs_fetch_all<R: Runtime>(
     .await
 }
 
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/remotes.rs");
+}
+
 #[tauri::command]
 /// Performs a fast-forward-only pull from the current branch upstream.
 ///
@@ -631,11 +636,6 @@ pub async fn vcs_undo_since_push<R: Runtime>(
         }
     })
     .await
-}
-
-#[cfg(test)]
-mod tests {
-    include!("../../tests/tauri_commands/remotes.rs");
 }
 
 #[tauri::command]

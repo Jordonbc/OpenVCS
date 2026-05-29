@@ -7,8 +7,47 @@ use serde_json::{Map, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[cfg(test)]
+use parking_lot::RwLock;
+
+#[cfg(test)]
+use std::sync::OnceLock;
+
+#[cfg(test)]
+static TEST_PLUGIN_DATA_ROOT: OnceLock<RwLock<Option<PathBuf>>> = OnceLock::new();
+
+/// Returns the test-only plugin data root override, when configured.
+#[cfg(test)]
+fn test_plugin_data_root() -> Option<PathBuf> {
+    TEST_PLUGIN_DATA_ROOT
+        .get_or_init(|| RwLock::new(None))
+        .read()
+        .clone()
+}
+
+/// Sets the test-only plugin data root override.
+#[cfg(test)]
+pub(crate) fn set_test_plugin_data_root(root: PathBuf) {
+    *TEST_PLUGIN_DATA_ROOT
+        .get_or_init(|| RwLock::new(None))
+        .write() = Some(root);
+}
+
+/// Clears the test-only plugin data root override.
+#[cfg(test)]
+pub(crate) fn clear_test_plugin_data_root() {
+    *TEST_PLUGIN_DATA_ROOT
+        .get_or_init(|| RwLock::new(None))
+        .write() = None;
+}
+
 /// Returns the root plugin data directory under the app config directory.
 fn plugin_data_root() -> PathBuf {
+    #[cfg(test)]
+    if let Some(root) = test_plugin_data_root() {
+        return root;
+    }
+
     if let Some(pd) = crate::app_identity::project_dirs() {
         pd.config_dir().join("plugin-data")
     } else {
@@ -83,4 +122,9 @@ fn remove_file_if_exists(path: &Path) -> Result<(), String> {
         fs::remove_file(path).map_err(|e| format!("remove {}: {e}", path.display()))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/plugin_runtime/settings_store.rs");
 }

@@ -181,3 +181,8 @@ impl AppConfig {
         self.logging.retain_archives = self.logging.retain_archives.clamp(1, 100);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/modules/settings_persistence.rs");
+}

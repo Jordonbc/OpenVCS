@@ -57,3 +57,8 @@ pub fn set_status_text_unchecked(message: &str) {
     *status_text_store().write() = trimmed.to_string();
     emit_status_event(trimmed);
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/plugin_runtime/host_api.rs");
+}
