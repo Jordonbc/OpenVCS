@@ -58,7 +58,9 @@ fn reports_unknown_backend_descriptors() {
     invalidate_plugin_vcs_backend_cache();
     store_backends(vec![backend_descriptor("hg", "openvcs.hg")]);
 
-    let err = plugin_vcs_backend_descriptor(&BackendId::from("git"))
+    // Use a backend id that is not present in the cache AND not discoverable
+    // from real installed plugins, so the error path is exercised.
+    let err = plugin_vcs_backend_descriptor(&BackendId::from("nonexistent-be"))
         .expect_err("missing backend should fail");
-    assert!(err.contains("Unknown VCS backend: git"));
+    assert!(err.contains("Unknown VCS backend: nonexistent-be"));
 }
