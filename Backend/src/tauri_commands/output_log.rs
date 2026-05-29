@@ -190,9 +190,7 @@ pub fn open_output_log_window<R: Runtime>(window: Window<R>) -> Result<(), Strin
         builder
     };
 
-    builder
-    .build()
-    .map_err(|e| e.to_string())?;
+    builder.build().map_err(|e| e.to_string())?;
 
     Ok(())
 }
