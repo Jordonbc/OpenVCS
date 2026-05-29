@@ -321,20 +321,28 @@ describe('collectPluginModalPayload', () => {
     mountRoot();
   });
 
-  it('collects checkbox checked state and text values', async () => {
-    const { handlePluginActionResult } = await import('./modal');
+  it('collects values and handles action failures through button click', async () => {
+    const modalsModule = await import('./modal');
+    const { wirePluginModalActions, handlePluginActionResult } = modalsModule;
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockRejectedValue(new Error('action failed'));
 
+    wirePluginModalActions();
     handlePluginActionResult('p-collect', {
       title: 'Collect',
       content: [
         { type: 'text', content: 'Form' },
-      ],
-      fields: [
-        { id: 'agree', label: 'Agree', type: 'boolean', value: true },
+        { type: 'button', id: 'submit', content: 'Submit', payload: { custom: 'payload' } },
       ],
     });
 
-    const modal = document.getElementById('plugin-modal-p-collect')!;
-    expect(modal).not.toBeNull();
+    const btn = document.querySelector<HTMLButtonElement>('button[data-plugin-action="submit"]')!;
+    btn.click();
+
+    expect(tauri.core.invoke).toHaveBeenCalledWith('invoke_plugin_action', {
+      pluginId: 'p-collect',
+      actionId: 'submit',
+      payload: { custom: 'payload' },
+    });
   });
 });
