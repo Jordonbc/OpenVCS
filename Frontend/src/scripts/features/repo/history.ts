@@ -257,7 +257,9 @@ export async function selectHistory(commit: any, index: number) {
             /** Switches the right panel to the selected file diff block. */
             const selectCommitFile = (idx: number) => {
                 if (idx < 0 || idx >= files.length) return;
-                sideEl.querySelectorAll('.row').forEach((r) => r.classList.remove('active'));
+                sideEl.querySelectorAll('.row').forEach((r) => {
+                    r.classList.remove('active');
+                });
                 const row = sideEl.querySelector<HTMLElement>(`.row[data-idx="${idx}"]`);
                 row?.classList.add('active');
                 (contentEl as HTMLElement).innerHTML = renderHunksReadonly(files[idx].lines);
@@ -382,6 +384,6 @@ export function formatTimeAgo(isoMaybe: string): string {
         let yr = Math.round(day / 365);
         return `${yr} year${yr === 1 ? '' : 's'} ago`;
     } catch {
-        return (isoMaybe || '').trim();
+        return typeof isoMaybe === 'string' ? isoMaybe.trim() : '';
     }
 }

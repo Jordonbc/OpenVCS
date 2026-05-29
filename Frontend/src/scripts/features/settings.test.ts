@@ -33,7 +33,7 @@ const mockRebuildThemePackOptions = vi.fn();
 const mockThemeTooltip = vi.fn(() => 'Tooltip');
 const mockClearPluginSettingsCache = vi.fn();
 const mockRenderPluginMenus = vi.fn();
-const mockCollectPluginSettingsFromPanel = vi.fn(() => []);
+const mockCollectPluginSettingsFromPanel = vi.fn(() => [] as Array<{ id: string; value: unknown }>);
 const mockActivateSection = vi.fn();
 const mockLoadPluginsIntoForm = vi.fn();
 const mockCollectGeneralSettings = vi.fn(() => ({}));
@@ -622,7 +622,6 @@ describe('wireSettings (save button)', () => {
     }
 
     it('saves plugin settings when plugin-settings panel is active', async () => {
-        const modal = document.getElementById('settings-modal')!;
         const panel = mountPluginPanel('my-plugin');
         mockCollectPluginSettingsFromPanel.mockReturnValue([{ id: 'x', value: 'y' }]);
         mockInvoke.mockResolvedValue(undefined);

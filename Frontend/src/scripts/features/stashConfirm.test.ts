@@ -36,7 +36,7 @@ function mountStashConfirmModal() {
 function installTauriMock() {
   (window as any).__TAURI__ = {
     core: {
-      invoke: vi.fn(async () => null),
+      invoke: vi.fn(),
     },
     event: { listen: vi.fn() },
   };
@@ -65,7 +65,7 @@ afterEach(() => {
 
 describe('openStashConfirm', () => {
   it('passes override paths through to stash payload', async () => {
-    const invoke = vi.fn(async () => null);
+    const invoke = vi.fn();
     (window as any).__TAURI__.core.invoke = invoke;
 
     const { openStashConfirm } = await import('./stashConfirm');
@@ -88,7 +88,7 @@ describe('openStashConfirm', () => {
   });
 
   it('sends default stash payload when no paths override exists', async () => {
-    const invoke = vi.fn(async () => null);
+    const invoke = vi.fn();
     (window as any).__TAURI__.core.invoke = invoke;
 
     const { openStashConfirm } = await import('./stashConfirm');
@@ -110,7 +110,7 @@ describe('openStashConfirm', () => {
   });
 
   it('calls onSuccess handler after stash is created', async () => {
-    const invoke = vi.fn(async () => null);
+    const invoke = vi.fn();
     (window as any).__TAURI__.core.invoke = invoke;
     const onSuccess = vi.fn();
 
@@ -144,7 +144,7 @@ describe('openStashConfirm', () => {
 
 describe('wireStashConfirm', () => {
   it('wires modal only once', async () => {
-    const { wireStashConfirm, openStashConfirm } = await import('./stashConfirm');
+    const { wireStashConfirm } = await import('./stashConfirm');
     const modal = document.getElementById('stash-confirm-modal') as any;
     wireStashConfirm();
     wireStashConfirm();
@@ -320,7 +320,7 @@ describe('runStash edge cases', () => {
 
   it('shows override path even when not in state files', async () => {
     window.__TAURI__ = {
-      core: { invoke: vi.fn(async () => null) },
+      core: { invoke: vi.fn() },
       event: { listen: vi.fn() },
     };
     const { openStashConfirm } = await import('./stashConfirm');

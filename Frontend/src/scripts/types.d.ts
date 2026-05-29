@@ -152,7 +152,7 @@ export interface ThemePayload {
     markup?: {
         head?: string | null;
         body?: string | null;
-    };
+    } | null;
     scripts?: string[];
 }
 

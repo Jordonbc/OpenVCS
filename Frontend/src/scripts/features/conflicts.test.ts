@@ -399,7 +399,7 @@ describe('summary abort and continue', () => {
     mountConflictsSummaryModal();
     mockInvoke.mockResolvedValue({ in_progress: true });
     const { confirmBool } = await import('../lib/confirm');
-    confirmBool.mockResolvedValue(true);
+    vi.mocked(confirmBool).mockResolvedValue(true);
     const { notify } = await import('../lib/notify');
 
     const { openConflictsSummary } = await import('./conflicts');
@@ -417,7 +417,7 @@ describe('summary abort and continue', () => {
     mountConflictsSummaryModal();
     mockInvoke.mockResolvedValue({ in_progress: true });
     const { confirmBool } = await import('../lib/confirm');
-    confirmBool.mockResolvedValue(false);
+    vi.mocked(confirmBool).mockResolvedValue(false);
 
     const { openConflictsSummary } = await import('./conflicts');
     await openConflictsSummary([{ path: 'f1.txt', status: 'U' }]);
@@ -437,7 +437,7 @@ describe('summary abort and continue', () => {
       .mockRejectedValueOnce(new Error('cannot abort'));
 
     const { confirmBool } = await import('../lib/confirm');
-    confirmBool.mockResolvedValue(true);
+    vi.mocked(confirmBool).mockResolvedValue(true);
     const { notify } = await import('../lib/notify');
 
     const { openConflictsSummary } = await import('./conflicts');

@@ -372,7 +372,13 @@ describe('createBranch error handling', () => {
 describe('createBranch hook cancellation', () => {
   it('cancels when preBranchCreate hook returns cancelled', async () => {
     const { runHook } = await import('../plugins');
-    vi.mocked(runHook).mockResolvedValue({ cancelled: true, reason: 'Cancelled by hook' });
+    vi.mocked(runHook).mockResolvedValue({
+      name: 'preBranchCreate',
+      data: undefined,
+      cancelled: true,
+      reason: 'Cancelled by hook',
+      cancel: vi.fn(),
+    });
 
     (window as any).__TAURI__ = {
       core: { invoke: vi.fn() },
@@ -397,8 +403,19 @@ describe('createBranch hook cancellation', () => {
   it('cancels when preSwitchBranch hook returns cancelled', async () => {
     const { runHook } = await import('../plugins');
     vi.mocked(runHook)
-      .mockResolvedValueOnce({ cancelled: false })  // preBranchCreate
-      .mockResolvedValueOnce({ cancelled: true, reason: 'Switch blocked' });  // preSwitchBranch
+      .mockResolvedValueOnce({
+        name: 'preBranchCreate',
+        data: undefined,
+        cancelled: false,
+        cancel: vi.fn(),
+      })  // preBranchCreate
+      .mockResolvedValueOnce({
+        name: 'preSwitchBranch',
+        data: undefined,
+        cancelled: true,
+        reason: 'Switch blocked',
+        cancel: vi.fn(),
+      });  // preSwitchBranch
 
     (window as any).__TAURI__ = {
       core: { invoke: vi.fn() },

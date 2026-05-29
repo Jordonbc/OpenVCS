@@ -174,17 +174,16 @@ describe('wireAuthModal', () => {
 
 describe('HTTPS switch button flow', () => {
   it('calls vcs_set_remote_url on click and closes modal', async () => {
-    let cbCapture: ((evt: { payload: unknown }) => void) | null = null;
     const invoke = vi.fn(async () => null);
     (window as any).__TAURI__ = {
       core: { invoke },
-      event: { listen: vi.fn(async (_event: string, cb: any) => { cbCapture = cb; return { unlisten: vi.fn() }; }) },
+      event: { listen: vi.fn(async (_event: string, cb: (evt: { payload: unknown }) => void) => { listenHandler = cb; return { unlisten: vi.fn() }; }) },
     };
     const modals = await import('../ui/modals');
     const { initSshAuthPrompt } = await import('./sshAuth');
     initSshAuthPrompt();
 
-    cbCapture?.({ payload: { host: 'github.com', remote: 'origin', url: 'git@github.com:user/repo.git' } });
+    listenHandler?.({ payload: { host: 'github.com', remote: 'origin', url: 'git@github.com:user/repo.git' } });
 
     const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
     httpsBtn.click();
@@ -195,16 +194,15 @@ describe('HTTPS switch button flow', () => {
   });
 
   it('re-enables HTTPS button after error', async () => {
-    let cbCapture: ((evt: { payload: unknown }) => void) | null = null;
     const invoke = vi.fn(async () => { throw new Error('network error'); });
     (window as any).__TAURI__ = {
       core: { invoke },
-      event: { listen: vi.fn(async (_event: string, cb: any) => { cbCapture = cb; return { unlisten: vi.fn() }; }) },
+      event: { listen: vi.fn(async (_event: string, cb: (evt: { payload: unknown }) => void) => { listenHandler = cb; return { unlisten: vi.fn() }; }) },
     };
     const { initSshAuthPrompt } = await import('./sshAuth');
     initSshAuthPrompt();
 
-    cbCapture?.({ payload: { host: 'github.com', remote: 'origin', url: 'git@github.com:user/repo.git' } });
+    listenHandler?.({ payload: { host: 'github.com', remote: 'origin', url: 'git@github.com:user/repo.git' } });
 
     const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
     httpsBtn.click();

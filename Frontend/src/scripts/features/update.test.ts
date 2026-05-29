@@ -95,7 +95,7 @@ describe('wireUpdate', () => {
       return Promise.resolve(undefined);
     });
     (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
-      core: { invoke: invokeMock },
+      core: { invoke: invokeMock as unknown as TauriInvoke },
       event: { listen: vi.fn(async () => ({ unlisten: vi.fn() })) },
     };
 
@@ -146,7 +146,7 @@ describe('showUpdateDialog', () => {
       return Promise.resolve(undefined);
     });
     (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
-      core: { invoke: invokeMock },
+      core: { invoke: invokeMock as unknown as TauriInvoke },
       event: { listen: vi.fn(async () => ({ unlisten: vi.fn() })) },
     };
 
@@ -176,7 +176,7 @@ describe('showUpdateDialog', () => {
       return Promise.resolve(undefined);
     });
     (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
-      core: { invoke: invokeMock },
+      core: { invoke: invokeMock as unknown as TauriInvoke },
       event: { listen: vi.fn(async () => ({ unlisten: vi.fn() })) },
     };
 
@@ -192,7 +192,7 @@ describe('showUpdateDialog', () => {
       return Promise.resolve(undefined);
     });
     (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
-      core: { invoke: invokeMock },
+      core: { invoke: invokeMock as unknown as TauriInvoke },
       event: { listen: vi.fn(async () => ({ unlisten: vi.fn() })) },
     };
 
@@ -216,7 +216,7 @@ describe('showUpdateDialog', () => {
       return Promise.resolve(undefined);
     });
     (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
-      core: { invoke: invokeMock },
+      core: { invoke: invokeMock as unknown as TauriInvoke },
       event: { listen: vi.fn(async () => ({ unlisten: vi.fn() })) },
     };
 
@@ -239,7 +239,7 @@ describe('wireUpdate button state transitions', () => {
       return Promise.resolve(undefined);
     });
     (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
-      core: { invoke: invokeMock },
+      core: { invoke: invokeMock as unknown as TauriInvoke },
       event: { listen: vi.fn(async () => ({ unlisten: vi.fn() })) },
     };
 

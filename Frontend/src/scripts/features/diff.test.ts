@@ -141,7 +141,13 @@ describe('bindCommit', () => {
     state.files = [{ path: 'file.txt', status: 'M' }] as any;
 
     const { runHook } = await import('../plugins');
-    vi.mocked(runHook).mockResolvedValue({ cancelled: true, reason: 'Cancelled by plugin' });
+    vi.mocked(runHook).mockResolvedValue({
+      name: 'preCommit',
+      data: undefined,
+      cancelled: true,
+      reason: 'Cancelled by plugin',
+      cancel: vi.fn(),
+    });
 
     const { bindCommit } = await import('./diff');
     const { notify } = await import('../lib/notify');

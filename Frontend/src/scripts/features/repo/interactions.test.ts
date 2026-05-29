@@ -473,7 +473,7 @@ describe('onFileContextMenu', () => {
 
     expect(ev.preventDefault).toHaveBeenCalled();
     expect(buildCtxMenu).toHaveBeenCalled();
-    const items = buildCtxMenu.mock.lastCall[0];
+    const items = vi.mocked(buildCtxMenu).mock.lastCall![0];
     expect(items[0].label).toContain('Open with default');
   });
 
@@ -491,7 +491,7 @@ describe('onFileContextMenu', () => {
 
     expect(ev.preventDefault).toHaveBeenCalled();
     expect(buildCtxMenu).toHaveBeenCalled();
-    const items = buildCtxMenu.mock.lastCall[0];
+    const items = vi.mocked(buildCtxMenu).mock.lastCall![0];
     expect(Array.isArray(items)).toBe(true);
     expect(items.length).toBeGreaterThan(0);
     const stashItem = items.find((i: any) => String(i.label).includes('Create stash from selection'));
@@ -509,7 +509,7 @@ describe('onFileContextMenu', () => {
     const file = { path: 'a.txt', status: 'M' } as any;
     await onFileContextMenu({ clientX: 100, clientY: 200, preventDefault: vi.fn() } as any, file);
 
-    const items = buildCtxMenu.mock.lastCall[0];
+    const items = vi.mocked(buildCtxMenu).mock.lastCall![0];
     const stashFileItem = items.find((i: any) => i.label?.includes('Create stash for this file'));
     expect(stashFileItem).toBeDefined();
   });
@@ -526,11 +526,11 @@ describe('onFileContextMenu', () => {
     const file = { path: 'a.txt', status: 'M' } as any;
     await onFileContextMenu({ clientX: 100, clientY: 200, preventDefault: vi.fn() } as any, file);
 
-    const items = buildCtxMenu.mock.lastCall[0];
+    const items = vi.mocked(buildCtxMenu).mock.lastCall![0];
     const gitignoreItem = items.find((i: any) => i.label?.includes('Add to .gitignore'));
     expect(gitignoreItem).toBeDefined();
 
-    await gitignoreItem.action!();
+    await gitignoreItem!.action!();
     expect(confirmBool).toHaveBeenCalled();
   });
 
@@ -545,7 +545,7 @@ describe('onFileContextMenu', () => {
     const file = { path: 'a.txt', status: 'M' } as any;
     await onFileContextMenu({ clientX: 100, clientY: 200, preventDefault: vi.fn() } as any, file);
 
-    const items = buildCtxMenu.mock.lastCall[0];
+    const items = vi.mocked(buildCtxMenu).mock.lastCall![0];
     const discardItem = items.find((i: any) => i.label === 'Discard changes');
     expect(discardItem).toBeDefined();
   });
@@ -561,7 +561,7 @@ describe('onFileContextMenu', () => {
     const file = { path: 'a.txt', status: 'M' } as any;
     await onFileContextMenu({ clientX: 100, clientY: 200, preventDefault: vi.fn() } as any, file);
 
-    const items = buildCtxMenu.mock.lastCall[0];
+    const items = vi.mocked(buildCtxMenu).mock.lastCall![0];
     const discardAllItem = items.find((i: any) => i.label?.includes('Discard all selected'));
     expect(discardAllItem).toBeDefined();
   });
@@ -582,7 +582,7 @@ describe('onFileContextMenu', () => {
     const file = { path: 'a.txt', status: 'M' } as any;
     await onFileContextMenu({ clientX: 100, clientY: 200, preventDefault: vi.fn() } as any, file);
 
-    const items = buildCtxMenu.mock.lastCall[0];
+    const items = vi.mocked(buildCtxMenu).mock.lastCall![0];
     const pluginItem = items.find((i: any) => i.label === 'Plugin Action');
     expect(pluginItem).toBeDefined();
   });
