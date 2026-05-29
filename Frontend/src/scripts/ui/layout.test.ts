@@ -717,3 +717,70 @@ describe('refreshRepoActions (push ahead badge)', () => {
     expect(undoLeftWrap.classList.contains('show')).toBe(true);
   });
 });
+
+describe('initResizer', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mountLayoutDom();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('starts drag, moves, and stops on mouseup', async () => {
+    const { initResizer } = await import('./layout');
+    initResizer();
+
+    const resizer = document.getElementById('resizer') as HTMLElement;
+    const grid = document.querySelector('.work') as HTMLElement;
+    grid.getBoundingClientRect = vi.fn(() => ({ width: 1200 }) as DOMRect);
+
+    resizer.dispatchEvent(new MouseEvent('mousedown', { clientX: 400 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 450 }));
+
+    const cols = grid.style.gridTemplateColumns;
+    expect(cols).toContain('px');
+
+    window.dispatchEvent(new MouseEvent('mouseup'));
+    expect(document.body.style.cursor).toBe('');
+  });
+
+  it('adjusts columns on window resize when not stacked', async () => {
+    const { initResizer } = await import('./layout');
+    initResizer();
+
+    const grid = document.querySelector('.work') as HTMLElement;
+    grid.getBoundingClientRect = vi.fn(() => ({ width: 1200 }) as DOMRect);
+    Object.defineProperty(window, 'matchMedia', {
+      value: vi.fn().mockReturnValue({ matches: false }),
+      configurable: true,
+    });
+
+    // Set initial state by triggering mousedown+move+up
+    const resizer = document.getElementById('resizer') as HTMLElement;
+    resizer.dispatchEvent(new MouseEvent('mousedown', { clientX: 400 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 500 }));
+    window.dispatchEvent(new MouseEvent('mouseup'));
+
+    // Now resize
+    window.dispatchEvent(new Event('resize'));
+    expect(grid.style.gridTemplateColumns).not.toBe('');
+  });
+
+  it('clears template columns when stacked on resize', async () => {
+    const { initResizer } = await import('./layout');
+    Object.defineProperty(window, 'matchMedia', {
+      value: vi.fn().mockReturnValue({ matches: true }),
+      configurable: true,
+    });
+    initResizer();
+
+    const grid = document.querySelector('.work') as HTMLElement;
+    grid.style.gridTemplateColumns = '400px 6px 1fr';
+
+    window.dispatchEvent(new Event('resize'));
+    expect(grid.style.gridTemplateColumns).toBe('');
+  });
+});

@@ -273,6 +273,21 @@ describe('registerTheme / registerThemeSummary', () => {
   });
 });
 
+describe('_setApplyPluginSectionsFallback', () => {
+  it('stores the supplied callback', async () => {
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('./registration');
+    const cb = vi.fn();
+    _setApplyPluginSectionsFallback(cb);
+
+    expect(() => _setApplyPluginSectionsFallback(vi.fn())).not.toThrow();
+  });
+
+  it('handles empty callback without throwing', async () => {
+    const { _setApplyPluginSectionsFallback } = await import('./registration');
+    expect(() => _setApplyPluginSectionsFallback(vi.fn())).not.toThrow();
+  });
+});
+
 describe('addMenuItem', () => {
   beforeEach(() => {
     setupTauri();

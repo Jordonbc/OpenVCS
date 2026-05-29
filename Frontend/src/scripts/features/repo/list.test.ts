@@ -351,3 +351,24 @@ describe('renderChangesList', () => {
     expect(document.querySelector('li.row')?.classList.contains('picked')).toBe(true);
   });
 });
+
+describe('renderList event handlers', () => {
+  it('triggers contextmenu and mouseenter on file rows', async () => {
+    const interactions = await import('./interactions');
+    const { renderList } = await import('./list');
+    const { prefs, state } = await import('../../state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'ctx.txt', status: 'M' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+
+    renderList();
+    const row = document.querySelector('li.row') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    row.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+
+    expect(vi.mocked(interactions.onFileContextMenu)).toHaveBeenCalled();
+    expect(vi.mocked(interactions.isDragSelecting)).toHaveBeenCalled();
+  });
+});

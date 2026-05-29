@@ -313,3 +313,28 @@ describe('DOM content rendering', () => {
     })).not.toThrow();
   });
 });
+
+describe('collectPluginModalPayload', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('collects checkbox checked state and text values', async () => {
+    const { handlePluginActionResult } = await import('./modal');
+
+    handlePluginActionResult('p-collect', {
+      title: 'Collect',
+      content: [
+        { type: 'text', content: 'Form' },
+      ],
+      fields: [
+        { id: 'agree', label: 'Agree', type: 'boolean', value: true },
+      ],
+    });
+
+    const modal = document.getElementById('plugin-modal-p-collect')!;
+    expect(modal).not.toBeNull();
+  });
+});

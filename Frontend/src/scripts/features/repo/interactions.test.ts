@@ -387,8 +387,6 @@ describe('callback helpers', () => {
     expect(isDragSelecting()).toBe(false);
     const cb = vi.fn();
     setRenderListCallback(cb);
-    // Executed indirectly through renderListAfterRangeSelect which is private,
-    // but setRenderListCallback stores it for later use.
   });
 
   it('tracks the last drag index via setDragCurrentIndex', async () => {
@@ -396,6 +394,27 @@ describe('callback helpers', () => {
     const { dragState } = await import('./context');
     setDragCurrentIndex(5);
     expect(dragState.dragCurrentIndex).toBe(5);
+  });
+
+  it('applySelect toggles file in commit or diff mode', async () => {
+    const { applySelect } = await import('./interactions');
+    const { state } = await import('../../state/state');
+    const ul = document.getElementById('file-list')!;
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.setAttribute('data-path', 'z.txt');
+    ul.appendChild(li);
+
+    applySelect('z.txt', true, li, [], 'commit');
+    expect(state.selectedFiles.has('z.txt')).toBe(true);
+    expect(li.classList.contains('picked')).toBe(true);
+
+    applySelect('z.txt', false, li, [], 'diff');
+    expect(state.diffSelectedFiles.has('z.txt')).toBe(false);
+    expect(li.classList.contains('diffsel')).toBe(false);
+
+    applySelect('z.txt', true, li, [], 'diff');
+    expect(state.diffSelectedFiles.has('z.txt')).toBe(true);
   });
 });
 

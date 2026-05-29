@@ -634,3 +634,15 @@ describe('launchExternalMergeTool', () => {
     expect(notify).toHaveBeenCalledWith('Failed to open merge tool');
   });
 });
+
+describe('autoOpenFirstConflict', () => {
+  it('catches error when openConflictsSummary fails', async () => {
+    const modals = await import('../ui/modals');
+    const hydrateMock = vi.mocked(modals.hydrate);
+    hydrateMock.mockImplementationOnce(() => { throw new Error('hydrate failure'); });
+
+    const { autoOpenFirstConflict } = await import('./conflicts');
+
+    await expect(autoOpenFirstConflict([{ path: 'err.txt', status: 'U' }] as any)).resolves.toBeUndefined();
+  });
+});

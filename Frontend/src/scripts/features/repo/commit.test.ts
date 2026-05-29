@@ -308,4 +308,58 @@ describe('updateCommitButton', () => {
     expect(summary.placeholder).toBe('Update test.cpp');
     expect((document.getElementById('commit-btn') as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it('enables commit button when only hunks are selected without files', async () => {
+    const { updateCommitButton } = await import('./commit');
+    state.hasRepo = true;
+    state.files = [{ path: 'a.txt', status: 'M' } as FileStatus];
+    state.selectedFiles = new Set();
+    state.selectedHunksByFile = { 'a.txt': [0] };
+    (document.getElementById('commit-summary') as HTMLInputElement).value = 'Fix';
+
+    updateCommitButton();
+    expect((document.getElementById('commit-btn') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('shows delete hint for one file with D status', async () => {
+    const { updateCommitButton } = await import('./commit');
+    setGlobalSettings({
+      commit: {
+        commit_message_template_enabled: true,
+        commit_templates: {
+          commit_message_template_create: 'Create {file:name}',
+          commit_message_template_update: 'Update {file:name}',
+          commit_message_template_delete: 'Delete {file:name}',
+        },
+      },
+    });
+    state.hasRepo = true;
+    state.files = [{ path: 'removed.txt', status: 'D' } as FileStatus];
+    state.selectedFiles = new Set(['removed.txt']);
+
+    updateCommitButton();
+    expect((document.getElementById('commit-summary') as HTMLInputElement).placeholder).toBe('Delete removed.txt');
+  });
+
+  it('skips empty paths when determining selected commit file', async () => {
+    const { updateCommitButton } = await import('./commit');
+    state.hasRepo = true;
+    state.files = [{ path: 'real.txt', status: 'M' } as FileStatus];
+    state.selectedFiles = new Set(['', '  ', 'real.txt']);
+
+    updateCommitButton();
+    expect((document.getElementById('commit-summary') as HTMLInputElement).placeholder).toBe('Update real.txt');
+  });
+
+  it('enables commit button when only line selections exist', async () => {
+    const { updateCommitButton } = await import('./commit');
+    state.hasRepo = true;
+    state.files = [{ path: 'file.txt', status: 'M' } as FileStatus];
+    state.selectedFiles = new Set();
+    state.selectedLinesByFile = { 'file.txt': { 0: [1, 2] } };
+    (document.getElementById('commit-summary') as HTMLInputElement).value = 'fix';
+
+    updateCommitButton();
+    expect((document.getElementById('commit-btn') as HTMLButtonElement).disabled).toBe(false);
+  });
 });

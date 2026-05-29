@@ -149,10 +149,12 @@ describe('logger', () => {
     const warnSpy = vi.fn();
     const errorSpy = vi.fn();
     const traceSpy = vi.fn();
+    const logSpy = vi.fn();
     console.info = infoSpy;
     console.warn = warnSpy;
     console.error = errorSpy;
     console.trace = traceSpy;
+    console.log = logSpy;
 
     await import('./logger');
     const { TAURI } = await import('./tauri');
@@ -161,14 +163,45 @@ describe('logger', () => {
     console.warn('careful');
     console.error('broken');
     console.trace('stack');
+    console.log('plain log');
 
     expect(infoSpy).toHaveBeenCalledWith('hello');
     expect(warnSpy).toHaveBeenCalledWith('careful');
     expect(errorSpy).toHaveBeenCalledWith('broken');
     expect(traceSpy).toHaveBeenCalledWith('stack');
+    expect(logSpy).toHaveBeenCalledWith('plain log');
     expect(TAURI.invoke).toHaveBeenCalledWith('log_frontend_message', {
       level: 'trace',
       message: 'stack',
+    });
+  });
+
+  it('covers createLogger trace, debug, and info inner helpers', async () => {
+    const { logger } = await import('./logger');
+    const { TAURI } = await import('./tauri');
+
+    logger.create('mod').trace('trace msg');
+    expect(TAURI.invoke).toHaveBeenCalledWith('log_frontend_message', {
+      level: 'trace',
+      message: '[mod] trace msg',
+    });
+
+    logger.create('mod').debug('debug msg');
+    expect(TAURI.invoke).toHaveBeenCalledWith('log_frontend_message', {
+      level: 'debug',
+      message: '[mod] debug msg',
+    });
+
+    logger.create('mod').info('info msg');
+    expect(TAURI.invoke).toHaveBeenCalledWith('log_frontend_message', {
+      level: 'info',
+      message: '[mod] info msg',
+    });
+
+    logger.create('mod').error(new Error('module error'));
+    expect(TAURI.invoke).toHaveBeenCalledWith('log_frontend_message', {
+      level: 'error',
+      message: expect.stringContaining('[mod] Error: module error'),
     });
   });
 });

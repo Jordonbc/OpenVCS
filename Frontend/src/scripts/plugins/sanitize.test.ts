@@ -118,8 +118,8 @@ describe('parseSanitizedPluginElement', () => {
   it('returns null for empty or non-element content', async () => {
     const { parseSanitizedPluginElement } = await import('./sanitize');
     expect(parseSanitizedPluginElement('')).toBeNull();
-    expect(parseSanitizedPluginElement('   ')).toBeNull();
-    expect(parseSanitizedPluginElement('plain text')).toBeNull();
+    expect(parseSanitizedPluginElement('   text   ')).toBeNull();
+    expect(parseSanitizedPluginElement(null as unknown as string)).toBeNull();
   });
 
   it('strips blocked tags nested inside safe containers', async () => {

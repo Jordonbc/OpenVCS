@@ -196,4 +196,91 @@ describe('initMenubar', () => {
     expect(document.querySelector('.menu-list')?.getAttribute('hidden')).toBe('');
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
   });
+
+  it('cancels pending close animation when opening another menu', async () => {
+    const { initMenubar } = await import('./menubar');
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      media: '(prefers-reduced-motion: reduce)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as typeof window.matchMedia;
+    initMenubar(vi.fn());
+
+    const triggers = document.querySelectorAll('.menu-trigger');
+    // Open first menu
+    (triggers[0] as HTMLButtonElement).click();
+    // Close by clicking outside (sets closeTimer with setTimeout)
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // Before the close animation completes, open the second menu
+    triggers[1].dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+
+    expect((document.querySelectorAll('.menu-list')[1] as HTMLElement).hasAttribute('hidden')).toBe(false);
+    vi.runAllTimers();
+  });
+
+  it('calls finalizeClose immediately when list is already hidden', async () => {
+    const { initMenubar } = await import('./menubar');
+    initMenubar(vi.fn());
+
+    const trigger = document.querySelector('.menu-trigger') as HTMLButtonElement;
+    trigger.click();
+    const list = document.querySelector('.menu-list') as HTMLElement;
+    // Force close and set hidden to simulate already-hidden state
+    list.setAttribute('hidden', '');
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    vi.runAllTimers();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('completes close animation with timer under normal motion', async () => {
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      media: '(prefers-reduced-motion: reduce)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as typeof window.matchMedia;
+
+    const { initMenubar } = await import('./menubar');
+    initMenubar(vi.fn());
+
+    const trigger = document.querySelector('.menu-trigger') as HTMLButtonElement;
+    trigger.click();
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    vi.runAllTimers();
+
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('clears pending close timer when menu is reopened before animation ends', async () => {
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      media: '(prefers-reduced-motion: reduce)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as typeof window.matchMedia;
+
+    const { initMenubar } = await import('./menubar');
+    initMenubar(vi.fn());
+
+    const triggers = document.querySelectorAll('.menu-trigger');
+    (triggers[0] as HTMLButtonElement).click();
+    // Close via outside click (starts timer under normal motion)
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // Immediately reopen another menu before timer fires
+    triggers[1].dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+
+    expect((triggers[1] as HTMLButtonElement).getAttribute('aria-expanded')).toBe('true');
+    expect((triggers[0] as HTMLButtonElement).getAttribute('aria-expanded')).toBe('false');
+    vi.runAllTimers();
+  });
 });

@@ -171,6 +171,25 @@ describe('hydrateStatus selection reconciliation', () => {
     expect(state.mergeInProgress).toBe(false);
     expect(Array.from(state.seenConflicts)).toEqual([]);
   });
+
+  it('populates seenConflicts when merge is in progress with conflicted files', async () => {
+    installTauriMock(async (cmd) => {
+      if (cmd === 'vcs_status') return { files: [
+        { path: 'conflict.txt', status: 'U' },
+        { path: 'clean.txt', status: 'M' },
+      ] };
+      if (cmd === 'vcs_merge_context') return { in_progress: true };
+      return [];
+    });
+
+    const { hydrateStatus } = await import('./hydrate');
+    const { state } = await import('../../state/state');
+
+    await hydrateStatus();
+
+    expect(state.mergeInProgress).toBe(true);
+    expect(Array.from(state.seenConflicts)).toEqual(['conflict.txt']);
+  });
 });
 
 describe('yieldToPaint', () => {
@@ -425,5 +444,42 @@ describe('pruneSelectionMaps', () => {
     expect(state.selectedHunksByFile).toEqual({ 'keep.txt': [0] });
     expect(state.selectedLinesByFile).toEqual({ 'keep.txt': { 0: [1] } });
     expect(Array.from(state.diffSelectedFiles)).toEqual(['keep.txt']);
+  });
+});
+
+describe('hydrateCommits aheadIds', () => {
+  it('handles aheadIds query failure gracefully', async () => {
+    let callCount = 0;
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_log' && callCount++ === 0) return [{ id: 'base', message: 'local' }];
+      if (cmd === 'vcs_log') throw new Error('ahead query failed');
+      return [];
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { hydrateCommits } = await import('./hydrate');
+    const { state } = await import('../../state/state');
+    (state as any).ahead = 2;
+
+    await hydrateCommits();
+    expect(Array.from((state as any).aheadIds)).toEqual([]);
+  });
+});
+
+describe('hydrateBranches hasRepo', () => {
+  it('retains hasRepo when branches exist', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_list_branches') return [{ name: 'main', current: true }];
+      if (cmd === 'vcs_head_status') return { detached: false, branch: 'main' };
+      return [];
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { hydrateBranches } = await import('./hydrate');
+    const { state } = await import('../../state/state');
+    state.hasRepo = false;
+
+    await hydrateBranches();
+    expect(state.hasRepo).toBe(true);
   });
 });

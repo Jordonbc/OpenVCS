@@ -410,6 +410,32 @@ describe('selectFile contextmenu', () => {
     });
     expect(hydrateStatus).toHaveBeenCalled();
   });
+
+  it('discards selected hunks for this file through context menu', async () => {
+    const { selectFile } = await import('./diffView');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { hydrateStatus } = await import('./hydrate');
+    const { state } = await import('../../state/state');
+    const { confirmBool } = await import('../../lib/confirm');
+
+    state.selectedHunksByFile = { 'a.txt': [0] } as any;
+
+    await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
+
+    const diffEl = document.getElementById('diff')!;
+    const hunkEl = diffEl.querySelector('.hunk') as HTMLElement;
+    hunkEl.setAttribute('data-hunk-index', '0');
+    hunkEl.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20, cancelable: true }));
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((item) => item.label === 'Discard selected hunks (this file)')?.action?.();
+
+    expect(vi.mocked(confirmBool)).toHaveBeenCalled();
+    expect((window as any).__TAURI__.core.invoke).toHaveBeenCalledWith('vcs_discard_patch', {
+      patch: expect.stringContaining('diff --git a/a.txt b/a.txt'),
+    });
+    expect(hydrateStatus).toHaveBeenCalled();
+  });
 });
 
 describe('selectStashDiff', () => {

@@ -48,6 +48,25 @@ describe('wireConfirmModal', () => {
     // Should not throw
     expect(() => wireConfirmModal()).not.toThrow();
   });
+
+  it('uses default labels when confirmLabel and cancelLabel are empty', async () => {
+    const { confirmWithModal } = await import('./confirmModal');
+    const { openModal } = await import('../ui/modals');
+
+    confirmWithModal({ title: 'T', hint: 'H', message: 'M', confirmLabel: '   ', cancelLabel: undefined as any, danger: true });
+    await vi.waitFor(() => expect(openModal).toHaveBeenCalled());
+
+    const modal = document.getElementById('confirm-modal') as HTMLElement;
+    expect(modal.querySelector('#confirm-modal-confirm-btn')?.textContent).toBe('Confirm');
+    expect(modal.querySelector('#confirm-modal-cancel-btn')?.textContent).toBe('Cancel');
+  });
+
+  it('does not throw when modal:closed fires with no pending confirm', async () => {
+    const { wireConfirmModal } = await import('./confirmModal');
+    wireConfirmModal();
+    const modal = document.getElementById('confirm-modal') as HTMLElement;
+    expect(() => modal.dispatchEvent(new Event('modal:closed'))).not.toThrow();
+  });
 });
 
 describe('setContent', () => {

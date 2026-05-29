@@ -199,6 +199,14 @@ describe('collectPluginSettingsFromPanel', () => {
         panel.innerHTML = '<p>No settings here</p>';
         expect(collectPluginSettingsFromPanel(panel)).toEqual([]);
     });
+
+    it('clamps non-finite numeric values to zero', async () => {
+        const { collectPluginSettingsFromPanel } = await load();
+        const panel = document.createElement('div');
+        panel.innerHTML = '<input type="number" data-setting-id="bad" data-setting-kind="s32" value="NaN" />';
+        const result = collectPluginSettingsFromPanel(panel);
+        expect(result).toEqual([{ id: 'bad', value: 0 }]);
+    });
 });
 
 // ---------------------------------------------------------------------------

@@ -181,6 +181,102 @@ describe('wireSshKeys (agent status formatting)', () => {
         });
     });
 
+    it('renders key candidates and hides none message when keys exist', async () => {
+        mockInvoke
+            .mockResolvedValueOnce(agentResult(0))
+            .mockResolvedValueOnce([keyCandidate('/home/.ssh/id_rsa', 'id_rsa'), keyCandidate('/home/.ssh/id_ed25519', 'id_ed25519')]);
+
+        const { wireSshKeys } = await loadSut();
+        wireSshKeys();
+
+        const modal = getModal() as any;
+        await modal.__open();
+
+        await vi.waitFor(() => {
+            const listEl = document.getElementById('ssh-keys-list') as HTMLElement;
+            expect(listEl.children.length).toBe(2);
+            expect(listEl.children[0].textContent).toBe('id_rsa');
+            const noneEl = document.getElementById('ssh-keys-none') as HTMLElement;
+            expect(noneEl.style.display).toBe('none');
+            const selectedEl = document.getElementById('ssh-keys-selected') as HTMLElement;
+            expect(selectedEl.textContent).toBe('/home/.ssh/id_rsa');
+        });
+    });
+
+    it('handles refresh failure gracefully', async () => {
+        mockInvoke.mockRejectedValue(new Error('ssh error'));
+
+        const { wireSshKeys } = await loadSut();
+        wireSshKeys();
+
+        const modal = getModal() as any;
+        await modal.__open();
+
+        await vi.waitFor(() => {
+            const statusEl = document.getElementById('ssh-keys-agent-status') as HTMLPreElement;
+            expect(statusEl.textContent).toContain('Unable to query ssh-agent');
+            expect(mockNotify).toHaveBeenCalledWith('Unable to load SSH keys');
+        });
+    });
+
+    it('copies the selected key ssh-add command', async () => {
+        mockInvoke
+            .mockResolvedValueOnce(agentResult(0))
+            .mockResolvedValueOnce([keyCandidate('/home/.ssh/id_rsa', 'id_rsa')]);
+        (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+
+        const { wireSshKeys } = await loadSut();
+        wireSshKeys();
+
+        const modal = getModal() as any;
+        await modal.__open();
+        await vi.waitFor(() => expect(document.getElementById('ssh-keys-list')!.children.length).toBe(1));
+
+        (document.getElementById('ssh-keys-copy') as HTMLButtonElement).click();
+        await vi.waitFor(() => {
+            expect(navigator.clipboard.writeText).toHaveBeenCalledWith('ssh-add "/home/.ssh/id_rsa"');
+            expect(mockNotify).toHaveBeenCalledWith('Copied to clipboard');
+        });
+    });
+
+    it('shows error when copying without a selected key', async () => {
+        mockInvoke
+            .mockResolvedValueOnce(agentResult(0))
+            .mockResolvedValueOnce([]);
+
+        const { wireSshKeys } = await loadSut();
+        wireSshKeys();
+
+        const modal = getModal() as any;
+        await modal.__open();
+        await vi.waitFor(() => expect(mockInvoke).toHaveBeenCalled());
+
+        (document.getElementById('ssh-keys-copy') as HTMLButtonElement).click();
+        expect(mockNotify).toHaveBeenCalledWith('Select a key first');
+    });
+
+    it('adds a key and refreshes on success', async () => {
+        mockInvoke
+            .mockResolvedValueOnce(agentResult(0))
+            .mockResolvedValueOnce([keyCandidate('/home/.ssh/id_rsa', 'id_rsa')])
+            .mockResolvedValueOnce(agentResult(0, { stdout: 'Key added' }))
+            .mockResolvedValueOnce(agentResult(0))
+            .mockResolvedValueOnce([]);
+
+        const { wireSshKeys } = await loadSut();
+        wireSshKeys();
+
+        const modal = getModal() as any;
+        await modal.__open();
+        await vi.waitFor(() => expect(document.getElementById('ssh-keys-list')!.children.length).toBe(1));
+
+        (document.getElementById('ssh-keys-add') as HTMLButtonElement).click();
+        await vi.waitFor(() => {
+            expect(mockInvoke).toHaveBeenCalledWith('ssh_add_key', { path: '/home/.ssh/id_rsa' });
+            expect(mockNotify).toHaveBeenCalledWith('Key added to ssh-agent');
+        });
+    });
+
     it('shows generic fallback message for unknown exit codes', async () => {
         mockInvoke
             .mockResolvedValueOnce(agentResult(42, { stderr: 'something broke' }))
