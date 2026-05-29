@@ -279,4 +279,13 @@ describe('bindRepoHotkeys', () => {
     // Should not throw
     fireKeydown('Escape');
   });
+
+  it('handles rejected fetchAction on F5 without unhandled promise', async () => {
+    const mod = await loadHotkeys();
+    const fetchAction = vi.fn().mockRejectedValue(new Error('fetch failed'));
+    mod.bindRepoHotkeys(null, vi.fn(), fetchAction);
+
+    await fireKeydown('F5');
+    // The catch handler should swallow the rejection
+  });
 });

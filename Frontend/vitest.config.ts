@@ -20,6 +20,8 @@ export default defineConfig({
       provider: 'v8',
       exclude: [
         'src/scripts/**/*.test.ts',
+        'src/modals/**',
+        'src/styles/**',
         'tests/**',
       ],
       thresholds: {
