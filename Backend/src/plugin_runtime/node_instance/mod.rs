@@ -541,3 +541,8 @@ impl Drop for NodePluginRuntimeInstance {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../../tests/plugin_runtime/node_instance/mod.rs");
+}

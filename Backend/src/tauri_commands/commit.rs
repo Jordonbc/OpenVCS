@@ -11,6 +11,27 @@ use crate::state::AppState;
 
 use super::{current_repo_or_err, progress_bridge, run_repo_task};
 
+fn build_commit_message(summary: &str, description: &str) -> String {
+    if description.trim().is_empty() {
+        summary.to_string()
+    } else {
+        format!("{summary}\n\n{description}")
+    }
+}
+
+fn has_commit_selection(patch: &str, files_len: usize, stage_paths_len: usize) -> bool {
+    !patch.trim().is_empty() || files_len > 0 || stage_paths_len > 0
+}
+
+fn trimmed_non_empty(value: &str, error: &str) -> Result<String, String> {
+    let value = value.trim().to_string();
+    if value.is_empty() {
+        Err(error.to_string())
+    } else {
+        Ok(value)
+    }
+}
+
 /// Resolves the repository commit identity from VCS config.
 ///
 /// # Parameters
@@ -54,11 +75,7 @@ pub async fn commit_changes<R: Runtime>(
     let repo = repo.clone();
     let app = window.app_handle().clone();
 
-    let message = if description.trim().is_empty() {
-        summary.clone()
-    } else {
-        format!("{summary}\n\n{description}")
-    };
+    let message = build_commit_message(&summary, &description);
 
     async_runtime::spawn_blocking(move || {
         let on = progress_bridge(app);
@@ -122,11 +139,7 @@ pub async fn commit_selected<R: Runtime>(
     let repo = repo.clone();
     let app = window.app_handle().clone();
 
-    let message = if description.trim().is_empty() {
-        summary.clone()
-    } else {
-        format!("{summary}\n\n{description}")
-    };
+    let message = build_commit_message(&summary, &description);
 
     async_runtime::spawn_blocking(move || {
         let on = progress_bridge(app);
@@ -185,11 +198,7 @@ pub async fn commit_patch<R: Runtime>(
     let repo = repo.clone();
     let app = window.app_handle().clone();
 
-    let message = if description.trim().is_empty() {
-        summary.clone()
-    } else {
-        format!("{summary}\n\n{description}")
-    };
+    let message = build_commit_message(&summary, &description);
 
     async_runtime::spawn_blocking(move || {
         let on = progress_bridge(app);
@@ -256,11 +265,7 @@ pub async fn commit_patch_and_files<R: Runtime>(
     let repo = repo.clone();
     let app = window.app_handle().clone();
 
-    let message = if description.trim().is_empty() {
-        summary.clone()
-    } else {
-        format!("{summary}\n\n{description}")
-    };
+    let message = build_commit_message(&summary, &description);
 
     async_runtime::spawn_blocking(move || {
         let on = progress_bridge(app);
@@ -290,8 +295,7 @@ pub async fn commit_patch_and_files<R: Runtime>(
                 e.to_string()
             })?;
         }
-        let has_selection =
-            !patch.trim().is_empty() || !files.is_empty() || !stage_paths.is_empty();
+        let has_selection = has_commit_selection(&patch, files.len(), stage_paths.len());
         if !has_selection {
             return Err("No commit paths provided".into());
         }
@@ -335,14 +339,8 @@ pub async fn vcs_cherry_pick_to_branch<R: Runtime>(
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
     run_repo_task("vcs_cherry_pick_to_branch", repo, move |repo| {
-        let id = id.trim().to_string();
-        let branch = branch.trim().to_string();
-        if id.is_empty() {
-            return Err("Commit id cannot be empty".into());
-        }
-        if branch.is_empty() {
-            return Err("Target branch cannot be empty".into());
-        }
+        let id = trimmed_non_empty(&id, "Commit id cannot be empty")?;
+        let branch = trimmed_non_empty(&branch, "Target branch cannot be empty")?;
 
         let on = progress_bridge(app);
         on(VcsEvent::Progress {
@@ -388,10 +386,7 @@ pub async fn vcs_revert_commit<R: Runtime>(
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
     run_repo_task("vcs_revert_commit", repo, move |repo| {
-        let id = id.trim().to_string();
-        if id.is_empty() {
-            return Err("Commit id cannot be empty".into());
-        }
+        let id = trimmed_non_empty(&id, "Commit id cannot be empty")?;
 
         let on = progress_bridge(app);
         on(VcsEvent::Progress {
@@ -407,4 +402,9 @@ pub async fn vcs_revert_commit<R: Runtime>(
         Ok(())
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/commit.rs");
 }
