@@ -1,7 +1,10 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::{validate_add_path, validate_clone_input, validate_vcs_url};
+use super::{
+    has_url_path_segment, is_probably_vcs_url, looks_like_path, validate_add_path,
+    validate_clone_input, validate_vcs_url,
+};
 use std::fs;
 
 #[test]
@@ -75,4 +78,34 @@ fn validates_clone_inputs() {
     );
     assert!(!err.ok);
     assert_eq!(err.reason.as_deref(), Some("Destination already contains a repository"));
+}
+
+#[test]
+fn detects_supported_vcs_url_shapes() {
+    assert!(is_probably_vcs_url("https://github.com/openvcs/openvcs"));
+    assert!(is_probably_vcs_url("https://github.com/openvcs/openvcs.git"));
+    assert!(is_probably_vcs_url("ssh://git@example.com/openvcs/openvcs"));
+    assert!(is_probably_vcs_url("git@example.com:openvcs/openvcs"));
+    assert!(!is_probably_vcs_url("https://github.com"));
+    assert!(!is_probably_vcs_url(""));
+    assert!(!is_probably_vcs_url("not a url"));
+}
+
+#[test]
+fn detects_url_path_segments_after_scheme_stripping() {
+    assert!(has_url_path_segment("https://github.com/openvcs/openvcs", "https://"));
+    assert!(has_url_path_segment("ssh://git@example.com/openvcs/openvcs", "ssh://"));
+    assert!(!has_url_path_segment("https://github.com", "https://"));
+    assert!(!has_url_path_segment("ssh://git@example.com/", "ssh://"));
+    assert!(!has_url_path_segment("github.com/openvcs/openvcs", "https://"));
+}
+
+#[test]
+fn detects_absolute_path_shapes() {
+    assert!(looks_like_path("/tmp/openvcs"));
+    assert!(looks_like_path("~/openvcs"));
+    assert!(looks_like_path("C:\\OpenVCS"));
+    assert!(looks_like_path("c:/OpenVCS"));
+    assert!(!looks_like_path("relative/path"));
+    assert!(!looks_like_path(""));
 }
