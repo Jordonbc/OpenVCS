@@ -32,6 +32,10 @@ use self::rpc::NodeRpcProcess;
 const DEFAULT_RPC_TIMEOUT_SECS: u64 = 30;
 const VCS_OPERATION_TIMEOUT_SECS: u64 = 60;
 
+/// Test-only mock RPC handler type.
+#[cfg(test)]
+type MockRpcHandler = Box<dyn Fn(&str, Value) -> Result<Value, String> + Send>;
+
 /// Parsed plugin initialize response payload.
 #[derive(Debug, Deserialize)]
 struct InitializeResponse {
@@ -51,7 +55,7 @@ pub struct NodePluginRuntimeInstance {
     event_sink: RwLock<Option<OnEvent>>,
     /// Test-only RPC mock handler injected instead of a real process.
     #[cfg(test)]
-    mock_rpc_handler: Mutex<Option<Box<dyn Fn(&str, Value) -> Result<Value, String> + Send>>>,
+    mock_rpc_handler: Mutex<Option<MockRpcHandler>>,
 }
 
 impl NodePluginRuntimeInstance {
@@ -87,10 +91,7 @@ impl NodePluginRuntimeInstance {
 
     /// Installs a mock RPC handler for testing, bypassing the real process.
     #[cfg(test)]
-    pub(crate) fn set_mock_handler(
-        &self,
-        handler: Box<dyn Fn(&str, Value) -> Result<Value, String> + Send>,
-    ) {
+    pub(crate) fn set_mock_handler(&self, handler: MockRpcHandler) {
         *self.mock_rpc_handler.lock() = Some(handler);
     }
 
@@ -296,8 +297,7 @@ impl NodePluginRuntimeInstance {
         #[cfg(test)]
         if let Some(handler) = self.mock_rpc_handler.lock().as_ref() {
             let result = handler(method, params)?;
-            return serde_json::from_value(result)
-                .map_err(|e| format!("mock rpc decode: {e}"));
+            return serde_json::from_value(result).map_err(|e| format!("mock rpc decode: {e}"));
         }
 
         let timeout = timeout_secs.or_else(|| {

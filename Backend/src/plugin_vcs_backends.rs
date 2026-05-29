@@ -30,7 +30,7 @@ fn cached_backends() -> Option<Vec<PluginBackendDescriptor>> {
         .clone()
 }
 
-fn store_backends(backends: Vec<PluginBackendDescriptor>) {
+pub(crate) fn store_backends(backends: Vec<PluginBackendDescriptor>) {
     *backend_cache()
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(backends);

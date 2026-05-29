@@ -109,7 +109,7 @@ describe('loadCommitSettingsIntoForm', () => {
   it('collectCommitSettings handles missing elements', () => {
     document.body.innerHTML = '<div></div>';
     const root = document.body.firstElementChild as HTMLElement;
-    const result = collectCommitSettings(root);
+    const result = collectCommitSettings(root)!;
     expect(result.commit_message_template_enabled).toBe(false);
     expect(result.restrict_commit_summary).toBe(false);
   });

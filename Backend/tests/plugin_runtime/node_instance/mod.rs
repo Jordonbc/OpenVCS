@@ -280,7 +280,7 @@ fn ensure_running_fails_when_no_node() {
 
 #[test]
 fn set_event_sink_stores_and_clears() {
-    use crate::core::models::{OnEvent, VcsEvent};
+    use crate::core::models::OnEvent;
     let runtime = test_runtime();
     let sink: OnEvent = std::sync::Arc::new(|_| {});
     runtime.set_event_sink(Some(Arc::clone(&sink)));

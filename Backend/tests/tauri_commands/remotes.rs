@@ -45,3 +45,118 @@ fn detects_fast_forward_only_divergence() {
     assert!(looks_like_ff_only_divergence("Cannot be fast-forwarded because branches diverged"));
     assert!(!looks_like_ff_only_divergence("permission denied (publickey)"));
 }
+
+// ── IPC command error path tests ──
+
+use crate::settings;
+use crate::state::AppState;
+use tauri::ipc::InvokeResponseBody;
+use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+use tauri::webview::InvokeRequest;
+use tauri::WebviewWindowBuilder;
+
+fn build_app_no_repo() -> tauri::App<tauri::test::MockRuntime> {
+    let cfg = settings::AppConfig::default();
+    let app_state = AppState::new_with_config(cfg);
+    mock_builder()
+        .manage(app_state)
+        .invoke_handler(tauri::generate_handler![
+            super::vcs_set_remote_url,
+            super::vcs_fetch,
+            super::vcs_fetch_all,
+            super::vcs_pull,
+            super::vcs_push,
+            super::vcs_undo_since_push,
+            super::vcs_undo_to_commit,
+        ])
+        .build(mock_context(noop_assets()))
+        .expect("build remotes test app")
+}
+
+fn test_webview(
+    app: &tauri::App<tauri::test::MockRuntime>,
+) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+    WebviewWindowBuilder::new(app, "main", Default::default())
+        .build()
+        .expect("build test webview")
+}
+
+fn invoke_cmd(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    cmd: &str,
+    body: tauri::ipc::InvokeBody,
+) -> Result<InvokeResponseBody, serde_json::Value> {
+    get_ipc_response(
+        webview,
+        InvokeRequest {
+            cmd: cmd.into(),
+            callback: tauri::ipc::CallbackFn(0),
+            error: tauri::ipc::CallbackFn(1),
+            url: "tauri://localhost".parse().unwrap(),
+            body,
+            headers: Default::default(),
+            invoke_key: INVOKE_KEY.to_string(),
+        },
+    )
+}
+
+#[test]
+fn vcs_set_remote_url_fails_without_repo() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "remote": "origin",
+        "url": "https://example.com/repo.git",
+    }));
+    let res = invoke_cmd(&wv, "vcs_set_remote_url", body);
+    assert!(res.is_err(), "vcs_set_remote_url needs a repo: {:?}", res);
+}
+
+#[test]
+fn vcs_fetch_fails_without_repo() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "remote": "origin",
+        "refspec": "",
+    }));
+    let res = invoke_cmd(&wv, "vcs_fetch", body);
+    assert!(res.is_err(), "vcs_fetch needs a repo: {:?}", res);
+}
+
+#[test]
+fn vcs_fetch_all_fails_without_repo() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let res = invoke_cmd(&wv, "vcs_fetch_all", tauri::ipc::InvokeBody::default());
+    assert!(res.is_err(), "vcs_fetch_all needs a repo: {:?}", res);
+}
+
+#[test]
+fn vcs_pull_fails_without_repo() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "remote": "origin",
+        "branch": "main",
+    }));
+    let res = invoke_cmd(&wv, "vcs_pull", body);
+    assert!(res.is_err(), "vcs_pull needs a repo: {:?}", res);
+}
+
+#[test]
+fn vcs_push_fails_without_repo() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "remote": "origin",
+        "refspec": "main",
+    }));
+    let res = invoke_cmd(&wv, "vcs_push", body);
+    assert!(res.is_err(), "vcs_push needs a repo: {:?}", res);
+}

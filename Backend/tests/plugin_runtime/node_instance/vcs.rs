@@ -312,7 +312,7 @@ fn vcs_list_branches_returns_branches() {
     let branches = rt.vcs_list_branches().unwrap();
     assert_eq!(branches.len(), 2);
     assert_eq!(branches[0].name, "main");
-    assert_eq!(branches[0].current, true);
+    assert!(branches[0].current);
 }
 
 #[test]

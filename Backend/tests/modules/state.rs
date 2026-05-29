@@ -104,7 +104,7 @@ fn output_log_truncates_at_maximum() {
     let state = AppState::new_with_config(AppConfig::default());
     // Push more than MAX (2000) entries
     for i in 0..2500 {
-        state.push_output_log(OutputLogEntry::new(i as i64, OutputLevel::Info, "core", &i.to_string()));
+        state.push_output_log(OutputLogEntry::new(i as i64, OutputLevel::Info, "core", i.to_string()));
     }
     // Should have trimmed to 2000
     assert_eq!(state.output_log().len(), 2000);

@@ -91,7 +91,7 @@ fn ensure_ssh_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 /// Process output captured from SSH-related shell commands.
 pub struct SshCommandOutput {
     /// Process exit code, or `-1` when unavailable.

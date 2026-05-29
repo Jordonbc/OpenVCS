@@ -331,7 +331,7 @@ describe('bindBranchUI', () => {
 
     vi.advanceTimersByTime(130);
     expect(document.getElementById('branch-pop')!.hidden).toBe(true);
-    expect(document.getElementById('branch-filter')!.value).toBe('');
+    expect((document.getElementById('branch-filter') as HTMLInputElement).value).toBe('');
   });
 
   it('renderBranches handles empty branchList', async () => {

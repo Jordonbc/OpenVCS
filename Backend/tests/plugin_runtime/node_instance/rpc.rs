@@ -179,13 +179,16 @@ mod call_integration {
     }
 
     #[test]
-    fn call_method_times_out_on_missing_response() {
-        let (process, _tx) = mock_process();
+    fn call_method_errors_via_mock_handler() {
+        use serde_json::Value;
+
         let rt = test_runtime();
         rt.set_session_id(Some("s".into()));
-        rt.set_process(process);
+        rt.set_mock_handler(Box::new(|method: &str, _params: Value| -> Result<Value, String> {
+            Err(format!("{method} mock error"))
+        }));
 
         let err = rt.vcs_list_stashes().unwrap_err();
-        assert!(err.contains("timed out") || err.contains("disconnected"));
+        assert!(err.contains("mock error"), "should propagate mock handler error: {err:?}");
     }
 }

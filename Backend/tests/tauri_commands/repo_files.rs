@@ -68,3 +68,92 @@ fn decodes_lossy_text_bytes() {
     let decoded = decode_repo_text(&invalid);
     assert!(!decoded.is_empty(), "should not panic on invalid encoding");
 }
+
+// ── IPC command error path tests ──
+
+use crate::settings;
+use crate::state::AppState;
+use tauri::ipc::InvokeResponseBody;
+use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+use tauri::webview::InvokeRequest;
+use tauri::WebviewWindowBuilder;
+
+fn build_app_no_repo() -> tauri::App<tauri::test::MockRuntime> {
+    let cfg = settings::AppConfig::default();
+    let app_state = AppState::new_with_config(cfg);
+    mock_builder()
+        .manage(app_state)
+        .invoke_handler(tauri::generate_handler![
+            super::read_repo_file_text,
+            super::open_repo_file,
+        ])
+        .build(mock_context(noop_assets()))
+        .expect("build repo_files test app")
+}
+
+fn test_webview(
+    app: &tauri::App<tauri::test::MockRuntime>,
+) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+    WebviewWindowBuilder::new(app, "main", Default::default())
+        .build()
+        .expect("build test webview")
+}
+
+fn invoke_cmd(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    cmd: &str,
+    body: tauri::ipc::InvokeBody,
+) -> Result<InvokeResponseBody, serde_json::Value> {
+    get_ipc_response(
+        webview,
+        InvokeRequest {
+            cmd: cmd.into(),
+            callback: tauri::ipc::CallbackFn(0),
+            error: tauri::ipc::CallbackFn(1),
+            url: "tauri://localhost".parse().unwrap(),
+            body,
+            headers: Default::default(),
+            invoke_key: INVOKE_KEY.to_string(),
+        },
+    )
+}
+
+#[test]
+fn read_repo_file_text_fails_without_repo() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"path": "README.md"}));
+    let res = invoke_cmd(&wv, "read_repo_file_text", body);
+    assert!(res.is_err(), "read_repo_file_text needs a repo: {:?}", res);
+}
+
+#[test]
+fn open_repo_file_fails_without_repo() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"path": "README.md"}));
+    let res = invoke_cmd(&wv, "open_repo_file", body);
+    assert!(res.is_err(), "open_repo_file needs a repo: {:?}", res);
+}
+
+#[test]
+fn read_repo_file_text_fails_with_empty_path() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"path": ""}));
+    let res = invoke_cmd(&wv, "read_repo_file_text", body);
+    assert!(res.is_err(), "empty path should fail: {:?}", res);
+}
+
+#[test]
+fn open_repo_file_fails_with_empty_path() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"path": ""}));
+    let res = invoke_cmd(&wv, "open_repo_file", body);
+    assert!(res.is_err(), "empty path should fail: {:?}", res);
+}

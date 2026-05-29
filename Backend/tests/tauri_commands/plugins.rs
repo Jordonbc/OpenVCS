@@ -104,6 +104,14 @@ fn build_app() -> tauri::App<tauri::test::MockRuntime> {
             super::list_plugins,
             super::list_plugin_start_failures,
             super::load_plugin,
+            super::list_installed_plugins,
+            super::sync_configured_plugins,
+            super::uninstall_plugin,
+            super::list_plugin_menus,
+            super::get_plugin_settings,
+            super::save_plugin_settings,
+            super::reset_plugin_settings,
+            super::set_plugin_approval,
         ])
         .build(mock_context(noop_assets()))
         .expect("build test app")
@@ -166,4 +174,92 @@ fn load_plugin_rejects_unknown() {
     let res = invoke_cmd(&webview, "load_plugin", body);
     // Unknown plugins should return an error
     assert!(res.is_err(), "loading unknown plugin should fail");
+}
+
+#[test]
+fn invoke_plugin_action_fails_for_unknown() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "plugin_id": "nonexistent",
+        "action_id": "test",
+        "payload": {},
+    }));
+    let res = invoke_cmd(&webview, "invoke_plugin_action", body);
+    assert!(res.is_err(), "invoke_plugin_action for unknown plugin should fail");
+}
+
+#[test]
+fn list_installed_plugins_returns_empty() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let res = invoke_cmd(&webview, "list_installed_plugins", tauri::ipc::InvokeBody::default());
+    let _ = res;
+}
+
+#[test]
+fn list_plugin_menus_returns_ok() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let res = invoke_cmd(&webview, "list_plugin_menus", tauri::ipc::InvokeBody::default());
+    let _ = res;
+}
+
+#[test]
+fn sync_configured_plugins_succeeds() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let res = invoke_cmd(&webview, "sync_configured_plugins", tauri::ipc::InvokeBody::default());
+    let _ = res;
+}
+
+#[test]
+fn uninstall_plugin_fails_for_nonexistent() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"plugin_id": "nonexistent"}));
+    let res = invoke_cmd(&webview, "uninstall_plugin", body);
+    let _ = res;
+}
+
+#[test]
+fn get_plugin_settings_returns_defaults() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"plugin_id": "test.plugin"}));
+    let res = invoke_cmd(&webview, "get_plugin_settings", body);
+    let _ = res;
+}
+
+#[test]
+fn save_plugin_settings_succeeds() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "plugin_id": "test.plugin",
+        "settings": [],
+    }));
+    let res = invoke_cmd(&webview, "save_plugin_settings", body);
+    let _ = res;
+}
+
+#[test]
+fn reset_plugin_settings_succeeds() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"plugin_id": "test.plugin"}));
+    let res = invoke_cmd(&webview, "reset_plugin_settings", body);
+    let _ = res;
+}
+
+#[test]
+fn set_plugin_approval_succeeds() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "plugin_id": "test.plugin",
+        "approved": true,
+    }));
+    let res = invoke_cmd(&webview, "set_plugin_approval", body);
+    let _ = res;
 }

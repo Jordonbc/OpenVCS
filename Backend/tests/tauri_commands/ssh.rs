@@ -3,7 +3,7 @@
 
 use super::{
     clear_test_home_dir, is_executable, known_hosts_path, resolve_command, resolve_ssh_askpass,
-    set_test_home_dir, ssh_dir_path, ssh_key_candidates_in_dir,
+    set_test_home_dir, ssh_add_key, ssh_dir_path, ssh_key_candidates_in_dir, ssh_trust_host,
 };
 use std::env;
 use std::ffi::OsString;
@@ -130,4 +130,28 @@ fn lists_private_key_candidates_from_ssh_dir() {
     let keys = ssh_key_candidates_in_dir(ssh_dir.path()).expect("list candidates");
     let names: Vec<_> = keys.into_iter().map(|k| k.name).collect();
     assert_eq!(names, vec!["custom.key", "id_ed25519", "id_rsa"]);
+}
+
+#[test]
+fn ssh_trust_host_rejects_empty_host() {
+    let err = ssh_trust_host("".into());
+    assert_eq!(err, Err("Host cannot be empty".to_string()));
+}
+
+#[test]
+fn ssh_trust_host_rejects_whitespace_host() {
+    let err = ssh_trust_host("   ".into());
+    assert_eq!(err, Err("Host cannot be empty".to_string()));
+}
+
+#[test]
+fn ssh_add_key_rejects_empty_path() {
+    let err = ssh_add_key("".into());
+    assert_eq!(err, Err("Path cannot be empty".to_string()));
+}
+
+#[test]
+fn ssh_add_key_rejects_whitespace_path() {
+    let err = ssh_add_key("   ".into());
+    assert_eq!(err, Err("Path cannot be empty".to_string()));
 }

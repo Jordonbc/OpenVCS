@@ -216,7 +216,7 @@ describe('onFileClick', () => {
     state.files = [];
     state.selectedFiles = new Set();
 
-    const listEl = (await import('./context')).listEl;
+    const listEl = (await import('./context')).listEl!;
     const li = document.createElement('li');
     li.className = 'row';
     li.dataset.path = 'a.txt';

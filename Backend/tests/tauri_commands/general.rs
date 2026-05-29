@@ -63,6 +63,15 @@ fn build_app() -> tauri::App<tauri::test::MockRuntime> {
             super::show_licenses,
             super::list_recent_repos,
             super::current_repo_path,
+            super::browse_directory,
+            super::browse_file,
+            super::add_repo,
+            super::clone_repo,
+            super::open_repo,
+            super::open_repo_dotfile,
+            super::open_docs,
+            super::exit_app,
+            super::check_for_updates,
         ])
         .build(mock_context(noop_assets()))
         .expect("build test app")
@@ -163,4 +172,52 @@ fn current_repo_path_returns_none_when_no_repo() {
     assert!(res.is_ok(), "current_repo_path should succeed: {:?}", res);
     let path: Option<String> = res.unwrap().deserialize().unwrap();
     assert!(path.is_none(), "repo path should be None when no repo open");
+}
+
+// ── Window<R> command error path tests ──
+
+#[test]
+fn add_repo_fails_without_backend() {
+    let app = build_app();
+    let wv = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "path": "/tmp/test-repo",
+        "backend_id": null,
+    }));
+    let res = invoke_cmd(&wv, "add_repo", body);
+    assert!(res.is_err(), "add_repo should fail without backend: {:?}", res);
+}
+
+#[test]
+fn clone_repo_fails_without_backend() {
+    let app = build_app();
+    let wv = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "url": "https://example.com/repo.git",
+        "dest": "/tmp/repo",
+        "backend_id": null,
+    }));
+    let res = invoke_cmd(&wv, "clone_repo", body);
+    assert!(res.is_err(), "clone_repo should fail without backend: {:?}", res);
+}
+
+#[test]
+fn open_repo_fails_without_backend() {
+    let app = build_app();
+    let wv = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "path": "/nonexistent/path",
+        "backend_id": null,
+    }));
+    let res = invoke_cmd(&wv, "open_repo", body);
+    assert!(res.is_err(), "open_repo should fail without backend: {:?}", res);
+}
+
+#[test]
+fn open_repo_dotfile_fails_without_repo() {
+    let app = build_app();
+    let wv = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"name": ".gitignore"}));
+    let res = invoke_cmd(&wv, "open_repo_dotfile", body);
+    assert!(res.is_err(), "open_repo_dotfile needs a repo: {:?}", res);
 }
