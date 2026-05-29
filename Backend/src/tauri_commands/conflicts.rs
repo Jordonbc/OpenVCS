@@ -59,6 +59,11 @@ pub async fn vcs_conflict_details(
     result
 }
 
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/conflicts.rs");
+}
+
 #[tauri::command]
 /// Resolves a conflict file by checking out `ours` or `theirs`.
 ///

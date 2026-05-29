@@ -194,3 +194,8 @@ pub fn open_output_log_window<R: Runtime>(window: Window<R>) -> Result<(), Strin
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/output_log.rs");
+}

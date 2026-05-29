@@ -230,3 +230,8 @@ pub fn read_repo_file_text(state: State<'_, AppState>, path: String) -> Result<S
     let bytes = std::fs::read(&abs).map_err(|e| format!("Failed to read file: {e}"))?;
     Ok(decode_repo_text(&bytes))
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/repo_files.rs");
+}

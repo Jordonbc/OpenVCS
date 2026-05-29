@@ -490,3 +490,8 @@ fn infer_repo_dir_from_url(url: &str) -> String {
     let last = trimmed.rsplit('/').next().unwrap_or(trimmed);
     last.trim_end_matches(".git").to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/general.rs");
+}

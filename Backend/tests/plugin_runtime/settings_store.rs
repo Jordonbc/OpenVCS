@@ -6,11 +6,18 @@ use super::{
     set_test_plugin_data_root,
 };
 use serde_json::json;
+use std::sync::{Mutex, OnceLock};
 use std::fs;
 use tempfile::tempdir;
 
+fn test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(())).lock().expect("lock")
+}
+
 #[test]
 fn saves_loads_and_resets_plugin_settings() {
+    let _guard = test_lock();
     let temp = tempdir().expect("tempdir");
     set_test_plugin_data_root(temp.path().join("plugin-data"));
 
@@ -39,6 +46,7 @@ fn saves_loads_and_resets_plugin_settings() {
 
 #[test]
 fn loads_empty_map_when_settings_file_is_missing() {
+    let _guard = test_lock();
     let temp = tempdir().expect("tempdir");
     set_test_plugin_data_root(temp.path().join("plugin-data"));
 
@@ -50,6 +58,7 @@ fn loads_empty_map_when_settings_file_is_missing() {
 
 #[test]
 fn reset_settings_is_a_noop_for_missing_files() {
+    let _guard = test_lock();
     let temp = tempdir().expect("tempdir");
     set_test_plugin_data_root(temp.path().join("plugin-data"));
 

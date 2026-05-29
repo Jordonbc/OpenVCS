@@ -418,3 +418,8 @@ fn path_to_utf8(path: &Path) -> Result<String, VcsError> {
             msg: format!("non-utf8 path: {}", path.display()),
         })
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/plugin_runtime/vcs_proxy.rs");
+}

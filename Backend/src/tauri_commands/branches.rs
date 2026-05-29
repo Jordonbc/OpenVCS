@@ -648,3 +648,8 @@ pub async fn vcs_current_branch(state: State<'_, AppState>) -> Result<String, St
     })
     .await
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/branches.rs");
+}
