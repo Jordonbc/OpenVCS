@@ -190,6 +190,14 @@ describe('formatTimeAgo', () => {
   })
 })
 
+describe('formatTimeAgo - catch path', () => {
+  it('handles object whose toString throws', async () => {
+    const { formatTimeAgo } = await loadHistoryModule()
+    const badObj = { toString: () => { throw new Error('boom') } } as any
+    expect(formatTimeAgo(badObj)).toBe('')
+  })
+})
+
 describe('formatTimeAgo - weeks and months', () => {
   it('formats days and weeks', async () => {
     const { formatTimeAgo } = await loadHistoryModule()
