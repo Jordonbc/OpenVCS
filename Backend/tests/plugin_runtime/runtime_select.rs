@@ -1,8 +1,10 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::is_node_module;
+use super::{create_node_runtime_instance, create_runtime_instance, is_node_module};
+use crate::plugin_runtime::spawn::SpawnConfig;
 use std::fs;
+use std::path::PathBuf;
 use tempfile::tempdir;
 
 #[test]
@@ -51,4 +53,62 @@ fn uppercase_extensions_and_non_files_are_handled_consistently() {
     assert!(!is_node_module(&dir_path));
 
     assert!(!is_node_module(&temp.path().join("missing.js")));
+}
+
+#[test]
+fn create_node_runtime_instance_accepts_js_file() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let js_path = temp.path().join("plugin.mjs");
+    std::fs::write(&js_path, b"export {}").expect("write");
+
+    let result = create_node_runtime_instance(SpawnConfig {
+        plugin_id: "test".into(),
+        exec_path: js_path,
+        allowed_workspace_root: None,
+        is_vcs_backend: false,
+    });
+    assert!(result.is_ok());
+}
+
+#[test]
+fn create_node_runtime_instance_rejects_non_js_file() {
+    let result = create_node_runtime_instance(SpawnConfig {
+        plugin_id: "test".into(),
+        exec_path: PathBuf::from("plugin.bin"),
+        allowed_workspace_root: None,
+        is_vcs_backend: false,
+    });
+    match result {
+        Err(msg) => assert!(msg.contains("must be a .js/.mjs/.cjs")),
+        Ok(_) => panic!("expected error"),
+    }
+}
+
+#[test]
+fn create_runtime_instance_accepts_valid_path() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let js_path = temp.path().join("plugin.mjs");
+    std::fs::write(&js_path, b"export {}").expect("write");
+
+    let result = create_runtime_instance(SpawnConfig {
+        plugin_id: "test".into(),
+        exec_path: js_path,
+        allowed_workspace_root: None,
+        is_vcs_backend: false,
+    });
+    assert!(result.is_ok());
+}
+
+#[test]
+fn create_runtime_instance_rejects_invalid_path() {
+    let result = create_runtime_instance(SpawnConfig {
+        plugin_id: "test".into(),
+        exec_path: PathBuf::from("plugin.bin"),
+        allowed_workspace_root: None,
+        is_vcs_backend: false,
+    });
+    match result {
+        Err(msg) => assert!(msg.contains("must be a .js/.mjs/.cjs")),
+        Ok(_) => panic!("expected error"),
+    }
 }

@@ -17,7 +17,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::Duration;
 
 /// Live stdio-backed JSON-RPC process handle.
-pub(super) struct NodeRpcProcess {
+pub(crate) struct NodeRpcProcess {
     /// Child process hosting the plugin runtime.
     pub(super) child: Child,
     /// Writable stdin stream for requests.

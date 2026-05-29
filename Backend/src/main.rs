@@ -11,3 +11,13 @@
 fn main() {
     openvcs_lib::run()
 }
+
+#[cfg(test)]
+mod tests {
+    /// Smoke test ensuring the binary entrypoint compiles and links.
+    #[test]
+    fn main_function_exists() {
+        // Verify the function signature is correct by referencing it
+        let _ = super::main;
+    }
+}

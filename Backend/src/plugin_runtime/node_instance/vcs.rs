@@ -356,3 +356,8 @@ impl NodePluginRuntimeInstance {
         self.rpc_call_unit(Methods::VCS_REVERT_COMMIT, params)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../../tests/plugin_runtime/node_instance/vcs.rs");
+}

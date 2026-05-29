@@ -11,7 +11,7 @@ const MANIFEST_NAME: &str = "theme.json";
 pub const DEFAULT_THEME_ID: &str = "default";
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ThemeSource {
     BuiltIn,
@@ -19,7 +19,7 @@ pub enum ThemeSource {
     Plugin,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeSummary {
     pub id: String,
     pub name: String,

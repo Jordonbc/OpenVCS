@@ -1,6 +1,12 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::settings;
+use crate::state::AppState;
+use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+use tauri::webview::InvokeRequest;
+use tauri::WebviewWindowBuilder;
+
 use super::{
     merge_settings_with_defaults, menu_to_payload, setting_from_json, setting_kind_name,
     setting_value_to_json, settings_to_json_map, PluginMenuPayload, PluginSettingEntry,
@@ -85,4 +91,79 @@ fn converts_menu_payload() {
     assert_eq!(payload.label, "Menu");
     assert_eq!(payload.elements[0]["type"], serde_json::json!("text"));
     assert_eq!(payload.elements[1]["type"], serde_json::json!("button"));
+}
+
+// ── Tauri command integration tests ──
+
+fn build_app() -> tauri::App<tauri::test::MockRuntime> {
+    let cfg = settings::AppConfig::default();
+    let app_state = AppState::new_with_config(cfg);
+    mock_builder()
+        .manage(app_state)
+        .invoke_handler(tauri::generate_handler![
+            super::list_plugins,
+            super::list_plugin_start_failures,
+            super::load_plugin,
+        ])
+        .build(mock_context(noop_assets()))
+        .expect("build test app")
+}
+
+fn test_webview(
+    app: &tauri::App<tauri::test::MockRuntime>,
+) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+    WebviewWindowBuilder::new(app, "main", Default::default())
+        .build()
+        .expect("build test webview")
+}
+
+fn invoke_cmd(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    cmd: &str,
+    body: tauri::ipc::InvokeBody,
+) -> Result<tauri::ipc::InvokeResponseBody, serde_json::Value> {
+    get_ipc_response(
+        webview,
+        InvokeRequest {
+            cmd: cmd.into(),
+            callback: tauri::ipc::CallbackFn(0),
+            error: tauri::ipc::CallbackFn(1),
+            url: "tauri://localhost".parse().unwrap(),
+            body,
+            headers: Default::default(),
+            invoke_key: INVOKE_KEY.to_string(),
+        },
+    )
+}
+
+#[test]
+fn list_plugins_returns_plugins() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let res = invoke_cmd(&webview, "list_plugins", tauri::ipc::InvokeBody::default());
+    assert!(res.is_ok(), "list_plugins should succeed: {:?}", res);
+}
+
+#[test]
+fn list_plugin_start_failures_returns_empty() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let res = invoke_cmd(
+        &webview,
+        "list_plugin_start_failures",
+        tauri::ipc::InvokeBody::default(),
+    );
+    assert!(res.is_ok(), "list_plugin_start_failures should succeed");
+    let failures: Vec<String> = res.unwrap().deserialize().unwrap();
+    assert!(failures.is_empty(), "should start with no failures");
+}
+
+#[test]
+fn load_plugin_rejects_unknown() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"id": "nonexistent.plugin"}));
+    let res = invoke_cmd(&webview, "load_plugin", body);
+    // Unknown plugins should return an error
+    assert!(res.is_err(), "loading unknown plugin should fail");
 }
