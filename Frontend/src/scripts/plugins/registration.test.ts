@@ -717,6 +717,25 @@ describe('installGlobalApi full coverage', () => {
     expect(await runPluginAction('api-act', { val: 42 })).toBe(true);
     expect(handler).toHaveBeenCalledWith({ val: 42 });
   });
+
+  it('executes invoke, listen, and notify through global API', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke = vi.fn().mockResolvedValue('result');
+    tauri.event.listen = vi.fn();
+
+    const { installGlobalApi } = await import('./registration');
+    installGlobalApi();
+
+    const api = (window as any).OpenVCS;
+    api.invoke('test_cmd', { key: 'val' });
+    expect(tauri.core.invoke).toHaveBeenCalledWith('test_cmd', { key: 'val' });
+
+    const cb = vi.fn();
+    api.listen('test_event', cb);
+    expect(tauri.event.listen).toHaveBeenCalledWith('test_event', cb);
+
+    expect(() => api.notify('test message')).not.toThrow();
+  });
 });
 
 describe('registerPlugin', () => {

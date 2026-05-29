@@ -683,3 +683,69 @@ describe('clearAllFileSelections via implicit clear', () => {
     expect(pickCb.checked).toBe(false);
   });
 });
+
+// ============================================================================
+// handleLineToggle - delete rec[hunk] path and selectedHunks push
+// ============================================================================
+describe('handleLineToggle additional paths', () => {
+  it('deletes rec[hunk] when last line unchecked', async () => {
+    const diff = document.getElementById('diff')!;
+    const { bindHunkToggles } = await import('./diffSelection');
+    const { state } = await import('../../state/state');
+    state.currentFile = 'test.txt';
+    state.currentDiffHunkNodes = new Map();
+    state.selectedHunks = [0];
+    (state as any).selectedLinesByFile = { 'test.txt': { 0: [0] } };
+    state.currentDiffMeta = { offset: 0, rest: [], starts: [], changeCounts: [1], totalHunks: 1 };
+
+    const hunkCb = makeHunkCheckbox('0');
+    hunkCb.checked = false;
+    const lineCb0 = makeLineCheckbox('0', '0');
+    lineCb0.checked = true;
+    const hunkEl = document.createElement('div');
+    hunkEl.classList.add('picked');
+    state.currentDiffHunkNodes.set(0, {
+      hunkEls: [hunkEl],
+      hunkCheckboxes: [hunkCb],
+      lineCheckboxes: { 0: lineCb0 },
+    });
+
+    diff.appendChild(lineCb0);
+    bindHunkToggles(diff);
+
+    lineCb0.checked = false;
+    lineCb0.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const rec = (state as any).selectedLinesByFile['test.txt'];
+    expect(rec[0]).toBeUndefined();
+  });
+
+  it('adds hunk to selectedHunks when all lines checked', async () => {
+    const diff = document.getElementById('diff')!;
+    const { bindHunkToggles } = await import('./diffSelection');
+    const { state } = await import('../../state/state');
+    state.currentFile = 'test.txt';
+    state.currentDiffHunkNodes = new Map();
+    state.selectedHunks = [];
+    (state as any).selectedLinesByFile = { 'test.txt': {} };
+    state.currentDiffMeta = { offset: 0, rest: [], starts: [], changeCounts: [1], totalHunks: 1 };
+
+    const hunkCb = makeHunkCheckbox('0');
+    hunkCb.checked = false;
+    const lineCb0 = makeLineCheckbox('0', '0');
+    const hunkEl = document.createElement('div');
+    state.currentDiffHunkNodes.set(0, {
+      hunkEls: [hunkEl],
+      hunkCheckboxes: [hunkCb],
+      lineCheckboxes: { 0: lineCb0 },
+    });
+
+    diff.appendChild(lineCb0);
+    bindHunkToggles(diff);
+
+    lineCb0.checked = true;
+    lineCb0.dispatchEvent(new Event('change', { bubbles: true }));
+
+    expect(state.selectedHunks).toContain(0);
+  });
+});

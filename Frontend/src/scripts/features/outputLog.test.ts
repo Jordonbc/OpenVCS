@@ -200,4 +200,23 @@ describe('initOutputLogViewIfRequested', () => {
 
     vi.advanceTimersByTime(2000);
   });
+
+  it('triggers vcs:log listen callback', async () => {
+    let listenCallback: ((evt: any) => void) | null = null;
+    const tauri = await import('../lib/tauri');
+    (tauri.TAURI as any).listen = vi.fn((_event: string, cb: (evt: any) => void) => {
+      listenCallback = cb;
+      return { unlisten: vi.fn() };
+    });
+    mockLocation('?view=output-log');
+    mockInvoke.mockResolvedValue([]);
+
+    const { initOutputLogViewIfRequested } = await import('./outputLog');
+    await initOutputLogViewIfRequested();
+
+    listenCallback!({ payload: { ts_ms: 123, level: 'info', source: 'git', message: 'log msg' } });
+
+    const list = document.getElementById('outlog-list-vcs') as HTMLElement;
+    expect(list.textContent).toContain('log msg');
+  });
 });

@@ -165,4 +165,88 @@ describe('initSshHostkeyPrompt', () => {
 
     expect(mockInvoke).not.toHaveBeenCalled();
   });
+
+  it('sets buttons disabled during accept busy state', async () => {
+    mountModal();
+    let resolveTrust: () => void;
+    const trustPromise = new Promise<void>((resolve) => { resolveTrust = resolve; });
+    mockInvoke.mockReturnValue(trustPromise);
+
+    const { initSshHostkeyPrompt } = await import('./sshHostkey');
+    initSshHostkeyPrompt();
+    triggerSshHostkeyEvent({ host: 'example.com' });
+
+    const acceptBtn = document.getElementById('ssh-hostkey-accept') as HTMLButtonElement;
+    const denyBtn = document.getElementById('ssh-hostkey-deny') as HTMLButtonElement;
+
+    acceptBtn.click();
+
+    expect(acceptBtn.disabled).toBe(true);
+    expect(denyBtn.disabled).toBe(true);
+
+    resolveTrust!();
+    await vi.waitFor(() => {
+      expect(acceptBtn.disabled).toBe(false);
+      expect(denyBtn.disabled).toBe(false);
+    });
+  });
+
+  it('re-enables buttons on accept failure', async () => {
+    mountModal();
+    mockInvoke.mockRejectedValue(new Error('fail'));
+
+    const { initSshHostkeyPrompt } = await import('./sshHostkey');
+    initSshHostkeyPrompt();
+    triggerSshHostkeyEvent({ host: 'example.com' });
+
+    const acceptBtn = document.getElementById('ssh-hostkey-accept') as HTMLButtonElement;
+    const denyBtn = document.getElementById('ssh-hostkey-deny') as HTMLButtonElement;
+
+    await acceptBtn.click();
+
+    await vi.waitFor(() => {
+      expect(acceptBtn.disabled).toBe(false);
+      expect(denyBtn.disabled).toBe(false);
+    });
+  });
+
+  it('does not re-wire modal if already wired via __wired', async () => {
+    mountModal();
+    const modal = document.getElementById('ssh-hostkey-modal') as any;
+    modal.__wired = true;
+
+    const spy = vi.spyOn(modal, 'querySelector');
+    const { initSshHostkeyPrompt } = await import('./sshHostkey');
+    initSshHostkeyPrompt();
+    triggerSshHostkeyEvent({ host: 'example.com' });
+    expect(mockOpenModal).toHaveBeenCalledWith('ssh-hostkey-modal');
+    spy.mockRestore();
+  });
+
+  it('populates host and message for missing buttons modal', async () => {
+    mountModal();
+    mockInvoke.mockResolvedValue(undefined);
+
+    const { initSshHostkeyPrompt } = await import('./sshHostkey');
+    initSshHostkeyPrompt();
+    triggerSshHostkeyEvent({ host: 'example.com', remote: 'origin', url: 'git@example.com:repo', message: 'Fingerprint: abc' });
+
+    expect(document.getElementById('ssh-hostkey-host')!.textContent).toBe('example.com');
+    expect(document.getElementById('ssh-hostkey-msg')!.textContent).toBe('Fingerprint: abc');
+  });
+
+  it('handles missing accept and deny buttons', async () => {
+    document.body.innerHTML = `
+      <div id="ssh-hostkey-modal">
+        <span id="ssh-hostkey-host"></span>
+        <span id="ssh-hostkey-msg"></span>
+      </div>
+    `;
+
+    const { initSshHostkeyPrompt } = await import('./sshHostkey');
+    initSshHostkeyPrompt();
+    triggerSshHostkeyEvent({ host: 'testhost' });
+
+    expect(document.getElementById('ssh-hostkey-host')!.textContent).toBe('testhost');
+  });
 });

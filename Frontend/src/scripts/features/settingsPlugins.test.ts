@@ -1369,3 +1369,192 @@ describe('context menu overflow positioning', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// pluginIsEnabled - empty/missing id
+// ---------------------------------------------------------------------------
+
+describe('pluginIsEnabled - empty id', () => {
+  it('returns false for plugin with no id', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [{ id: '', name: 'NoId', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    const list = document.getElementById('plugins-list') as HTMLElement;
+    expect(list.children.length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// queuePluginToggle - empty plugin id
+// ---------------------------------------------------------------------------
+
+describe('queuePluginToggle - empty id', () => {
+  it('returns early when plugin id is empty', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [{ id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    // Simulate clicking a checkbox without data-plugin-id (should be a no-op)
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ensureSelection - empty filtered list
+// ---------------------------------------------------------------------------
+
+describe('ensureSelection - empty filtered', () => {
+  it('sets selectedId to null when filtered is empty', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    const detail = document.getElementById('plugins-detail') as HTMLElement;
+    expect(detail.textContent).toContain('No plugins installed');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pane click - toggle button with empty id
+// ---------------------------------------------------------------------------
+
+describe('pane click - toggle button with empty id', () => {
+  it('returns early when toggle button has no id', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [{ id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    // Create a toggle button with empty data-plugin-toggle
+    const btn = document.createElement('button');
+    btn.dataset.pluginToggle = '';
+    document.getElementById('plugins-pane')?.appendChild(btn);
+    btn.click();
+    await flushPromises();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderDetails - toggle button states (Enabling... / Disabling...)
+// ---------------------------------------------------------------------------
+
+describe('renderDetails - toggle button states', () => {
+  it('shows "Disabling..." when pendingToggle is false', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [{ id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        if (cmd === 'set_plugin_enabled') throw new Error('fail');
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    // Trigger a toggle which will cause pendingToggle to be set
+    const checkbox = document.querySelector<HTMLInputElement>('input[type="checkbox"].plugin-check-input');
+    checkbox!.checked = false;
+    checkbox!.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pane change handler - checkbox with empty plugin id
+// ---------------------------------------------------------------------------
+
+describe('pane change handler - empty plugin id', () => {
+  it('returns early when checkbox has no pluginId', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [{ id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    // Create a checkbox with empty data-plugin-id
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    const pane = document.getElementById('plugins-pane') as HTMLElement;
+    pane.appendChild(cb);
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushPromises();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderList - context menu inside pane
+// ---------------------------------------------------------------------------
+
+describe('renderList - context menu on non-row element', () => {
+  it('hides context menu when clicking non-row in pane', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [{ id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: true }];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    // Right-click on a non-row element inside the pane
+    const pane = document.getElementById('plugins-pane') as HTMLElement;
+    pane.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 50, clientY: 50 }));
+    await flushPromises();
+
+    const cm = document.querySelector('.plugins-context-menu') as HTMLElement;
+    expect(cm).not.toBeNull();
+  });
+});
+

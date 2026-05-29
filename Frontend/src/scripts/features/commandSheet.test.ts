@@ -421,4 +421,67 @@ describe('openSheet default parameter and edge cases', () => {
     expect(document.querySelector('[data-sheet="clone"]')?.classList.contains('active')).toBe(true);
     expect(document.getElementById('sheet-add')?.classList.contains('hidden')).toBe(true);
   });
+
+  it('closes sheet via closeSheet', async () => {
+    const { closeModal } = await import('../ui/modals');
+    const { closeSheet } = await import('./commandSheet');
+    closeSheet();
+    expect(closeModal).toHaveBeenCalledWith('command-modal');
+  });
+
+  it('handles browse clone rejection gracefully', async () => {
+    const { TAURI } = await import('../lib/tauri');
+    vi.mocked(TAURI.invoke).mockRejectedValueOnce(new Error('browse failed'));
+    const { bindCommandSheet } = await import('./commandSheet');
+    bindCommandSheet();
+    (document.getElementById('browse-clone') as HTMLButtonElement).click();
+    await Promise.resolve();
+  });
+
+  it('handles browse add rejection gracefully', async () => {
+    const { TAURI } = await import('../lib/tauri');
+    vi.mocked(TAURI.invoke).mockRejectedValueOnce(new Error('browse add failed'));
+    const { bindCommandSheet } = await import('./commandSheet');
+    bindCommandSheet();
+    (document.getElementById('browse-add') as HTMLButtonElement).click();
+    await Promise.resolve();
+  });
+
+  it('does nothing when no url or dest for clone', async () => {
+    const { bindCommandSheet } = await import('./commandSheet');
+    bindCommandSheet();
+    const { TAURI } = await import('../lib/tauri');
+    vi.mocked(TAURI.invoke).mockClear();
+    (document.getElementById('do-clone') as HTMLButtonElement).disabled = false;
+    (document.getElementById('do-clone') as HTMLButtonElement).click();
+    expect(vi.mocked(TAURI.invoke)).not.toHaveBeenCalledWith('clone_repo', expect.anything());
+  });
+
+  it('does nothing when no path for add', async () => {
+    const { bindCommandSheet } = await import('./commandSheet');
+    bindCommandSheet();
+    const { TAURI } = await import('../lib/tauri');
+    vi.mocked(TAURI.invoke).mockClear();
+    (document.getElementById('do-add') as HTMLButtonElement).disabled = false;
+    (document.getElementById('do-add') as HTMLButtonElement).click();
+    expect(vi.mocked(TAURI.invoke)).not.toHaveBeenCalledWith('add_repo', expect.anything());
+  });
+
+  it('handles missing do-add button', async () => {
+    document.getElementById('do-add')?.remove();
+    const { bindCommandSheet } = await import('./commandSheet');
+    bindCommandSheet();
+    const { TAURI } = await import('../lib/tauri');
+    vi.mocked(TAURI.invoke).mockClear();
+    expect(() => {
+      (document.getElementById('add-path') as HTMLInputElement).value = '/tmp/repo';
+    }).not.toThrow();
+  });
+
+  it('handles missing browse buttons', async () => {
+    document.getElementById('browse-clone')?.remove();
+    document.getElementById('browse-add')?.remove();
+    const { bindCommandSheet } = await import('./commandSheet');
+    expect(() => bindCommandSheet()).not.toThrow();
+  });
 });

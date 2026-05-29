@@ -188,4 +188,40 @@ describe('loadGeneralSettingsIntoForm', () => {
     expect((root.querySelector('#set-theme') as HTMLSelectElement).disabled).toBe(true);
     expect((root.querySelector('#set-theme-auto') as HTMLInputElement).checked).toBe(true);
   });
+
+  it('handles missing theme select element', async () => {
+    document.body.innerHTML = `
+      <div>
+        <select id="set-language"><option value="system">System</option></select>
+        <select id="set-update-channel"><option value="stable">Stable</option></select>
+        <input id="set-reopen-last" type="checkbox" />
+        <input id="set-checks-on-launch" type="checkbox" />
+        <input id="set-crash-reports" type="checkbox" />
+      </div>
+    `;
+    const root = document.body.firstElementChild as HTMLElement;
+    const refreshDefaultBackendOptions = vi.fn().mockResolvedValue(undefined);
+    await loadGeneralSettingsIntoForm(
+      root,
+      { general: { language: 'en', update_channel: 'stable' } } as any,
+      (v) => String(v ?? ''),
+      refreshDefaultBackendOptions,
+      vi.fn().mockResolvedValue(undefined),
+    );
+    expect(refreshDefaultBackendOptions).toHaveBeenCalled();
+  });
+
+  it('handles missing language and update channel elements', async () => {
+    document.body.innerHTML = '<div></div>';
+    const root = document.body.firstElementChild as HTMLElement;
+    const refreshDefaultBackendOptions = vi.fn().mockResolvedValue(undefined);
+    await loadGeneralSettingsIntoForm(
+      root,
+      { general: {} } as any,
+      (v) => String(v ?? ''),
+      refreshDefaultBackendOptions,
+      vi.fn().mockResolvedValue(undefined),
+    );
+    expect(refreshDefaultBackendOptions).toHaveBeenCalled();
+  });
 });

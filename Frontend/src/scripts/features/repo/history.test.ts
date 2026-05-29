@@ -744,4 +744,78 @@ describe('openCommitActionsMenu - failure paths', () => {
     await items.find((i: any) => i.label === 'Revert (reverse) commit…')?.action?.();
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('Revert failed'));
   });
-})
+});
+
+// ============================================================================
+// selectHistory - selectCommitFile inner function
+// ============================================================================
+describe('selectHistory - selectCommitFile', () => {
+  it('switches file in sidebar and renders correct diff', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/a.ts b/a.ts',
+          '--- a/a.ts',
+          '+++ b/a.ts',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+          'diff --git a/b.ts b/b.ts',
+          '--- a/b.ts',
+          '+++ b/b.ts',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new2',
+        ];
+      }
+      return undefined;
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    await selectHistory({ id: 'abc123', msg: 'Multi', author: 'Dev' } as any, 0);
+
+    const rows = document.querySelectorAll('.commit-files .row');
+    expect(rows.length).toBe(2);
+
+    // Click the second file
+    (rows[1] as HTMLElement).click();
+  });
+});
+
+// ============================================================================
+// selectHistory - revert binary file
+// ============================================================================
+describe('selectHistory - revert binary file', () => {
+  it('notifies when reverting a binary diff', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/image.png b/image.png',
+          'GIT binary patch',
+          '--- a/image.png',
+          '+++ b/image.png',
+          '@@ -1,3 +0,0 @@',
+          '-binary',
+        ];
+      }
+      return undefined;
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { notify } = await import('../../lib/notify');
+
+    await selectHistory({ id: 'abc', msg: 'Binary', author: 'A' } as any, 0);
+
+    const fileRow = document.querySelector('.commit-files .row') as HTMLElement;
+    fileRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 6 }));
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((i: any) => i.label === 'Revert this file')?.action?.();
+    expect(notify).toHaveBeenCalledWith('Cannot revert binary diffs yet');
+  });
+});

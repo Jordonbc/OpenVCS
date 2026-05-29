@@ -488,3 +488,69 @@ describe('wireRepoSettings (save flow)', () => {
     await expect(wireRepoSettings()).resolves.toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// wireRepoSettings - fetch error and setTimeout reset
+// ---------------------------------------------------------------------------
+
+describe('wireRepoSettings (fetch error and timeout)', () => {
+  async function load() {
+    return import('./repoSettings');
+  }
+
+  it('handles vcs_fetch_all failure gracefully', async () => {
+    mountModal({ nameValue: 'User', emailValue: 'u@example.com' });
+    mockInvoke.mockResolvedValueOnce({
+      user_name: '',
+      user_email: '',
+      remotes: [],
+    });
+    mockInvoke.mockResolvedValueOnce(undefined); // set_repo_settings
+    mockInvoke.mockRejectedValueOnce(new Error('fetch fail')); // vcs_fetch_all fails
+    const { wireRepoSettings } = await load();
+    await wireRepoSettings();
+
+    // Add a remote row so remotes changed flag is set
+    const addBtn = document.getElementById('git-remote-add') as HTMLButtonElement;
+    addBtn.click();
+    const remoteName = document.querySelector('.remote-name') as HTMLInputElement;
+    const remoteUrl = document.querySelector('.remote-url') as HTMLInputElement;
+    remoteName.value = 'origin';
+    remoteUrl.value = 'git@host:org/repo.git';
+
+    const saveBtn = document.getElementById('repo-settings-save') as HTMLButtonElement;
+    saveBtn.click();
+
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('vcs_fetch_all', {});
+    });
+  });
+
+  it('resets save button text after timeout', async () => {
+    vi.useFakeTimers();
+    mountModal();
+    mockInvoke.mockResolvedValueOnce({
+      user_name: '',
+      user_email: '',
+      remotes: [],
+    });
+    mockInvoke.mockResolvedValueOnce(undefined); // set_repo_settings
+    mockInvoke.mockResolvedValueOnce(undefined); // vcs_fetch_all
+    const { wireRepoSettings } = await load();
+    await wireRepoSettings();
+
+    const saveBtn = document.getElementById('repo-settings-save') as HTMLButtonElement;
+    saveBtn.click();
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(saveBtn.textContent).toBe('Saved!');
+    expect(saveBtn.classList.contains('saved-state')).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(saveBtn.textContent).toBe('Save');
+    expect(saveBtn.classList.contains('saved-state')).toBe(false);
+    vi.useRealTimers();
+  });
+});

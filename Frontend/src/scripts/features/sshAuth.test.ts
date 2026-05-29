@@ -117,7 +117,7 @@ describe('wireAuthModal', () => {
     listenHandler?.({ payload: { host: 'example.com', remote: 'origin', url: 'http://example.com/repo' } });
 
     const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
-    expect(httpsBtn.disabled).toBe(false); // http:// is already HTTPS-compatible
+    expect(httpsBtn.disabled).toBe(false);
   });
 
   it('enables HTTPS conversion for ssh:// protocol URLs', async () => {
@@ -217,6 +217,71 @@ describe('HTTPS switch button flow', () => {
     httpsBtn.click();
     await new Promise((r) => setTimeout(r, 0));
 
+    expect(httpsBtn.disabled).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sshToHttps - edge cases
+// ---------------------------------------------------------------------------
+
+describe('sshToHttps edge cases', () => {
+  it('returns null for empty url', async () => {
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: '', remote: '', url: '' } });
+
+    const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
+    expect(httpsBtn.disabled).toBe(true);
+  });
+
+  it('converts http:// urls (already https-compatible)', async () => {
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: 'example.com', remote: 'origin', url: 'http://example.com/repo' } });
+
+    const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
+    expect(httpsBtn.disabled).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// wireAuthModal - missing elements
+// ---------------------------------------------------------------------------
+
+describe('wireAuthModal - missing elements', () => {
+  it('handles missing ok button gracefully', async () => {
+    document.body.innerHTML = `
+      <div id="ssh-auth-modal">
+        <button id="ssh-auth-switch-https"></button>
+      </div>
+    `;
+
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: 'example.com', remote: 'origin', url: 'git@example.com:user/repo' } });
+
+    expect(document.getElementById('ssh-auth-switch-https')).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// wireAuthModal - https without current
+// ---------------------------------------------------------------------------
+
+describe('wireAuthModal - https without current', () => {
+  it('does nothing when https clicked without current prompt', async () => {
+    document.body.innerHTML = `
+      <div id="ssh-auth-modal">
+        <button id="ssh-auth-switch-https"></button>
+      </div>
+    `;
+
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: 'example.com', remote: 'origin', url: 'git@example.com:user/repo' } });
+
+    const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
     expect(httpsBtn.disabled).toBe(false);
   });
 });

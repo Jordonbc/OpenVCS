@@ -466,3 +466,56 @@ describe('initMenubar additional edge cases', () => {
     expect(document.querySelector('.menu-list')?.hasAttribute('hidden')).toBe(true);
   });
 });
+
+// ============================================================================
+// closeMenu animation timer execution
+// ============================================================================
+describe('closeMenu animation timer', () => {
+  it('runs close animation timer and finalizes', async () => {
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      media: '(prefers-reduced-motion: reduce)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as typeof window.matchMedia;
+
+    const { initMenubar } = await import('./menubar');
+    initMenubar(vi.fn());
+
+    const trigger = document.querySelector('.menu-trigger') as HTMLButtonElement;
+    trigger.click();
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    vi.runAllTimers();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('clears closeTimer when menu reopened before animation completion', async () => {
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      media: '(prefers-reduced-motion: reduce)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as typeof window.matchMedia;
+
+    const { initMenubar } = await import('./menubar');
+    initMenubar(vi.fn());
+
+    const triggers = document.querySelectorAll('.menu-trigger');
+    (triggers[0] as HTMLButtonElement).click();
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const list = document.querySelector('.menu-list') as HTMLElement;
+    expect(list.classList.contains('is-closing')).toBe(true);
+
+    triggers[1].dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+    expect(list.hasAttribute('hidden')).toBe(true);
+    vi.runAllTimers();
+  });
+});

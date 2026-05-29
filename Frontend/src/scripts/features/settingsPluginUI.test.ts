@@ -748,3 +748,294 @@ describe('renderPluginSettingFields (via activateSection)', () => {
         expect(mockInvoke).toHaveBeenCalledTimes(1);
     });
 });
+
+// ---------------------------------------------------------------------------
+// activateSection - missing panels-scroll
+// ---------------------------------------------------------------------------
+
+describe('activateSection - missing panels-scroll', () => {
+    async function load() {
+        return import('./settingsPluginUI');
+    }
+
+    function createModalWithoutScroll(): HTMLElement {
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav">',
+            '  <ul>',
+            '    <li><button class="seg-btn" data-section="general">General</button></li>',
+            '  </ul>',
+            '</nav>',
+            '<div id="settings-panels-scroll">',
+            '</div>',
+            '<div class="sheet-actions"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        return modal;
+    }
+
+    it('handles settings panel activation without panels element', async () => {
+        const { activateSection } = await load();
+        const modal = createModalWithoutScroll();
+        expect(() => activateSection(modal, 'general')).not.toThrow();
+        document.body.removeChild(modal);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// ensurePluginSettingsLoaded - early returns
+// ---------------------------------------------------------------------------
+
+describe('ensurePluginSettingsLoaded - early returns', () => {
+    async function load() {
+        return import('./settingsPluginUI');
+    }
+
+    function createModal(): HTMLElement {
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav">',
+            '  <ul>',
+            '    <li><button class="seg-btn" data-section="pluginsettings_testp">Test P</button></li>',
+            '  </ul>',
+            '</nav>',
+            '<div id="settings-panels-scroll">',
+            '  <div id="settings-panels">',
+            '    <form class="panel-form hidden" data-panel="pluginsettings_testp"',
+            '          data-plugin-settings="true" data-plugin-id="testp">',
+            '      <div class="plugin-settings-loading" data-loading="true">Loading...</div>',
+            '    </form>',
+            '  </div>',
+            '</div>',
+            '<div class="sheet-actions"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        return modal;
+    }
+
+    it('returns false when panels-scroll missing', async () => {
+        const modal = document.createElement('div');
+        const { activateSection } = await load();
+        expect(() => activateSection(modal, 'general')).not.toThrow();
+    });
+
+    it('handles empty fields array from backend', async () => {
+        mockInvoke.mockResolvedValueOnce([]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            expect(modal.textContent).toContain('No settings available');
+        });
+        document.body.removeChild(modal);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// renderPluginMenus - built-in nav fallback
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// renderPluginMenus - built-in nav falls back when no plugins li
+// ---------------------------------------------------------------------------
+
+describe('renderPluginMenus - built-in nav fallback', () => {
+    async function load() {
+        return import('./settingsPluginUI');
+    }
+
+    it('appends built-in nav to nav directly when plugins li not found', async () => {
+        mockInvoke.mockResolvedValueOnce([
+            { plugin_id: 'builtin-p', id: 'm1', label: 'BuiltIn', surface: 'settings', elements: [] },
+        ]);
+        mockInvoke.mockResolvedValueOnce([{ id: 'builtin-p', name: 'BuiltIn', source: 'built-in' }]);
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav">',
+            '  <ul>',
+            '    <li><button class="seg-btn" data-section="general">General</button></li>',
+            '  </ul>',
+            '</nav>',
+            '<div id="settings-panels-scroll"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        const { renderPluginMenus } = await load();
+        await renderPluginMenus(modal);
+        const navBtn = modal.querySelector('[data-section="plugin-builtin-p-m1"]');
+        expect(navBtn).not.toBeNull();
+        document.body.removeChild(modal);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// renderPluginSettingFields - edge cases
+// ---------------------------------------------------------------------------
+
+describe('renderPluginSettingFields - edge cases', () => {
+    async function load() {
+        return import('./settingsPluginUI');
+    }
+
+    function createModal(): HTMLElement {
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav">',
+            '  <ul>',
+            '    <li><button class="seg-btn" data-section="pluginsettings_testp">P</button></li>',
+            '  </ul>',
+            '</nav>',
+            '<div id="settings-panels-scroll">',
+            '  <div id="settings-panels">',
+            '    <form class="panel-form hidden" data-panel="pluginsettings_testp"',
+            '          data-plugin-settings="true" data-plugin-id="testp">',
+            '      <div class="plugin-settings-loading" data-loading="true">Loading...</div>',
+            '    </form>',
+            '  </div>',
+            '</div>',
+            '<div class="sheet-actions"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        return modal;
+    }
+
+    it('skips field with empty id', async () => {
+        mockInvoke.mockResolvedValueOnce([
+            { id: '', kind: 'text', label: 'Empty', value: '' },
+        ]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            expect(modal.textContent).toContain('Settings');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders s32 field with non-finite default value', async () => {
+        mockInvoke.mockResolvedValueOnce([
+            { id: 'cnt', kind: 's32', label: 'Count', value: null },
+        ]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const input = modal.querySelector<HTMLInputElement>('input[type="number"]');
+            expect(input).not.toBeNull();
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders text kind with options and selects matching value', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'mode', kind: 'text', label: 'Mode', value: 'auto',
+            options: [
+                { value: 'manual', label: 'Manual' },
+                { value: 'auto', label: 'Auto' },
+            ],
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const sel = modal.querySelector<HTMLSelectElement>('select');
+            expect(sel).not.toBeNull();
+            expect(sel!.value).toBe('auto');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders select with options when kind is text and has options', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'mode', kind: 'text', label: 'Mode', value: 'unknown',
+            options: [
+                { value: 'manual', label: 'Manual' },
+            ],
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const sel = modal.querySelector<HTMLSelectElement>('select');
+            expect(sel).not.toBeNull();
+            expect(sel!.value).toBe('manual');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders field with description text', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'x', kind: 'text', label: 'X', value: '', description: 'Help text',
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            expect(modal.textContent).toContain('Help text');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders s32 field with non-finite default value', async () => {
+        mockInvoke.mockResolvedValueOnce([
+            { id: 'cnt', kind: 's32', label: 'Count', value: null },
+        ]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const input = modal.querySelector<HTMLInputElement>('input[type="number"]');
+            expect(input).not.toBeNull();
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders text kind with options and selects matching value', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'mode', kind: 'text', label: 'Mode', value: 'auto',
+            options: [
+                { value: 'manual', label: 'Manual' },
+                { value: 'auto', label: 'Auto' },
+            ],
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const sel = modal.querySelector<HTMLSelectElement>('select');
+            expect(sel).not.toBeNull();
+            expect(sel!.value).toBe('auto');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders select with options when kind is text and has options', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'mode', kind: 'text', label: 'Mode', value: 'unknown',
+            options: [
+                { value: 'manual', label: 'Manual' },
+            ],
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const sel = modal.querySelector<HTMLSelectElement>('select');
+            expect(sel).not.toBeNull();
+            expect(sel!.value).toBe('manual');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders field with description text', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'x', kind: 'text', label: 'X', value: '', description: 'Help text',
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            expect(modal.textContent).toContain('Help text');
+        });
+        document.body.removeChild(modal);
+    });
+});

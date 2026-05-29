@@ -313,3 +313,78 @@ describe('registerDrawerActions', () => {
     expect(openClone).toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// ensureDrawer - edge cases
+// ---------------------------------------------------------------------------
+
+describe('ensureDrawer edge cases', () => {
+  it('handles missing drawer root gracefully', async () => {
+    const { openSwitchDrawer } = await import('./repoSwitchDrawer');
+    document.body.innerHTML = '<div id="app"><button id="repo-switch">Switch</button></div>';
+    openSwitchDrawer();
+    // Should not throw despite missing drawer element
+  });
+
+  it('handles missing filter input', async () => {
+    document.body.innerHTML = `
+      <div id="app"><button id="repo-switch">Switch</button></div>
+      <div id="repo-switch-drawer" class="modal">
+        <div class="dialog drawer">
+          <ul id="drawer-recent-list"></ul>
+          <button id="drawer-add-trigger">Add</button>
+        </div>
+      </div>
+    `;
+    const { openSwitchDrawer } = await import('./repoSwitchDrawer');
+    openSwitchDrawer();
+    // Should not throw despite missing filter input
+  });
+});
+
+// ---------------------------------------------------------------------------
+// openSwitchDrawer - clears closeTimer
+// ---------------------------------------------------------------------------
+
+describe('openSwitchDrawer clears closeTimer', () => {
+  it('clears existing closeTimer', async () => {
+    mountDrawerInBody();
+    mockInvoke.mockResolvedValue([]);
+    const { openSwitchDrawer, closeSwitchDrawer } = await import('./repoSwitchDrawer');
+
+    // First close with animation to set the timer
+    window.matchMedia = vi.fn().mockImplementation((q: string) => ({
+      matches: false,
+      media: q,
+    } as any));
+    openSwitchDrawer();
+    closeSwitchDrawer();
+
+    // Now open while timer is active
+    openSwitchDrawer();
+    const drawer = document.getElementById('repo-switch-drawer')!;
+    expect(drawer.classList.contains('is-closing')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// closeSwitchDrawer - animate close clears timer
+// ---------------------------------------------------------------------------
+
+describe('closeSwitchDrawer animate close', () => {
+  it('handles closeTimer already set during close', async () => {
+    mountDrawerInBody();
+    window.matchMedia = vi.fn().mockImplementation((q: string) => ({
+      matches: false,
+      media: q,
+    } as any));
+
+    const { openSwitchDrawer, closeSwitchDrawer } = await import('./repoSwitchDrawer');
+    openSwitchDrawer();
+    closeSwitchDrawer();
+    closeSwitchDrawer(); // second call - should still work
+
+    const drawer = document.getElementById('repo-switch-drawer')!;
+    expect(drawer.classList.contains('is-closing')).toBe(true);
+  });
+});

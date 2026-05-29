@@ -408,3 +408,81 @@ describe('renderChangesList display edge cases', () => {
     expect(row.classList.contains('resolved')).toBe(true);
   });
 });
+
+// ============================================================================
+// renderList - click and mousedown on rows
+// ============================================================================
+describe('renderList row click and mousedown handlers', () => {
+  it('click handler fires onFileClick', async () => {
+    const interactions = await import('./interactions');
+    const { renderList } = await import('./list');
+    const { prefs, state } = await import('../../state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'click.txt', status: 'M' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const row = document.querySelector('li.row') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(vi.mocked(interactions.onFileClick)).toHaveBeenCalled();
+  });
+
+  it('mousedown handler fires onFileMouseDown', async () => {
+    const interactions = await import('./interactions');
+    const { renderList } = await import('./list');
+    const { prefs, state } = await import('../../state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'mousedown.txt', status: 'M' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const row = document.querySelector('li.row') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    expect(vi.mocked(interactions.onFileMouseDown)).toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// renderChangesList - staged file shows stage-mark and conflict file shows conflict-mark
+// ============================================================================
+describe('renderChangesList status marks', () => {
+  it('renders stage-mark for staged files', async () => {
+    const { renderList } = await import('./list');
+    const { prefs, state } = await import('../../state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'staged.txt', status: 'M', staged: true }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const rowMarks = document.querySelector('.row-marks') as HTMLElement;
+    expect(rowMarks).not.toBeNull();
+    const stageMark = rowMarks.querySelector('.stage-mark') as HTMLElement;
+    expect(stageMark).not.toBeNull();
+  });
+
+  it('renders conflict-mark for conflicted files', async () => {
+    const { renderList } = await import('./list');
+    const { prefs, state, isConflictStatus } = await import('../../state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'conflict.txt', status: 'UU' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const rowMarks = document.querySelector('.row-marks') as HTMLElement;
+    expect(rowMarks).not.toBeNull();
+    const conflictMark = rowMarks.querySelector('.conflict-mark') as HTMLElement;
+    expect(conflictMark).not.toBeNull();
+  });
+});

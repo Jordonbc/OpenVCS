@@ -1412,6 +1412,98 @@ describe('refreshDefaultBackendOptions error handling', () => {
 });
 
 // ---------------------------------------------------------------------------
+// collectSettingsFromForm - LFS elements present
+// ---------------------------------------------------------------------------
+
+describe('collectSettingsFromForm - LFS elements', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('collects LFS settings when LFS elements are present', async () => {
+    const modal = mountSettingsModal();
+    modal.dataset.currentCfg = JSON.stringify({});
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-lfs-enabled" type="checkbox" checked />',
+      '<input id="set-lfs-concurrency" type="number" value="8" />',
+      '<input id="set-lfs-require-lock" type="checkbox" />',
+      '<input id="set-lfs-bg-fetch" type="checkbox" checked />',
+      '<input id="set-gpu-accel" type="checkbox" />',
+      '<input id="set-animations" type="checkbox" />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1" />',
+      '<input id="set-font-mono" type="text" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" type="number" value="10" />',
+      '<input id="set-tab-width" type="number" value="4" />',
+      '<input id="set-max-file-size-mb" type="number" value="10" />',
+      '<input id="set-intraline" type="checkbox" />',
+      '<input id="set-binary-placeholders" type="checkbox" />',
+      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="10" />',
+    ].join('\n'));
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          lfs: expect.objectContaining({ enabled: true, concurrency: 8 }),
+        }),
+      }));
+    });
+  });
+
+  it('collects LFS with invalid concurrency falling back to default', async () => {
+    const modal = mountSettingsModal();
+    modal.dataset.currentCfg = JSON.stringify({});
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-lfs-enabled" type="checkbox" />',
+      '<input id="set-lfs-concurrency" type="number" value="0" />',
+      '<input id="set-lfs-require-lock" type="checkbox" />',
+      '<input id="set-lfs-bg-fetch" type="checkbox" />',
+      '<input id="set-gpu-accel" type="checkbox" />',
+      '<input id="set-animations" type="checkbox" />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1" />',
+      '<input id="set-font-mono" type="text" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" type="number" value="10" />',
+      '<input id="set-tab-width" type="number" value="4" />',
+      '<input id="set-max-file-size-mb" type="number" value="10" />',
+      '<input id="set-intraline" type="checkbox" />',
+      '<input id="set-binary-placeholders" type="checkbox" />',
+      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="10" />',
+    ].join('\n'));
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalled();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // collectSettingsFromForm - edge cases
 // ---------------------------------------------------------------------------
 
@@ -1602,6 +1694,96 @@ describe('wireSettings - backdrop click no-op', () => {
     modal.querySelector('#settings-nav')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(mockCloseModal).not.toHaveBeenCalled();
   });
+
+  it('does not close when clicking on modal content (not backdrop)', async () => {
+    const modal = mountSettingsModal();
+    const { wireSettings } = await load();
+    wireSettings();
+    const nav = modal.querySelector('#settings-nav')!;
+    nav.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(mockCloseModal).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// wireSettings - openvcs:theme-pack-changed event
+// ---------------------------------------------------------------------------
+
+describe('wireSettings - theme-pack-changed auto update', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('applies active theme on theme-pack-changed when auto is checked', async () => {
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <div class="backdrop"></div>
+        <input id="set-theme-auto" type="checkbox" checked />
+        <select id="set-theme">
+          <option value="default-light">Light</option>
+          <option value="dark-theme">Dark</option>
+        </select>
+        <nav id="settings-nav"></nav>
+        <div id="settings-panels"></div>
+        <div class="sheet-actions">
+          <button id="settings-save">Save</button>
+          <button id="settings-reset">Reset</button>
+        </div>
+      </div>
+    `;
+    mockGetActiveThemeId.mockReturnValue('dark-theme');
+    mockThemeTooltip.mockReturnValue('Dark Theme');
+    const { wireSettings } = await load();
+    wireSettings();
+    window.dispatchEvent(new CustomEvent('openvcs:theme-pack-changed'));
+    const themeSel = document.getElementById('set-theme') as HTMLSelectElement;
+    expect(themeSel.value).toBe('dark-theme');
+    expect(themeSel.disabled).toBe(true);
+  });
+
+  it('does not update theme select when auto is unchecked', async () => {
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <div class="backdrop"></div>
+        <input id="set-theme-auto" type="checkbox" />
+        <select id="set-theme">
+          <option value="default-light" selected>Light</option>
+          <option value="dark-theme">Dark</option>
+        </select>
+        <nav id="settings-nav"></nav>
+        <div id="settings-panels"></div>
+        <div class="sheet-actions">
+          <button id="settings-save">Save</button>
+          <button id="settings-reset">Reset</button>
+        </div>
+      </div>
+    `;
+    mockGetActiveThemeId.mockReturnValue('dark-theme');
+    const { wireSettings } = await load();
+    wireSettings();
+    const themeSel = document.getElementById('set-theme') as HTMLSelectElement;
+    const initial = themeSel.value;
+    window.dispatchEvent(new CustomEvent('openvcs:theme-pack-changed'));
+    expect(themeSel.value).toBe(initial);
+  });
+
+  it('handles missing theme select on theme-pack-changed', async () => {
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <div class="backdrop"></div>
+        <input id="set-theme-auto" type="checkbox" checked />
+        <nav id="settings-nav"></nav>
+        <div id="settings-panels"></div>
+        <div class="sheet-actions">
+          <button id="settings-save">Save</button>
+          <button id="settings-reset">Reset</button>
+        </div>
+      </div>
+    `;
+    const { wireSettings } = await load();
+    wireSettings();
+    expect(() => window.dispatchEvent(new CustomEvent('openvcs:theme-pack-changed'))).not.toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1709,6 +1891,35 @@ describe('applyThemeFromControls', () => {
     return import('./settings');
   }
 
+  it('handles theme controls with both auto and select present', async () => {
+    mockModeForTheme.mockReturnValue('light');
+    mockGetActiveThemeId.mockReturnValue('dark-theme');
+    mockSelectThemePack.mockResolvedValue(undefined);
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <div class="backdrop"></div>
+        <input id="set-theme-auto" type="checkbox" checked />
+        <select id="set-theme">
+          <option value="default-light">Light</option>
+        </select>
+        <nav id="settings-nav"></nav>
+        <div id="settings-panels"></div>
+        <div class="sheet-actions">
+          <button id="settings-save">Save</button>
+          <button id="settings-reset">Reset</button>
+        </div>
+      </div>
+    `;
+    const { wireSettings } = await load();
+    wireSettings();
+    const autoCheck = document.getElementById('set-theme-auto') as HTMLInputElement;
+    autoCheck.checked = true;
+    autoCheck.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => {
+      expect(mockSetTheme).toHaveBeenCalledWith('system');
+    });
+  });
+
   it('sets system mode when auto is checked', async () => {
     mockModeForTheme.mockReturnValue('light');
     mockGetActiveThemeId.mockReturnValue('dark-theme');
@@ -1737,5 +1948,111 @@ describe('applyThemeFromControls', () => {
     await vi.waitFor(() => {
       expect(mockSetTheme).toHaveBeenCalledWith('system');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// flashSavedState - custom button text
+// ---------------------------------------------------------------------------
+
+describe('flashSavedState custom text', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('uses custom original text for restore', async () => {
+    vi.useFakeTimers();
+    const modal = mountSettingsModal();
+    modal.dataset.currentCfg = JSON.stringify({});
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-gpu-accel" type="checkbox" />',
+      '<input id="set-animations" type="checkbox" />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1" />',
+      '<input id="set-font-mono" type="text" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" value="10" />',
+      '<input id="set-tab-width" value="4" />',
+      '<input id="set-max-file-size-mb" value="10" />',
+      '<input id="set-intraline" type="checkbox" />',
+      '<input id="set-binary-placeholders" type="checkbox" />',
+      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="10" />',
+    ].join('\n'));
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(saveBtn.textContent).toBe('Saved!');
+
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(saveBtn.textContent).toBe('Save');
+    vi.useRealTimers();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SSH binary toggle - custom mode with specific path
+// ---------------------------------------------------------------------------
+
+describe('wireSettings (SSH binary custom mode path)', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('clears path when switching to auto', async () => {
+    const modal = mountSettingsModal();
+    modal.insertAdjacentHTML('beforeend', [
+      '<select id="set-git-ssh-binary"><option value="auto">Auto</option><option value="custom">Custom</option></select>',
+      '<input id="set-git-ssh-path" type="text" value="/usr/bin/ssh" />',
+    ].join('\n'));
+    const { wireSettings } = await load();
+    wireSettings();
+    const select = document.getElementById('set-git-ssh-binary') as HTMLSelectElement;
+    select.value = 'auto';
+    select.dispatchEvent(new Event('change'));
+    const pathInput = document.getElementById('set-git-ssh-path') as HTMLInputElement;
+    expect(pathInput.value).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadSettingsIntoForm - log level and merge mode change events
+// ---------------------------------------------------------------------------
+
+describe('loadSettingsIntoForm - merge mode change event', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('dispatches change event on merge mode select', async () => {
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <select id="set-merge-mode"><option value="builtin">Built-in</option><option value="custom">Custom</option></select>
+        <div id="settings-panels-scroll"></div>
+        <nav id="settings-nav"></nav>
+        <div id="settings-panels"></div>
+      </div>
+    `;
+    const cfg = {
+      diff: { external_merge: { enabled: true, path: '/usr/bin/merge', args: '' } },
+    };
+    mockInvoke.mockResolvedValue(cfg);
+    mockLoadPluginsIntoForm.mockResolvedValue(undefined);
+    mockLoadGeneralSettingsIntoForm.mockResolvedValue(undefined);
+    const { loadSettingsIntoForm } = await load();
+    await loadSettingsIntoForm();
+    const mergeSel = document.getElementById('set-merge-mode') as HTMLSelectElement;
+    expect(mergeSel.value).toBe('custom');
   });
 });

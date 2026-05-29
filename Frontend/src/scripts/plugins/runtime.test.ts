@@ -492,3 +492,61 @@ describe('runPluginAction error handling', () => {
     expect(result).toBe(true);
   });
 });
+
+// ============================================================================
+// runHook - cancel closure with reason
+// ============================================================================
+describe('runHook cancel closure', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('invokes cancel with a reason string', async () => {
+    const { registerHook } = await import('./registration');
+    let capturedCancel: ((reason?: string) => void) | null = null;
+    registerHook('p1', 'preCommit', (ctx) => {
+      capturedCancel = ctx.cancel;
+    });
+
+    const { runHook } = await import('./runtime');
+    await runHook('preCommit', {});
+    expect(capturedCancel).toBeInstanceOf(Function);
+    capturedCancel!('user-reason');
+  });
+
+  it('invokes cancel without reason', async () => {
+    const { registerHook } = await import('./registration');
+    let capturedCancel: ((reason?: string) => void) | null = null;
+    registerHook('p1', 'preCommit', (ctx) => {
+      capturedCancel = ctx.cancel;
+    });
+
+    const { runHook } = await import('./runtime');
+    await runHook('preCommit', {});
+    capturedCancel!();
+  });
+});
+
+// ============================================================================
+// reloadPlugins - additional coverage
+// ============================================================================
+describe('reloadPlugins additional coverage', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountMinimalDom();
+  });
+
+  it('reloads and returns when plugin list fetch fails', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_global_settings') return Promise.resolve({ plugins: { disabled: [], enabled: [] } });
+      if (cmd === 'list_plugins') return Promise.reject(new Error('fail'));
+      return Promise.reject(new Error('unknown'));
+    });
+
+    const { reloadPlugins } = await import('./runtime');
+    await expect(reloadPlugins()).resolves.toBeUndefined();
+  });
+});

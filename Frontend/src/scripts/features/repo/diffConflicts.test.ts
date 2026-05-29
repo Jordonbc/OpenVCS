@@ -423,3 +423,50 @@ describe('scrollDiffToTop', () => {
     expect(scrollDiffToTop).toHaveBeenCalledTimes(2);
   });
 });
+
+// ============================================================================
+// Merge button context menu action execution
+// ============================================================================
+describe('merge button context menu actions', () => {
+  it('executes openMergeModal action from context menu', async () => {
+    mockInvoke.mockResolvedValue({ path: 'f.txt', ours: 'a', theirs: 'b' });
+    const { buildCtxMenu } = await import('../../lib/menu');
+
+    const { renderConflictView } = await import('./diffConflicts');
+    await renderConflictView({ path: 'f.txt', status: 'U' });
+
+    const mergeBtn = mockDiffEl.querySelector('[data-conflict-action="merge"]') as HTMLButtonElement;
+    mergeBtn.click();
+    await flushPromises();
+
+    const items = (buildCtxMenu as any).mock.calls[0][0];
+    const builtInAction = items.find((i: any) => i.label === 'Open built-in merge tool');
+    expect(builtInAction).toBeDefined();
+
+    builtInAction.action();
+    const { openMergeModal } = await import('../conflicts');
+    expect(openMergeModal).toHaveBeenCalled();
+  });
+
+  it('executes launchExternalMergeTool action from context menu', async () => {
+    const { hasExternalMergeTool } = await import('../conflicts');
+    (hasExternalMergeTool as any).mockResolvedValue(true);
+    mockInvoke.mockResolvedValue({ path: 'f.txt', ours: 'a', theirs: 'b' });
+    const { buildCtxMenu } = await import('../../lib/menu');
+
+    const { renderConflictView } = await import('./diffConflicts');
+    await renderConflictView({ path: 'f.txt', status: 'U' });
+
+    const mergeBtn = mockDiffEl.querySelector('[data-conflict-action="merge"]') as HTMLButtonElement;
+    mergeBtn.click();
+    await flushPromises();
+
+    const items = (buildCtxMenu as any).mock.calls[0][0];
+    const customAction = items.find((i: any) => i.label === 'Open custom merge tool');
+    expect(customAction).toBeDefined();
+
+    customAction.action();
+    const { launchExternalMergeTool } = await import('../conflicts');
+    expect(launchExternalMergeTool).toHaveBeenCalledWith('f.txt');
+  });
+});
