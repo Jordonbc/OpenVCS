@@ -115,4 +115,26 @@ describe('disableDefaultSelectAll', () => {
     expect(state.defaultSelectAll).toBe(false);
     expect(state.selectionImplicitAll).toBe(false);
   });
+
+  it('returns false when clearImplicit is false', () => {
+    state.selectedFiles = new Set(['a.txt']);
+    state.defaultSelectAll = true;
+    state.selectionImplicitAll = true;
+
+    expect(disableDefaultSelectAll(false)).toBe(false);
+    expect(Array.from(state.selectedFiles)).toEqual(['a.txt']);
+  });
+});
+
+describe('resolveVcsActionLabel edge cases', () => {
+  it('returns fallback for empty or whitespace key', () => {
+    state.vcsActionLabels = {};
+    expect(resolveVcsActionLabel('', 'Fallback')).toBe('Fallback');
+    expect(resolveVcsActionLabel('   ', 'Fallback')).toBe('Fallback');
+  });
+
+  it('returns fallback when label is only whitespace', () => {
+    state.vcsActionLabels = { 'VCS.Push': '   ' };
+    expect(resolveVcsActionLabel('VCS.Push', 'Push')).toBe('Push');
+  });
 });

@@ -488,3 +488,198 @@ describe('bindHunkToggles', () => {
     expect(() => otherCb.dispatchEvent(new Event('change', { bubbles: true }))).not.toThrow();
   });
 });
+
+describe('handleHunkToggle - additional paths', () => {
+  it('returns early when no currentFile', async () => {
+    const diff = document.getElementById('diff')!;
+    const { bindHunkToggles } = await import('./diffSelection');
+    const { state } = await import('../../state/state');
+    state.currentFile = '';
+    const cb = makeHunkCheckbox('0');
+    diff.appendChild(cb);
+    bindHunkToggles(diff);
+    cb.checked = true;
+    expect(() => cb.dispatchEvent(new Event('change', { bubbles: true }))).not.toThrow();
+  });
+
+  it('returns early when hunk index is negative', async () => {
+    const diff = document.getElementById('diff')!;
+    const { bindHunkToggles } = await import('./diffSelection');
+    const { state } = await import('../../state/state');
+    state.currentFile = 'test.txt';
+    const cb = makeHunkCheckbox('-1');
+    diff.appendChild(cb);
+    bindHunkToggles(diff);
+    cb.checked = true;
+    expect(() => cb.dispatchEvent(new Event('change', { bubbles: true }))).not.toThrow();
+  });
+
+  it('unchecking hunk removes from selection', async () => {
+    const diff = document.getElementById('diff')!;
+    const { bindHunkToggles } = await import('./diffSelection');
+    const { state } = await import('../../state/state');
+    state.currentFile = 'test.txt';
+    state.currentDiff = ['@@ -1 +1 @@', '-old', '+new'];
+    state.currentDiffHunkNodes = new Map();
+    state.selectedHunks = [0, 1];
+    (state as any).selectedLinesByFile = {};
+    state.currentDiffMeta = { offset: 0, rest: [], starts: [], changeCounts: [2], totalHunks: 2 };
+
+    const hunkCb = makeHunkCheckbox('0');
+    hunkCb.checked = true;
+    const lineCb0 = makeLineCheckbox('0', '0');
+    const hunkEl = document.createElement('div');
+    hunkEl.classList.add('picked');
+    state.currentDiffHunkNodes.set(0, {
+      hunkEls: [hunkEl],
+      hunkCheckboxes: [hunkCb],
+      lineCheckboxes: { 0: lineCb0 },
+    });
+    const hunkCb1 = makeHunkCheckbox('1');
+    state.currentDiffHunkNodes.set(1, {
+      hunkEls: [document.createElement('div')],
+      hunkCheckboxes: [hunkCb1],
+      lineCheckboxes: {},
+    });
+
+    diff.appendChild(hunkCb);
+    bindHunkToggles(diff);
+
+    hunkCb.checked = false;
+    hunkCb.dispatchEvent(new Event('change', { bubbles: true }));
+
+    expect(state.selectedHunks).not.toContain(0);
+    expect(state.selectedHunks).toContain(1);
+    expect(hunkEl.classList.contains('picked')).toBe(false);
+    expect(lineCb0.checked).toBe(false);
+  });
+});
+
+describe('handleLineToggle - additional paths', () => {
+  it('returns early when currentFile is empty', async () => {
+    const diff = document.getElementById('diff')!;
+    const { bindHunkToggles } = await import('./diffSelection');
+    const { state } = await import('../../state/state');
+    state.currentFile = '';
+    const cb = makeLineCheckbox('0', '0');
+    diff.appendChild(cb);
+    bindHunkToggles(diff);
+    expect(() => cb.dispatchEvent(new Event('change', { bubbles: true }))).not.toThrow();
+  });
+
+  it('returns early when hunk index is negative', async () => {
+    const diff = document.getElementById('diff')!;
+    const { bindHunkToggles } = await import('./diffSelection');
+    const { state } = await import('../../state/state');
+    state.currentFile = 'test.txt';
+    const cb = makeLineCheckbox('-1', '0');
+    diff.appendChild(cb);
+    bindHunkToggles(diff);
+    expect(() => cb.dispatchEvent(new Event('change', { bubbles: true }))).not.toThrow();
+  });
+
+  it('returns early when line index is negative', async () => {
+    const diff = document.getElementById('diff')!;
+    const { bindHunkToggles } = await import('./diffSelection');
+    const { state } = await import('../../state/state');
+    state.currentFile = 'test.txt';
+    const cb = makeLineCheckbox('0', '-1');
+    diff.appendChild(cb);
+    bindHunkToggles(diff);
+    expect(() => cb.dispatchEvent(new Event('change', { bubbles: true }))).not.toThrow();
+  });
+
+  it('unchecking line removes from selection and updates hunk state', async () => {
+    const diff = document.getElementById('diff')!;
+    const { bindHunkToggles } = await import('./diffSelection');
+    const { state } = await import('../../state/state');
+    state.currentFile = 'test.txt';
+    state.currentDiffHunkNodes = new Map();
+    state.selectedHunks = [0];
+    (state as any).selectedLinesByFile = { 'test.txt': { 0: [0, 1] } };
+    state.currentDiffMeta = { offset: 0, rest: [], starts: [], changeCounts: [3], totalHunks: 1 };
+
+    const hunkCb = makeHunkCheckbox('0');
+    hunkCb.checked = true;
+    const lineCb0 = makeLineCheckbox('0', '0');
+    lineCb0.checked = true;
+    const lineCb1 = makeLineCheckbox('0', '1');
+    lineCb1.checked = true;
+    const hunkEl = document.createElement('div');
+    hunkEl.classList.add('picked');
+    state.currentDiffHunkNodes.set(0, {
+      hunkEls: [hunkEl],
+      hunkCheckboxes: [hunkCb],
+      lineCheckboxes: { 0: lineCb0, 1: lineCb1 },
+    });
+
+    diff.appendChild(lineCb1);
+    bindHunkToggles(diff);
+
+    lineCb1.checked = false;
+    lineCb1.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const rec = (state as any).selectedLinesByFile['test.txt'];
+    expect(rec[0]).not.toContain(1);
+    expect(rec[0]).toContain(0);
+  });
+});
+
+describe('handleDiffInputChange - non-input target', () => {
+  it('ignores change events on non-input elements', async () => {
+    const diff = document.getElementById('diff')!;
+    const { bindHunkToggles } = await import('./diffSelection');
+    bindHunkToggles(diff);
+    const nonInput = document.createElement('div');
+    nonInput.className = 'pick-hunk';
+    diff.appendChild(nonInput);
+    expect(() => nonInput.dispatchEvent(new Event('change', { bubbles: true }))).not.toThrow();
+  });
+});
+
+describe('clearAllFileSelections via implicit clear', () => {
+  it('clears picked class and checkbox when clearedImplicit is true', async () => {
+    const diff = document.getElementById('diff')!;
+    const { bindHunkToggles } = await import('./diffSelection');
+    const { state } = await import('../../state/state');
+    state.currentFile = 'test.txt';
+    state.currentDiff = ['@@ -1 +1 @@', '-old', '+new'];
+    state.currentDiffHunkNodes = new Map();
+    state.selectedHunks = [0];
+    (state as any).selectedLinesByFile = {};
+    state.currentDiffMeta = { offset: 0, rest: [], starts: [], changeCounts: [1], totalHunks: 1 };
+    state.defaultSelectAll = true;
+    state.selectionImplicitAll = true;
+
+    const ul = document.getElementById('file-list')!;
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.setAttribute('data-path', 'test.txt');
+    li.classList.add('picked');
+    const pickCb = document.createElement('input');
+    pickCb.type = 'checkbox';
+    pickCb.className = 'pick';
+    pickCb.checked = true;
+    li.appendChild(pickCb);
+    ul.appendChild(li);
+
+    const hunkCb = makeHunkCheckbox('0');
+    hunkCb.checked = false;
+    const lineCb0 = makeLineCheckbox('0', '0');
+    lineCb0.checked = true;
+    const hunkEl = document.createElement('div');
+    hunkEl.classList.add('picked');
+    state.currentDiffHunkNodes.set(0, {
+      hunkEls: [hunkEl],
+      hunkCheckboxes: [hunkCb],
+      lineCheckboxes: { 0: lineCb0 },
+    });
+
+    diff.appendChild(hunkCb);
+    bindHunkToggles(diff);
+    hunkCb.dispatchEvent(new Event('change', { bubbles: true }));
+
+    expect(li.classList.contains('picked')).toBe(false);
+    expect(pickCb.checked).toBe(false);
+  });
+});

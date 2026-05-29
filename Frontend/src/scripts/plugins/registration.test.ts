@@ -288,6 +288,38 @@ describe('_setApplyPluginSectionsFallback', () => {
   });
 });
 
+describe('installGlobalApi wrappers', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    delete (window as any).OpenVCS;
+    document.body.innerHTML = '<div class="menubar"></div><ul id="plugins-menu-list"></ul><div id="modals-root"></div>';
+  });
+
+  afterEach(() => {
+    delete (window as any).OpenVCS;
+  });
+
+  it('calls addMenuItem, addTitlebarButton, addSettingsSection, addMenubarMenu, invoke, listen, notify through plugin module', async () => {
+    const { installGlobalApi, currentPluginIdForRegistration } = await import('./registration');
+    currentPluginIdForRegistration('test-plugin');
+    installGlobalApi();
+
+    const api = (window as any).OpenVCS;
+    expect(api).toBeDefined();
+
+    expect(() => api.addMenuItem({ id: 't', label: 'T', action: 'noop' })).not.toThrow();
+    expect(() => api.addTitlebarButton({ id: 'b', label: 'B', action: 'a' })).not.toThrow();
+    expect(() => api.addSettingsSection({ id: 's', label: 'S', html: '<p>x</p>' })).not.toThrow();
+    expect(() => api.addMenubarMenu({ id: 'm', html: '<span>x</span>' })).not.toThrow();
+    expect(() => api.notify('msg')).not.toThrow();
+    expect(typeof api.invoke).toBe('function');
+    expect(typeof api.listen).toBe('function');
+
+    delete (window as any).OpenVCS;
+  });
+});
+
 describe('addMenuItem', () => {
   beforeEach(() => {
     setupTauri();
@@ -482,6 +514,208 @@ describe('currentPluginIdForRegistration', () => {
     (window as any).__openvcsPluginContext = { id: '  spaced  ' };
     const { currentPluginIdForRegistration } = await import('./registration');
     expect(currentPluginIdForRegistration()).toBe('spaced');
+  });
+});
+
+describe('addMenuItem with title attribute', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    document.body.innerHTML = '<ul id="plugins-menu-list"></ul>';
+  });
+
+  it('sets title attribute when item.title is provided', async () => {
+    const { addMenuItem } = await import('./registration');
+    addMenuItem('p1', { label: 'Action', action: 'my-action', title: 'Tooltip text' });
+    const btn = document.querySelector('#plugins-menu-list .menu-item') as HTMLElement;
+    expect(btn.title).toBe('Tooltip text');
+  });
+});
+
+describe('addTitlebarButton with title attribute', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    document.body.innerHTML = '<div id="plugin-title-actions"></div>';
+  });
+
+  it('sets title attribute when btn.title is provided', async () => {
+    const { addTitlebarButton } = await import('./registration');
+    addTitlebarButton('p1', { label: 'Act', action: 'act', title: 'Button tooltip' });
+    const btn = document.querySelector('#plugin-title-actions .btn') as HTMLElement;
+    expect(btn.title).toBe('Button tooltip');
+  });
+});
+
+describe('applyMenubarMenu with before positioning', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    document.body.innerHTML = '<div class="menubar"></div>';
+  });
+
+  it('inserts a menubar menu before an existing menu', async () => {
+    const { applyMenubarMenu } = await import('./registration');
+    applyMenubarMenu('p1', {
+      id: 'second',
+      html: '<div class="menu" data-menu="second"><button>S</button></div>',
+    });
+    applyMenubarMenu('p1', {
+      id: 'first',
+      html: '<div class="menu" data-menu="first"><button>F</button></div>',
+      before: 'second',
+    });
+    const items = document.querySelectorAll('.menubar .menu');
+    expect(items[0].getAttribute('data-menu')).toBe('first');
+    expect(items[1].getAttribute('data-menu')).toBe('second');
+  });
+
+  it('appends when before references non-existent menu', async () => {
+    const { applyMenubarMenu } = await import('./registration');
+    applyMenubarMenu('p1', {
+      id: 'only-menu',
+      html: '<div class="menu" data-menu="only-menu"><button>O</button></div>',
+      before: 'nonexistent',
+    });
+    const items = document.querySelectorAll('.menubar .menu');
+    expect(items.length).toBe(1);
+  });
+});
+
+describe('registerPlugin context menus coverage', () => {
+  beforeEach(async () => {
+    setupTauri();
+    vi.resetModules();
+    mountFullDom();
+    const { _setApplyPluginSectionsFallback } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+  });
+
+  it('registers context menus for commits and branches', async () => {
+    const { registerPlugin } = await import('./registration');
+    registerPlugin({
+      id: 'ctx-plugin',
+      contextMenus: {
+        commits: [{ label: 'Commit Act', action: 'commit-act' }],
+        branches: [{ label: 'Branch Act', action: 'branch-act' }],
+      },
+    });
+    const { getPluginContextMenuItems } = await import('./runtime');
+    expect(getPluginContextMenuItems('commits')).toHaveLength(1);
+    expect(getPluginContextMenuItems('branches')).toHaveLength(1);
+    expect(getPluginContextMenuItems('commits')[0].label).toBe('Commit Act');
+    expect(getPluginContextMenuItems('branches')[0].label).toBe('Branch Act');
+  });
+
+  it('skips context menu items with empty label or action', async () => {
+    const { registerPlugin } = await import('./registration');
+    registerPlugin({
+      id: 'skip-ctx',
+      contextMenus: {
+        files: [
+          { label: '', action: '' },
+          { label: 'Valid', action: 'valid-act' },
+        ],
+      },
+    });
+    const { getPluginContextMenuItems } = await import('./runtime');
+    expect(getPluginContextMenuItems('files')).toHaveLength(1);
+    expect(getPluginContextMenuItems('files')[0].label).toBe('Valid');
+  });
+});
+
+describe('registerPlugin null items', () => {
+  beforeEach(async () => {
+    setupTauri();
+    vi.resetModules();
+    mountFullDom();
+    const { _setApplyPluginSectionsFallback } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+  });
+
+  it('skips null entries in arrays', async () => {
+    const { registerPlugin } = await import('./registration');
+    expect(() => registerPlugin({
+      id: 'null-test',
+      menuItems: [null as any, { label: 'Only', action: 'only-act' }],
+      titlebarButtons: [null as any, { label: 'Btn', action: 'btn-act' }],
+      settingsSections: [null as any, { id: 'sec', label: 'Sec', html: '<div>x</div>' }],
+      themes: [null as any, { summary: { id: 'th', name: 'Th' } }],
+      themeSummaries: [null as any, { id: 'ts', name: 'TS' }],
+      menubarMenus: [null as any, { id: 'mm', html: '<div class="menu" data-menu="mm"><button>M</button></div>' }],
+    })).not.toThrow();
+    expect(document.querySelector('#plugins-menu-list .menu-item')).not.toBeNull();
+    expect(document.querySelector('#plugin-title-actions .btn')).not.toBeNull();
+  });
+});
+
+describe('registerTheme without summary', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('registers theme payload without summary field', async () => {
+    const { registerTheme } = await import('./registration');
+    expect(() => registerTheme({ styles: 'body { color: red; }' } as any)).not.toThrow();
+  });
+
+  it('registers theme with summary but empty id', async () => {
+    const { registerTheme } = await import('./registration');
+    expect(() => registerTheme({ summary: { id: '', name: '' }, styles: '' })).not.toThrow();
+  });
+});
+
+describe('registerThemeSummary empty id', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('skips registration when id is empty', async () => {
+    const { registerThemeSummary } = await import('./registration');
+    expect(() => registerThemeSummary({ id: '', name: '' })).not.toThrow();
+  });
+});
+
+describe('installGlobalApi full coverage', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    delete (window as any).OpenVCS;
+    document.body.innerHTML = '<div class="menubar"></div><ul id="plugins-menu-list"></ul><div id="modals-root"></div><div id="plugin-title-actions"></div><div id="settings-modal"><ul id="settings-nav"></ul><div id="settings-panels-scroll"></div></div>';
+  });
+
+  afterEach(() => {
+    delete (window as any).OpenVCS;
+  });
+
+  it('exposes registerTheme, registerThemeSummary, registerAction via global API', async () => {
+    const { installGlobalApi, _setApplyPluginSectionsFallback } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+    installGlobalApi();
+
+    const api = (window as any).OpenVCS;
+    expect(typeof api.registerTheme).toBe('function');
+    expect(typeof api.registerThemeSummary).toBe('function');
+    expect(typeof api.registerAction).toBe('function');
+
+    expect(() => api.registerTheme({ summary: { id: 'api-theme', name: 'API Theme' }, styles: '' })).not.toThrow();
+    const { getRegisteredThemePayload } = await import('./runtime');
+    expect(getRegisteredThemePayload('api-theme')).not.toBeNull();
+
+    expect(() => api.registerThemeSummary({ id: 'api-sum', name: 'API Summary' })).not.toThrow();
+    const { getRegisteredThemeSummaries } = await import('./runtime');
+    expect(getRegisteredThemeSummaries().some((s: any) => s.id === 'api-sum')).toBe(true);
+
+    const handler = vi.fn();
+    expect(() => api.registerAction('api-act', handler)).not.toThrow();
+    const { runPluginAction } = await import('./runtime');
+    expect(await runPluginAction('api-act', { val: 42 })).toBe(true);
+    expect(handler).toHaveBeenCalledWith({ val: 42 });
   });
 });
 

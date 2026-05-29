@@ -869,3 +869,119 @@ describe('applyScriptNodes safety', () => {
     expect(scripts.length).toBe(1);
   });
 });
+
+describe('setStyleContent removes empty style', () => {
+  it('removes style element when content becomes empty', async () => {
+    const { getRegisteredThemePayload } = await import('./plugins');
+    vi.mocked(getRegisteredThemePayload).mockReturnValue({
+      summary: { id: 'theme-css', name: 'Theme CSS', source: 'user' },
+      styles: 'body { color: red; }',
+      markup: null,
+      scripts: [],
+    } satisfies ThemePayload);
+
+    document.head.innerHTML = '';
+    const mod = await load();
+    await mod.selectThemePack('theme-css');
+    expect(document.getElementById('openvcs-theme-global')).not.toBeNull();
+
+    vi.mocked(getRegisteredThemePayload).mockReturnValue({
+      summary: { id: 'no-css', name: 'No CSS', source: 'user' },
+      styles: '',
+      markup: null,
+      scripts: [],
+    } satisfies ThemePayload);
+    await mod.selectThemePack('no-css');
+    expect(document.getElementById('openvcs-theme-global')).toBeNull();
+  });
+});
+
+describe('resolveThemeByPreference - no match', () => {
+  it('returns null when no paired heuristic candidate exists', async () => {
+    const { getRegisteredThemePayload, getRegisteredThemeSummaries } = await import('./plugins');
+    vi.mocked(getRegisteredThemePayload).mockReturnValue({
+      summary: { id: 'theme-ugly', name: 'Theme Ugly', appearance: 'dark' },
+      styles: '',
+      markup: null,
+      scripts: [],
+    } satisfies ThemePayload);
+    vi.mocked(getRegisteredThemeSummaries).mockReturnValue([
+      { id: 'theme-ugly', name: 'Theme Ugly', appearance: 'dark' },
+    ]);
+
+    const mod = await load();
+    await mod.refreshAvailableThemes();
+    await mod.selectThemePack('theme-ugly', { mode: 'system' });
+    expect(mod.getActiveThemeId()).toBe('theme-ugly');
+  });
+});
+
+describe('system listener change event', () => {
+  it('triggers paired theme re-selection on system theme change', async () => {
+    const mq = { matches: false, addEventListener: vi.fn((_type: string, cb: () => void) => { (mq as any)._cb = cb; }) };
+    (globalThis as any).matchMedia = vi.fn(() => mq);
+
+    const mod = await load();
+    const { getRegisteredThemeSummaries } = await import('./plugins');
+    vi.mocked(getRegisteredThemeSummaries).mockReturnValue([
+      { id: 'pair-dark', name: 'dark', appearance: 'dark', paired_with: 'pair-light' },
+      { id: 'pair-light', name: 'light', appearance: 'light', paired_with: 'pair-dark' },
+    ]);
+
+    await mod.setAppearanceMode('system');
+    (mq as any)._cb();
+  });
+});
+
+// ============================================================================
+// normalizeAppearance and resolvePairedThemeId edge cases
+// ============================================================================
+describe('normalizeAppearance and resolvePairedThemeId edge cases', () => {
+  it('does not pair theme when appearance is "both"', async () => {
+    const { getRegisteredThemePayload } = await import('./plugins');
+    vi.mocked(getRegisteredThemePayload).mockReturnValue({
+      summary: { id: 'both-theme', name: 'Both', appearance: 'both', source: 'user' },
+      styles: '',
+      markup: null,
+      scripts: [],
+    });
+
+    const mod = await load();
+    await mod.selectThemePack('both-theme', { mode: 'system' });
+    // resolvePairedThemeId returns null for 'both' appearance → no pairing
+    expect(mod.getActiveThemeId()).toBe('both-theme');
+  });
+
+  it('does not pair theme when appearance is invalid', async () => {
+    const { getRegisteredThemePayload } = await import('./plugins');
+    vi.mocked(getRegisteredThemePayload).mockReturnValue({
+      summary: { id: 'invalid-app', name: 'Invalid', appearance: 'invalid' as any, source: 'user' },
+      styles: '',
+      markup: null,
+      scripts: [],
+    });
+
+    const mod = await load();
+    await mod.selectThemePack('invalid-app', { mode: 'system' });
+    // normalizeAppearance returns null for unrecognized → resolvePairedThemeId returns null
+    expect(mod.getActiveThemeId()).toBe('invalid-app');
+  });
+});
+
+// ============================================================================
+// ensureSystemListener behavior edge cases
+// ============================================================================
+describe('ensureSystemListener mode guard', () => {
+  it('skips theme change listener when current mode is not system', async () => {
+    const mod = await load();
+    mod.setAppearanceMode('system');
+    // Switch to light mode so currentMode !== 'system'
+    mod.setAppearanceMode('light');
+    // Grab the change handler installed on SYSTEM_DARK_MQ
+    const cb = mq.addEventListener.mock.calls[0][1];
+    // Trigger system color scheme change
+    cb();
+    // currentMode is 'light', not 'system' → listener should return early
+    expect(mod.getActiveThemeId()).toBe('default-light');
+  });
+});

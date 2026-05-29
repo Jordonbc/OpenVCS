@@ -326,4 +326,95 @@ describe('openCherryPick', () => {
     expect(modal.dataset.commit).toBe('abc123');
     expect(openModal).toHaveBeenCalledWith('cherry-pick-modal');
   });
+
+  it('setInitial displays short id when no message is provided', async () => {
+    mockState.branches = [
+      { name: 'main', kind: { type: 'Local' }, full_ref: 'refs/heads/main' },
+    ];
+    mockState.branch = 'main';
+
+    const { openCherryPick } = await import('./cherryPick');
+    await openCherryPick({ id: 'abc1234567', msg: '' });
+
+    const commitEl = document.getElementById('cherry-pick-commit') as HTMLInputElement;
+    expect(commitEl.value).toBe('abc1234');
+  });
+
+  it('setInitial writes short id when commit has no id', async () => {
+    mockState.branches = [
+      { name: 'main', kind: { type: 'Local' }, full_ref: 'refs/heads/main' },
+    ];
+    mockState.branch = 'main';
+
+    const { openCherryPick } = await import('./cherryPick');
+    await openCherryPick({ id: 'xyz789', msg: null as any });
+
+    const commitEl = document.getElementById('cherry-pick-commit') as HTMLInputElement;
+    expect(commitEl.value).toBe('xyz789');
+  });
+});
+
+describe('wireCherryPick setInitial edge cases', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mountCherryPickModal();
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue(null);
+  });
+
+  it('handles empty branches array with no currentBranch', async () => {
+    const { wireCherryPick } = await import('./cherryPick');
+    wireCherryPick();
+    const modal = document.getElementById('cherry-pick-modal') as any;
+    modal.setInitial({ id: 'abc' }, [], '');
+
+    const branchEl = document.getElementById('cherry-pick-branch') as HTMLSelectElement;
+    expect(branchEl.value).toBe('');
+    const options = Array.from(branchEl.options).filter((o) => o.value);
+    expect(options.length).toBe(0);
+  });
+
+  it('handles missing commitEl gracefully', async () => {
+    document.getElementById('cherry-pick-commit')?.remove();
+    const { wireCherryPick } = await import('./cherryPick');
+    wireCherryPick();
+    const modal = document.getElementById('cherry-pick-modal') as any;
+    expect(() => modal.setInitial({ id: 'abc', msg: 'test' }, ['main'], 'main')).not.toThrow();
+  });
+
+  it('handles commit with no id and no msg', async () => {
+    const { wireCherryPick } = await import('./cherryPick');
+    wireCherryPick();
+    const modal = document.getElementById('cherry-pick-modal') as any;
+    modal.setInitial({ id: '', msg: '' }, ['main'], 'main');
+    const commitEl = document.getElementById('cherry-pick-commit') as HTMLInputElement;
+    expect(commitEl.value).toBe('');
+  });
+});
+
+describe('wireCherryPick confirm handler edge cases', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mountCherryPickModal();
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue(null);
+  });
+
+  it('re-validates after confirm error via finally block', async () => {
+    const { wireCherryPick } = await import('./cherryPick');
+    wireCherryPick();
+    const modal = document.getElementById('cherry-pick-modal') as HTMLElement;
+    const confirm = modal.querySelector('#cherry-pick-confirm') as HTMLButtonElement;
+    const branchEl = modal.querySelector('#cherry-pick-branch') as HTMLSelectElement;
+
+    modal.dataset.commit = 'abc123';
+    branchEl.value = 'feature';
+
+    // Confirm succeeds, then we can check it still validates
+    confirm.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    // After success, validate() was called via finally - confirm should be enabled
+    expect(confirm.disabled).toBe(false);
+  });
 });

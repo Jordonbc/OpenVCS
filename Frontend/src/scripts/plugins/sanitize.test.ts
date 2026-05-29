@@ -122,6 +122,19 @@ describe('parseSanitizedPluginElement', () => {
     expect(parseSanitizedPluginElement(null as unknown as string)).toBeNull();
   });
 
+  it('strips href when URL constructor throws', async () => {
+    const origURL = globalThis.URL;
+    (globalThis as any).URL = vi.fn((url: string, base?: string | URL) => {
+      if (url === 'x-bad:url') throw new TypeError('bad url');
+      return new origURL(url, base);
+    }) as any;
+    const { parseSanitizedPluginElement } = await import('./sanitize');
+    const el = parseSanitizedPluginElement('<a href="x-bad:url">link</a>');
+    expect(el).not.toBeNull();
+    expect(el!.getAttribute('href')).toBeNull();
+    (globalThis as any).URL = origURL;
+  });
+
   it('strips blocked tags nested inside safe containers', async () => {
     const { parseSanitizedPluginElement } = await import('./sanitize');
     const el = parseSanitizedPluginElement('<div><p><script>bad</script><span>good</span></p></div>');

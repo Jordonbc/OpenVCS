@@ -436,6 +436,72 @@ describe('selectFile contextmenu', () => {
     });
     expect(hydrateStatus).toHaveBeenCalled();
   });
+
+  it('handles discard hunk invoke failure gracefully', async () => {
+    (window as any).__TAURI__ = { core: { invoke: vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') return ['diff --git a/a.txt b/a.txt', '@@ -1 +1 @@', '-old', '+new'];
+      if (cmd === 'vcs_discard_patch') throw new Error('fail');
+      return [];
+    }) }, event: { listen: vi.fn() } };
+
+    const { selectFile } = await import('./diffView');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { confirmBool } = await import('../../lib/confirm');
+    vi.mocked(confirmBool).mockResolvedValue(true);
+
+    await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
+    const diffEl = document.getElementById('diff')!;
+    const hunkEl = diffEl.querySelector('.hunk') as HTMLElement;
+    hunkEl.setAttribute('data-hunk-index', '0');
+    hunkEl.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20, cancelable: true }));
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await expect(items.find((item) => item.label === 'Discard hunk')?.action?.()).resolves.toBeUndefined();
+  });
+
+  it('handles discard selected hunks this file invoke failure gracefully', async () => {
+    (window as any).__TAURI__ = { core: { invoke: vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') return ['diff --git a/a.txt b/a.txt', '@@ -1 +1 @@', '-old', '+new'];
+      if (cmd === 'vcs_discard_patch') throw new Error('fail');
+      return [];
+    }) }, event: { listen: vi.fn() } };
+
+    const { selectFile } = await import('./diffView');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { state } = await import('../../state/state');
+    state.selectedHunksByFile = { 'a.txt': [0] } as any;
+
+    await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
+    const diffEl = document.getElementById('diff')!;
+    const hunkEl = diffEl.querySelector('.hunk') as HTMLElement;
+    hunkEl.setAttribute('data-hunk-index', '0');
+    hunkEl.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20, cancelable: true }));
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await expect(items.find((item) => item.label === 'Discard selected hunks (this file)')?.action?.()).resolves.toBeUndefined();
+  });
+
+  it('handles discard selected hunks all files invoke failure gracefully', async () => {
+    (window as any).__TAURI__ = { core: { invoke: vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') return ['diff --git a/a.txt b/a.txt', '@@ -1 +1 @@', '-old', '+new'];
+      if (cmd === 'vcs_discard_patch') throw new Error('all fail');
+      return [];
+    }) }, event: { listen: vi.fn() } };
+
+    const { selectFile } = await import('./diffView');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { state } = await import('../../state/state');
+    state.selectedHunksByFile = { 'a.txt': [0], 'b.txt': [1] } as any;
+
+    await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
+    const diffEl = document.getElementById('diff')!;
+    const hunkEl = diffEl.querySelector('.hunk') as HTMLElement;
+    hunkEl.setAttribute('data-hunk-index', '0');
+    hunkEl.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20, cancelable: true }));
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await expect(items.find((item) => item.label === 'Discard selected hunks (all files)')?.action?.()).resolves.toBeUndefined();
+  });
 });
 
 describe('selectStashDiff', () => {
@@ -512,5 +578,35 @@ describe('clearActiveRows', () => {
     document.body.innerHTML = '';
     const { clearActiveRows } = await import('./diffView');
     expect(() => clearActiveRows()).not.toThrow();
+  });
+});
+
+describe('clearDiffSelection with no diff selected files', () => {
+  it('does nothing when diffSelectedFiles is empty', async () => {
+    document.querySelector('#file-list')!.innerHTML = '<li class="row diffsel">x</li>';
+    const { clearDiffSelection } = await import('./diffView');
+    clearDiffSelection();
+    const remaining = document.querySelectorAll<HTMLElement>('#file-list .diffsel');
+    expect(remaining.length).toBe(1);
+  });
+});
+
+describe('selectFile binary diff edge cases', () => {
+  it('clears diff meta and hunk nodes for binary files', async () => {
+    (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return ['Binary files a/img.png and b/img.png differ'];
+      }
+      return [];
+    });
+
+    const { selectFile } = await import('./diffView');
+    const { state } = await import('../../state/state');
+    state.currentDiffMeta = { offset: 0, rest: [], starts: [], changeCounts: [], totalHunks: 0 };
+    state.currentDiffHunkNodes = new Map([[0, { hunkEls: [], hunkCheckboxes: [], lineCheckboxes: {} }]]);
+
+    await selectFile({ path: 'img.png', status: 'M' } as any, 0);
+    expect(state.currentDiffMeta).toBeNull();
+    expect(state.currentDiffHunkNodes.size).toBe(0);
   });
 });

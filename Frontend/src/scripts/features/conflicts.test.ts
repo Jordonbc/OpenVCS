@@ -646,3 +646,138 @@ describe('autoOpenFirstConflict', () => {
     await expect(autoOpenFirstConflict([{ path: 'err.txt', status: 'U' }] as any)).resolves.toBeUndefined();
   });
 });
+
+describe('openMergeModal fallback values', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = '';
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue(null);
+  });
+
+  it('falls back to base when ours and theirs are empty', async () => {
+    mountMergeModal();
+    const { openMergeModal } = await import('./conflicts');
+    await openMergeModal(
+      { path: 'f.txt', status: 'U' },
+      { path: 'f.txt', ours: '', theirs: '', base: 'base content' },
+    );
+    const textarea = document.getElementById('merge-result') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('base content');
+  });
+
+  it('uses empty string when all values are null', async () => {
+    mountMergeModal();
+    const { openMergeModal } = await import('./conflicts');
+    await openMergeModal(
+      { path: 'f.txt', status: 'U' },
+      { path: 'f.txt', ours: null, theirs: null, base: null } as any,
+    );
+    const textarea = document.getElementById('merge-result') as HTMLTextAreaElement;
+    expect(textarea.value).toBe('');
+  });
+
+  it('handles undefined file path gracefully', async () => {
+    mountMergeModal();
+    const { openMergeModal } = await import('./conflicts');
+    await openMergeModal(
+      { path: '', status: 'U' },
+      { path: '', ours: 'a', theirs: 'b' },
+    );
+    const pathLabel = document.getElementById('merge-path') as HTMLElement;
+    expect(pathLabel.textContent).toBe('(unknown file)');
+  });
+});
+
+describe('setPreText coverage', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = '';
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue(null);
+  });
+
+  it('handles missing pre element gracefully', async () => {
+    mountMergeModal();
+    document.getElementById('merge-base')?.remove();
+    const { openMergeModal } = await import('./conflicts');
+    await expect(
+      openMergeModal(
+        { path: 'f.txt', status: 'U' },
+        { path: 'f.txt', ours: 'a', theirs: 'b', base: 'base' },
+      ),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('openConflictsSummary list rendering edge cases', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = '';
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue(null);
+  });
+
+  it('handles missing subtitle element', async () => {
+    mountConflictsSummaryModal();
+    document.getElementById('conflicts-summary-subtitle')?.remove();
+    mockInvoke.mockResolvedValue({ in_progress: false });
+
+    const { openConflictsSummary } = await import('./conflicts');
+    await expect(openConflictsSummary([{ path: 'f.txt', status: 'U' }])).resolves.toBeUndefined();
+  });
+
+  it('handles missing count element', async () => {
+    mountConflictsSummaryModal();
+    document.getElementById('conflicts-summary-count')?.remove();
+    mockInvoke.mockResolvedValue({ in_progress: false });
+
+    const { openConflictsSummary } = await import('./conflicts');
+    await expect(openConflictsSummary([{ path: 'f.txt', status: 'U' }])).resolves.toBeUndefined();
+  });
+});
+
+describe('hasExternalMergeTool configuration edge cases', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = '';
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue(null);
+  });
+
+  it('returns false when diff config is missing altogether', async () => {
+    mockInvoke.mockResolvedValue({ general: {} });
+    const { hasExternalMergeTool } = await import('./conflicts');
+    const result = await hasExternalMergeTool();
+    expect(result).toBe(false);
+  });
+
+  it('returns false when diff.external_merge is missing', async () => {
+    mockInvoke.mockResolvedValue({ diff: {} });
+    const { hasExternalMergeTool } = await import('./conflicts');
+    const result = await hasExternalMergeTool();
+    expect(result).toBe(false);
+  });
+});
+
+describe('launchExternalMergeTool with tool enabled', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = '';
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue(null);
+  });
+
+  it('reports "not configured" when hasExternalMergeTool returns false on second call too', async () => {
+    // First call to hasExternalMergeTool (via openConflictsSummary) returns false
+    // But if launchExternalMergeTool is called directly when not configured
+    mockInvoke.mockResolvedValue({ diff: { external_merge: { enabled: false, path: '' } } });
+
+    const { notify } = await import('../lib/notify');
+
+    const { launchExternalMergeTool } = await import('./conflicts');
+    await launchExternalMergeTool('/path/to/file.txt');
+
+    expect(notify).toHaveBeenCalledWith('No custom merge tool configured');
+  });
+});

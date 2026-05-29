@@ -209,6 +209,33 @@ describe('onFileClick', () => {
     expect(state.selectedFiles.has('a.txt')).toBe(true);
   });
 
+  it('toggle updates checkbox in DOM when row exists', async () => {
+    const { onFileClick } = await import('./interactions');
+    const { state } = await import('../../state/state');
+    const visible = [{ path: 'a.txt', status: 'M' }];
+    state.files = [];
+    state.selectedFiles = new Set();
+
+    const listEl = (await import('./context')).listEl;
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.dataset.path = 'a.txt';
+    li.innerHTML = '<input class="pick" type="checkbox">';
+    listEl.appendChild(li);
+
+    onFileClick({ ctrlKey: true } as MouseEvent, visible[0] as any, 0, visible as any);
+    expect(state.selectedFiles.has('a.txt')).toBe(true);
+    expect(li.classList.contains('picked')).toBe(true);
+    expect((li.querySelector('input.pick') as HTMLInputElement).checked).toBe(true);
+
+    onFileClick({ ctrlKey: true } as MouseEvent, visible[0] as any, 0, visible as any);
+    expect(state.selectedFiles.has('a.txt')).toBe(false);
+    expect(li.classList.contains('picked')).toBe(false);
+    expect((li.querySelector('input.pick') as HTMLInputElement).checked).toBe(false);
+
+    listEl.removeChild(li);
+  });
+
   it('handles plain click (select file)', async () => {
     const { onFileClick } = await import('./interactions');
     const { state } = await import('../../state/state');
@@ -751,5 +778,212 @@ describe('setRenderListCallback / isDragSelecting / setDragCurrentIndex', () => 
     const { dragState } = await import('./context');
     setDragCurrentIndex(5);
     expect(dragState.dragCurrentIndex).toBe(5);
+  });
+});
+
+describe('onFileClick - range and diff toggle coverage', () => {
+  it('shift+click range calls renderListAfterRangeSelect callback', async () => {
+    const { onFileClick, setRenderListCallback } = await import('./interactions');
+    const { dragState } = await import('./context');
+    const { state, prefs } = await import('../../state/state');
+    const visible = [
+      { path: 'a.txt', status: 'M' },
+      { path: 'b.txt', status: 'M' },
+      { path: 'c.txt', status: 'M' },
+    ] as any;
+    state.files = visible;
+    state.selectedFiles = new Set();
+    prefs.tab = 'changes';
+    dragState.lastClickedIndex = 0;
+
+    const ul = document.getElementById('file-list')!;
+    visible.forEach((f: any) => {
+      const li = document.createElement('li');
+      li.className = 'row';
+      li.setAttribute('data-path', f.path);
+      ul.appendChild(li);
+    });
+    const callback = vi.fn();
+    setRenderListCallback(callback);
+
+    onFileClick({ shiftKey: true, ctrlKey: false, metaKey: false } as MouseEvent, visible[2], 2, visible);
+    expect(callback).toHaveBeenCalled();
+  });
+
+  it('toggle with diffSelectedFiles > 1', async () => {
+    const { onFileClick } = await import('./interactions');
+    const { dragState } = await import('./context');
+    const { state } = await import('../../state/state');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.files = [];
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set(['x.txt', 'y.txt']);
+    dragState.lastClickedIndex = -1;
+
+    onFileClick({ ctrlKey: true, metaKey: false, shiftKey: false } as MouseEvent, visible[0], 0, visible);
+    expect(state.selectedFiles.has('a.txt')).toBe(true);
+    expect(dragState.lastClickedIndex).toBe(0);
+  });
+
+  it('plain click applies highlightRow active class via selectFile', async () => {
+    const { onFileClick } = await import('./interactions');
+    const { state } = await import('../../state/state');
+    const { dragState } = await import('./context');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.files = [];
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    dragState.lastClickedIndex = -1;
+
+    const ul = document.getElementById('file-list')!;
+    visible.forEach((f: any) => {
+      const li = document.createElement('li');
+      li.className = 'row';
+      li.setAttribute('data-path', f.path);
+      ul.appendChild(li);
+    });
+
+    onFileClick({ ctrlKey: false, metaKey: false, shiftKey: false } as MouseEvent, visible[0], 0, visible);
+    const rows = ul.querySelectorAll<HTMLElement>('li.row');
+    expect(rows[0].classList.contains('active')).toBe(true);
+  });
+});
+
+describe('onFileMouseDown - move and up', () => {
+  it('mouse move finds new row and updates dragCurrentIndex', async () => {
+    const { onFileMouseDown } = await import('./interactions');
+    const { dragState } = await import('./context');
+    const { state } = await import('../../state/state');
+    const visible = [
+      { path: 'a.txt', status: 'M' },
+      { path: 'b.txt', status: 'M' },
+    ] as any;
+    state.diffSelectedFiles = new Set();
+    state.selectedFiles = new Set();
+
+    const ul = document.getElementById('file-list')!;
+    visible.forEach((f: any) => {
+      const li = document.createElement('li');
+      li.className = 'row';
+      li.setAttribute('data-path', f.path);
+      ul.appendChild(li);
+    });
+    const secondLi = ul.querySelectorAll('li')[1] as HTMLElement;
+    const origEP = (document as any).elementFromPoint;
+    (document as any).elementFromPoint = () => secondLi;
+
+    onFileMouseDown({ button: 0, shiftKey: true, ctrlKey: false, metaKey: false, clientX: 10, clientY: 10, preventDefault: vi.fn() } as any, visible[0], 0, visible, ul.querySelector('li') as HTMLElement);
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 100 }));
+    (document as any).elementFromPoint = origEP;
+    expect(dragState.dragCurrentIndex).toBe(1);
+  });
+
+  it('mouse move with no row found leaves index unchanged', async () => {
+    const { onFileMouseDown } = await import('./interactions');
+    const { dragState } = await import('./context');
+    const { state } = await import('../../state/state');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.diffSelectedFiles = new Set();
+    state.selectedFiles = new Set();
+
+    const ul = document.getElementById('file-list')!;
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.setAttribute('data-path', 'a.txt');
+    ul.appendChild(li);
+    const origEP = (document as any).elementFromPoint;
+    (document as any).elementFromPoint = () => document.createElement('div');
+    dragState.dragCurrentIndex = 0;
+    onFileMouseDown({ button: 0, shiftKey: true, ctrlKey: false, metaKey: false, clientX: 10, clientY: 10, preventDefault: vi.fn() } as any, visible[0], 0, visible, li);
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 50 }));
+    (document as any).elementFromPoint = origEP;
+    expect(dragState.dragCurrentIndex).toBe(0);
+  });
+
+  it('mouse up with dragMoved sets suppressNextClick', async () => {
+    const { onFileMouseDown } = await import('./interactions');
+    const { dragState } = await import('./context');
+    const { state } = await import('../../state/state');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.diffSelectedFiles = new Set();
+    state.selectedFiles = new Set();
+
+    const li = document.createElement('li');
+    li.setAttribute('data-path', 'a.txt');
+    document.getElementById('file-list')!.appendChild(li);
+    onFileMouseDown({ button: 0, shiftKey: true, ctrlKey: false, metaKey: false, clientX: 10, clientY: 10, preventDefault: vi.fn() } as any, visible[0], 0, visible, li);
+    dragState.dragMoved = true;
+    document.dispatchEvent(new MouseEvent('mouseup'));
+    expect(dragState.suppressNextClick).toBe(true);
+    expect(dragState.isDragSelecting).toBe(false);
+    expect(dragState.dragMode).toBeNull();
+  });
+});
+
+describe('updateDragRange - listEl null', () => {
+  it('diff mode when listEl is null', async () => {
+    const ul = document.getElementById('file-list');
+    if (ul) ul.remove();
+    const { updateDragRange } = await import('./interactions');
+    const { dragState } = await import('./context');
+    const { state } = await import('../../state/state');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.diffSelectedFiles = new Set();
+    dragState.isDragSelecting = true;
+    dragState.dragMode = 'diff';
+    dragState.dragStartIndex = 0;
+    dragState.dragCurrentIndex = 0;
+    dragState.dragPreDiff = new Set();
+    expect(() => updateDragRange(visible)).not.toThrow();
+    expect(state.diffSelectedFiles.has('a.txt')).toBe(true);
+  });
+});
+
+describe('onFileContextMenu - rejection paths', () => {
+  it('open_repo_file success', async () => {
+    const { onFileContextMenu } = await import('./interactions');
+    const { state } = await import('../../state/state');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { TAURI } = await import('../../lib/tauri');
+    state.selectedFiles = new Set(['single.txt']);
+    state.selectionImplicitAll = false;
+    vi.mocked(TAURI.invoke).mockResolvedValue(undefined);
+    await onFileContextMenu({ preventDefault: vi.fn(), clientX: 1, clientY: 2 } as any, { path: 'single.txt', status: 'M' } as any);
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const openItem = items.find((i: any) => i.label === 'Open with default application');
+    await openItem!.action!();
+    expect(TAURI.invoke).toHaveBeenCalledWith('open_repo_file', { path: 'single.txt' });
+  });
+
+  it('add to .gitignore rejection', async () => {
+    const { onFileContextMenu } = await import('./interactions');
+    const { state } = await import('../../state/state');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { confirmBool } = await import('../../lib/confirm');
+    const { TAURI } = await import('../../lib/tauri');
+    vi.mocked(confirmBool).mockResolvedValue(false);
+    state.selectedFiles = new Set(['a.txt']);
+    state.selectionImplicitAll = false;
+    await onFileContextMenu({ preventDefault: vi.fn(), clientX: 1, clientY: 2 } as any, { path: 'a.txt', status: 'M' } as any);
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const gitignoreItem = items.find((i: any) => i.label === 'Add to .gitignore');
+    await gitignoreItem!.action!();
+    expect(TAURI.invoke).not.toHaveBeenCalledWith('vcs_add_to_gitignore_paths');
+  });
+
+  it('discard changes rejection', async () => {
+    const { onFileContextMenu } = await import('./interactions');
+    const { state } = await import('../../state/state');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { confirmBool } = await import('../../lib/confirm');
+    const { TAURI } = await import('../../lib/tauri');
+    vi.mocked(confirmBool).mockResolvedValue(false);
+    state.selectedFiles = new Set(['a.txt']);
+    state.selectionImplicitAll = false;
+    await onFileContextMenu({ preventDefault: vi.fn(), clientX: 1, clientY: 2 } as any, { path: 'a.txt', status: 'M' } as any);
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const discardItem = items.find((i: any) => i.label === 'Discard changes');
+    await discardItem!.action!();
+    expect(TAURI.invoke).not.toHaveBeenCalledWith('vcs_discard_paths');
   });
 });

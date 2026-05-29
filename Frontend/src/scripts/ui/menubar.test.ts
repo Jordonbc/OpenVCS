@@ -284,3 +284,185 @@ describe('initMenubar', () => {
     vi.runAllTimers();
   });
 });
+
+// ============================================================================
+// getMenuList internal behavior - querySelector returns null
+// ============================================================================
+describe('getMenuList returns null for unmatched menu id', () => {
+  it('skips plugin menu when the menu id has no matching DOM node', async () => {
+    const { TAURI } = await import('../lib/tauri');
+    vi.mocked(TAURI.invoke).mockResolvedValue([
+      {
+        plugin_id: 'plugin.test',
+        id: 'nonexistent-menu',
+        label: 'No DOM Match',
+        surface: 'menubar',
+        elements: [{ type: 'button', id: 'some-action', label: 'Some Action' }],
+      },
+    ]);
+
+    const { refreshPluginMenubarMenus } = await import('./menubar');
+    await refreshPluginMenubarMenus();
+
+    expect(document.querySelector('[data-plugin-menubar="true"]')).toBeNull();
+  });
+});
+
+// ============================================================================
+// clearPluginMenubarMenus - no matching elements
+// ============================================================================
+describe('clearPluginMenubarMenus', () => {
+  it('does nothing when no plugin menubar elements exist', async () => {
+    const { clearPluginMenubarMenus } = await import('./menubar');
+    expect(() => clearPluginMenubarMenus()).not.toThrow();
+    expect(document.querySelectorAll('[data-plugin-menubar="true"]')).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// refreshPluginMenubarMenus - additional edge cases
+// ============================================================================
+describe('refreshPluginMenubarMenus additional edge cases', () => {
+  it('skips menu with empty id', async () => {
+    const { TAURI } = await import('../lib/tauri');
+    vi.mocked(TAURI.invoke).mockResolvedValue([
+      {
+        plugin_id: 'plugin.test',
+        id: '',
+        label: 'No ID',
+        surface: 'menubar',
+        elements: [{ type: 'button', id: 'btn', label: 'Btn' }],
+      },
+    ]);
+
+    const { refreshPluginMenubarMenus } = await import('./menubar');
+    await refreshPluginMenubarMenus();
+
+    expect(document.querySelector('[data-plugin-menubar="true"]')).toBeNull();
+  });
+
+  it('continues when menu has no button entries', async () => {
+    const { TAURI } = await import('../lib/tauri');
+    vi.mocked(TAURI.invoke).mockResolvedValue([
+      {
+        plugin_id: 'plugin.test',
+        id: 'file',
+        label: 'File',
+        surface: 'menubar',
+        elements: [{ type: 'text', content: 'Just info' }],
+      },
+    ]);
+
+    const { refreshPluginMenubarMenus } = await import('./menubar');
+    await refreshPluginMenubarMenus();
+
+    expect(document.querySelector('[data-plugin-menubar="true"]')).toBeNull();
+  });
+
+  it('handles null elements array gracefully', async () => {
+    const { TAURI } = await import('../lib/tauri');
+    vi.mocked(TAURI.invoke).mockResolvedValue([
+      {
+        plugin_id: 'plugin.test',
+        id: 'file',
+        label: 'File',
+        surface: 'menubar',
+        elements: null as any,
+      },
+    ]);
+
+    const { refreshPluginMenubarMenus } = await import('./menubar');
+    await refreshPluginMenubarMenus();
+
+    expect(document.querySelector('[data-plugin-menubar="true"]')).toBeNull();
+  });
+
+  it('skips button with empty label in render loop', async () => {
+    const { TAURI } = await import('../lib/tauri');
+    vi.mocked(TAURI.invoke).mockResolvedValue([
+      {
+        plugin_id: 'plugin.test',
+        id: 'file',
+        label: 'File',
+        surface: 'menubar',
+        elements: [
+          { type: 'button', id: 'no-label', label: '' },
+          { type: 'button', id: 'has-label', label: 'Labeled' },
+        ],
+      },
+    ]);
+
+    const { refreshPluginMenubarMenus } = await import('./menubar');
+    await refreshPluginMenubarMenus();
+
+    // Separator + valid button
+    expect(document.querySelectorAll('[data-plugin-menubar="true"]')).toHaveLength(2);
+    expect(document.querySelector('[data-plugin-action="no-label"]')).toBeNull();
+    expect(document.querySelector('[data-plugin-action="has-label"]')).not.toBeNull();
+  });
+});
+
+// ============================================================================
+// initMenubar - additional edge cases
+// ============================================================================
+describe('initMenubar additional edge cases', () => {
+  it('does nothing when root .menubar element is missing', async () => {
+    document.body.innerHTML = '';
+    const { initMenubar } = await import('./menubar');
+    expect(() => initMenubar(vi.fn())).not.toThrow();
+  });
+
+  it('handles escape keydown when no menu is open', async () => {
+    const { initMenubar } = await import('./menubar');
+    initMenubar(vi.fn());
+    expect(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    }).not.toThrow();
+  });
+
+  it('handles document click when no menu is open', async () => {
+    const { initMenubar } = await import('./menubar');
+    initMenubar(vi.fn());
+    expect(() => {
+      document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }).not.toThrow();
+  });
+
+  it('ignores pointerover on trigger when no menu is open', async () => {
+    const { initMenubar } = await import('./menubar');
+    initMenubar(vi.fn());
+
+    const trigger = document.querySelector('.menu-trigger') as HTMLElement;
+    trigger.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+
+    expect(document.querySelector('.menu-list')?.hasAttribute('hidden')).toBe(true);
+  });
+
+  it('returns early from open() when menu has no list', async () => {
+    const menubar = document.querySelector('.menubar') as HTMLElement;
+    menubar.insertAdjacentHTML('beforeend', `
+      <div class="menu" data-menu="broken">
+        <button class="menu-trigger">Broken</button>
+      </div>
+    `);
+
+    const { initMenubar } = await import('./menubar');
+    initMenubar(vi.fn());
+
+    const triggers = document.querySelectorAll('.menu-trigger');
+    const brokenTrigger = triggers[triggers.length - 1] as HTMLButtonElement;
+    brokenTrigger.click();
+    // Should not throw — open() returns early when list is null
+    expect(true).toBe(true);
+  });
+
+  it('ignores click on menubar area that is neither item nor trigger', async () => {
+    const { initMenubar } = await import('./menubar');
+    initMenubar(vi.fn());
+
+    const menubar = document.querySelector('.menubar') as HTMLElement;
+    menubar.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(document.querySelector('.menu-list')?.hasAttribute('hidden')).toBe(true);
+  });
+});

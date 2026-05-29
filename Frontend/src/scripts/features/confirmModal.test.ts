@@ -134,6 +134,38 @@ describe('setContent', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(focusSpy).toHaveBeenCalled();
   });
+
+  it('handles missing title element gracefully', async () => {
+    const { wireConfirmModal } = await import('./confirmModal');
+    wireConfirmModal();
+    document.getElementById('confirm-modal-title')?.remove();
+    const modal = document.getElementById('confirm-modal') as any;
+    expect(() => modal.setContent({ message: 'Test', title: 'Custom' })).not.toThrow();
+  });
+
+  it('handles missing hint element gracefully', async () => {
+    const { wireConfirmModal } = await import('./confirmModal');
+    wireConfirmModal();
+    document.getElementById('confirm-modal-hint')?.remove();
+    const modal = document.getElementById('confirm-modal') as any;
+    expect(() => modal.setContent({ message: 'Test', hint: 'Hint' })).not.toThrow();
+  });
+
+  it('handles missing message element gracefully', async () => {
+    const { wireConfirmModal } = await import('./confirmModal');
+    wireConfirmModal();
+    document.getElementById('confirm-modal-message')?.remove();
+    const modal = document.getElementById('confirm-modal') as any;
+    expect(() => modal.setContent({ message: 'Msg' })).not.toThrow();
+  });
+
+  it('handles missing cancel button gracefully', async () => {
+    const { wireConfirmModal } = await import('./confirmModal');
+    wireConfirmModal();
+    document.getElementById('confirm-modal-cancel-btn')?.remove();
+    const modal = document.getElementById('confirm-modal') as any;
+    expect(() => modal.setContent({ message: 'Test' })).not.toThrow();
+  });
 });
 
 describe('confirm button handler', () => {

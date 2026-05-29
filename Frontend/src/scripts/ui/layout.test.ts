@@ -784,3 +784,33 @@ describe('initResizer', () => {
     expect(grid.style.gridTemplateColumns).toBe('');
   });
 });
+
+describe('setRepoHeader with missing elements', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = '';
+  });
+
+  it('does not crash when repo-title and repo-branch are missing', async () => {
+    const { setRepoHeader, resetRepoHeader } = await import('./layout');
+    expect(() => setRepoHeader('/some/path')).not.toThrow();
+    expect(() => resetRepoHeader()).not.toThrow();
+  });
+});
+
+describe('renderAheadBehind with missing element', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    Object.defineProperty(globalThis, 'matchMedia', {
+      value: () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn() }),
+      configurable: true,
+      writable: true,
+    });
+    document.body.innerHTML = '';
+  });
+
+  it('does not crash when ahead-behind element is missing', async () => {
+    const { bindLayoutActionState } = await import('./layout');
+    expect(() => bindLayoutActionState()).not.toThrow();
+  });
+});

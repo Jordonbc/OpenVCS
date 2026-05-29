@@ -285,6 +285,48 @@ describe('openSettings', () => {
             expect(mockActivateSection).toHaveBeenCalled();
         });
     });
+
+    it('handles loadSettingsIntoForm rejection gracefully', async () => {
+        mountSettingsModal();
+        mockRenderPluginMenus.mockResolvedValue(undefined);
+        mockInvoke.mockRejectedValue(new Error('load failed'));
+        const { openSettings } = await load();
+        openSettings();
+        await vi.waitFor(() => {
+            const modal = document.getElementById('settings-modal')!;
+            expect(modal.hasAttribute('aria-busy')).toBe(false);
+        });
+    });
+});
+
+describe('openSettings with theme select', () => {
+    async function load() {
+        return import('./settings');
+    }
+
+    it('disables theme select and shows Loading placeholder', async () => {
+        document.body.innerHTML = `
+            <div id="settings-modal">
+                <input id="set-theme-auto" type="checkbox" />
+                <select id="set-theme"></select>
+                <div class="backdrop"></div>
+                <nav id="settings-nav"></nav>
+                <div id="settings-panels"></div>
+                <div id="settings-panels-scroll"></div>
+                <div class="sheet-actions">
+                    <button id="settings-save">Save</button>
+                    <button id="settings-reset">Reset</button>
+                </div>
+            </div>
+        `;
+        mockRenderPluginMenus.mockResolvedValue(undefined);
+        mockInvoke.mockResolvedValue({});
+        const { openSettings } = await load();
+        openSettings();
+        const sel = document.getElementById('set-theme') as HTMLSelectElement;
+        expect(sel.disabled).toBe(true);
+        expect(sel.innerHTML).toContain('Loading');
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -1276,6 +1318,424 @@ describe('wireSettings (save applies CSS props)', () => {
       expect(mockApplyCommitSummaryRestriction).toHaveBeenCalled();
       expect(mockUpdateCommitButton).toHaveBeenCalled();
       expect(mockNotify).toHaveBeenCalledWith('Settings saved. GPU changes apply after restart.');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// flashSavedState
+// ---------------------------------------------------------------------------
+
+describe('flashSavedState', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('shows saved state then restores after timeout', async () => {
+    vi.useFakeTimers();
+    mountSettingsModal();
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(saveBtn.classList.contains('saved-state')).toBe(true);
+    expect(saveBtn.textContent).toBe('Saved!');
+
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(saveBtn.textContent).toBe('Save');
+    expect(saveBtn.classList.contains('saved-state')).toBe(false);
+    vi.useRealTimers();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// refreshDefaultBackendOptions - error handling
+// ---------------------------------------------------------------------------
+
+describe('refreshDefaultBackendOptions error handling', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('handles invoke rejection gracefully', async () => {
+    mountSettingsModal();
+    const modal = document.getElementById('settings-modal')!;
+    modal.insertAdjacentHTML('beforeend', '<select id="set-default-backend"></select>');
+    mockInvoke
+      .mockResolvedValueOnce({}) // get_global_settings succeeds
+      .mockRejectedValueOnce(new Error('vcs backends failed')); // list_vcs_backends_cmd fails
+    mockLoadPluginsIntoForm.mockResolvedValue(undefined);
+    mockLoadGeneralSettingsIntoForm.mockImplementation(
+      async (_m: HTMLElement, _c: any, _k: any, refreshBackends: any) => {
+        await refreshBackends(_m, { general: { default_backend: 'git' } });
+      },
+    );
+
+    const { loadSettingsIntoForm } = await load();
+    await loadSettingsIntoForm();
+    await flushPromises();
+
+    const sel = document.getElementById('set-default-backend') as HTMLSelectElement;
+    expect(sel.disabled).toBe(true);
+    expect(sel.options.length).toBe(0);
+  });
+
+  it('selects first backend when desired is empty', async () => {
+    mountSettingsModal();
+    const modal = document.getElementById('settings-modal')!;
+    modal.insertAdjacentHTML('beforeend', '<select id="set-default-backend"></select>');
+    mockInvoke.mockResolvedValue([['git', 'Git'], ['hg', 'Mercurial']]);
+    mockLoadPluginsIntoForm.mockResolvedValue(undefined);
+    mockLoadGeneralSettingsIntoForm.mockImplementation(
+      async (_m: HTMLElement, _c: any, _k: any, refreshBackends: any) => {
+        await refreshBackends(_m, {});
+      },
+    );
+
+    const { loadSettingsIntoForm } = await load();
+    await loadSettingsIntoForm();
+    await flushPromises();
+
+    const sel = document.getElementById('set-default-backend') as HTMLSelectElement;
+    expect(sel.value).toBe('git');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// collectSettingsFromForm - edge cases
+// ---------------------------------------------------------------------------
+
+describe('collectSettingsFromForm - edge cases', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('handles invalid JSON in currentCfg', async () => {
+    const modal = mountSettingsModal();
+    modal.dataset.currentCfg = 'not-valid-json';
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-gpu-accel" type="checkbox" />',
+      '<input id="set-animations" type="checkbox" />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1" />',
+      '<input id="set-font-mono" type="text" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" type="number" value="10" />',
+      '<input id="set-tab-width" type="number" value="4" />',
+      '<input id="set-max-file-size-mb" type="number" value="10" />',
+      '<input id="set-intraline" type="checkbox" />',
+      '<input id="set-binary-placeholders" type="checkbox" />',
+      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="10" />',
+    ].join('\n'));
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalled();
+    });
+  });
+
+  it('skips LFS and plugins sections when elements absent', async () => {
+    document.body.innerHTML = [
+      '<div id="settings-modal">',
+      '  <div class="backdrop"></div>',
+      '  <nav id="settings-nav">',
+      '    <button class="seg-btn" data-section="general">General</button>',
+      '  </nav>',
+      '  <div id="settings-panels">',
+      '    <form class="panel-form" data-panel="general"></form>',
+      '  </div>',
+      '  <div class="sheet-actions">',
+      '    <button id="settings-save">Save</button>',
+      '    <button id="settings-reset">Reset</button>',
+      '  </div>',
+      '  <input id="set-tab-width" value="4" />',
+      '  <input id="set-intraline" type="checkbox" />',
+      '  <input id="set-binary-placeholders" type="checkbox" />',
+      '  <select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
+      '</div>',
+    ].join('\n');
+    const modal = document.getElementById('settings-modal')!;
+    modal.dataset.currentCfg = JSON.stringify({});
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalled();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadSettingsIntoForm - form element filling
+// ---------------------------------------------------------------------------
+
+describe('loadSettingsIntoForm - element filling', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('fills all form elements from settings', async () => {
+    document.body.innerHTML = [
+      '<div id="settings-modal">',
+      '  <input id="set-recents-limit" />',
+      '  <input id="set-tab-width" />',
+      '  <select id="set-ignore-whitespace"><option value="none">None</option><option value="all">All</option></select>',
+      '  <input id="set-max-file-size-mb" />',
+      '  <input id="set-intraline" type="checkbox" />',
+      '  <input id="set-binary-placeholders" type="checkbox" />',
+      '  <input id="set-restrict-commit-summary" type="checkbox" />',
+      '  <select id="set-merge-mode"><option value="builtin">Built-in</option><option value="custom">Custom</option></select>',
+      '  <input id="set-merge-path" />',
+      '  <input id="set-merge-args" />',
+      '  <input id="set-lfs-enabled" type="checkbox" />',
+      '  <input id="set-lfs-concurrency" />',
+      '  <input id="set-lfs-require-lock" type="checkbox" />',
+      '  <input id="set-lfs-bg-fetch" type="checkbox" />',
+      '  <input id="set-animations" type="checkbox" />',
+      '  <input id="set-progressive-render" type="checkbox" />',
+      '  <input id="set-gpu-accel" type="checkbox" />',
+      '  <input id="set-ui-scale" />',
+      '  <input id="set-font-mono" />',
+      '  <input id="set-vim-nav" type="checkbox" />',
+      '  <select id="set-cb-mode"><option value="none">None</option><option value="deuteranopia">Deuteranopia</option></select>',
+      '  <select id="set-log-level"><option value="info">Info</option><option value="debug">Debug</option></select>',
+      '  <input id="set-log-keep" />',
+      '  <div class="backdrop"></div>',
+      '  <nav id="settings-nav"></nav>',
+      '  <div id="settings-panels"></div>',
+      '  <div class="sheet-actions">',
+      '    <button id="settings-save">Save</button>',
+      '    <button id="settings-reset">Reset</button>',
+      '  </div>',
+      '</div>',
+    ].join('\n');
+    const cfg = {
+      general: { theme: 'system', theme_pack: 'default', language: 'en' },
+      commit: { restrict_commit_summary: true },
+      diff: {
+        tab_width: 8,
+        ignore_whitespace: 'all' as const,
+        max_file_size_mb: 20,
+        intraline: true,
+        show_binary_placeholders: false,
+        external_merge: { enabled: true, path: '/usr/bin/merge', args: '--diff3' },
+      },
+      lfs: { enabled: false, concurrency: 8, require_lock_before_edit: true, background_fetch_on_checkout: false },
+      performance: { progressive_render: false, gpu_accel: true, animations: false },
+      ux: { ui_scale: 1.5, font_mono: 'Fira Code', vim_nav: true, color_blind_mode: 'deuteranopia' as const, recents_limit: 25 },
+      logging: { level: 'debug' as const, retain_archives: 50 },
+    };
+    mockInvoke.mockResolvedValue(cfg);
+    mockLoadPluginsIntoForm.mockResolvedValue(undefined);
+    mockLoadGeneralSettingsIntoForm.mockResolvedValue(undefined);
+    const { loadSettingsIntoForm } = await load();
+    await loadSettingsIntoForm();
+
+    expect((document.getElementById('set-recents-limit') as HTMLInputElement).value).toBe('25');
+    expect((document.getElementById('set-tab-width') as HTMLInputElement).value).toBe('8');
+    expect((document.getElementById('set-ignore-whitespace') as HTMLSelectElement).value).toBe('all');
+    expect((document.getElementById('set-max-file-size-mb') as HTMLInputElement).value).toBe('20');
+    expect((document.getElementById('set-intraline') as HTMLInputElement).checked).toBe(true);
+    expect((document.getElementById('set-binary-placeholders') as HTMLInputElement).checked).toBe(false);
+    expect((document.getElementById('set-restrict-commit-summary') as HTMLInputElement).checked).toBe(true);
+    expect((document.getElementById('set-merge-mode') as HTMLSelectElement).value).toBe('custom');
+    expect((document.getElementById('set-merge-path') as HTMLInputElement).value).toBe('/usr/bin/merge');
+    expect((document.getElementById('set-merge-args') as HTMLInputElement).value).toBe('--diff3');
+    expect((document.getElementById('set-lfs-enabled') as HTMLInputElement).checked).toBe(false);
+    expect((document.getElementById('set-lfs-concurrency') as HTMLInputElement).value).toBe('8');
+    expect((document.getElementById('set-lfs-require-lock') as HTMLInputElement).checked).toBe(true);
+    expect((document.getElementById('set-lfs-bg-fetch') as HTMLInputElement).checked).toBe(false);
+    expect((document.getElementById('set-animations') as HTMLInputElement).checked).toBe(false);
+    expect((document.getElementById('set-progressive-render') as HTMLInputElement).checked).toBe(false);
+    expect((document.getElementById('set-gpu-accel') as HTMLInputElement).checked).toBe(true);
+    expect((document.getElementById('set-ui-scale') as HTMLInputElement).value).toBe('1.5');
+    expect((document.getElementById('set-font-mono') as HTMLInputElement).value).toBe('Fira Code');
+    expect((document.getElementById('set-vim-nav') as HTMLInputElement).checked).toBe(true);
+    expect((document.getElementById('set-cb-mode') as HTMLSelectElement).value).toBe('deuteranopia');
+    expect((document.getElementById('set-log-level') as HTMLSelectElement).value).toBe('debug');
+    expect((document.getElementById('set-log-keep') as HTMLInputElement).value).toBe('50');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// wireSettings - backdrop click no-op
+// ---------------------------------------------------------------------------
+
+describe('wireSettings - backdrop click no-op', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('does not close when clicking non-close element', async () => {
+    mountSettingsModal();
+    const { wireSettings } = await load();
+    wireSettings();
+    const modal = document.getElementById('settings-modal')!;
+    modal.querySelector('#settings-nav')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(mockCloseModal).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// wireSettings - missing nav/panels
+// ---------------------------------------------------------------------------
+
+describe('wireSettings - missing nav/panels', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('handles missing nav gracefully', async () => {
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <div class="backdrop"></div>
+        <div id="settings-panels">
+          <form class="panel-form" data-panel="general"></form>
+        </div>
+        <div class="sheet-actions">
+          <button id="settings-save">Save</button>
+          <button id="settings-reset">Reset</button>
+        </div>
+      </div>
+    `;
+    const { wireSettings } = await load();
+    expect(() => wireSettings()).not.toThrow();
+  });
+
+  it('handles missing panels gracefully', async () => {
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <div class="backdrop"></div>
+        <nav id="settings-nav">
+          <button class="seg-btn" data-section="general">General</button>
+        </nav>
+        <div class="sheet-actions">
+          <button id="settings-save">Save</button>
+          <button id="settings-reset">Reset</button>
+        </div>
+      </div>
+    `;
+    const { wireSettings } = await load();
+    expect(() => wireSettings()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// syncThemeTitle
+// ---------------------------------------------------------------------------
+
+describe('syncThemeTitle', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('updates theme select title on theme change', async () => {
+    mockThemeTooltip.mockReturnValue('My Tooltip');
+    mockSelectThemePack.mockResolvedValue(undefined);
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <div class="backdrop"></div>
+        <select id="set-theme">
+          <option value="my-theme" selected>My Theme</option>
+        </select>
+        <nav id="settings-nav"></nav>
+        <div id="settings-panels"></div>
+        <div class="sheet-actions">
+          <button id="settings-save">Save</button>
+          <button id="settings-reset">Reset</button>
+        </div>
+      </div>
+    `;
+    const { wireSettings } = await load();
+    wireSettings();
+    const themeSel = document.getElementById('set-theme') as HTMLSelectElement;
+    themeSel.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => {
+      expect(themeSel.title).toBe('My Tooltip');
+    });
+  });
+
+  it('does not throw when theme select is missing', async () => {
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <div class="backdrop"></div>
+        <nav id="settings-nav"></nav>
+        <div id="settings-panels"></div>
+        <div class="sheet-actions">
+          <button id="settings-save">Save</button>
+          <button id="settings-reset">Reset</button>
+        </div>
+      </div>
+    `;
+    const { wireSettings } = await load();
+    expect(() => wireSettings()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyThemeFromControls - auto mode
+// ---------------------------------------------------------------------------
+
+describe('applyThemeFromControls', () => {
+  async function load() {
+    return import('./settings');
+  }
+
+  it('sets system mode when auto is checked', async () => {
+    mockModeForTheme.mockReturnValue('light');
+    mockGetActiveThemeId.mockReturnValue('dark-theme');
+    mockSelectThemePack.mockResolvedValue(undefined);
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <div class="backdrop"></div>
+        <input id="set-theme-auto" type="checkbox" checked />
+        <select id="set-theme">
+          <option value="default-light">Light</option>
+          <option value="dark-theme">Dark</option>
+        </select>
+        <nav id="settings-nav"></nav>
+        <div id="settings-panels"></div>
+        <div class="sheet-actions">
+          <button id="settings-save">Save</button>
+          <button id="settings-reset">Reset</button>
+        </div>
+      </div>
+    `;
+    const { wireSettings } = await load();
+    wireSettings();
+    const autoCheck = document.getElementById('set-theme-auto') as HTMLInputElement;
+    autoCheck.checked = true;
+    autoCheck.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => {
+      expect(mockSetTheme).toHaveBeenCalledWith('system');
     });
   });
 });

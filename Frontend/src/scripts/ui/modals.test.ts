@@ -398,3 +398,34 @@ describe('hydrate with existing modal', () => {
     expect(() => hydrate('nothing-here')).toThrow('No fragment registered for nothing-here');
   });
 });
+
+describe('hydrate already-loaded modal', () => {
+  beforeEach(() => { vi.resetModules(); mountRoot(); });
+
+  it('does nothing when modal id was already hydrated', async () => {
+    const { hydrate } = await import('./modals');
+    hydrate('settings-modal');
+    document.body.innerHTML = '<div id="modals-root"></div>';
+    expect(() => hydrate('settings-modal')).not.toThrow();
+  });
+});
+
+describe('closeAllModals with existing timers', () => {
+  beforeEach(() => { vi.resetModules(); mountRoot(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('clears pending animation timers before closing', async () => {
+    vi.useFakeTimers();
+    const { openModal, closeAllModals } = await import('./modals');
+    document.body.innerHTML += '<div id="m1" class="modal" aria-hidden="true"><div class="backdrop"></div></div>';
+    openModal('m1');
+
+    const modal = document.getElementById('m1') as HTMLElement;
+    (modal as any).__animatedCloseTimer = 12345;
+
+    closeAllModals();
+    expect(modal.getAttribute('aria-hidden')).toBe('true');
+    expect(modal.classList.contains('is-closing')).toBe(false);
+    expect(document.body.style.overflow).toBe('');
+  });
+});

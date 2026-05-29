@@ -120,6 +120,15 @@ describe('wireAuthModal', () => {
     expect(httpsBtn.disabled).toBe(false); // http:// is already HTTPS-compatible
   });
 
+  it('enables HTTPS conversion for ssh:// protocol URLs', async () => {
+    const { initSshAuthPrompt } = await import('./sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: 'github.com', remote: 'origin', url: 'ssh://git@github.com/owner/repo' } });
+
+    const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
+    expect(httpsBtn.disabled).toBe(false);
+  });
+
   it('handles ok button click', async () => {
     const modals = await import('../ui/modals');
     const { initSshAuthPrompt } = await import('./sshAuth');

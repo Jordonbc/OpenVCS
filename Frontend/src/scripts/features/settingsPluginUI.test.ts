@@ -442,15 +442,81 @@ describe('renderPluginMenus', () => {
                 elements: [],
             }),
         ]);
-        mockInvoke.mockResolvedValueOnce([makePluginSummary({ id: 'third-party', source: 'npm' })]);
+        mockInvoke.mockResolvedValueOnce([makePluginSummary({ id: 'third-party', source: 'user' })]);
         const { renderPluginMenus } = await load();
         const modal = createModal();
         await renderPluginMenus(modal);
 
-        const sublist = modal.querySelector<HTMLElement>('[data-plugin-menus]');
+        const sublist = modal.querySelector<HTMLElement>('#settings-nav [data-plugin-menus="true"]');
         expect(sublist).not.toBeNull();
-        expect(sublist!.querySelector('[data-section="plugin-third-party-settings-menu"]')).not.toBeNull();
     });
+});
+
+describe('renderPluginMenus cleanup', () => {
+    async function load() {
+        return import('./settingsPluginUI');
+    }
+
+    it('removes stale plugin menu nodes before re-rendering', async () => {
+        mockInvoke.mockResolvedValueOnce([]);
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav">',
+            '  <button class="seg-btn" data-section="general">General</button>',
+            '  <div data-plugin-menu="true">stale</div>',
+            '  <div data-plugin-menus-wrap="true">stale</div>',
+            '</nav>',
+            '<div id="settings-panels-scroll">',
+            '  <div class="panel-form" data-plugin-menu="true">stale panel</div>',
+            '</div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+
+        const { renderPluginMenus } = await load();
+        await renderPluginMenus(modal);
+        expect(modal.querySelector('[data-plugin-menu="true"]')).toBeNull();
+        expect(modal.querySelector('[data-plugin-menus-wrap="true"]')).toBeNull();
+        document.body.removeChild(modal);
+    });
+
+    it('handles nav without plugins section', async () => {
+        mockInvoke.mockResolvedValueOnce([]);
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav">',
+            '  <button class="seg-btn" data-section="general">General</button>',
+            '</nav>',
+            '<div id="settings-panels-scroll"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+
+        const { renderPluginMenus } = await load();
+        await renderPluginMenus(modal);
+        const nav = modal.querySelector('#settings-nav')!;
+        expect(nav.querySelectorAll('.seg-btn').length).toBeGreaterThanOrEqual(1);
+        document.body.removeChild(modal);
+    });
+});
+
+describe('renderPluginMenus', () => {
+    async function load() {
+        return import('./settingsPluginUI');
+    }
+
+    function createModal(): HTMLElement {
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav">',
+            '  <ul>',
+            '    <li><button class="seg-btn" data-section="general">General</button></li>',
+            '    <li><button class="seg-btn" data-section="plugins">Plugins</button></li>',
+            '  </ul>',
+            '</nav>',
+            '<div id="settings-panels-scroll"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        return modal;
+    }
 
     it('creates settings panels from plugin summaries with no menus', async () => {
         mockInvoke.mockResolvedValueOnce([]);

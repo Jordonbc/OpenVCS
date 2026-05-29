@@ -372,3 +372,39 @@ describe('renderList event handlers', () => {
     expect(vi.mocked(interactions.isDragSelecting)).toHaveBeenCalled();
   });
 });
+
+describe('renderChangesList display edge cases', () => {
+  it('shows copied path for status C (copy)', async () => {
+    const { renderList } = await import('./list');
+    const { prefs, state } = await import('../../state/state');
+    prefs.tab = 'changes';
+    state.files = [
+      { path: 'new.txt', status: 'C', old_path: 'original.txt' },
+    ] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const fileDiv = document.querySelector('.file') as HTMLElement;
+    expect(fileDiv.textContent).toContain('original.txt → new.txt');
+  });
+
+  it('shows resolved conflict for files with resolved_conflict flag', async () => {
+    const { renderList } = await import('./list');
+    const { prefs, state } = await import('../../state/state');
+    prefs.tab = 'changes';
+    state.files = [
+      { path: 'resolved.txt', status: 'M', staged: true, resolved_conflict: true },
+    ] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const row = document.querySelector('li.row') as HTMLElement;
+    expect(row.classList.contains('resolved')).toBe(true);
+  });
+});

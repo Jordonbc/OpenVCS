@@ -346,3 +346,345 @@ describe('collectPluginModalPayload', () => {
     });
   });
 });
+
+describe('isPluginModalDefinition edge cases', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('rejects arrays as modal definitions', async () => {
+    const { handlePluginActionResult } = await import('./modal');
+    handlePluginActionResult('p1', [] as unknown as Record<string, unknown>);
+    expect(document.querySelector('.modal')).toBeNull();
+  });
+});
+
+describe('ensurePluginModalElement edge cases', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('handles missing modals-root gracefully', async () => {
+    document.body.innerHTML = '';
+    const { handlePluginActionResult } = await import('./modal');
+    expect(() => handlePluginActionResult('p1', {
+      title: 'T',
+      content: [{ type: 'text', content: 'X' }],
+    })).not.toThrow();
+    expect(document.getElementById('plugin-modal-p1')).toBeNull();
+  });
+
+  it('reuses existing modal element on subsequent renders', async () => {
+    mountRoot();
+    const { handlePluginActionResult } = await import('./modal');
+    handlePluginActionResult('p1', {
+      title: 'First',
+      content: [{ type: 'text', content: 'First' }],
+    });
+    const modal = document.getElementById('plugin-modal-p1');
+    expect(modal).not.toBeNull();
+
+    handlePluginActionResult('p1', {
+      title: 'Second',
+      content: [{ type: 'text', content: 'Second' }],
+    });
+    expect(document.getElementById('plugin-modal-p1')).toBe(modal);
+    expect(modal?.querySelector('.sheet-body')?.textContent).toBe('Second');
+  });
+});
+
+describe('alignToJustifyContent and appendModalButton coverage', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('renders top-level button with right alignment in wrapped row', async () => {
+    const { handlePluginActionResult } = await import('./modal');
+    handlePluginActionResult('p1', {
+      title: 'Test',
+      content: [
+        { type: 'button', id: 'rbtn', content: 'Right', align: 'right' },
+      ],
+    });
+    const btn = document.querySelector('button[data-plugin-action="rbtn"]');
+    expect(btn).not.toBeNull();
+    const row = btn?.parentElement;
+    expect(row?.style.display).toBe('flex');
+    expect(row?.style.justifyContent).toBe('flex-end');
+  });
+
+  it('renders top-level button with centered alignment in wrapped row', async () => {
+    const { handlePluginActionResult } = await import('./modal');
+    handlePluginActionResult('p1', {
+      title: 'Test',
+      content: [
+        { type: 'button', id: 'cbtn', content: 'Center', align: 'centered' },
+      ],
+    });
+    const row = document.querySelector('button[data-plugin-action="cbtn"]')?.parentElement;
+    expect(row?.style.justifyContent).toBe('center');
+  });
+});
+
+describe('renderPluginModalItem remaining types', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  async function renderModal(content: Record<string, unknown>[]) {
+    const { handlePluginActionResult } = await import('./modal');
+    handlePluginActionResult('p1', { title: 'Test', content });
+  }
+
+  it('renders horizontal-box with wrap=false (nowrap)', async () => {
+    await renderModal([{
+      type: 'horizontal-box',
+      wrap: false,
+      content: [{ type: 'text', content: 'No wrap' }],
+    }]);
+    const hbox = document.querySelector('.sheet-body > div') as HTMLElement;
+    expect(hbox.style.flexWrap).toBe('nowrap');
+  });
+
+  it('renders horizontal-box with empty content', async () => {
+    await renderModal([{ type: 'horizontal-box', content: [] }]);
+    const hbox = document.querySelector('.sheet-body > div') as HTMLElement;
+    expect(hbox).not.toBeNull();
+    expect(hbox.children.length).toBe(0);
+  });
+
+  it('renders vertical-box with empty content', async () => {
+    await renderModal([{ type: 'vertical-box', content: [] }]);
+    const vbox = document.querySelector('.sheet-body > div') as HTMLElement;
+    expect(vbox.style.display).toBe('grid');
+    expect(vbox.children.length).toBe(0);
+  });
+
+  it('renders grid with default columns when columns omitted', async () => {
+    await renderModal([{ type: 'grid', content: [] }]);
+    const grid = document.querySelector('.sheet-body > div') as HTMLElement;
+    expect(grid.style.gridTemplateColumns).toBe('1fr');
+  });
+
+  it('renders input with only id and label (minimal)', async () => {
+    await renderModal([{ type: 'input', id: 'min', label: 'Minimal' }]);
+    const input = document.querySelector<HTMLInputElement>('input[data-plugin-field="min"]');
+    expect(input).not.toBeNull();
+    expect(input?.type).toBe('text');
+    expect(input?.required).toBe(false);
+    expect(input?.value).toBe('');
+  });
+
+  it('renders select with option.selected default when value absent', async () => {
+    await renderModal([{
+      type: 'select',
+      id: 'mode',
+      label: 'Mode',
+      options: [
+        { value: 'manual', label: 'Manual' },
+        { value: 'auto', label: 'Auto', selected: true },
+      ],
+    }]);
+    const select = document.querySelector<HTMLSelectElement>('select[data-plugin-field="mode"]');
+    expect(select?.value).toBe('auto');
+  });
+
+  it('renders list without label', async () => {
+    await renderModal([{
+      type: 'list',
+      id: 'nl',
+      items: [{ id: 'i1', title: 'No label' }],
+    }]);
+    expect(document.querySelector('.sheet-body')?.textContent).toContain('No label');
+    expect(document.querySelector('.sheet-body > div > .meta')).toBeNull();
+  });
+
+  it('renders empty list without emptyText produces no text', async () => {
+    await renderModal([{
+      type: 'list',
+      id: 'empty-note',
+      items: [],
+    }]);
+    const container = document.querySelector('.sheet-body > div') as HTMLElement;
+    expect(container).not.toBeNull();
+    expect(container.textContent).toBe('');
+  });
+
+  it('renders list row without optional meta/description/status/actions', async () => {
+    await renderModal([{
+      type: 'list',
+      id: 'min',
+      items: [{ id: 'i1', title: 'Minimal' }],
+    }]);
+    expect(document.querySelector('.sheet-body')?.textContent).toContain('Minimal');
+    expect(document.querySelector('.sheet-body button[data-plugin-action]')).toBeNull();
+  });
+
+  it('renders button detected by content string fallback (no explicit type)', async () => {
+    await renderModal([{ id: 'fb', content: 'Fallback' }]);
+    const btn = document.querySelector<HTMLButtonElement>('button[data-plugin-action="fb"]');
+    expect(btn).not.toBeNull();
+    expect(btn?.textContent).toBe('Fallback');
+  });
+
+  it('renders text with title attribute', async () => {
+    await renderModal([{ type: 'text', content: 'Titled', title: 'Tooltip text' }]);
+    const div = document.querySelector('.sheet-body > div') as HTMLElement;
+    expect(div.title).toBe('Tooltip text');
+  });
+
+  it('creates default variant button (no primary/danger class)', async () => {
+    await renderModal([{ type: 'button', id: 'def', content: 'Default' }]);
+    const btn = document.querySelector<HTMLButtonElement>('button[data-plugin-action="def"]');
+    expect(btn?.classList.contains('primary')).toBe(false);
+    expect(btn?.classList.contains('danger')).toBe(false);
+    expect(btn?.textContent).toBe('Default');
+  });
+
+  it('skips null items in content array', async () => {
+    await renderModal([
+      null as unknown as Record<string, unknown>,
+      { type: 'text', content: 'After null' },
+    ]);
+    expect(document.querySelector('.sheet-body')?.textContent).toContain('After null');
+  });
+});
+
+describe('collectPluginModalPayload and wirePluginModalActions coverage', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('merges dataset payload with collected form payload', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockResolvedValue({});
+
+    const { wirePluginModalActions, handlePluginActionResult } = await import('./modal');
+    wirePluginModalActions();
+
+    handlePluginActionResult('p1', {
+      title: 'Form',
+      content: [
+        { type: 'input', id: 'name', label: 'Name', value: 'Alice' },
+        { type: 'button', id: 'submit', content: 'Submit', payload: { extra: 'data' } },
+      ],
+    });
+
+    (document.querySelector('button[data-plugin-action="submit"]') as HTMLButtonElement)?.click();
+
+    await vi.waitFor(() => {
+      expect(tauri.core.invoke).toHaveBeenCalledWith('invoke_plugin_action', {
+        pluginId: 'p1',
+        actionId: 'submit',
+        payload: { name: 'Alice', extra: 'data' },
+      });
+    });
+  });
+
+  it('collects checkbox field as boolean and skips empty keys', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockResolvedValue({});
+
+    const { wirePluginModalActions, handlePluginActionResult } = await import('./modal');
+    wirePluginModalActions();
+
+    handlePluginActionResult('p1', {
+      title: 'Cb Test',
+      content: [
+        { type: 'input', id: 'name', label: 'Name', value: 'Bob' },
+        { type: 'button', id: 'go', content: 'Go' },
+      ],
+    });
+
+    const modal = document.getElementById('plugin-modal-p1')!;
+    const body = modal.querySelector('.sheet-body')!;
+
+    const cg = document.createElement('div');
+    cg.className = 'group';
+    const cl = document.createElement('label');
+    cl.textContent = 'Enabled';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.pluginField = 'enabled';
+    cb.checked = true;
+    cg.appendChild(cl);
+    cg.appendChild(cb);
+    body.appendChild(cg);
+
+    const eg = document.createElement('div');
+    eg.className = 'group';
+    const ei = document.createElement('input');
+    ei.dataset.pluginField = '';
+    ei.value = 'skip-me';
+    eg.appendChild(ei);
+    body.appendChild(eg);
+
+    (document.querySelector('button[data-plugin-action="go"]') as HTMLButtonElement)?.click();
+
+    await vi.waitFor(() => {
+      expect(tauri.core.invoke).toHaveBeenCalledWith('invoke_plugin_action', {
+        pluginId: 'p1',
+        actionId: 'go',
+        payload: { name: 'Bob', enabled: true },
+      });
+    });
+  });
+
+  it('ignores malformed JSON in button payload dataset', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockResolvedValue({});
+
+    const { wirePluginModalActions, handlePluginActionResult } = await import('./modal');
+    wirePluginModalActions();
+
+    handlePluginActionResult('p1', {
+      title: 'Bad JSON',
+      content: [
+        { type: 'input', id: 'f', label: 'F', value: 'v' },
+        { type: 'button', id: 'bp', content: 'Bad', payload: {} },
+      ],
+    });
+
+    const btn = document.querySelector('button[data-plugin-action="bp"]') as HTMLButtonElement;
+    btn.dataset.pluginPayload = '{bad json';
+    btn.click();
+
+    await vi.waitFor(() => {
+      expect(tauri.core.invoke).toHaveBeenCalledWith('invoke_plugin_action', {
+        pluginId: 'p1',
+        actionId: 'bp',
+        payload: { f: 'v' },
+      });
+    });
+  });
+
+  it('handles invokePluginAction error gracefully during wired click', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockRejectedValue(new Error('network error'));
+
+    const { wirePluginModalActions, handlePluginActionResult } = await import('./modal');
+    wirePluginModalActions();
+
+    handlePluginActionResult('p1', {
+      title: 'Err',
+      content: [
+        { type: 'button', id: 'ebtn', content: 'Error' },
+      ],
+    });
+
+    const btn = document.querySelector('button[data-plugin-action="ebtn"]') as HTMLButtonElement;
+    expect(() => btn.click()).not.toThrow();
+    await vi.waitFor(() => {
+      expect(tauri.core.invoke).toHaveBeenCalled();
+    });
+  });
+});

@@ -306,4 +306,26 @@ describe('syncFrontendMonitoring', () => {
     expect(payload?.payload?.breadcrumbs[0]?.message).toBe('crumb-0');
   });
 
+  it('returns early when monitoring is disabled', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+    const monitoring = (await import('./monitoring')) as any;
+    await monitoring.syncFrontendMonitoring({ general: { crash_reports: false } });
+    await monitoring.__testOnlyReportFrontendError({ message: 'should-be-skipped' });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('handles ErrorEvent with non-Error error object', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+    const monitoring = (await import('./monitoring')) as MonitoringModule;
+    await monitoring.syncFrontendMonitoring({ general: { crash_reports: true } });
+
+    window.dispatchEvent(new ErrorEvent('error', { message: 'string-error' }));
+    await vi.waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith('report_frontend_error', expect.objectContaining({
+        payload: expect.objectContaining({ message: 'string-error' }),
+      }));
+    });
+  });
 });

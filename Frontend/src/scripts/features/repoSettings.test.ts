@@ -406,35 +406,85 @@ describe('wireRepoSettings (save flow)', () => {
         });
     });
 
-    it('ignores empty rows', async () => {
-        mountModal();
-        mockInvoke.mockResolvedValueOnce({
-            user_name: '',
-            user_email: '',
-            remotes: [],
-        });
-        mockInvoke.mockResolvedValueOnce(undefined); // set_repo_settings
-        const { wireRepoSettings } = await load();
-        await wireRepoSettings();
-
-        // Add an empty row, then a real one
-        const addBtn = document.getElementById('git-remote-add') as HTMLButtonElement;
-        addBtn.click();
-
-        addBtn.click();
-        const rows = document.querySelectorAll('.remote-row');
-        (rows[1].querySelector('.remote-name') as HTMLInputElement).value = 'origin';
-        (rows[1].querySelector('.remote-url') as HTMLInputElement).value = 'git@host:real.git';
-
-        const saveBtn = document.getElementById('repo-settings-save') as HTMLButtonElement;
-        saveBtn.click();
-
-        await vi.waitFor(() => {
-            expect(mockInvoke).toHaveBeenCalledWith('set_repo_settings', {
-                cfg: expect.objectContaining({
-                    remotes: [{ name: 'origin', url: 'git@host:real.git' }],
-                }),
-            });
-        });
+  it('ignores empty rows', async () => {
+    mountModal();
+    mockInvoke.mockResolvedValueOnce({
+      user_name: '',
+      user_email: '',
+      remotes: [],
     });
+    mockInvoke.mockResolvedValueOnce(undefined); // set_repo_settings
+    const { wireRepoSettings } = await load();
+    await wireRepoSettings();
+
+    // Add an empty row, then a real one
+    const addBtn = document.getElementById('git-remote-add') as HTMLButtonElement;
+    addBtn.click();
+
+    addBtn.click();
+    const rows = document.querySelectorAll('.remote-row');
+    (rows[1].querySelector('.remote-name') as HTMLInputElement).value = 'origin';
+    (rows[1].querySelector('.remote-url') as HTMLInputElement).value = 'git@host:real.git';
+
+    const saveBtn = document.getElementById('repo-settings-save') as HTMLButtonElement;
+    saveBtn.click();
+
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_repo_settings', {
+        cfg: expect.objectContaining({
+          remotes: [{ name: 'origin', url: 'git@host:real.git' }],
+        }),
+      });
+    });
+  });
+
+  it('handles all empty remote rows (both name and url empty)', async () => {
+    mountModal();
+    mockInvoke.mockResolvedValueOnce({
+      user_name: '',
+      user_email: '',
+      remotes: [],
+    });
+    mockInvoke.mockResolvedValueOnce(undefined);
+    const { wireRepoSettings } = await load();
+    await wireRepoSettings();
+
+    const addRemoteBtn = document.getElementById('git-remote-add') as HTMLButtonElement;
+    addRemoteBtn.click();
+
+    addRemoteBtn.click();
+
+    const saveBtn = document.getElementById('repo-settings-save') as HTMLButtonElement;
+    saveBtn.click();
+
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_repo_settings', {
+        cfg: expect.objectContaining({
+          remotes: [],
+        }),
+      });
+    });
+    const fetchCalls = mockInvoke.mock.calls.filter(
+      (call: any[]) => call[0] === 'vcs_fetch_all',
+    );
+    expect(fetchCalls.length).toBe(0);
+  });
+
+  it('does not fail when modal has no save button', async () => {
+    document.body.innerHTML = `
+      <div id="repo-settings-modal">
+        <input id="git-user-name" value="" />
+        <input id="git-user-email" value="" />
+        <div id="git-remotes"></div>
+        <button id="git-remote-add">Add Remote</button>
+      </div>
+    `;
+    mockInvoke.mockResolvedValueOnce({
+      user_name: '',
+      user_email: '',
+      remotes: [],
+    });
+    const { wireRepoSettings } = await load();
+    await expect(wireRepoSettings()).resolves.toBeUndefined();
+  });
 });

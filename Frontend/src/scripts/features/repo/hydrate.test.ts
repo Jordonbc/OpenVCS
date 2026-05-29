@@ -482,4 +482,35 @@ describe('hydrateBranches hasRepo', () => {
     await hydrateBranches();
     expect(state.hasRepo).toBe(true);
   });
+
+  it('returns false when branches list is empty', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_list_branches') return [];
+      if (cmd === 'vcs_head_status') return { detached: false, branch: 'main' };
+      return [];
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { hydrateBranches } = await import('./hydrate');
+    const result = await hydrateBranches();
+    expect(result).toBe(false);
+  });
+
+  it('handles "No repository selected" error gracefully', async () => {
+    const invoke = vi.fn().mockRejectedValue('No repository selected');
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { hydrateBranches } = await import('./hydrate');
+    const result = await hydrateBranches();
+    expect(result).toBe(false);
+  });
+
+  it('handles "no longer available" error gracefully', async () => {
+    const invoke = vi.fn().mockRejectedValue('active backend is no longer available');
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { hydrateBranches } = await import('./hydrate');
+    const result = await hydrateBranches();
+    expect(result).toBe(false);
+  });
 });

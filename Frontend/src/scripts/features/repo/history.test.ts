@@ -666,3 +666,82 @@ describe('selectHistory', () => {
     expect(diffText).toContain('+new')
   })
 })
+
+describe('updateHistoryActionsVisibility via selectHistory', () => {
+  it('hides button when not on history tab', async () => {
+    installTauriMock();
+    const { selectHistory } = await loadHistoryModule();
+    const { prefs } = await loadStateModule();
+    prefs.tab = 'changes';
+    await selectHistory({ id: 'abc123', author: 'A', msg: 'M' } as any, 0);
+    const btn = document.getElementById('history-actions-btn') as HTMLButtonElement;
+    expect(btn.hidden).toBe(true);
+    expect(btn.disabled).toBe(true);
+  });
+
+  it('hides button when commit id is empty', async () => {
+    installTauriMock();
+    const { selectHistory } = await loadHistoryModule();
+    const { prefs } = await loadStateModule();
+    prefs.tab = 'history';
+    await selectHistory({ id: '', author: 'A', msg: 'M' } as any, 0);
+    const btn = document.getElementById('history-actions-btn') as HTMLButtonElement;
+    expect(btn.hidden).toBe(true);
+    expect(btn.disabled).toBe(true);
+  });
+
+  it('shows button when on history tab with valid commit', async () => {
+    installTauriMock();
+    const { selectHistory } = await loadHistoryModule();
+    const { prefs } = await loadStateModule();
+    prefs.tab = 'history';
+    await selectHistory({ id: 'abc123', author: 'A', msg: 'M' } as any, 0);
+    const btn = document.getElementById('history-actions-btn') as HTMLButtonElement;
+    expect(btn.hidden).toBe(false);
+    expect(btn.disabled).toBe(false);
+  });
+});
+
+describe('openCommitActionsMenu - failure paths', () => {
+  it('copy hash failure does not throw', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockRejectedValue(new Error('clipboard fail')) };
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state, prefs } = await loadStateModule();
+    const { buildCtxMenu } = await import('../../lib/menu');
+    prefs.tab = 'history';
+    state.commits = [{ id: 'abc123', msg: 'Test', meta: new Date().toISOString() }] as any;
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+    renderHistoryList('');
+    const row = document.querySelector('#file-list li.row.commit') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 }));
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await expect(items.find((i: any) => i.label === 'Copy hash')?.action?.()).resolves.toBeUndefined();
+  });
+
+  it('revert failure notifies', async () => {
+    installTauriMock();
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_revert_commit') throw new Error('revert fail');
+      if (cmd === 'vcs_diff_commit') return [];
+      return undefined;
+    });
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state, prefs } = await loadStateModule();
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { notify } = await import('../../lib/notify');
+    prefs.tab = 'history';
+    state.commits = [{ id: 'abc123', msg: 'Test', meta: new Date().toISOString() }] as any;
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+    renderHistoryList('');
+    const row = document.querySelector('#file-list li.row.commit') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 }));
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((i: any) => i.label === 'Revert (reverse) commit…')?.action?.();
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining('Revert failed'));
+  });
+})

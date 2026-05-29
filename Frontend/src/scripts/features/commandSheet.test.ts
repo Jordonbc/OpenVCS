@@ -129,6 +129,54 @@ describe('bindCommandSheet', () => {
     expect(cloneTab.classList.contains('active')).toBe(true);
   });
 
+  it('navigates tabs via ArrowLeft and ArrowRight', async () => {
+    const { bindCommandSheet } = await import('./commandSheet');
+    bindCommandSheet();
+
+    const seg = document.querySelector('.seg') as HTMLElement;
+    seg.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    const addTab = document.querySelector('[data-sheet="add"]') as HTMLButtonElement;
+    expect(addTab.classList.contains('active')).toBe(true);
+
+    seg.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    const cloneTab = document.querySelector('[data-sheet="clone"]') as HTMLButtonElement;
+    expect(cloneTab.classList.contains('active')).toBe(true);
+  });
+
+  it('navigates tabs via Home and End keyboard shortcuts', async () => {
+    const { bindCommandSheet } = await import('./commandSheet');
+    bindCommandSheet();
+
+    const seg = document.querySelector('.seg') as HTMLElement;
+    seg.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    const addTab = document.querySelector('[data-sheet="add"]') as HTMLButtonElement;
+    expect(addTab.classList.contains('active')).toBe(true);
+
+    seg.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    const cloneTab = document.querySelector('[data-sheet="clone"]') as HTMLButtonElement;
+    expect(cloneTab.classList.contains('active')).toBe(true);
+  });
+
+  it('activates focused tab via Enter key', async () => {
+    const { bindCommandSheet } = await import('./commandSheet');
+    bindCommandSheet();
+
+    const cloneTab = document.querySelector('[data-sheet="clone"]') as HTMLButtonElement;
+    cloneTab.focus();
+    const seg = document.querySelector('.seg') as HTMLElement;
+    seg.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  });
+
+  it('activates focused tab via Space key', async () => {
+    const { bindCommandSheet } = await import('./commandSheet');
+    bindCommandSheet();
+
+    const cloneTab = document.querySelector('[data-sheet="clone"]') as HTMLButtonElement;
+    cloneTab.focus();
+    const seg = document.querySelector('.seg') as HTMLElement;
+    seg.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+  });
+
   it('opens the requested sheet and focuses the first relevant input', async () => {
     const { openModal } = await import('../ui/modals');
     const focusSpy = vi.spyOn(document.getElementById('add-path') as HTMLInputElement, 'focus');
@@ -271,5 +319,106 @@ describe('bindCommandSheet', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect((document.getElementById('add-path') as HTMLInputElement).value).toBe('/repos/existing');
+  });
+});
+
+describe('setDisabled, ensureIndicator, positionIndicator coverage', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    vi.useFakeTimers();
+    mountCommandModal();
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    window.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+    window.MutationObserver = MutationObserverMock as unknown as typeof MutationObserver;
+  });
+
+  it('setDisabled handles missing element gracefully', async () => {
+    const { bindCommandSheet } = await import('./commandSheet');
+    bindCommandSheet();
+
+    document.getElementById('do-clone')?.remove();
+
+    const { TAURI } = await import('../lib/tauri');
+    vi.mocked(TAURI.invoke).mockResolvedValueOnce({ ok: false, reason: 'bad' });
+
+    const cloneUrl = document.getElementById('clone-url') as HTMLInputElement;
+    cloneUrl.value = 'test';
+    cloneUrl.dispatchEvent(new Event('input', { bubbles: true }));
+    await Promise.resolve();
+  });
+
+  it('ensureIndicator returns null when seg element is absent', async () => {
+    document.querySelector('.seg')?.remove();
+
+    const { bindCommandSheet } = await import('./commandSheet');
+    expect(() => bindCommandSheet()).not.toThrow();
+  });
+
+  it('positionIndicator handles missing active tab', async () => {
+    document.querySelector('.seg-btn.active')?.classList.remove('active');
+
+    const { bindCommandSheet } = await import('./commandSheet');
+    bindCommandSheet();
+  });
+
+  it('sets __wired flag and skips re-wiring on second call', async () => {
+    const { bindCommandSheet } = await import('./commandSheet');
+    bindCommandSheet();
+    const root = document.getElementById('command-modal') as any;
+    expect(root.__wired).toBe(true);
+    expect(() => bindCommandSheet()).not.toThrow();
+  });
+
+  it('initializes ResizeObserver for seg element', async () => {
+    const origRO = window.ResizeObserver;
+    const observeFn = vi.fn();
+    class ROClass {
+      observe = observeFn;
+      disconnect = vi.fn();
+    }
+    window.ResizeObserver = ROClass as unknown as typeof ResizeObserver;
+
+    const { bindCommandSheet } = await import('./commandSheet');
+    bindCommandSheet();
+
+    expect(observeFn).toHaveBeenCalled();
+
+    window.ResizeObserver = origRO;
+  });
+});
+
+describe('openSheet default parameter and edge cases', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    vi.useFakeTimers();
+    mountCommandModal();
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    window.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+    window.MutationObserver = MutationObserverMock as unknown as typeof MutationObserver;
+  });
+
+  it('opens sheet with default clone parameter', async () => {
+    const { openModal } = await import('../ui/modals');
+    const { openSheet } = await import('./commandSheet');
+    openSheet();
+    expect(openModal).toHaveBeenCalledWith('command-modal');
+    expect(document.querySelector('[data-sheet="clone"]')?.classList.contains('active')).toBe(true);
+  });
+
+  it('opens sheet with explicit clone parameter', async () => {
+    const { openModal } = await import('../ui/modals');
+    const { openSheet } = await import('./commandSheet');
+    openSheet('clone');
+    expect(openModal).toHaveBeenCalledWith('command-modal');
+    expect(document.querySelector('[data-sheet="clone"]')?.classList.contains('active')).toBe(true);
+    expect(document.getElementById('sheet-add')?.classList.contains('hidden')).toBe(true);
   });
 });

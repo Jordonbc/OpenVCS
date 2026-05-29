@@ -62,23 +62,39 @@ describe('logger', () => {
     });
   });
 
-  it('formats errors with their stack and routes them as error logs', async () => {
+it('formats errors with their stack and routes them as error logs', async () => {
     const { logger } = await import('./logger');
     const { TAURI } = await import('./tauri');
     const { addFrontendLogBreadcrumb } = await import('./monitoring');
     const error = new Error('boom');
     error.stack = 'trace-line';
-
-    logger.error(error);
-
-    expect(addFrontendLogBreadcrumb).toHaveBeenCalledWith(
-      'error',
-      'Error: boom\ntrace-line',
-    );
+    logger.create('mod').error(error);
+    expect(addFrontendLogBreadcrumb).toHaveBeenCalledWith('error', expect.stringContaining('Error: boom'));
     expect(TAURI.invoke).toHaveBeenCalledWith('log_frontend_message', {
       level: 'error',
-      message: 'Error: boom\ntrace-line',
+      message: expect.stringContaining('Error: boom'),
     });
+  });
+
+  it('formats errors without a stack trace', async () => {
+    const { logger } = await import('./logger');
+    const { TAURI } = await import('./tauri');
+    const { addFrontendLogBreadcrumb } = await import('./monitoring');
+    const error = new Error('nostack');
+    delete (error as any).stack;
+    logger.create('mod').error(error);
+    expect(addFrontendLogBreadcrumb).toHaveBeenCalledWith('error', expect.stringContaining('Error: nostack'));
+    expect(TAURI.invoke).toHaveBeenCalledWith('log_frontend_message', {
+      level: 'error',
+      message: expect.stringContaining('Error: nostack'),
+    });
+  });
+
+  it('skips breadcrumb when options.breadcrumb is explicitly false', async () => {
+    const { __testOnlySendToBackend } = await import('./logger');
+    const { addFrontendLogBreadcrumb } = await import('./monitoring');
+    __testOnlySendToBackend('info', 'no breadcrumb', { breadcrumb: false });
+    expect(addFrontendLogBreadcrumb).not.toHaveBeenCalled();
   });
 
   it('falls back to String() for unserializable objects', async () => {

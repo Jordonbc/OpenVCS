@@ -584,3 +584,122 @@ describe('buildPatchForSelectedHunks privates', () => {
     expect(result).toContain('new mode 100755');
   });
 });
+
+describe('buildPatchForSelectedHunks additional edge cases', () => {
+  it('skips negative hunk indices', async () => {
+    const { buildPatchForSelectedHunks } = await import('./diff');
+    const lines = [
+      '--- a/file.txt',
+      '+++ b/file.txt',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+    ];
+    const result = buildPatchForSelectedHunks('file.txt', lines, [-1]);
+    expect(result).not.toContain('@@');
+    expect(result).toContain('diff --git');
+  });
+
+  it('handles diff lines with no prelude (no ---/+++ before @@)', async () => {
+    const { buildPatchForSelectedHunks } = await import('./diff');
+    const lines = [
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+    ];
+    const result = buildPatchForSelectedHunks('file.txt', lines, [0]);
+    expect(result).toContain('diff --git a/file.txt b/file.txt');
+    expect(result).toContain('--- a/file.txt');
+    expect(result).toContain('+++ b/file.txt');
+    expect(result).toContain('-old');
+    expect(result).toContain('+new');
+  });
+});
+
+describe('bindCommit error handling and buildPatchForSelected edge cases', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.restoreAllMocks();
+  });
+
+  it('handles commit_patch_and_files rejection gracefully', async () => {
+    const state = (await import('../state/state')).state;
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedHunksByFile = {};
+    state.selectedLinesByFile = {};
+    state.selectedHunks = [];
+    state.diffSelectedFiles = new Set();
+    (state as any).branch = 'main';
+
+    const { __invoke: invoke } = await import('../lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') return [];
+      if (cmd === 'commit_patch_and_files') throw new Error('commit error');
+      return [];
+    });
+
+    const { bindCommit } = await import('./diff');
+    const { notify } = await import('../lib/notify');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'Test commit';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      expect(notify).toHaveBeenCalledWith('Commit failed');
+    }, { timeout: 3000, interval: 20 });
+  });
+
+  it('builds patch with non-contiguous line selections (group/flush)', async () => {
+    const state = (await import('../state/state')).state;
+    state.files = [{ path: 'file1.txt', status: 'M' }] as any;
+    state.selectedFiles = new Set(['file1.txt']);
+    state.selectedHunksByFile = {} as any;
+    state.selectedLinesByFile = { 'file1.txt': { 0: [1, 3] } };
+    state.selectedHunks = [];
+    state.diffSelectedFiles = new Set();
+    (state as any).branch = 'main';
+
+    const { __invoke: invoke } = await import('../lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return [
+          'diff --git a/file1.txt b/file1.txt',
+          '--- a/file1.txt',
+          '+++ b/file1.txt',
+          '@@ -1,3 +1,3 @@',
+          '+new1',
+          ' context',
+          '+new3',
+        ];
+      }
+      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      return [];
+    });
+
+    const { bindCommit } = await import('./diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'Non-contiguous';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const commitCall = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+      );
+      expect(commitCall).toBeTruthy();
+      const patch = commitCall?.[1].patch as string;
+      expect(patch).toContain('@@ -1,0 +1,1 @@');
+      expect(patch).toContain('+new1');
+      expect(patch).toContain('@@ -2,0 +3,1 @@');
+      expect(patch).toContain('+new3');
+    }, { timeout: 3000, interval: 20 });
+  });
+});

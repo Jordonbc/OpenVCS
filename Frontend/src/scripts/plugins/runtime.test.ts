@@ -142,6 +142,25 @@ describe('applyPluginSettingsSections', () => {
     upsertSettingsSection('test', { id: 's1', label: 'S1', html: '<div>C</div>', onMount });
     expect(onMount).toHaveBeenCalled();
   });
+
+  it('uses os-content child when panelsScroll has overlay scrollbar host', async () => {
+    mountSettingsDom();
+    const panelsScroll = document.getElementById('settings-panels-scroll')!;
+    const osHost = document.createElement('div');
+    osHost.className = 'os-host';
+    const osContent = document.createElement('div');
+    osContent.className = 'os-content';
+    osHost.appendChild(osContent);
+    panelsScroll.appendChild(osHost);
+
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test', { id: 'scroll-c', label: 'ScrollC', html: '<div class="panel-form">In OS</div>' });
+    const insertedIn = panelsScroll.querySelector('.os-content .panel-form');
+    expect(insertedIn).not.toBeNull();
+  });
 });
 
 describe('getRegisteredThemeSummaries', () => {
@@ -353,5 +372,123 @@ describe('reloadPlugins', () => {
 
     const { reloadPlugins } = await import('./runtime');
     await expect(reloadPlugins()).resolves.toBeUndefined();
+  });
+});
+
+// ============================================================================
+// applyPluginSettingsSections - edge cases
+// ============================================================================
+describe('applyPluginSettingsSections edge cases', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('skips section with empty id', async () => {
+    mountSettingsDom();
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test', { id: '', label: 'Empty ID', html: '<div>Content</div>' });
+    applyPluginSettingsSections();
+
+    expect(document.querySelector('#settings-nav [data-section=""]')).toBeNull();
+  });
+
+  it('skips section with empty label', async () => {
+    mountSettingsDom();
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test', { id: 'no-label', label: '', html: '<div>Content</div>' });
+    applyPluginSettingsSections();
+
+    expect(document.querySelector('#settings-nav [data-section="no-label"]')).toBeNull();
+  });
+
+  it('skips section with empty html', async () => {
+    mountSettingsDom();
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test', { id: 'no-html', label: 'No HTML', html: '' });
+    applyPluginSettingsSections();
+
+    expect(document.querySelector('#settings-nav [data-section="no-html"]')).toBeNull();
+  });
+
+  it('skips section when parseSanitizedPluginElement returns null', async () => {
+    mountSettingsDom();
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    // Plain text has no element child → parseSanitizedPluginElement returns null
+    upsertSettingsSection('test', { id: 'text-only', label: 'Text', html: 'Just text without element wrapper' });
+    applyPluginSettingsSections();
+
+    expect(document.querySelector('#settings-nav [data-section="text-only"]')).toBeNull();
+  });
+
+  it('handles non-HTMLElement child in panelsContent loop', async () => {
+    mountSettingsDom();
+    const panelsScroll = document.getElementById('settings-panels-scroll')!;
+    // SVG element is not an HTMLElement
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    panelsScroll.appendChild(svg);
+
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('./registration');
+    const { applyPluginSettingsSections } = await import('./runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test', { id: 'after-svg', label: 'After SVG', html: '<div class="panel-form">Content</div>' });
+    applyPluginSettingsSections();
+
+    expect(document.querySelector('#settings-nav [data-section="after-svg"]')).not.toBeNull();
+  });
+});
+
+// ============================================================================
+// initPlugins - additional edge cases
+// ============================================================================
+describe('initPlugins additional edge cases', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountMinimalDom();
+  });
+
+  it('skips plugin summary with empty id', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_global_settings') return Promise.resolve({ plugins: { disabled: [], enabled: [] } });
+      if (cmd === 'list_plugins') return Promise.resolve([{ id: '', name: '' }, { id: 'real', name: 'Real Plugin' }]);
+      return Promise.reject(new Error('unknown'));
+    });
+
+    const { initPlugins } = await import('./runtime');
+    await expect(initPlugins()).resolves.toBeUndefined();
+  });
+});
+
+// ============================================================================
+// runPluginAction - error handling edge cases
+// ============================================================================
+describe('runPluginAction error handling', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('notifies generic message when handler throws empty error', async () => {
+    const { registerAction } = await import('./registration');
+    registerAction('empty-error', async () => { throw ''; });
+
+    const { runPluginAction } = await import('./runtime');
+    const result = await runPluginAction('empty-error');
+    expect(result).toBe(true);
   });
 });
