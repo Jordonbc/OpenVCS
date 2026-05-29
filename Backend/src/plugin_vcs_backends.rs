@@ -57,11 +57,7 @@ fn plugin_open_config(plugin_id: &str) -> serde_json::Value {
 /// # Returns
 /// - `true` when plugin should be active.
 /// - `false` otherwise.
-fn is_plugin_enabled_in_settings(
-    cfg: &AppConfig,
-    plugin_id: &str,
-    default_enabled: bool,
-) -> bool {
+fn is_plugin_enabled_in_settings(cfg: &AppConfig, plugin_id: &str, default_enabled: bool) -> bool {
     let enabled = cfg.is_plugin_enabled(plugin_id, default_enabled);
     trace!(
         "is_plugin_enabled_in_settings: plugin={}, default={}, result={}",
