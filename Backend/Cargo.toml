@@ -28,7 +28,7 @@ default = []
 
 [dependencies]
 dotenvy = "0.15"
-tauri = { version = "2.11", features = [] }
+tauri = { version = "2.11", features = ["test"] }
 tauri-plugin-opener = "2.5"
 serde = { version = "1", features = ["derive"] }
 notify = "8"

@@ -308,14 +308,25 @@ impl NodePluginRuntimeInstance {
     }
 
     /// Calls `vcs.stash-push`.
+    ///
+    /// # Parameters
+    /// - `message`: Optional stash message.
+    /// - `include_untracked`: Whether untracked files should be included.
+    /// - `paths`: Optional path filters to include in the stash.
+    ///
+    /// # Returns
+    /// - `Ok(String)` with the created stash selector.
+    /// - `Err(String)` when the RPC call fails.
     pub fn vcs_stash_push(
         &self,
         message: Option<&str>,
         include_untracked: bool,
+        paths: &[String],
     ) -> Result<String, String> {
         let params = self.session_params(json!({
             "message": message,
             "include_untracked": include_untracked,
+            "paths": paths,
         }))?;
         self.rpc_call(Methods::VCS_STASH_PUSH, params)
     }
@@ -355,4 +366,9 @@ impl NodePluginRuntimeInstance {
         let params = self.session_params(json!({ "commit": commit, "no_edit": no_edit }))?;
         self.rpc_call_unit(Methods::VCS_REVERT_COMMIT, params)
     }
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../../tests/plugin_runtime/node_instance/vcs.rs");
 }

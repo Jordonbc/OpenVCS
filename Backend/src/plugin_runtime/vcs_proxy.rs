@@ -349,16 +349,19 @@ impl Vcs for PluginVcsProxy {
         &self,
         message: &str,
         include_untracked: bool,
-        _paths: &[PathBuf],
+        paths: &[PathBuf],
     ) -> VcsResult<()> {
         let message = if message.trim().is_empty() {
             None
         } else {
             Some(message)
         };
-        let _ = self
-            .runtime
-            .vcs_stash_push(message, include_untracked)
+        let paths = paths
+            .iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        self.runtime
+            .vcs_stash_push(message, include_untracked, &paths)
             .map_err(|e| self.map_runtime_error(e))?;
         Ok(())
     }
@@ -417,4 +420,9 @@ fn path_to_utf8(path: &Path) -> Result<String, VcsError> {
             backend: BackendId::from("plugin"),
             msg: format!("non-utf8 path: {}", path.display()),
         })
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/plugin_runtime/vcs_proxy.rs");
 }

@@ -709,3 +709,8 @@ fn setting_value_to_json(value: &SettingValue) -> Value {
         SettingValue::String(v) => Value::String(v.clone()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/plugins.rs");
+}

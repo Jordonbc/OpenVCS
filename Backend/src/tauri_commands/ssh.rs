@@ -10,13 +10,45 @@ use log::{debug, error, info, trace, warn};
 use serde::Serialize;
 use tauri::command;
 
+#[cfg(test)]
+use parking_lot::RwLock;
+
+#[cfg(test)]
+use std::sync::OnceLock;
+
+#[cfg(test)]
+static TEST_HOME_DIR: OnceLock<RwLock<Option<PathBuf>>> = OnceLock::new();
+
+#[cfg(test)]
+fn set_test_home_dir(dir: PathBuf) {
+    *TEST_HOME_DIR.get_or_init(|| RwLock::new(None)).write() = Some(dir);
+}
+
+#[cfg(test)]
+fn clear_test_home_dir() {
+    *TEST_HOME_DIR.get_or_init(|| RwLock::new(None)).write() = None;
+}
+
+fn home_dir_for_paths() -> Option<PathBuf> {
+    #[cfg(test)]
+    if let Some(dir) = TEST_HOME_DIR
+        .get_or_init(|| RwLock::new(None))
+        .read()
+        .clone()
+    {
+        return Some(dir);
+    }
+
+    dirs::home_dir()
+}
+
 /// Returns `~/.ssh/known_hosts` path.
 ///
 /// # Returns
 /// - `Ok(PathBuf)` known-hosts path.
 /// - `Err(String)` when home directory cannot be resolved.
 fn known_hosts_path() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| {
+    let home = home_dir_for_paths().ok_or_else(|| {
         error!("known_hosts_path: could not determine home directory",);
         "Could not determine home directory".to_string()
     })?;
@@ -31,7 +63,7 @@ fn known_hosts_path() -> Result<PathBuf, String> {
 /// - `Ok(PathBuf)` ssh directory path.
 /// - `Err(String)` when home directory cannot be resolved.
 fn ssh_dir_path() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| {
+    let home = home_dir_for_paths().ok_or_else(|| {
         error!("ssh_dir_path: could not determine home directory",);
         "Could not determine home directory".to_string()
     })?;
@@ -46,7 +78,7 @@ fn ssh_dir_path() -> Result<PathBuf, String> {
 /// - `Ok(PathBuf)` created/existing ssh directory path.
 /// - `Err(String)` on resolution or create failure.
 fn ensure_ssh_dir() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| {
+    let home = home_dir_for_paths().ok_or_else(|| {
         error!("ensure_ssh_dir: could not determine home directory",);
         "Could not determine home directory".to_string()
     })?;
@@ -59,7 +91,7 @@ fn ensure_ssh_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 /// Process output captured from SSH-related shell commands.
 pub struct SshCommandOutput {
     /// Process exit code, or `-1` when unavailable.
@@ -110,6 +142,11 @@ fn run_command(cmd: &str, args: &[&str]) -> Result<SshCommandOutput, String> {
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/ssh.rs");
 }
 
 fn is_executable(path: &Path) -> bool {
@@ -329,8 +366,11 @@ pub struct SshKeyCandidate {
 pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
     info!("ssh_key_candidates: scanning for SSH key candidates",);
     let dir = ssh_dir_path()?;
+    ssh_key_candidates_in_dir(&dir)
+}
 
-    let Ok(read_dir) = fs::read_dir(&dir) else {
+fn ssh_key_candidates_in_dir(dir: &Path) -> Result<Vec<SshKeyCandidate>, String> {
+    let Ok(read_dir) = fs::read_dir(dir) else {
         debug!("ssh_key_candidates: ssh directory does not exist or is not readable",);
         return Ok(vec![]);
     };

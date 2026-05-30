@@ -225,3 +225,8 @@ pub async fn set_repo_settings(state: State<'_, AppState>, cfg: RepoConfig) -> R
     info!("settings: repository config updated");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/settings.rs");
+}

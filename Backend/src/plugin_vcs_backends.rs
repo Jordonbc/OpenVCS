@@ -23,14 +23,30 @@ fn backend_cache() -> &'static RwLock<Option<Vec<PluginBackendDescriptor>>> {
     BACKEND_CACHE.get_or_init(|| RwLock::new(None))
 }
 
+// Thread-local per-test override so parallel tests do not
+// contend over the shared BACKEND_CACHE global.
+#[cfg(test)]
+std::thread_local! {
+    static TEST_BACKEND_CACHE: std::cell::RefCell<Option<Vec<PluginBackendDescriptor>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 fn cached_backends() -> Option<Vec<PluginBackendDescriptor>> {
+    #[cfg(test)]
+    if let Some(cached) = TEST_BACKEND_CACHE.with(|tls| tls.borrow().clone()) {
+        return Some(cached);
+    }
+
     backend_cache()
         .read()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .clone()
 }
 
-fn store_backends(backends: Vec<PluginBackendDescriptor>) {
+pub(crate) fn store_backends(backends: Vec<PluginBackendDescriptor>) {
+    #[cfg(test)]
+    TEST_BACKEND_CACHE.with(|tls| *tls.borrow_mut() = Some(backends.clone()));
+
     *backend_cache()
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(backends);
@@ -38,6 +54,9 @@ fn store_backends(backends: Vec<PluginBackendDescriptor>) {
 
 /// Clears cached VCS backend discovery results.
 pub fn invalidate_plugin_vcs_backend_cache() {
+    #[cfg(test)]
+    TEST_BACKEND_CACHE.with(|tls| *tls.borrow_mut() = None);
+
     *backend_cache()
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
@@ -392,4 +411,9 @@ pub fn clone_repo_via_plugin_vcs_backend(
         backend: backend_id,
         msg: e,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/plugin_vcs_backends.rs");
 }

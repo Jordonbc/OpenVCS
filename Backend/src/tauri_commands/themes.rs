@@ -4,6 +4,29 @@ use crate::{plugins, settings, state::AppState, themes};
 use std::collections::HashSet;
 use tauri::State;
 
+/// Normalizes an optional plugin id into the lowercase identifier used by theme filtering.
+fn normalize_plugin_id(plugin_id: Option<&str>) -> String {
+    plugin_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_ascii_lowercase())
+        .unwrap_or_default()
+}
+
+/// Returns whether a theme should be visible for the current enabled-plugin set.
+fn theme_allowed_for_enabled_plugins(
+    source: &themes::ThemeSource,
+    plugin_id: Option<&str>,
+    enabled_plugins: &HashSet<String>,
+) -> bool {
+    if !matches!(source, themes::ThemeSource::Plugin) {
+        return true;
+    }
+
+    let plugin_id = normalize_plugin_id(plugin_id);
+    !plugin_id.is_empty() && enabled_plugins.contains(&plugin_id)
+}
+
 /// Computes set of enabled plugin ids based on settings and plugin defaults.
 ///
 /// # Parameters
@@ -39,16 +62,8 @@ pub fn list_themes(state: State<'_, AppState>) -> Vec<themes::ThemeSummary> {
 
     themes::list_themes()
         .into_iter()
-        .filter(|t| {
-            if !matches!(t.source, themes::ThemeSource::Plugin) {
-                return true;
-            }
-            let plugin_id = t
-                .plugin_id
-                .as_ref()
-                .map(|s| s.trim().to_ascii_lowercase())
-                .unwrap_or_default();
-            !plugin_id.is_empty() && enabled.contains(&plugin_id)
+        .filter(|theme| {
+            theme_allowed_for_enabled_plugins(&theme.source, theme.plugin_id.as_deref(), &enabled)
         })
         .collect()
 }
@@ -68,14 +83,13 @@ pub fn load_theme(state: State<'_, AppState>, id: String) -> Result<themes::Them
     let enabled = enabled_plugins(&cfg);
 
     let payload = themes::load_theme(id.trim())?;
-    if matches!(payload.summary.source, themes::ThemeSource::Plugin) {
-        let plugin_id = payload
-            .summary
-            .plugin_id
-            .as_ref()
-            .map(|s| s.trim().to_ascii_lowercase())
-            .unwrap_or_default();
-        if !plugin_id.is_empty() && !enabled.contains(&plugin_id) {
+    if !theme_allowed_for_enabled_plugins(
+        &payload.summary.source,
+        payload.summary.plugin_id.as_deref(),
+        &enabled,
+    ) {
+        let plugin_id = normalize_plugin_id(payload.summary.plugin_id.as_deref());
+        if !plugin_id.is_empty() {
             return Err(format!(
                 "theme `{}` belongs to a disabled plugin",
                 payload.summary.id
@@ -83,4 +97,9 @@ pub fn load_theme(state: State<'_, AppState>, id: String) -> Result<themes::Them
         }
     }
     Ok(payload)
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/themes.rs");
 }

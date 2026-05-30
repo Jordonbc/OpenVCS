@@ -167,6 +167,9 @@ async function reportFrontendError(
   await TAURI.invoke('report_frontend_error', { payload }).catch(() => {});
 }
 
+// Test-only export — referenced by monitoring.test.ts
+export const __testOnlyReportFrontendError = reportFrontendError;
+
 /** Derives a human-readable message for an unhandled promise rejection reason. */
 function getUnhandledRejectionMessage(reason: unknown): string {
   if (reason instanceof Error) {

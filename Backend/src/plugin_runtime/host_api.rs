@@ -3,15 +3,20 @@
 //! Minimal host-side plugin runtime APIs.
 
 use parking_lot::RwLock;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 /// Callback type for status text updates from plugins to frontend.
-type StatusEventEmitter = Box<dyn Fn(&str) + Send + Sync + 'static>;
+type StatusEventEmitter = Arc<dyn Fn(&str) + Send + Sync + 'static>;
 
 /// Global status emitter callback used by backend->frontend bridge.
-static STATUS_EVENT_EMITTER: OnceLock<StatusEventEmitter> = OnceLock::new();
+static STATUS_EVENT_EMITTER: OnceLock<RwLock<Option<StatusEventEmitter>>> = OnceLock::new();
 /// Shared in-memory status text for plugin updates.
 static STATUS_TEXT: OnceLock<RwLock<String>> = OnceLock::new();
+
+/// Returns global status emitter storage.
+fn status_event_emitter_store() -> &'static RwLock<Option<StatusEventEmitter>> {
+    STATUS_EVENT_EMITTER.get_or_init(|| RwLock::new(None))
+}
 
 /// Returns global status storage singleton.
 fn status_text_store() -> &'static RwLock<String> {
@@ -20,7 +25,7 @@ fn status_text_store() -> &'static RwLock<String> {
 
 /// Emits a status text event through the configured backend emitter.
 fn emit_status_event(message: &str) {
-    if let Some(emitter) = STATUS_EVENT_EMITTER.get() {
+    if let Some(emitter) = status_event_emitter_store().read().clone() {
         emitter(message);
     }
 }
@@ -36,7 +41,14 @@ pub fn set_status_event_emitter<F>(emitter: F)
 where
     F: Fn(&str) + Send + Sync + 'static,
 {
-    let _ = STATUS_EVENT_EMITTER.set(Box::new(emitter));
+    *status_event_emitter_store().write() = Some(Arc::new(emitter));
+}
+
+/// Resets host API state between tests.
+#[cfg(test)]
+pub fn reset_host_api_state_for_tests() {
+    *status_event_emitter_store().write() = None;
+    status_text_store().write().clear();
 }
 
 /// Sets status text without permission checks.
@@ -56,4 +68,9 @@ pub fn set_status_text_unchecked(message: &str) {
     }
     *status_text_store().write() = trimmed.to_string();
     emit_status_event(trimmed);
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/plugin_runtime/host_api.rs");
 }

@@ -50,4 +50,22 @@ describe('assertDesktopRuntime', () => {
 
     expect(() => assertDesktopRuntime()).toThrow('Failed to initialize Tauri runtime.');
   });
+
+  it('throws when only core is available but event is missing', async () => {
+    (window as any).__TAURI__ = { core: { invoke: vi.fn() } };
+    const { assertDesktopRuntime } = await loadTauriModule();
+    expect(() => assertDesktopRuntime()).toThrow('Failed to initialize Tauri runtime.');
+  });
+
+  it('throws when only event is available but core is missing', async () => {
+    (window as any).__TAURI__ = { event: { listen: vi.fn() } };
+    const { assertDesktopRuntime } = await loadTauriModule();
+    expect(() => assertDesktopRuntime()).toThrow('Failed to initialize Tauri runtime.');
+  });
+
+  it('does not throw when full runtime is available', async () => {
+    (window as any).__TAURI__ = { core: { invoke: vi.fn() }, event: { listen: vi.fn() } };
+    const { assertDesktopRuntime } = await loadTauriModule();
+    expect(() => assertDesktopRuntime()).not.toThrow();
+  });
 });

@@ -131,7 +131,7 @@ impl Methods {
     pub const VCS_SET_IDENTITY_LOCAL: &'static str = "vcs.set_identity_local";
     /// Lists stashes.
     pub const VCS_LIST_STASHES: &'static str = "vcs.list_stashes";
-    /// Pushes stash.
+    /// Pushes stash with optional message, include-untracked flag, and path filters.
     pub const VCS_STASH_PUSH: &'static str = "vcs.stash_push";
     /// Applies stash.
     pub const VCS_STASH_APPLY: &'static str = "vcs.stash_apply";

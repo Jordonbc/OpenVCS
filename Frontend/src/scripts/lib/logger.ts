@@ -149,3 +149,6 @@ export const logger = {
   warn: (...args: unknown[]) => sendToBackend("warn", formatMessage(...args)),
   error: (...args: unknown[]) => sendToBackend("error", formatMessage(...args)),
 };
+
+// Test-only export — referenced by logger.test.ts
+export const __testOnlySendToBackend = sendToBackend;

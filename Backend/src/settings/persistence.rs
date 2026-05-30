@@ -42,6 +42,8 @@ impl AppConfig {
     /// - `Ok(())` when the config file was written successfully.
     /// - `Err(io::Error)` when writing or renaming fails.
     pub fn save(&self) -> io::Result<()> {
+        #[cfg(test)]
+        crate::app_identity::assert_test_isolation();
         let p = Self::path();
         if let Some(parent) = p.parent() {
             fs::create_dir_all(parent)?;
@@ -180,4 +182,9 @@ impl AppConfig {
         }
         self.logging.retain_archives = self.logging.retain_archives.clamp(1, 100);
     }
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/modules/settings_persistence.rs");
 }

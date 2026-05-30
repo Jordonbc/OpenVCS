@@ -8,7 +8,9 @@ export type CtxItem = { label: string; action?: () => void | Promise<void> };
  */
 export function buildCtxMenu(items: CtxItem[], x: number, y: number) {
   // remove existing
-  document.querySelectorAll('.ctxmenu').forEach(el => el.remove());
+  document.querySelectorAll('.ctxmenu').forEach((el) => {
+    el.remove();
+  });
   const m = document.createElement('div');
   m.className = 'ctxmenu';
   // Position gets clamped to viewport after measuring.
@@ -44,8 +46,12 @@ export function buildCtxMenu(items: CtxItem[], x: number, y: number) {
       try {
         const result = it.action?.();
         if (result && typeof (result as Promise<void>).then === 'function') {
-          (result as Promise<void>).catch(() => {});
+          (result as Promise<void>).catch((err) => {
+            console.error('Context menu action failed:', err);
+          });
         }
+      } catch (err) {
+        console.error('Context menu action failed:', err);
       } finally {
         m.remove();
       }

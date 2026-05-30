@@ -55,7 +55,7 @@ export const escapeHtml = (s: any) => String(s)
  * @param type - Event type
  * @param fn - Event handler function
  */
-export const on = <K extends keyof DocumentEventMap>(target: Document | HTMLElement | Window, type: K, fn: (ev: DocumentEventMap[K]) => any) =>
+export const on = <K extends keyof DocumentEventMap>(target: Document | Element | Window, type: K, fn: (ev: DocumentEventMap[K]) => any) =>
     target.addEventListener(type, fn as any);
 
 /**

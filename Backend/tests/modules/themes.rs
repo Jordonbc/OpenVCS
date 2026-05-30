@@ -123,3 +123,34 @@ fn build_theme_payload_from_directory_loads_assets() {
     assert_eq!(payload.markup.body.as_deref(), Some("<div id=\"theme\"></div>\n"));
     assert_eq!(payload.scripts, vec!["console.log('theme');\n".to_string()]);
 }
+
+#[test]
+fn build_theme_payload_from_directory_keeps_builtin_ids() {
+    let dir = tempdir().expect("create temp dir");
+    write_file(
+        dir.path().join("theme.json"),
+        &serde_json::to_string(&json!({
+            "id": "forest",
+            "name": "Forest",
+            "paired_with": "night",
+            "styles": ["base.css"]
+        }))
+        .expect("serialize manifest"),
+    );
+    write_file(dir.path().join("base.css"), "body { color: green; }\n");
+
+    let manifest = read_manifest_from_directory(dir.path()).expect("read manifest");
+    let payload = build_theme_payload_from_directory(
+        dir.path(),
+        manifest,
+        ThemeSource::BuiltIn,
+        None,
+    )
+    .expect("build payload");
+
+    assert_eq!(payload.summary.id, "forest");
+    assert_eq!(payload.summary.paired_with.as_deref(), Some("night"));
+    assert!(matches!(payload.summary.source, ThemeSource::BuiltIn));
+    assert!(payload.summary.plugin_id.is_none());
+    assert_eq!(payload.styles.as_deref(), Some("body { color: green; }\n"));
+}

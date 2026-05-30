@@ -1,7 +1,10 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::{package_has_runtime_dependencies, resolve_local_plugin_path, sanitize_archive_path};
+use super::{
+    archive_entry_path_error, command_error_message, has_non_empty_object_field, npm_executable,
+    package_has_runtime_dependencies, resolve_local_plugin_path, sanitize_archive_path,
+};
 use std::fs;
 
 #[test]
@@ -41,4 +44,85 @@ fn detects_runtime_dependencies_in_package_json() {
 
     fs::write(&package_json, r#"{"optionalDependencies":{"x":"1.0.0"}}"#).expect("write optional deps manifest");
     assert!(package_has_runtime_dependencies(&package_json).expect("read optional deps manifest"));
+}
+
+// ── has_non_empty_object_field tests ───────────────────────────────────────
+
+#[test]
+fn detects_non_empty_object_fields() {
+    assert!(has_non_empty_object_field(&serde_json::json!({"deps": {"a": "1"}}), "deps"));
+}
+
+#[test]
+fn rejects_empty_object_fields() {
+    assert!(!has_non_empty_object_field(&serde_json::json!({"deps": {}}), "deps"));
+}
+
+#[test]
+fn rejects_missing_fields() {
+    assert!(!has_non_empty_object_field(&serde_json::json!({"other": {}}), "deps"));
+}
+
+#[test]
+fn rejects_non_object_field_values() {
+    assert!(!has_non_empty_object_field(&serde_json::json!({"deps": "str"}), "deps"));
+    assert!(!has_non_empty_object_field(&serde_json::json!({"deps": null}), "deps"));
+    assert!(!has_non_empty_object_field(&serde_json::json!({"deps": 42}), "deps"));
+}
+
+#[test]
+fn returns_false_for_empty_input() {
+    assert!(!has_non_empty_object_field(&serde_json::json!({}), "anything"));
+}
+
+// ── command_error_message tests ────────────────────────────────────────────
+
+#[test]
+fn formats_error_with_stderr_content() {
+    let msg = command_error_message("npm pack", b"some error text");
+    assert_eq!(msg, "npm pack failed: some error text");
+}
+
+#[test]
+fn formats_error_without_stderr_when_empty() {
+    let msg = command_error_message("npm pack", b"");
+    assert_eq!(msg, "npm pack failed");
+}
+
+#[test]
+fn formats_error_without_stderr_when_whitespace() {
+    let msg = command_error_message("npm pack", b"  \n  ");
+    assert_eq!(msg, "npm pack failed");
+}
+
+#[test]
+fn formats_error_with_lossy_utf8() {
+    let invalid_utf8 = b"error: \xff\xfe";
+    let msg = command_error_message("install", invalid_utf8);
+    assert!(msg.contains("install failed"));
+}
+
+// ── npm_executable tests ───────────────────────────────────────────────────
+
+#[test]
+fn npm_executable_returns_npm_on_linux() {
+    if cfg!(windows) {
+        assert_eq!(npm_executable(), "npm.cmd");
+    } else {
+        assert_eq!(npm_executable(), "npm");
+    }
+}
+
+// ── archive_entry_path_error tests ─────────────────────────────────────────
+
+#[test]
+fn formats_archive_entry_path_error() {
+    let msg = archive_entry_path_error("traversal", "package/../../foo");
+    assert_eq!(msg, "invalid archive entry path (traversal): package/../../foo");
+}
+
+#[test]
+fn formats_archive_entry_path_error_with_empty_strings() {
+    let msg = archive_entry_path_error("", "");
+    assert_eq!(msg, "invalid archive entry path (): ");
 }

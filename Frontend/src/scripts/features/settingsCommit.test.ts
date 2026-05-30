@@ -99,4 +99,27 @@ describe('loadCommitSettingsIntoForm', () => {
     expect((root.querySelector('#set-commit-message-template-update') as HTMLInputElement).value).toBe(DEFAULT_COMMIT_MESSAGE_UPDATE);
     expect((root.querySelector('#set-commit-message-template-delete') as HTMLInputElement).value).toBe(DEFAULT_COMMIT_MESSAGE_DELETE);
   });
+
+  it('handles missing template input elements', () => {
+    document.body.innerHTML = '<div></div>';
+    const root = document.body.firstElementChild as HTMLElement;
+    expect(() => loadCommitSettingsIntoForm(root, {} as any)).not.toThrow();
+  });
+
+  it('collectCommitSettings handles missing elements', () => {
+    document.body.innerHTML = '<div></div>';
+    const root = document.body.firstElementChild as HTMLElement;
+    const result = collectCommitSettings(root)!;
+    expect(result.commit_message_template_enabled).toBe(false);
+    expect(result.restrict_commit_summary).toBe(false);
+  });
+
+  it('collectCommitTemplateSettings handles missing elements', () => {
+    document.body.innerHTML = '<div></div>';
+    const root = document.body.firstElementChild as HTMLElement;
+    const result = collectCommitTemplateSettings(root);
+    expect(result.commit_message_template_create).toBe('');
+    expect(result.commit_message_template_update).toBe('');
+    expect(result.commit_message_template_delete).toBe('');
+  });
 });

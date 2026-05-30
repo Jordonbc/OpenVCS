@@ -32,6 +32,10 @@ use self::rpc::NodeRpcProcess;
 const DEFAULT_RPC_TIMEOUT_SECS: u64 = 30;
 const VCS_OPERATION_TIMEOUT_SECS: u64 = 60;
 
+/// Test-only mock RPC handler type.
+#[cfg(test)]
+type MockRpcHandler = Box<dyn Fn(&str, Value) -> Result<Value, String> + Send>;
+
 /// Parsed plugin initialize response payload.
 #[derive(Debug, Deserialize)]
 struct InitializeResponse {
@@ -49,6 +53,9 @@ pub struct NodePluginRuntimeInstance {
     vcs_session_id: Mutex<Option<String>>,
     /// Optional sink for VCS progress events.
     event_sink: RwLock<Option<OnEvent>>,
+    /// Test-only RPC mock handler injected instead of a real process.
+    #[cfg(test)]
+    mock_rpc_handler: Mutex<Option<MockRpcHandler>>,
 }
 
 impl NodePluginRuntimeInstance {
@@ -65,7 +72,27 @@ impl NodePluginRuntimeInstance {
             process: Mutex::new(None),
             vcs_session_id: Mutex::new(None),
             event_sink: RwLock::new(None),
+            #[cfg(test)]
+            mock_rpc_handler: Mutex::new(None),
         }
+    }
+
+    /// Sets the VCS session id for testing without a real plugin process.
+    #[cfg(test)]
+    pub(crate) fn set_session_id(&self, id: Option<String>) {
+        *self.vcs_session_id.lock() = id;
+    }
+
+    /// Injects a pre-built process for testing the real RPC call path.
+    #[cfg(test)]
+    pub(crate) fn set_process(&self, process: NodeRpcProcess) {
+        *self.process.lock() = Some(process);
+    }
+
+    /// Installs a mock RPC handler for testing, bypassing the real process.
+    #[cfg(test)]
+    pub(crate) fn set_mock_handler(&self, handler: MockRpcHandler) {
+        *self.mock_rpc_handler.lock() = Some(handler);
     }
 
     /// Resolves the bundled Node executable path used to launch plugins.
@@ -267,6 +294,12 @@ impl NodePluginRuntimeInstance {
     where
         T: DeserializeOwned,
     {
+        #[cfg(test)]
+        if let Some(handler) = self.mock_rpc_handler.lock().as_ref() {
+            let result = handler(method, params)?;
+            return serde_json::from_value(result).map_err(|e| format!("mock rpc decode: {e}"));
+        }
+
         let timeout = timeout_secs.or_else(|| {
             if method.starts_with("vcs.") {
                 Some(VCS_OPERATION_TIMEOUT_SECS)
@@ -540,4 +573,9 @@ impl Drop for NodePluginRuntimeInstance {
             let _ = process.child.wait();
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../../tests/plugin_runtime/node_instance/mod.rs");
 }

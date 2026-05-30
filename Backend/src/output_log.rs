@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Severity level associated with an output log entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OutputLevel {
     Info,

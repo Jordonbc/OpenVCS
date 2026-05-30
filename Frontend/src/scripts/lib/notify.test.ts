@@ -37,10 +37,35 @@ describe('notify', () => {
     const status = document.getElementById('status') as HTMLElement;
 
     status.classList.add('busy');
-    notify('Downloading update…');
-    expect(status.textContent).toBe('Downloading update…');
+    notify('Downloading update\u2026');
+    expect(status.textContent).toBe('Downloading update\u2026');
 
     vi.advanceTimersByTime(2200);
-    expect(status.textContent).toBe('Downloading update…');
+    expect(status.textContent).toBe('Downloading update\u2026');
+  });
+
+  it('does not reset to Ready when text content was changed before timeout', async () => {
+    const { notify } = await import('./notify');
+    const status = document.getElementById('status') as HTMLElement;
+
+    notify('First message');
+    expect(status.textContent).toBe('First message');
+
+    status.textContent = 'Second message';
+
+    vi.advanceTimersByTime(2200);
+    expect(status.textContent).toBe('Second message');
+  });
+
+  it('returns early when status element is missing', async () => {
+    document.body.innerHTML = '';
+    vi.resetModules();
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const { notify } = await import('./notify');
+    notify('hidden message');
+
+    expect(consoleSpy).toHaveBeenCalledWith('[notify] hidden message');
+    expect(document.getElementById('status')).toBeNull();
   });
 });

@@ -290,6 +290,8 @@ fn load_recents_from_disk() -> Result<Vec<PathBuf>, String> {
 /// - `Ok(())` on success.
 /// - `Err(String)` on serialization/write failures.
 fn save_recents_to_disk(list: &[PathBuf]) -> Result<(), String> {
+    #[cfg(test)]
+    crate::app_identity::assert_test_isolation();
     let p = recents_file_path();
     if let Some(parent) = p.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;

@@ -11,6 +11,38 @@ use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::state::AppState;
 
+/// Converts a backend task label and error into a consistent user-facing message.
+fn format_task_failure(label: &'static str, error: &str) -> String {
+    format!("{label} task failed: {error}")
+}
+
+/// Converts a VCS event into the output-log level and message sent to the UI.
+fn progress_message_for_event(evt: VcsEvent) -> (OutputLevel, String) {
+    match evt {
+        VcsEvent::Progress { detail, .. } => (OutputLevel::Info, detail),
+        VcsEvent::RemoteMessage { msg } => (OutputLevel::Info, msg),
+        VcsEvent::Auth { method, detail } => {
+            (OutputLevel::Info, format!("auth[{method}]: {detail}"))
+        }
+        VcsEvent::PushStatus { refname, status } => (
+            OutputLevel::Info,
+            status
+                .map(|value| format!("{refname} → {value}"))
+                .unwrap_or_else(|| format!("{refname} ok")),
+        ),
+        VcsEvent::Info { msg } => (OutputLevel::Info, msg),
+        VcsEvent::Warning { msg } => (OutputLevel::Warn, msg),
+        VcsEvent::Error { msg } => (OutputLevel::Error, msg),
+    }
+}
+
+/// Returns the message shown when the active backend disappears during an operation.
+fn backend_unavailable_message(backend_id: &str) -> String {
+    format!(
+        "Backend `{backend_id}` is no longer available (plugin disabled?). Reopen the repository."
+    )
+}
+
 #[derive(serde::Serialize, Clone)]
 /// Generic progress event payload sent to the UI.
 pub struct ProgressPayload {
@@ -27,22 +59,7 @@ pub struct ProgressPayload {
 /// - An [`OnEvent`] callback compatible with backend VCS operations.
 pub(crate) fn progress_bridge<R: Runtime>(app: AppHandle<R>) -> OnEvent {
     Arc::new(move |evt| {
-        let (level, msg) = match evt {
-            VcsEvent::Progress { detail, .. } => (OutputLevel::Info, detail),
-            VcsEvent::RemoteMessage { msg } => (OutputLevel::Info, msg),
-            VcsEvent::Auth { method, detail } => {
-                (OutputLevel::Info, format!("auth[{method}]: {detail}"))
-            }
-            VcsEvent::PushStatus { refname, status } => (
-                OutputLevel::Info,
-                status
-                    .map(|s| format!("{refname} → {s}"))
-                    .unwrap_or_else(|| format!("{refname} ok")),
-            ),
-            VcsEvent::Info { msg } => (OutputLevel::Info, msg),
-            VcsEvent::Warning { msg } => (OutputLevel::Warn, msg),
-            VcsEvent::Error { msg } => (OutputLevel::Error, msg),
-        };
+        let (level, msg) = progress_message_for_event(evt);
 
         let ts_ms = time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000;
         let entry = OutputLogEntry::new(ts_ms as i64, level, "vcs", msg.clone());
@@ -83,10 +100,7 @@ pub(crate) fn current_repo_or_err(state: &State<'_, AppState>) -> Result<Arc<Rep
             "repo command aborted: backend '{}' is no longer available; plugin may be disabled or missing",
             backend_id.as_ref()
         );
-        return Err(format!(
-            "Backend `{}` is no longer available (plugin disabled?). Reopen the repository.",
-            backend_id.as_ref()
-        ));
+        return Err(backend_unavailable_message(backend_id.as_ref()));
     }
 
     Ok(Arc::clone(&repo))
@@ -113,5 +127,10 @@ where
 {
     async_runtime::spawn_blocking(move || task(repo))
         .await
-        .map_err(|e| format!("{label} task failed: {e}"))?
+        .map_err(|error| format_task_failure(label, &error.to_string()))?
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../tests/tauri_commands/shared.rs");
 }

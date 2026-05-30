@@ -27,3 +27,8 @@ pub(crate) fn hidden_command(program: &str) -> Command {
     hide_window(&mut command);
     command
 }
+
+#[cfg(test)]
+mod tests {
+    include!("../tests/modules/process_utils.rs");
+}

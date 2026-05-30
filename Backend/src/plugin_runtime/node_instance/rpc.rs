@@ -17,7 +17,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::Duration;
 
 /// Live stdio-backed JSON-RPC process handle.
-pub(super) struct NodeRpcProcess {
+pub(crate) struct NodeRpcProcess {
     /// Child process hosting the plugin runtime.
     pub(super) child: Child,
     /// Writable stdin stream for requests.
@@ -165,4 +165,9 @@ fn format_rpc_error(plugin_id: &str, method: &str, error: &RpcError) -> String {
         "plugin '{}' rpc '{}' failed (code {}): {}",
         plugin_id, method, error.code, detail
     )
+}
+
+#[cfg(test)]
+mod tests {
+    include!("../../../tests/plugin_runtime/node_instance/rpc.rs");
 }
