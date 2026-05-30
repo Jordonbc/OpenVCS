@@ -35,7 +35,7 @@ if (typeof CSS === 'undefined') {
   (globalThis as any).CSS = {};
 }
 if (!CSS.escape) {
-  CSS.escape = (s: string) => s.replace(/[!"#$%&'()*+,./:;<=>?@[\]^`{|}~]/g, '\\$&');
+  CSS.escape = (s: string) => String(s || '').replace(/[^a-zA-Z0-9_-]/g, '\\$&');
 }
 // Polyfill requestAnimationFrame for jsdom (used in queuePluginToggle)
 if (!window.requestAnimationFrame) {
@@ -81,6 +81,12 @@ afterEach(() => {
 function flushPromises(): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, 0));
 }
+
+describe('CSS.escape polyfill', () => {
+  it('escapes backslashes for selector safety', () => {
+    expect(CSS.escape('plugin\\id')).toBe('plugin\\\\id');
+  });
+});
 
 describe('loadPluginsIntoForm - early returns', () => {
   it('returns when required elements missing', async () => {
@@ -1557,4 +1563,3 @@ describe('renderList - context menu on non-row element', () => {
     expect(cm).not.toBeNull();
   });
 });
-
