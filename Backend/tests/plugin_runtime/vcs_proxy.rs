@@ -8,7 +8,7 @@ use crate::plugin_runtime::node_instance::NodePluginRuntimeInstance;
 use crate::plugin_runtime::spawn::SpawnConfig;
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 fn test_runtime() -> Arc<NodePluginRuntimeInstance> {
     Arc::new(NodePluginRuntimeInstance::new(SpawnConfig {
@@ -455,10 +455,41 @@ fn proxy_stash_push_returns_selector() {
     let (proxy, rt) = mock_proxy();
     rt.set_session_id(Some("s".into()));
     set_response(&rt, json!("stash@{0}"));
+    assert_eq!(proxy.stash_push("WIP", true, &[]).unwrap(), ());
+}
+
+#[test]
+fn proxy_stash_push_forwards_paths() {
+    let (proxy, rt) = mock_proxy();
+    rt.set_session_id(Some("s".into()));
+
+    let captured = Arc::new(Mutex::new(None::<Value>));
+    let captured_params = Arc::clone(&captured);
+    rt.set_mock_handler(Box::new(move |method, params| {
+        assert_eq!(method, "vcs.stash_push");
+        *captured_params.lock().expect("lock params") = Some(params.clone());
+        Ok(json!("stash@{1}"))
+    }));
+
+    proxy
+        .stash_push(
+            "WIP",
+            true,
+            &[PathBuf::from("src/lib.rs"), PathBuf::from("README.md")],
+        )
+        .unwrap();
+
     assert_eq!(
-        proxy.stash_push("WIP", true, &[]).unwrap(),
-        ()
+        captured.lock().expect("lock params").as_ref(),
+        Some(&json!({
+            "session_id": "s",
+            "message": "WIP",
+            "include_untracked": true,
+            "paths": ["src/lib.rs", "README.md"]
+        }))
     );
+
+    rt.set_session_id(None);
 }
 
 #[test]

@@ -5,6 +5,7 @@ use crate::plugin_runtime::node_instance::NodePluginRuntimeInstance;
 use crate::plugin_runtime::spawn::SpawnConfig;
 use serde_json::{json, Value};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 fn test_runtime() -> NodePluginRuntimeInstance {
     NodePluginRuntimeInstance::new(SpawnConfig {
@@ -440,8 +441,41 @@ fn vcs_stash_push_with_message_returns_selector() {
     let rt = test_runtime();
     *rt.vcs_session_id.lock() = Some("s".into());
     mock_response(&rt, json!("stash@{0}"));
-    let result = rt.vcs_stash_push(Some("WIP"), false).unwrap();
+    let result = rt.vcs_stash_push(Some("WIP"), false, &[]).unwrap();
     assert_eq!(result, "stash@{0}");
+}
+
+#[test]
+fn vcs_stash_push_forwards_paths() {
+    let rt = test_runtime();
+    *rt.vcs_session_id.lock() = Some("s".into());
+
+    let captured = Arc::new(Mutex::new(None::<Value>));
+    let captured_params = Arc::clone(&captured);
+    rt.set_mock_handler(Box::new(move |method, params| {
+        assert_eq!(method, "vcs.stash_push");
+        *captured_params.lock().expect("lock params") = Some(params.clone());
+        Ok(json!("stash@{1}"))
+    }));
+
+    let result = rt
+        .vcs_stash_push(
+            Some("WIP"),
+            true,
+            &["src/lib.rs".to_string(), "README.md".to_string()],
+        )
+        .unwrap();
+
+    assert_eq!(result, "stash@{1}");
+    assert_eq!(
+        captured.lock().expect("lock params").as_ref(),
+        Some(&json!({
+            "session_id": "s",
+            "message": "WIP",
+            "include_untracked": true,
+            "paths": ["src/lib.rs", "README.md"]
+        }))
+    );
 }
 
 #[test]
@@ -449,7 +483,7 @@ fn vcs_stash_push_without_message_returns_selector() {
     let rt = test_runtime();
     *rt.vcs_session_id.lock() = Some("s".into());
     mock_response(&rt, json!("stash@{1}"));
-    let result = rt.vcs_stash_push(None::<&str>, true).unwrap();
+    let result = rt.vcs_stash_push(None::<&str>, true, &[]).unwrap();
     assert_eq!(result, "stash@{1}");
 }
 

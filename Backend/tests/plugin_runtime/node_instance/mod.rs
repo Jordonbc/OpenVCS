@@ -5,7 +5,7 @@ use super::NodePluginRuntimeInstance;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::spawn::SpawnConfig;
 use serde_json::{json, Value};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 fn test_runtime() -> NodePluginRuntimeInstance {
     NodePluginRuntimeInstance::new(SpawnConfig {
@@ -231,14 +231,42 @@ fn handle_notification_unknown_method() {
 fn close_vcs_session_calls_rpc_when_session_active() {
     let runtime = test_runtime();
     runtime.set_session_id(Some("session-abc".into()));
-    mock_response(&runtime);
-    // This should call rpc_call_unit with VCS_CLOSE and clear session
+
+    let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+    let captured = Arc::clone(&calls);
+    runtime.set_mock_handler(Box::new(move |method, params| {
+        captured
+            .lock()
+            .expect("lock calls")
+            .push((method.to_string(), params.clone()));
+        Ok(Value::Null)
+    }));
+
+    runtime.close_vcs_session();
+
+    assert!(runtime.vcs_session_id.lock().is_none());
+    assert_eq!(
+        calls.lock().expect("lock calls").as_slice(),
+        &[("vcs.close".to_string(), json!({"session_id": "session-abc"}))]
+    );
 }
 
 #[test]
 fn close_vcs_session_noop_when_no_session() {
-    let _runtime = test_runtime();
-    // vcs_session_id is None, close_vcs_session should do nothing
+    let runtime = test_runtime();
+    let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
+    let captured = Arc::clone(&calls);
+    runtime.set_mock_handler(Box::new(move |method, params| {
+        captured
+            .lock()
+            .expect("lock calls")
+            .push((method.to_string(), params.clone()));
+        Ok(Value::Null)
+    }));
+
+    runtime.close_vcs_session();
+
+    assert!(calls.lock().expect("lock calls").is_empty());
 }
 
 // ── stop_process ──
