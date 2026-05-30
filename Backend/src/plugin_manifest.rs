@@ -8,6 +8,18 @@ use serde::de::DeserializeOwned;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Fields from the top level of package.json that can serve as fallbacks
+/// when the `openvcs` block omits them.
+#[derive(Debug, Deserialize)]
+pub struct PackageJsonTop {
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub author: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     include!("../tests/modules/plugin_manifest.rs");
@@ -28,6 +40,22 @@ struct OpenvcsPackageManifest<T> {
 /// - `PathBuf` pointing to `package.json`.
 pub fn package_manifest_path(plugin_dir: &Path) -> PathBuf {
     plugin_dir.join(PLUGIN_PACKAGE_NAME)
+}
+
+/// Reads only the top-level fallback fields from package.json without requiring an `openvcs` block.
+///
+/// # Parameters
+/// - `plugin_dir`: Plugin directory path.
+///
+/// # Returns
+/// - `Ok(PackageJsonTop)` when the file exists and parses.
+/// - `Err(String)` when the file is missing or invalid.
+pub fn read_package_json_top(plugin_dir: &Path) -> Result<PackageJsonTop, String> {
+    let manifest_path = package_manifest_path(plugin_dir);
+    let text = fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("read {}: {e}", manifest_path.display()))?;
+    serde_json::from_str(&text)
+        .map_err(|e| format!("parse {}: {e}", manifest_path.display()))
 }
 
 /// Returns whether a plugin directory contains a package manifest.

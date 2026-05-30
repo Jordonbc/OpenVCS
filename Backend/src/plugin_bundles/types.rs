@@ -296,9 +296,20 @@ pub(crate) fn write_plugin_source_metadata(
         .map_err(|e| format!("write {}: {e}", metadata_path.display()))
 }
 
-/// Reads a plugin manifest from a prepared plugin directory.
+/// Reads a plugin manifest from a prepared plugin directory, falling back to top-level
+/// package.json fields when the `openvcs` block omits them.
 pub(crate) fn read_manifest_from_plugin_dir(plugin_dir: &Path) -> Result<PluginManifest, String> {
-    crate::plugin_manifest::read_openvcs_manifest(plugin_dir)
+    let mut manifest: PluginManifest =
+        crate::plugin_manifest::read_openvcs_manifest(plugin_dir)?;
+
+    // Fall back to top-level version when openvcs.version is absent.
+    if manifest.version.is_none()
+        && let Ok(top) = crate::plugin_manifest::read_package_json_top(plugin_dir)
+    {
+        manifest.version = top.version;
+    }
+
+    Ok(manifest)
 }
 
 /// Chooses an install version string from manifest version or content hash.

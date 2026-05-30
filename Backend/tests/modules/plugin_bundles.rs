@@ -12,7 +12,7 @@ fn write_plugin(root: &Path, plugin_id: &str) {
     fs::write(
         root.join("package.json"),
         format!(
-            "{{\n  \"name\": \"{plugin_id}\",\n  \"version\": \"0.1.0\",\n  \"openvcs\": {{\n    \"id\": \"{plugin_id}\",\n    \"name\": \"Test\",\n    \"version\": \"0.1.0\",\n    \"module\": {{ \"exec\": \"plugin.js\" }}\n  }}\n}}\n"
+            "{{\n  \"name\": \"{plugin_id}\",\n  \"version\": \"0.1.0\",\n  \"openvcs\": {{\n    \"id\": \"{plugin_id}\",\n    \"name\": \"Test\",\n    \"module\": {{ \"exec\": \"plugin.js\" }}\n  }}\n}}\n"
         ),
     )
     .unwrap();
@@ -25,7 +25,7 @@ fn write_plugin_with_labels(root: &Path, plugin_id: &str) {
     fs::write(
         root.join("package.json"),
         format!(
-            "{{\n  \"name\": \"{plugin_id}\",\n  \"version\": \"0.1.0\",\n  \"openvcs\": {{\n    \"id\": \"{plugin_id}\",\n    \"name\": \"Test\",\n    \"version\": \"0.1.0\",\n    \"module\": {{\n      \"exec\": \"plugin.js\",\n      \"vcs_backends\": [{{\n        \"id\": \"git\",\n        \"name\": \"Git\",\n        \"action_labels\": {{\n          \"VCS.Commit\": \"Commit\",\n          \"VCS.Push\": \"Push\"\n        }}\n      }}]\n    }}\n  }}\n}}\n"
+            "{{\n  \"name\": \"{plugin_id}\",\n  \"version\": \"0.1.0\",\n  \"openvcs\": {{\n    \"id\": \"{plugin_id}\",\n    \"name\": \"Test\",\n    \"module\": {{\n      \"exec\": \"plugin.js\",\n      \"vcs_backends\": [{{\n        \"id\": \"git\",\n        \"name\": \"Git\",\n        \"action_labels\": {{\n          \"VCS.Commit\": \"Commit\",\n          \"VCS.Push\": \"Push\"\n        }}\n      }}]\n    }}\n  }}\n}}\n"
         ),
     )
     .unwrap();

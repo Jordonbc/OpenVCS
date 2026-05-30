@@ -3,7 +3,7 @@
 use crate::plugin_bundles::{
     InstalledPluginSourceMetadata, PluginBundleStore, read_plugin_source_metadata,
 };
-use crate::plugin_manifest::{has_package_manifest, read_openvcs_manifest};
+use crate::plugin_manifest::{has_package_manifest, read_openvcs_manifest, read_package_json_top};
 use crate::plugin_paths::{ensure_dir, plugins_dir};
 use log::{debug, warn};
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
@@ -405,8 +405,22 @@ fn resolve_plugin_dir(path: &Path) -> Option<PathBuf> {
 /// - `Err(String)` when missing or invalid.
 fn read_manifest_from_directory(path: &Path) -> Result<(PathBuf, RawPluginManifest), String> {
     let resolved = resolve_plugin_dir(path).unwrap_or_else(|| path.to_path_buf());
-    let manifest: RawPluginManifest = read_openvcs_manifest(&resolved)
+    let mut manifest: RawPluginManifest = read_openvcs_manifest(&resolved)
         .map_err(|err| format!("parse plugin manifest in {}: {}", resolved.display(), err))?;
+
+    // Fall back to top-level package.json fields when the openvcs block omits them.
+    if let Ok(top) = read_package_json_top(&resolved) {
+        if manifest.description.is_none() {
+            manifest.description = top.description;
+        }
+        if manifest.version.is_none() {
+            manifest.version = top.version;
+        }
+        if manifest.author.is_none() {
+            manifest.author = top.author;
+        }
+    }
+
     if manifest.id.trim().is_empty() {
         return Err(format!("plugin {} has an empty id", resolved.display()));
     }
