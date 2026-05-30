@@ -111,7 +111,7 @@ jobs:
       SCCACHE_GHA_ENABLED: ${{ vars.SSCCACHE_GHA_ENABLED }}
       SCCACHE_CACHE_SIZE: ${{ vars.SSCCACHE_SIZE }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - platform: ubuntu-24.04

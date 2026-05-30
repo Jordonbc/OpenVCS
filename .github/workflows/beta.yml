@@ -47,7 +47,7 @@ jobs:
     name: Build & publish Beta
     needs: prepare-release
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - platform: ubuntu-24.04
@@ -148,6 +148,6 @@ jobs:
             Date (UTC): ${{ steps.meta.outputs.date }}
             Commit: ${{ github.sha }} (${{ env.TARGET_REF }}@${{ steps.meta.outputs.short_sha }})
             Runner: ${{ runner.os }} • Run #${{ github.run_number }}
-          releaseDraft: false
+          releaseDraft: true
           prerelease: true
           args: ${{ format('{0} --config {1}/tauri.channel.conf.json', matrix.args || '', runner.temp) }}
