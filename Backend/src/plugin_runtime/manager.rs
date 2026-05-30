@@ -292,17 +292,10 @@ impl PluginRuntimeManager {
         if enabled && !is_running {
             let components = self.find_components(plugin_id)?;
             match components.module {
-                Some(module) => {
-                    if !module.vcs_backends.is_empty() {
-                        info!(
-                            "plugin '{}' is a VCS backend; runtime starts when opening a repository",
-                            plugin_id
-                        );
-                    } else {
-                        trace!("set_plugin_enabled: calling start_plugin");
-                        self.start_plugin(plugin_id)?;
-                        info!("plugin: enabled '{}'", plugin_id);
-                    }
+                Some(_module) => {
+                    trace!("set_plugin_enabled: calling start_plugin");
+                    self.start_plugin(plugin_id)?;
+                    info!("plugin: enabled '{}'", plugin_id);
                 }
                 None => {
                     info!(
@@ -353,16 +346,6 @@ impl PluginRuntimeManager {
             }
 
             let key = plugin_id.to_ascii_lowercase();
-            let is_vcs_backend = component
-                .module
-                .as_ref()
-                .is_some_and(|module| !module.vcs_backends.is_empty());
-            if is_vcs_backend {
-                if cfg.is_plugin_enabled(plugin_id, component.default_enabled) {
-                    desired_running.insert(key.clone());
-                }
-                continue;
-            }
 
             if cfg.is_plugin_enabled(plugin_id, component.default_enabled) {
                 desired_running.insert(key.clone());
@@ -450,42 +433,35 @@ impl PluginRuntimeManager {
             })
     }
 
-    /// Registers an already-started Node runtime for a workspace-confined plugin.
-    ///
-    /// # Parameters
-    /// - `plugin_id`: Plugin identifier.
-    /// - `allowed_workspace_root`: Optional workspace root associated with the runtime.
-    /// - `runtime`: Running Node runtime instance to track.
-    ///
-    /// # Returns
-    /// - `Ok(())` when the runtime is tracked.
-    /// - `Err(String)` when plugin resolution fails.
-    pub fn track_node_runtime_for_workspace(
+    /// Returns the already-running Node runtime for a VCS backend plugin.
+    pub fn runtime_for_vcs_backend_with_config(
         &self,
+        cfg: &AppConfig,
         plugin_id: &str,
-        allowed_workspace_root: Option<PathBuf>,
-        runtime: Arc<NodePluginRuntimeInstance>,
-    ) -> Result<(), String> {
-        let spec = self.resolve_module_runtime_spec(plugin_id, allowed_workspace_root)?;
-        let mut lock = self.processes.lock();
-
-        let runtime_to_stop = lock
-            .get(&spec.key)
-            .map(|existing| Arc::clone(&existing.runtime));
-        if let Some(existing) = runtime_to_stop {
-            existing.stop();
-            lock.remove(&spec.key);
+    ) -> Result<Arc<NodePluginRuntimeInstance>, String> {
+        let spec = self.resolve_module_runtime_spec(plugin_id, None)?;
+        if !cfg.is_plugin_enabled(&spec.plugin_id, spec.default_enabled) {
+            return Err(format!("plugin `{}` is disabled", spec.plugin_id));
+        }
+        if !spec.spawn.is_vcs_backend {
+            return Err(format!("plugin `{}` is not a VCS backend", spec.plugin_id));
         }
 
-        lock.insert(
-            spec.key,
-            RunningPlugin {
-                runtime,
-                workspace_root: spec.spawn.allowed_workspace_root,
-            },
-        );
+        let runtime = self
+            .processes
+            .lock()
+            .get(&spec.key)
+            .map(|p| Arc::clone(&p.runtime))
+            .ok_or_else(|| {
+                format!(
+                    "plugin `{}` is not running; enable the plugin to start its runtime",
+                    spec.plugin_id
+                )
+            })?;
 
-        Ok(())
+        let runtime: Arc<dyn std::any::Any + Send + Sync> = runtime;
+        Arc::downcast::<NodePluginRuntimeInstance>(runtime)
+            .map_err(|_| format!("plugin `{}` is not using a Node runtime", spec.plugin_id))
     }
 
     /// Resolves spawn configuration for a VCS backend plugin within a workspace root.

@@ -9,7 +9,7 @@ use crate::core::{BackendId, Result as VcsResult, Vcs, VcsError};
 use crate::logging::LogTimer;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
 use crate::plugin_runtime::node_instance::NodePluginRuntimeInstance;
-use log::{debug, error, info};
+use log::{error, info};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -401,14 +401,6 @@ impl Vcs for PluginVcsProxy {
         self.runtime
             .vcs_revert_commit(rev, no_edit)
             .map_err(|e| self.map_runtime_error(e))
-    }
-}
-
-impl Drop for PluginVcsProxy {
-    /// Stops the underlying plugin runtime when the proxy is dropped.
-    fn drop(&mut self) {
-        debug!("drop: stopping VCS plugin runtime for {}", self.backend_id);
-        self.runtime.stop();
     }
 }
 

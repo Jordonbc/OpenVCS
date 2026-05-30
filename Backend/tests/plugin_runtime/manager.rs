@@ -97,8 +97,8 @@ fn sync_ignores_plugins_without_module_component() {
 }
 
 #[test]
-/// Verifies startup sync does not eagerly start VCS backend runtimes.
-fn sync_does_not_autostart_vcs_backend_plugins() {
+/// Verifies startup sync starts enabled VCS backend runtimes.
+fn sync_autostarts_enabled_vcs_backend_plugins() {
     let temp = tempdir().expect("tempdir");
     write_vcs_plugin(temp.path(), "git.plugin", true);
     let manager = PluginRuntimeManager::new(PluginBundleStore::new_at(temp.path().into()));
@@ -109,7 +109,28 @@ fn sync_does_not_autostart_vcs_backend_plugins() {
         .expect("sync succeeds");
 
     let running = manager.processes.lock();
-    assert!(!running.contains_key("git.plugin"));
+    assert!(running.contains_key("git.plugin"));
+}
+
+#[test]
+/// Verifies runtime lookup reuses the backend started during sync.
+fn runtime_lookup_reuses_started_backend_runtime() {
+    let temp = tempdir().expect("tempdir");
+    write_vcs_plugin(temp.path(), "git.plugin", true);
+    let manager = PluginRuntimeManager::new(PluginBundleStore::new_at(temp.path().into()));
+
+    let cfg = AppConfig::default();
+    manager
+        .sync_plugin_runtime_with_config(&cfg)
+        .expect("sync succeeds");
+
+    let workspace_root = temp.path().join("repo");
+    std::fs::create_dir_all(&workspace_root).expect("create repo root");
+
+    let runtime = manager
+        .runtime_for_workspace_with_config(&cfg, "git.plugin", Some(workspace_root))
+        .expect("reuse started runtime");
+    assert!(runtime.ensure_running().is_ok());
 }
 
 #[test]
@@ -187,6 +208,20 @@ fn enabling_non_runtime_plugin_ignores_unrelated_invalid_plugin() {
     manager
         .set_plugin_enabled("themes.plugin", true)
         .expect("enable themes plugin");
+}
+
+#[test]
+/// Verifies enabling a VCS backend starts its runtime immediately.
+fn enabling_vcs_backend_starts_runtime() {
+    let temp = tempdir().expect("tempdir");
+    write_vcs_plugin(temp.path(), "git.plugin", false);
+    let manager = PluginRuntimeManager::new(PluginBundleStore::new_at(temp.path().into()));
+
+    manager
+        .set_plugin_enabled("git.plugin", true)
+        .expect("enable vcs backend");
+
+    assert!(manager.processes.lock().contains_key("git.plugin"));
 }
 
 /// Writes a minimal module-capable plugin layout into a temp store.

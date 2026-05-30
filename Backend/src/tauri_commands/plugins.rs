@@ -610,13 +610,7 @@ fn resolve_plugin_settings_defaults(
         Err(e) if e.contains("is disabled") => {
             return Ok((Vec::new(), None));
         }
-        Err(_) => {
-            let _ = state.plugin_runtime().start_plugin(plugin_id);
-            state
-                .plugin_runtime()
-                .runtime_for_workspace_with_config(cfg, plugin_id, None)
-                .ok()
-        }
+        Err(_) => None,
     };
 
     if let Some(runtime_ref) = runtime.as_ref() {

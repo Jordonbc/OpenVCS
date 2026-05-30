@@ -3,7 +3,7 @@
 
 use super::{
     backend_unavailable_message, begin_repo_task, format_task_failure, progress_message_for_event,
-    repo_task_active,
+    repo_task_active, repo_task_count,
 };
 use crate::core::models::VcsEvent;
 use crate::output_log::OutputLevel;
@@ -68,9 +68,10 @@ fn renders_backend_unavailable_message() {
 
 #[test]
 fn tracks_repo_task_activity() {
-    assert!(!repo_task_active());
+    let before = repo_task_count();
     let guard = begin_repo_task();
     assert!(repo_task_active());
+    assert_eq!(repo_task_count(), before + 1);
     drop(guard);
-    assert!(!repo_task_active());
+    assert_eq!(repo_task_count(), before);
 }

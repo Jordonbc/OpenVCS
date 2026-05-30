@@ -1,12 +1,14 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+use std::any::Any;
+
 use crate::core::models::OnEvent;
 use crate::core::settings::SettingKv;
 use crate::core::ui::Menu;
 use serde_json::Value;
 
 /// Runtime instance abstraction used by the plugin runtime manager.
-pub trait PluginRuntimeInstance: Send + Sync {
+pub trait PluginRuntimeInstance: Any + Send + Sync {
     /// Ensures the underlying runtime instance is started.
     fn ensure_running(&self) -> Result<(), String>;
 

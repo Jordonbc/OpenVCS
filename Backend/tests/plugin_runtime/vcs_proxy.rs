@@ -519,6 +519,18 @@ fn maps_runtime_errors() {
 }
 
 #[test]
+/// Verifies dropping one proxy does not tear down a shared runtime session.
+fn dropping_proxy_does_not_stop_shared_runtime() {
+    let (proxy, rt) = mock_proxy();
+    rt.set_session_id(Some("s".into()));
+    set_response(&rt, json!("main"));
+
+    drop(proxy);
+
+    assert_eq!(rt.vcs_get_current_branch().unwrap(), Some("main".into()));
+}
+
+#[test]
 fn converts_utf8_paths() {
     assert_eq!(path_to_utf8(std::path::Path::new("/tmp/repo")).unwrap(), "/tmp/repo");
 }

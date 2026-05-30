@@ -27,6 +27,11 @@ pub(crate) fn repo_task_active() -> bool {
     ACTIVE_REPO_TASKS.load(Ordering::SeqCst) > 0
 }
 
+#[cfg(test)]
+pub(crate) fn repo_task_count() -> usize {
+    ACTIVE_REPO_TASKS.load(Ordering::SeqCst)
+}
+
 /// Marks the current thread as executing a repository task until dropped.
 fn begin_repo_task() -> RepoTaskBusyGuard {
     ACTIVE_REPO_TASKS.fetch_add(1, Ordering::SeqCst);

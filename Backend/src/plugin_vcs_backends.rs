@@ -288,21 +288,16 @@ pub fn open_repo_via_plugin_vcs_backend(
 
     let cfg_value = plugin_open_config(&desc.plugin_id);
 
-    let workspace_root = std::fs::canonicalize(path).map_err(|e| VcsError::Backend {
+    let repo_path = std::fs::canonicalize(path).map_err(|e| VcsError::Backend {
         backend: backend_id.clone(),
         msg: format!("canonicalize repo root: {e}"),
     })?;
 
-    trace!(
-        "open_repo_via_plugin_vcs_backend: resolving spawn for plugin {}",
-        desc.plugin_id
-    );
-
     let runtime = runtime_manager
-        .vcs_spawn_for_workspace_with_config(cfg, &desc.plugin_id, workspace_root.clone())
+        .runtime_for_vcs_backend_with_config(cfg, &desc.plugin_id)
         .map_err(|e| {
             error!(
-                "open_repo_via_plugin_vcs_backend: failed to resolve spawn for plugin {}: {}",
+                "open_repo_via_plugin_vcs_backend: failed to reuse runtime for plugin {}: {}",
                 desc.plugin_id, e
             );
             VcsError::Backend {
@@ -311,36 +306,10 @@ pub fn open_repo_via_plugin_vcs_backend(
             }
         })?;
 
-    let runtime = create_node_runtime_instance(runtime).map_err(|e| {
-        error!(
-            "open_repo_via_plugin_vcs_backend: failed to create runtime for plugin {}: {}",
-            desc.plugin_id, e
-        );
-        VcsError::Backend {
-            backend: backend_id.clone(),
-            msg: e,
-        }
-    })?;
-
-    runtime.ensure_running().map_err(|e| VcsError::Backend {
-        backend: backend_id.clone(),
-        msg: e,
-    })?;
-
-    if let Err(e) = runtime_manager.track_node_runtime_for_workspace(
-        &desc.plugin_id,
-        Some(workspace_root),
-        Arc::clone(&runtime),
-    ) {
-        error!(
-            "open_repo_via_plugin_vcs_backend: failed to track runtime for plugin {}: {}",
-            desc.plugin_id, e
-        );
-    }
-
     debug!("open_repo_via_plugin_vcs_backend: opening via plugin proxy",);
 
-    let result = PluginVcsProxy::open_with_process(backend_id.clone(), runtime, path, cfg_value);
+    let result =
+        PluginVcsProxy::open_with_process(backend_id.clone(), runtime, &repo_path, cfg_value);
 
     match &result {
         Ok(_) => {
