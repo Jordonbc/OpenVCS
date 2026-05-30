@@ -138,6 +138,10 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
     list-style:none; margin:0; padding:.25rem;
     display:flex; flex-direction:column; gap:.25rem;
 }
+.list.empty-state{
+    min-height:100%;
+    justify-content:center;
+}
 .left-foot{
     flex:0 0 auto;
     padding:0 .5rem; border-top:1px solid transparent;
@@ -205,6 +209,22 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
 }
 .row.active.diffsel::before{ background:var(--accent); }
 .file{ flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.empty-state-message{
+    min-height:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:1.25rem .75rem;
+    color:var(--muted);
+    text-align:center;
+}
+.empty-state-message .file{
+    flex:0 1 auto;
+    line-height:1.45;
+    overflow:visible;
+    text-overflow:clip;
+    white-space:normal;
+}
 .status.add, .status-dot.add{ color:var(--success); }
 .status.untracked, .status-dot.untracked{ color:color-mix(in oklab, var(--success) 70%, var(--muted)); }
 .status.mod, .status-dot.mod{ color:var(--warning); }

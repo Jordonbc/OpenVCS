@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { escapeHtml } from '../../lib/dom';
-import { isConflictStatus, state, prefs, statusClass, statusLabel } from '../../state/state';
+import { hasRepo, isConflictStatus, state, prefs, statusClass, statusLabel } from '../../state/state';
 import { refreshRepoActions } from '../../ui/layout';
 import { filterInput, listEl, countEl, diffHeadPath, diffEl } from './context';
 import { renderCombinedDiff, selectFile, toggleFilePick } from './diffView';
@@ -59,11 +59,15 @@ function renderChangesList(query: string) {
         const o = String((f as any)?.old_path || '').toLowerCase();
         return p.includes(query) || o.includes(query);
     });
+    list.classList.toggle('empty-state', !files.length);
     count.textContent = `${files.length} file${files.length === 1 ? '' : 's'}`;
     updateSelectAllState(files);
 
     if (!files.length) {
-        list.innerHTML = '<li class="row" aria-disabled="true"><div class="file">No changes. Clone or add a repository to get started.</div></li>';
+        const emptyMessage = hasRepo()
+            ? 'No changes in this repository.'
+            : 'No repository is open. Clone or add a repository to get started.';
+        list.innerHTML = `<li class="empty-state-message" aria-disabled="true"><div class="file">${escapeHtml(emptyMessage)}</div></li>`;
         if (diffHeadPath) diffHeadPath.textContent = 'Select a file to view changes';
         if (diffEl) diffEl.innerHTML = '';
         updateSelectAllState([]);

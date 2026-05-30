@@ -128,10 +128,11 @@ describe('renderList', () => {
 });
 
 describe('renderChangesList', () => {
-  it('shows no changes message when files list is empty', async () => {
+  it('shows no changes message when a repo is selected and files list is empty', async () => {
     const { renderList } = await import('./list');
     const { prefs, state } = await import('../../state/state');
     prefs.tab = 'changes';
+    state.hasRepo = true;
     state.files = [];
     state.selectedFiles = new Set();
     state.diffSelectedFiles = new Set();
@@ -139,9 +140,26 @@ describe('renderChangesList', () => {
     renderList();
 
     const fileList = document.getElementById('file-list') as HTMLElement;
-    expect(fileList.innerHTML).toContain('No changes');
+    expect(fileList.innerHTML).toContain('No changes in this repository.');
+    expect(fileList.classList.contains('empty-state')).toBe(true);
+    expect(fileList.querySelector('.empty-state-message')).not.toBeNull();
     const diffPath = document.getElementById('diff-path') as HTMLElement;
     expect(diffPath.textContent).toBe('Select a file to view changes');
+  });
+
+  it('shows no repository message when no repo is open', async () => {
+    const { renderList } = await import('./list');
+    const { prefs, state } = await import('../../state/state');
+    prefs.tab = 'changes';
+    state.hasRepo = false;
+    state.files = [];
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+
+    renderList();
+
+    const fileList = document.getElementById('file-list') as HTMLElement;
+    expect(fileList.innerHTML).toContain('No repository is open. Clone or add a repository to get started.');
   });
 
   it('filters files by query in filter input', async () => {
@@ -168,6 +186,7 @@ describe('renderChangesList', () => {
     const { renderList } = await import('./list');
     const { prefs, state } = await import('../../state/state');
     prefs.tab = 'changes';
+    state.hasRepo = true;
     state.files = [{ path: 'a.txt', status: 'M' }] as any;
     state.selectedFiles = new Set();
     state.diffSelectedFiles = new Set();
@@ -176,7 +195,7 @@ describe('renderChangesList', () => {
     renderList();
 
     const fileList = document.getElementById('file-list') as HTMLElement;
-    expect(fileList.innerHTML).toContain('No changes');
+    expect(fileList.innerHTML).toContain('No changes in this repository.');
   });
 
   it('renders file rows with correct attributes', async () => {
