@@ -41,6 +41,7 @@ export function renderStashList(query: string): boolean {
     const stash = ((state as any).stash || []) as any[];
     const items = stash.filter((s) => !query || (s.msg || '').toLowerCase().includes(query) || (s.selector || '').includes(query));
     count.textContent = `${items.length} stash${items.length === 1 ? '' : 'es'}`;
+    list.classList.toggle('empty-state', !items.length);
 
     /** Enables or disables footer action buttons for stash operations. */
     const enableActionButtons = (enabled: boolean) => {
@@ -50,7 +51,7 @@ export function renderStashList(query: string): boolean {
     };
 
     if (!items.length) {
-        list.innerHTML = '<li class="row" aria-disabled="true"><div class="file">No stashes.</div></li>';
+        list.innerHTML = '<li class="empty-state-message" aria-disabled="true"><div class="file">No stashes.</div></li>';
         head.textContent = 'Stash details';
         diff.innerHTML = '';
         enableActionButtons(false);
