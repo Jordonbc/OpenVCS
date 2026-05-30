@@ -130,7 +130,8 @@ describe('renderStashList', () => {
     const result = stashMod.renderStashList('');
     const result2 = stashMod.renderStashList('query');
     // Both should still work since DOM elements are cached in mock
-    (typeof result === 'boolean');
+    expect(typeof result).toBe('boolean');
+    expect(typeof result2).toBe('boolean');
     if (removed) document.body.appendChild(removed);
   });
 
