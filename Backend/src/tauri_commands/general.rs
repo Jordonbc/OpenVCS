@@ -17,6 +17,7 @@ use crate::utilities::utilities;
 use crate::validate;
 
 use super::progress_bridge;
+use super::shared::repo_task_active;
 
 const WIKI_URL: &str = "https://github.com/jordonbc/OpenVCS/wiki";
 
@@ -83,6 +84,12 @@ pub fn about_info() -> utilities::AboutInfo {
 /// - `Err(String)` on failure.
 pub fn show_licenses() -> Result<(), String> {
     Ok(())
+}
+
+#[tauri::command]
+/// Returns whether any repository task is currently active.
+pub fn vcs_operation_active() -> bool {
+    repo_task_active()
 }
 
 #[tauri::command]

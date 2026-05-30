@@ -399,6 +399,7 @@ fn build_invoke_handler<R: tauri::Runtime>()
         tauri_commands::validate_add_path,
         tauri_commands::validate_clone_input,
         tauri_commands::current_repo_path,
+        tauri_commands::vcs_operation_active,
         tauri_commands::list_recent_repos,
         tauri_commands::vcs_list_branches,
         tauri_commands::current_vcs_action_labels,

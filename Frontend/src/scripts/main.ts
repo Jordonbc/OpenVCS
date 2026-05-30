@@ -572,6 +572,7 @@ async function boot() {
     let focusInFlight: Promise<void> | null = null;
     async function onFocus() {
         if (focusInFlight) return focusInFlight;
+        if (await TAURI.invoke<boolean>('vcs_operation_active').catch(() => false)) return;
         focusInFlight = (async () => {
         let doFetch = true;
         try {
@@ -583,6 +584,7 @@ async function boot() {
                 doFetch = fetchSetting.value;
             }
         } catch {}
+        if (await TAURI.invoke<boolean>('vcs_operation_active').catch(() => false)) return;
         if (doFetch) {
             await fetchCurrentRemoteOnly({ hydrate: false });
         }

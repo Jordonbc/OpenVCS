@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::{
-    backend_unavailable_message, format_task_failure, progress_message_for_event,
+    backend_unavailable_message, begin_repo_task, format_task_failure, progress_message_for_event,
+    repo_task_active,
 };
 use crate::core::models::VcsEvent;
 use crate::output_log::OutputLevel;
@@ -63,4 +64,13 @@ fn renders_backend_unavailable_message() {
         backend_unavailable_message("openvcs.git"),
         "Backend `openvcs.git` is no longer available (plugin disabled?). Reopen the repository."
     );
+}
+
+#[test]
+fn tracks_repo_task_activity() {
+    assert!(!repo_task_active());
+    let guard = begin_repo_task();
+    assert!(repo_task_active());
+    drop(guard);
+    assert!(!repo_task_active());
 }

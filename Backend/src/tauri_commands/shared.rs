@@ -1,6 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, async_runtime};
 
@@ -10,6 +11,27 @@ use crate::output_log::{OutputLevel, OutputLogEntry};
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
 use crate::state::AppState;
+
+static ACTIVE_REPO_TASKS: AtomicUsize = AtomicUsize::new(0);
+
+struct RepoTaskBusyGuard;
+
+impl Drop for RepoTaskBusyGuard {
+    fn drop(&mut self) {
+        ACTIVE_REPO_TASKS.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Returns whether any repository task is currently active.
+pub(crate) fn repo_task_active() -> bool {
+    ACTIVE_REPO_TASKS.load(Ordering::SeqCst) > 0
+}
+
+/// Marks the current thread as executing a repository task until dropped.
+fn begin_repo_task() -> RepoTaskBusyGuard {
+    ACTIVE_REPO_TASKS.fetch_add(1, Ordering::SeqCst);
+    RepoTaskBusyGuard
+}
 
 /// Converts a backend task label and error into a consistent user-facing message.
 fn format_task_failure(label: &'static str, error: &str) -> String {
@@ -125,6 +147,7 @@ where
     T: Send + 'static,
     F: FnOnce(Arc<Repo>) -> Result<T, String> + Send + 'static,
 {
+    let _busy = begin_repo_task();
     async_runtime::spawn_blocking(move || task(repo))
         .await
         .map_err(|error| format_task_failure(label, &error.to_string()))?
