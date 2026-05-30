@@ -235,10 +235,8 @@ describe('confirmWithModal', () => {
 
 describe('cancel button click handler', () => {
   it('wires cancel click to close modal', async () => {
-    const modals = await import('../ui/modals');
     const { wireConfirmModal } = await import('./confirmModal');
     wireConfirmModal();
-    const cancelBtn = document.getElementById('confirm-modal-cancel-btn') as HTMLButtonElement;
 
     // cancel button has no explicit handler -- it triggers modal:closed via backdrop or data-close
     // The modal:closed event is what resolves false

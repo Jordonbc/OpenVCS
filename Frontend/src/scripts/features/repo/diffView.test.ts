@@ -321,7 +321,6 @@ describe('selectFile contextmenu', () => {
   it('attaches contextmenu handler to diffEl for hunk discard', async () => {
     // Need to ensure invoke returns proper diff lines so the hunk elements render
     const { selectFile } = await import('./diffView');
-    const { state } = await import('../../state/state');
 
     await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
 
@@ -539,7 +538,6 @@ describe('selectStashDiff', () => {
     const { selectStashDiff } = await import('./diffView');
     await selectStashDiff('');
     // Should not call invoke for empty selector
-    const invokeSpy = (window as any).__TAURI__.core.invoke;
     // If selector is empty, it still calls invoke with '' as selector
     // The mock will return [] but it should not crash
   });
