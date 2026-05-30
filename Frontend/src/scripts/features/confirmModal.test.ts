@@ -225,12 +225,8 @@ describe('confirmWithModal', () => {
   it('closes previous pending promise with false when called again', async () => {
     const { confirmWithModal } = await import('./confirmModal');
 
-    let prevResolved: boolean | null = null;
     const first = confirmWithModal({ message: 'First' });
-    // Capture the first resolve
-    const modal = document.getElementById('confirm-modal') as any;
-
-    const second = confirmWithModal({ message: 'Second' });
+    confirmWithModal({ message: 'Second' });
 
     const firstResult = await first;
     expect(firstResult).toBe(false);
