@@ -123,7 +123,7 @@ afterEach(() => {
 describe('renderStashList', () => {
   it('returns false when listEl is missing', async () => {
     const stashMod = await loadStash();
-    const { listEl: orig } = await import('./context');
+    await import('./context');
     // Temporarily remove file-list to trigger early return
     const removed = document.getElementById('file-list');
     if (removed) removed.remove();

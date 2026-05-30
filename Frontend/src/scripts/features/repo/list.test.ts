@@ -471,7 +471,7 @@ describe('renderChangesList status marks', () => {
 
   it('renders conflict-mark for conflicted files', async () => {
     const { renderList } = await import('./list');
-    const { prefs, state, isConflictStatus } = await import('../../state/state');
+    const { prefs, state } = await import('../../state/state');
     prefs.tab = 'changes';
     state.files = [{ path: 'conflict.txt', status: 'UU' }] as any;
     state.selectedFiles = new Set();

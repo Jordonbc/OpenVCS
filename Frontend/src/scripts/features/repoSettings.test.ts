@@ -48,10 +48,6 @@ function mountModal(overrides?: {
     `;
 }
 
-function getModal(): HTMLElement {
-    return document.getElementById('repo-settings-modal')!;
-}
-
 // ---------------------------------------------------------------------------
 // Test lifecycle
 // ---------------------------------------------------------------------------

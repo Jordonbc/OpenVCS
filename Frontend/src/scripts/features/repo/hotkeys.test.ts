@@ -64,7 +64,9 @@ beforeEach(() => {
   mockFilterInput.value = '';
 
   // Clean up any modals from previous tests
-  document.querySelectorAll('.modal').forEach((el) => el.remove());
+  document.querySelectorAll('.modal').forEach((el) => {
+    el.remove();
+  });
   document.getElementById('about-modal')?.remove();
 
   // Mock document.activeElement
@@ -185,7 +187,7 @@ describe('bindRepoHotkeys', () => {
   });
 
   it('deselects all files on Ctrl+A when all are already selected', async () => {
-    const { disableDefaultSelectAll, prefs, state } = await import('../../state/state');
+    const { prefs, state } = await import('../../state/state');
     prefs.tab = 'changes';
     state.selectedFiles = new Set(['a.js', 'b.js']);
     const visibleFiles = [{ path: 'a.js' as string }, { path: 'b.js' as string }];
