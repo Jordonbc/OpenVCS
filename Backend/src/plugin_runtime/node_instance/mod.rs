@@ -84,7 +84,7 @@ impl NodePluginRuntimeInstance {
     }
 
     /// Injects a pre-built process for testing the real RPC call path.
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(crate) fn set_process(&self, process: NodeRpcProcess) {
         *self.process.lock() = Some(process);
     }

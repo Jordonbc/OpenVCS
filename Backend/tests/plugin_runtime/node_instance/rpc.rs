@@ -1,16 +1,28 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::{format_rpc_error, NodeRpcProcess};
-use crate::plugin_runtime::node_instance::NodePluginRuntimeInstance;
+use super::format_rpc_error;
 use crate::plugin_runtime::protocol::RpcError;
+use serde_json::json;
+
+#[cfg(unix)]
+use super::NodeRpcProcess;
+#[cfg(unix)]
+use crate::plugin_runtime::node_instance::NodePluginRuntimeInstance;
+#[cfg(unix)]
 use crate::plugin_runtime::spawn::SpawnConfig;
+#[cfg(unix)]
 use parking_lot::Mutex;
-use serde_json::{json, Value};
+#[cfg(unix)]
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::{Command, Stdio};
+#[cfg(unix)]
 use std::sync::Arc;
+#[cfg(unix)]
 use std::sync::mpsc;
+#[cfg(unix)]
+use serde_json::Value;
 
 #[test]
 fn formats_rpc_errors_with_nested_message() {

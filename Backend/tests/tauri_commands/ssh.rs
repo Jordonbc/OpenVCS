@@ -55,13 +55,13 @@ impl Drop for EnvGuard {
     }
 }
 
-fn make_executable(path: &Path) {
+fn make_executable(_path: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(path).expect("metadata").permissions();
+        let mut perms = fs::metadata(_path).expect("metadata").permissions();
         perms.set_mode(0o755);
-        fs::set_permissions(path, perms).expect("chmod");
+        fs::set_permissions(_path, perms).expect("chmod");
     }
 }
 

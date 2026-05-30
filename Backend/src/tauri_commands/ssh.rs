@@ -3,8 +3,10 @@
 use std::{
     env, fs,
     path::{Path, PathBuf},
-    process::Command,
 };
+
+#[cfg(not(target_os = "windows"))]
+use std::process::Command;
 
 use log::{debug, error, info, trace, warn};
 use serde::Serialize;
