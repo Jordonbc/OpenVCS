@@ -4,7 +4,7 @@ import { escapeHtml } from '../../lib/dom';
 import { hasRepo, isConflictStatus, state, prefs, statusClass, statusLabel } from '../../state/state';
 import { refreshRepoActions } from '../../ui/layout';
 import { filterInput, listEl, countEl, diffHeadPath, diffEl } from './context';
-import { renderCombinedDiff, selectFile, toggleFilePick } from './diffView';
+import { renderCombinedDiff, selectFile, toggleFilePick, updateDiffHeaderMeta } from './diffView';
 import { renderHistoryList } from './history';
 import { renderStashList, showStashFooter, hideStashFooter, setRenderListRef } from './stash';
 import { onFileClick, onFileMouseDown, onFileContextMenu, setRenderListCallback, isDragSelecting, setDragCurrentIndex, updateDragRange } from './interactions';
@@ -70,6 +70,8 @@ function renderChangesList(query: string) {
         list.innerHTML = `<li class="empty-state-message" aria-disabled="true"><div class="file">${escapeHtml(emptyMessage)}</div></li>`;
         if (diffHeadPath) diffHeadPath.textContent = 'Select a file to view changes';
         if (diffEl) diffEl.innerHTML = '';
+        updateDiffHeaderMeta(null);
+        state.currentFileMeta = null;
         updateSelectAllState([]);
         updateCommitButton();
         return;

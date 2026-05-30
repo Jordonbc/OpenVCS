@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 // src/state/state.ts
-import type { AppPrefs, Branch, CommitItem, FileStatus, GlobalSettings, StashItem } from '../types';
+import type { AppPrefs, Branch, CommitItem, FileStatus, GlobalSettings, RepoFileMeta, StashItem } from '../types';
 
 /** Default application preferences. */
 export const defaultPrefs: AppPrefs = {
@@ -71,6 +71,7 @@ export const state = {
     currentFile: '' as string,
     currentDiff: [] as string[],
     currentDiffBinary: false as boolean,
+    currentFileMeta: null as RepoFileMeta | null,
     currentStash: '' as string,     // selector of selected stash
     selectedHunks: [] as number[],  // indices of selected hunks for current file
     selectedHunksByFile: {} as Record<string, number[]>,

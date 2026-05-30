@@ -13,33 +13,33 @@
       <div class="menu" data-menu="file">
         <button class="menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">File</button>
         <div class="menu-list" role="menu" hidden>
-          <button class="menu-item" role="menuitem" data-action="clone_repo">Clone…</button>
-          <button class="menu-item" role="menuitem" data-action="add_repo">Add Existing…</button>
-          <button class="menu-item" role="menuitem" data-action="open_repo">Switch…</button>
-          <div class="menu-sep" role="separator"></div>
-          <button class="menu-item" role="menuitem" data-action="settings">Preferences…</button>
-          <button class="menu-item" role="menuitem" data-action="exit">Exit</button>
+          <button class="menu-item" type="button" role="menuitem" data-action="clone_repo">Clone…</button>
+          <button class="menu-item" type="button" role="menuitem" data-action="add_repo">Add Existing…</button>
+          <button class="menu-item" type="button" role="menuitem" data-action="open_repo">Switch…</button>
+          <div class="menu-sep" aria-hidden="true"></div>
+          <button class="menu-item" type="button" role="menuitem" data-action="settings">Preferences…</button>
+          <button class="menu-item" type="button" role="menuitem" data-action="exit">Exit</button>
         </div>
       </div>
       <div class="menu" data-menu="repository">
         <button class="menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">Repository</button>
         <div class="menu-list" role="menu" hidden>
-          <button class="menu-item" role="menuitem" data-action="fetch">Fetch/Pull</button>
-          <button class="menu-item" role="menuitem" data-action="push">Push</button>
-          <button class="menu-item" role="menuitem" data-action="commit">Commit</button>
-          <div class="menu-sep" role="separator"></div>
-          <button class="menu-item" role="menuitem" data-action="repo-edit-gitignore">Edit .gitignore</button>
-          <button class="menu-item" role="menuitem" data-action="repo-edit-gitattributes">Edit .gitattributes</button>
-          <button class="menu-item" role="menuitem" data-action="repo-settings">Repository Settings</button>
+          <button class="menu-item" type="button" role="menuitem" data-action="fetch">Fetch/Pull</button>
+          <button class="menu-item" type="button" role="menuitem" data-action="push">Push</button>
+          <button class="menu-item" type="button" role="menuitem" data-action="commit">Commit</button>
+          <div class="menu-sep" aria-hidden="true"></div>
+          <button class="menu-item" type="button" role="menuitem" data-action="repo-edit-gitignore">Edit .gitignore</button>
+          <button class="menu-item" type="button" role="menuitem" data-action="repo-edit-gitattributes">Edit .gitattributes</button>
+          <button class="menu-item" type="button" role="menuitem" data-action="repo-settings">Repository Settings</button>
         </div>
       </div>
       <div class="menu" data-menu="help">
         <button class="menu-trigger" type="button" aria-haspopup="true" aria-expanded="false">Help</button>
         <div class="menu-list" role="menu" hidden>
-          <button class="menu-item" role="menuitem" data-action="docs">Documentation</button>
-          <button class="menu-item" role="menuitem" data-action="show-output-log">Show Output Log</button>
-          <button class="menu-item" role="menuitem" data-action="check_updates">Check for Updates…</button>
-          <button class="menu-item" role="menuitem" data-action="about">About</button>
+          <button class="menu-item" type="button" role="menuitem" data-action="docs">Documentation</button>
+          <button class="menu-item" type="button" role="menuitem" data-action="show-output-log">Show Output Log</button>
+          <button class="menu-item" type="button" role="menuitem" data-action="check_updates">Check for Updates…</button>
+          <button class="menu-item" type="button" role="menuitem" data-action="about">About</button>
         </div>
       </div>
     </nav>
@@ -54,7 +54,7 @@
         <span class="chev" aria-hidden="true">▾</span>
       </div>
 
-      <button class="branch-switch" id="branch-switch" title="Switch branch" aria-haspopup="listbox" aria-expanded="false">
+      <button class="branch-switch" id="branch-switch" type="button" title="Switch branch" aria-haspopup="listbox" aria-expanded="false">
         <span class="branch-dot" aria-hidden="true"></span>
         <span id="branch-name">No repo open</span>
         <span class="chev" aria-hidden="true">▾</span>
@@ -62,10 +62,10 @@
 
       <div class="title-actions">
         <div class="split-btn" id="fetch-split" role="group" aria-label="Fetch and pull">
-          <button class="btn" id="fetch-btn" title="Fetch (F5)">Fetch</button>
-          <button class="btn split-caret" id="fetch-caret" title="Fetch options" aria-haspopup="menu" aria-expanded="false" aria-label="Fetch options">▾</button>
+        <button class="btn" id="fetch-btn" type="button" title="Fetch (F5)">Fetch</button>
+        <button class="btn split-caret" id="fetch-caret" type="button" title="Fetch options" aria-haspopup="menu" aria-expanded="false" aria-label="Fetch options">▾</button>
         </div>
-        <button class="btn with-badge" id="push-btn" title="Push">
+          <button class="btn with-badge" id="push-btn" type="button" title="Push">
           <span class="btn-label">Push</span>
         </button>
         <div id="plugin-title-actions" class="plugin-title-actions" aria-label="Plugin actions"></div>
@@ -74,10 +74,10 @@
 
     <!-- Tabs -->
     <nav class="tabs" role="tablist" aria-label="Primary views">
-      <button class="tab active" data-tab="changes" role="tab" aria-selected="true" id="tab-changes">Changes</button>
-      <button class="tab" data-tab="history" role="tab" aria-selected="false" id="tab-history">History</button>
+          <button class="tab active" data-tab="changes" type="button" role="tab" aria-selected="true" id="tab-changes">Changes</button>
+          <button class="tab" data-tab="history" type="button" role="tab" aria-selected="false" id="tab-history">History</button>
       <span class="badge" id="ahead-behind" title="Divergence with upstream" aria-live="polite" hidden></span>
-      <button class="tab" data-tab="stash" role="tab" aria-selected="false" id="tab-stash">Stash</button>
+          <button class="tab" data-tab="stash" type="button" role="tab" aria-selected="false" id="tab-stash">Stash</button>
     </nav>
 
     <!-- Work area -->
@@ -99,7 +99,7 @@
           <ul class="list" id="file-list" role="listbox" aria-label="Items"></ul>
         </div>
         <div class="left-foot" id="left-foot">
-          <button class="btn" id="undo-left-btn" title="Undo last unpushed commit">Undo last commit</button>
+          <button class="btn" id="undo-left-btn" type="button" title="Undo last unpushed commit">Undo last commit</button>
         </div>
       </aside>
 
@@ -110,9 +110,10 @@
 	      <main class="panel right" id="right" role="main">
 	        <div class="diff-head">
 	          <div class="path" id="diff-path">Select an item</div>
-	          <div class="meta" id="diff-meta" aria-label="Diff settings">
-	            <span>LF</span><span>UTF-8</span><span>Unified</span>
-                <button class="btn icon" id="history-actions-btn" title="Commit actions" aria-label="Commit actions" hidden>⋯</button>
+	          <div class="meta" id="diff-meta" aria-label="Selected file metadata">
+	            <span id="diff-line-ending">—</span>
+	            <span id="diff-encoding">—</span>
+	            <span id="diff-bom" hidden>BOM</span>
 	          </div>
 	        </div>
 
@@ -128,7 +129,7 @@
           </div>
           <div class="actions">
             <span class="kbd">Ctrl+Enter</span>
-            <button class="btn primary" id="commit-btn" disabled>Commit</button>
+                <button class="btn primary" id="commit-btn" type="button" disabled>Commit</button>
           </div>
         </section>
       </main>

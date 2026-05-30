@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::{decode_repo_text, normalize_gitignore_entry, safe_relative_path};
+use super::{decode_repo_text, inspect_repo_file_meta, normalize_gitignore_entry, safe_relative_path};
 
 #[test]
 fn validates_repo_relative_paths() {
@@ -69,6 +69,33 @@ fn decodes_lossy_text_bytes() {
     assert!(!decoded.is_empty(), "should not panic on invalid encoding");
 }
 
+#[test]
+fn inspects_text_metadata() {
+    let meta = inspect_repo_file_meta(b"hello\r\nworld\r\n");
+    assert_eq!(meta.encoding, "ASCII");
+    assert_eq!(meta.line_ending, "CRLF");
+    assert!(!meta.binary);
+    assert!(!meta.bom);
+}
+
+#[test]
+fn inspects_utf16_metadata() {
+    let utf16le: Vec<u8> = vec![0xFF, 0xFE, b'h', 0, b'i', 0];
+    let meta = inspect_repo_file_meta(&utf16le);
+    assert_eq!(meta.encoding, "UTF-16LE");
+    assert_eq!(meta.line_ending, "None");
+    assert!(meta.bom);
+    assert!(!meta.binary);
+}
+
+#[test]
+fn inspects_binary_metadata() {
+    let meta = inspect_repo_file_meta(&[0xFF, 0xFD, 0xFC]);
+    assert_eq!(meta.encoding, "Binary");
+    assert_eq!(meta.line_ending, "Binary");
+    assert!(meta.binary);
+}
+
 // ── IPC command error path tests ──
 
 use crate::settings;
@@ -85,6 +112,7 @@ fn build_app_no_repo() -> tauri::App<tauri::test::MockRuntime> {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             super::read_repo_file_text,
+            super::read_repo_file_meta,
             super::open_repo_file,
         ])
         .build(mock_context(noop_assets()))
@@ -129,6 +157,16 @@ fn read_repo_file_text_fails_without_repo() {
 }
 
 #[test]
+fn read_repo_file_meta_fails_without_repo() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"path": "README.md"}));
+    let res = invoke_cmd(&wv, "read_repo_file_meta", body);
+    assert!(res.is_err(), "read_repo_file_meta needs a repo: {:?}", res);
+}
+
+#[test]
 fn open_repo_file_fails_without_repo() {
     let app = build_app_no_repo();
     let wv = test_webview(&app);
@@ -145,6 +183,16 @@ fn read_repo_file_text_fails_with_empty_path() {
 
     let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"path": ""}));
     let res = invoke_cmd(&wv, "read_repo_file_text", body);
+    assert!(res.is_err(), "empty path should fail: {:?}", res);
+}
+
+#[test]
+fn read_repo_file_meta_fails_with_empty_path() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"path": ""}));
+    let res = invoke_cmd(&wv, "read_repo_file_meta", body);
     assert!(res.is_err(), "empty path should fail: {:?}", res);
 }
 

@@ -9,6 +9,10 @@ export const countEl       = qs<HTMLElement>('#changes-count');
 export const leftFootEl    = qs<HTMLElement>('#left-foot');
 export const undoLeftBtn   = leftFootEl?.querySelector<HTMLButtonElement>('#undo-left-btn') ?? null;
 export const diffHeadPath  = qs<HTMLElement>('#diff-path');
+export const diffHeadMeta  = qs<HTMLElement>('#diff-meta');
+export const diffLineEndingEl = qs<HTMLElement>('#diff-line-ending');
+export const diffEncodingEl = qs<HTMLElement>('#diff-encoding');
+export const diffBomEl     = qs<HTMLElement>('#diff-bom');
 export const diffEl        = qs<HTMLElement>('#diff');
 
 export const dragState = {

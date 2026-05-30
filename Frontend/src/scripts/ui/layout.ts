@@ -93,8 +93,6 @@ export function setTab(tab: 'changes'|'history'|'stash') {
         tab === 'history' ? 'Commit details'
       : tab === 'stash'   ? 'Stash details'
                           : 'Select a file to view changes');
-    const historyActionsBtn = qs<HTMLButtonElement>('#history-actions-btn');
-    if (historyActionsBtn && tab !== 'history') historyActionsBtn.hidden = true;
     if (prevTab === 'history' && tab !== 'history') {
         state.selectedCommit = null;
     }

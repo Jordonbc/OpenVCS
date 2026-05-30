@@ -449,6 +449,7 @@ fn build_invoke_handler<R: tauri::Runtime>()
         tauri_commands::vcs_add_to_gitignore_paths,
         tauri_commands::open_repo_file,
         tauri_commands::read_repo_file_text,
+        tauri_commands::read_repo_file_meta,
         tauri_commands::list_themes,
         tauri_commands::load_theme,
         tauri_commands::list_plugins,

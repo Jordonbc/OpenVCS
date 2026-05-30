@@ -22,6 +22,11 @@ function mountDiffDom() {
     <span id="changes-count"></span>
     <div id="left-foot"></div>
     <div id="diff-path"></div>
+    <div id="diff-meta">
+      <span id="diff-line-ending"></span>
+      <span id="diff-encoding"></span>
+      <span id="diff-bom"></span>
+    </div>
     <div id="diff"></div>
     <button id="commit-btn"></button>
     <input id="commit-summary" />
@@ -35,6 +40,9 @@ function installTauriMock() {
       invoke: vi.fn(async (cmd: string) => {
         if (cmd === 'vcs_diff_file') {
           return ['diff --git a/a.txt b/a.txt', '@@ -1 +1 @@', '-old', '+new'];
+        }
+        if (cmd === 'read_repo_file_meta') {
+          return { encoding: 'UTF-8', line_ending: 'LF', bom: false, binary: false };
         }
         return [];
       }),
@@ -222,6 +230,25 @@ describe('selectFile', () => {
 
     const diffText = document.querySelector('#diff')?.textContent || '';
     expect(diffText).toContain('Diff not supported on this file type');
+  });
+
+  it('renders file metadata chips for text files', async () => {
+    (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return ['diff --git a/a.txt b/a.txt', '@@ -1 +1 @@', '-old', '+new'];
+      }
+      if (cmd === 'read_repo_file_meta') {
+        return { encoding: 'UTF-16LE', line_ending: 'CRLF', bom: true, binary: false };
+      }
+      return [];
+    });
+
+    const { selectFile } = await import('./diffView');
+    await selectFile({ path: 'a.txt', status: 'M' } as FileStatus, 0);
+
+    expect(document.getElementById('diff-line-ending')?.textContent).toBe('CRLF');
+    expect(document.getElementById('diff-encoding')?.textContent).toBe('UTF-16 LE');
+    expect(document.getElementById('diff-bom')?.hidden).toBe(false);
   });
 
   it('handles read_repo_file_text failure for untracked', async () => {

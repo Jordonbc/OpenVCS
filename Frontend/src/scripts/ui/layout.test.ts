@@ -270,7 +270,6 @@ describe('setTab', () => {
       <button class="tab" data-tab="stash">Stash</button>
       <div id="commit"></div>
       <div id="diff-path"></div>
-      <button id="history-actions-btn"></button>
     `;
   });
 
@@ -311,13 +310,6 @@ describe('setTab', () => {
 
     setTab('changes');
     expect(document.getElementById('diff-path')?.textContent).toBe('Select a file to view changes');
-  });
-
-  it('hides history actions button when not on history tab', async () => {
-    const { setTab } = await import('./layout');
-    setTab('changes');
-    const btn = document.getElementById('history-actions-btn') as HTMLButtonElement;
-    expect(btn.hidden).toBe(true);
   });
 
   it('dispatches app:tab-changed event', async () => {
@@ -631,7 +623,6 @@ describe('setTab additional', () => {
       <button class="tab" data-tab="stash">Stash</button>
       <div id="commit"></div>
       <div id="diff-path"></div>
-      <button id="history-actions-btn"></button>
     `;
   });
 
@@ -654,13 +645,6 @@ describe('setTab additional', () => {
     expect(state.diffDirty).toBe(true);
   });
 
-  it('hides history actions btn when leaving history tab', async () => {
-    const { setTab } = await import('./layout');
-    const btn = document.getElementById('history-actions-btn') as HTMLButtonElement;
-    btn.hidden = false;
-    setTab('changes');
-    expect(btn.hidden).toBe(true);
-  });
 });
 
 // ---------------------------------------------------------------------------

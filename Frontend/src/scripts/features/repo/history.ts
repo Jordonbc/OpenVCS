@@ -8,13 +8,10 @@ import { notify } from '../../lib/notify';
 import { getPluginContextMenuItems, runPluginAction } from '../../plugins';
 import { prefs, state, statusClass, statusLabel } from '../../state/state';
 import { diffEl, diffHeadPath, listEl, countEl } from './context';
-import { renderHunksReadonly, highlightRow } from './diffView';
+import { renderHunksReadonly, highlightRow, updateDiffHeaderMeta } from './diffView';
 import { hydrateStatus, hydrateCommits } from './hydrate';
 import { updateCommitButton } from './commit';
 import { openCherryPick } from '../cherryPick';
-
-/** Optional toolbar button that opens the selected commit actions menu. */
-const historyActionsBtn = document.getElementById('history-actions-btn') as HTMLButtonElement | null;
 
 /** Optional flags that customize commit actions menu contents. */
 type CommitActionsMenuOptions = {
@@ -27,14 +24,6 @@ export type CommitDiffFile = {
     status: string;
     lines: string[];
 };
-
-/** Toggles visibility of commit actions UI in history mode. */
-function updateHistoryActionsVisibility() {
-    if (!historyActionsBtn) return;
-    const on = prefs.tab === 'history' && !!(state as any)?.selectedCommit?.id;
-    historyActionsBtn.hidden = !on;
-    historyActionsBtn.disabled = !on;
-}
 
 /** Builds and shows the commit context menu at screen coordinates. */
 async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: CommitActionsMenuOptions) {
@@ -109,18 +98,6 @@ if (diffEl && !(diffEl as any).__historyCtxWired) {
     });
 }
 
-if (historyActionsBtn && !(historyActionsBtn as any).__wired) {
-    (historyActionsBtn as any).__wired = true;
-    historyActionsBtn.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        const commit = (state as any)?.selectedCommit;
-        if (!commit) return;
-        const r = historyActionsBtn.getBoundingClientRect();
-        void openCommitActionsMenu(commit, Math.round(r.right), Math.round(r.bottom + 6));
-    });
-    window.addEventListener('app:tab-changed', () => updateHistoryActionsVisibility());
-}
-
 /** Renders commit rows filtered by search text and selects the first entry. */
 export function renderHistoryList(query: string): boolean {
     const list = listEl;
@@ -138,8 +115,9 @@ export function renderHistoryList(query: string): boolean {
         list.innerHTML = '<li class="row" aria-disabled="true"><div class="file">No commits loaded.</div></li>';
         head.textContent = 'Commit details';
         diff.innerHTML = '';
+        state.currentFileMeta = null;
+        updateDiffHeaderMeta(null);
         (state as any).selectedCommit = null;
-        updateHistoryActionsVisibility();
         updateCommitButton();
         return true;
     }
@@ -199,10 +177,11 @@ export function renderHistoryList(query: string): boolean {
 export async function selectHistory(commit: any, index: number) {
     if (!diffHeadPath || !diffEl) return;
     (state as any).selectedCommit = commit || null;
-    updateHistoryActionsVisibility();
     highlightRow(index);
     const id = String(commit.id || '').trim();
     const short = id.slice(0, 7);
+    state.currentFileMeta = null;
+    updateDiffHeaderMeta(null);
     diffHeadPath.innerHTML = id
         ? `Commit <span class="commit-hash"><span class="badge hash" title="${escapeHtml(id)}">${escapeHtml(short || id)}</span><span class="commit-hash-full">${escapeHtml(id)}</span></span>`
         : 'Commit (unknown)';

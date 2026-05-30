@@ -31,7 +31,6 @@ function mountHistoryDom() {
     <div id="left-foot"></div>
     <div id="diff-path"></div>
     <div id="diff"></div>
-    <button id="history-actions-btn"></button>
     <button id="commit-btn"></button>
     <input id="commit-summary" />
     <div id="status"></div>
@@ -666,41 +665,6 @@ describe('selectHistory', () => {
     expect(diffText).toContain('+new')
   })
 })
-
-describe('updateHistoryActionsVisibility via selectHistory', () => {
-  it('hides button when not on history tab', async () => {
-    installTauriMock();
-    const { selectHistory } = await loadHistoryModule();
-    const { prefs } = await loadStateModule();
-    prefs.tab = 'changes';
-    await selectHistory({ id: 'abc123', author: 'A', msg: 'M' } as any, 0);
-    const btn = document.getElementById('history-actions-btn') as HTMLButtonElement;
-    expect(btn.hidden).toBe(true);
-    expect(btn.disabled).toBe(true);
-  });
-
-  it('hides button when commit id is empty', async () => {
-    installTauriMock();
-    const { selectHistory } = await loadHistoryModule();
-    const { prefs } = await loadStateModule();
-    prefs.tab = 'history';
-    await selectHistory({ id: '', author: 'A', msg: 'M' } as any, 0);
-    const btn = document.getElementById('history-actions-btn') as HTMLButtonElement;
-    expect(btn.hidden).toBe(true);
-    expect(btn.disabled).toBe(true);
-  });
-
-  it('shows button when on history tab with valid commit', async () => {
-    installTauriMock();
-    const { selectHistory } = await loadHistoryModule();
-    const { prefs } = await loadStateModule();
-    prefs.tab = 'history';
-    await selectHistory({ id: 'abc123', author: 'A', msg: 'M' } as any, 0);
-    const btn = document.getElementById('history-actions-btn') as HTMLButtonElement;
-    expect(btn.hidden).toBe(false);
-    expect(btn.disabled).toBe(false);
-  });
-});
 
 describe('openCommitActionsMenu - failure paths', () => {
   it('copy hash failure does not throw', async () => {

@@ -7,8 +7,9 @@ import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
 import { isConflictStatus, state, prefs } from '../../state/state';
 import type { FileStatus } from '../../types';
+import type { RepoFileMeta } from '../../types';
 import { buildPatchForSelectedHunks } from '../diff';
-import { diffEl, diffHeadPath, listEl } from './context';
+import { diffEl, diffHeadPath, diffHeadMeta, diffLineEndingEl, diffEncodingEl, diffBomEl, listEl } from './context';
 import { updateCommitButton } from './commit';
 import { hydrateStatus } from './hydrate';
 import { getVisibleFiles, updateSelectAllState } from './selectionState';
@@ -22,6 +23,43 @@ import {
 import { renderConflictView } from './diffConflicts';
 import { buildDiffFragment, allHunkIndices, renderHunksReadonly } from './diffFragment';
 import { bindHunkToggles, updateHunkCheckboxes, syncFileCheckboxWithHunks } from './diffSelection';
+
+/** Updates the diff header metadata chips for the selected file. */
+export function updateDiffHeaderMeta(meta: RepoFileMeta | null) {
+    state.currentFileMeta = meta;
+    if (diffHeadMeta) {
+        diffHeadMeta.setAttribute('aria-label', meta ? 'Selected file metadata' : 'No file metadata available');
+    }
+    if (diffLineEndingEl) {
+        diffLineEndingEl.textContent = meta ? formatLineEnding(meta.line_ending) : '—';
+    }
+    if (diffEncodingEl) {
+        diffEncodingEl.textContent = meta ? formatEncoding(meta.encoding) : '—';
+    }
+    if (diffBomEl) {
+        diffBomEl.hidden = !meta?.bom;
+    }
+}
+
+/** Formats a raw line-ending label for the header chip. */
+function formatLineEnding(lineEnding: string) {
+    const value = String(lineEnding || '').trim().toUpperCase();
+    if (!value) return '—';
+    if (value === 'MIXED') return 'LF ↔ CRLF';
+    if (value === 'NONE') return '—';
+    if (value === 'BINARY') return 'Binary';
+    return value;
+}
+
+/** Formats a raw encoding label for the header chip. */
+function formatEncoding(encoding: string) {
+    const value = String(encoding || '').trim().toUpperCase();
+    if (!value) return '—';
+    if (value === 'UTF-16LE') return 'UTF-16 LE';
+    if (value === 'UTF-16BE') return 'UTF-16 BE';
+    if (value === 'BINARY') return 'Binary';
+    return value;
+}
 
 // Re-exports for module consumers
 export { toggleFilePick, updateHunkCheckboxes, updateListCheckboxForPath } from './diffSelection';
@@ -46,16 +84,21 @@ export async function selectFile(file: FileStatus, index: number) {
     const status = String(file.status || '').toUpperCase();
     if (isConflictStatus(status)) {
         diffHeadPath.textContent = `${file.path || '(unknown file)'} (conflicted)`;
+        updateDiffHeaderMeta(null);
         await renderConflictView(file);
         state.diffDirty = false;
         return;
     }
     diffHeadPath.textContent = file.path || '(unknown file)';
+    updateDiffHeaderMeta(null);
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
     scrollDiffToTop();
 
 
     try {
+        const metaPromise = file.path
+            ? TAURI.invoke<RepoFileMeta>('read_repo_file_meta', { path: file.path }).catch(() => null)
+            : Promise.resolve(null);
         let lines: string[] = [];
         if (file.path) {
             lines = await TAURI.invoke<string[]>('vcs_diff_file', { path: file.path });
@@ -76,6 +119,8 @@ export async function selectFile(file: FileStatus, index: number) {
         }
         state.currentFile = file.path;
         state.currentDiff = lines || [];
+        state.currentFileMeta = await metaPromise;
+        updateDiffHeaderMeta(state.currentFileMeta);
         const isBinary = detectBinaryDiff(state.currentDiff);
         state.currentDiffBinary = isBinary;
         if (isBinary) {
@@ -195,6 +240,7 @@ export async function selectFile(file: FileStatus, index: number) {
         console.error(e);
         state.currentDiffMeta = null;
         state.currentDiffHunkNodes = new Map();
+        updateDiffHeaderMeta(null);
         diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load diff</div></div></div>';
         scrollDiffToTop();
     }
@@ -203,6 +249,8 @@ export async function selectFile(file: FileStatus, index: number) {
 /** Loads and renders a stash diff in read-only mode. */
 export async function selectStashDiff(selector: string) {
     if (!diffHeadPath || !diffEl) return;
+    updateDiffHeaderMeta(null);
+    state.currentFileMeta = null;
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
     scrollDiffToTop();
     try {
@@ -215,6 +263,7 @@ export async function selectStashDiff(selector: string) {
         scrollDiffToTop();
     } catch (e) {
         console.warn('vcs_stash_show failed', e);
+        updateDiffHeaderMeta(null);
         diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load stash diff</div></div></div>';
         scrollDiffToTop();
     }
@@ -224,6 +273,8 @@ export async function selectStashDiff(selector: string) {
 export async function renderCombinedDiff(paths: string[]) {
     if (!diffHeadPath || !diffEl) return;
     clearActiveRows();
+    updateDiffHeaderMeta(null);
+    state.currentFileMeta = null;
     const files = Array.from(new Set(paths)).filter(Boolean);
     diffHeadPath.textContent = `Multiple files (${files.length})`;
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';

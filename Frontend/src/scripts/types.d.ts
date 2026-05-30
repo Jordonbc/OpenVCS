@@ -35,6 +35,14 @@ export interface ConflictDetails {
     binary?: boolean;
 }
 
+/** Represents the encoding and line-ending metadata for a repository file. */
+export interface RepoFileMeta {
+    encoding: string;
+    line_ending: string;
+    bom: boolean;
+    binary: boolean;
+}
+
 /** Represents a commit list item for History. */
 export interface CommitItem {
     id: string;
