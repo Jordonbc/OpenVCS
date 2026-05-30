@@ -52,9 +52,9 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: C
 
     if (commit?.id) {
         items.push({ label: '---' });
-        items.push({ label: 'Cherry-pick to branch…', action: async () => openCherryPick(commit) });
+        items.push({ label: 'Cherry-pick to branch', action: async () => openCherryPick(commit) });
         items.push({
-            label: 'Revert (reverse) commit…', action: async () => {
+            label: 'Revert commit', action: async () => {
                 const short = String(commit.id || '').slice(0, 7);
                 const ok = await confirmBool(`Revert commit ${short}? This will create a new commit that undoes its changes.`);
                 if (!ok) return;

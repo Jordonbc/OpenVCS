@@ -402,8 +402,8 @@ describe('renderHistoryList', () => {
     const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || []
     expect(items.map((item) => item.label)).toContain('Copy hash')
     expect(items.map((item) => item.label)).toContain('Plugin inspect')
-    expect(items.map((item) => item.label)).toContain('Cherry-pick to branch…')
-    expect(items.map((item) => item.label)).toContain('Revert (reverse) commit…')
+    expect(items.map((item) => item.label)).toContain('Cherry-pick to branch')
+    expect(items.map((item) => item.label)).toContain('Revert commit')
     expect(items.map((item) => item.label)).toContain('Undo to this commit')
 
     await items.find((item) => item.label === 'Copy hash')?.action?.()
@@ -415,10 +415,10 @@ describe('renderHistoryList', () => {
       commit: state.commits[0],
     })
 
-    await items.find((item) => item.label === 'Cherry-pick to branch…')?.action?.()
+    await items.find((item) => item.label === 'Cherry-pick to branch')?.action?.()
     expect(openCherryPick).toHaveBeenCalledWith(state.commits[0])
 
-    await items.find((item) => item.label === 'Revert (reverse) commit…')?.action?.()
+    await items.find((item) => item.label === 'Revert commit')?.action?.()
     expect((window as any).__TAURI__.core.invoke).toHaveBeenCalledWith('vcs_revert_commit', {
       id: 'abcdef123456',
     })
@@ -705,7 +705,7 @@ describe('openCommitActionsMenu - failure paths', () => {
     const row = document.querySelector('#file-list li.row.commit') as HTMLElement;
     row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 }));
     const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
-    await items.find((i: any) => i.label === 'Revert (reverse) commit…')?.action?.();
+    await items.find((i: any) => i.label === 'Revert commit')?.action?.();
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('Revert failed'));
   });
 });
