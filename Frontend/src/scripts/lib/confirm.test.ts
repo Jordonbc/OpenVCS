@@ -40,7 +40,7 @@ describe('confirmBool', () => {
     expect(mockConfirmWithModal).toHaveBeenCalledWith({
       title: 'Confirm action',
       message: 'Discard changes?',
-      hint: 'This cannot be undone.',
+      hint: 'Review carefully before confirming.',
       confirmLabel: 'Confirm',
       cancelLabel: 'Cancel',
       danger: true,

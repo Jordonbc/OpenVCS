@@ -51,7 +51,7 @@ export function wireConfirmModal() {
 
   (modal as HTMLElement & { setContent?: (opts: ConfirmModalOptions) => void }).setContent = (opts) => {
     const title = String(opts.title || 'Confirm action').trim() || 'Confirm action';
-    const hint = String(opts.hint || 'This cannot be undone.').trim() || 'This cannot be undone.';
+    const hint = String(opts.hint || 'Review carefully before confirming.').trim() || 'Review carefully before confirming.';
     const confirmLabel = String(opts.confirmLabel || 'Confirm').trim() || 'Confirm';
     const cancelLabel = String(opts.cancelLabel || 'Cancel').trim() || 'Cancel';
     const isDanger = !!opts.danger;

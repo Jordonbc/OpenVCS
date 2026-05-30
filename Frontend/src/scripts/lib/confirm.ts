@@ -45,7 +45,7 @@ export async function confirmBool(message: string): Promise<boolean> {
       return await confirmWithModal({
         title: 'Confirm action',
         message,
-        hint: 'This cannot be undone.',
+        hint: 'Review carefully before confirming.',
         confirmLabel: 'Confirm',
         cancelLabel: 'Cancel',
         danger: true,
