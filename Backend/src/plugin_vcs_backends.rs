@@ -111,16 +111,16 @@ pub struct PluginBackendDescriptor {
 /// - `Err(String)` if installed plugin components cannot be loaded.
 pub fn list_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String> {
     let _timer = LogTimer::new(MODULE, "list_plugin_vcs_backends");
-    info!("list_plugin_vcs_backends: discovering VCS backends",);
 
     if let Some(cached) = cached_backends() {
-        trace!(
-            "list_plugin_vcs_backends: returning {} cached backend(s)",
+        debug!(
+            "list_plugin_vcs_backends: cache hit with {} cached backend(s)",
             cached.len()
         );
         return Ok(cached);
     }
 
+    info!("list_plugin_vcs_backends: discovering VCS backends");
     let discovered = discover_plugin_vcs_backends()?;
     store_backends(discovered.clone());
     Ok(discovered)

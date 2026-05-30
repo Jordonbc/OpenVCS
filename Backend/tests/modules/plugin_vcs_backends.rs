@@ -40,6 +40,28 @@ fn returns_cached_backend_descriptors() {
 }
 
 #[test]
+fn list_uses_cached_backend_snapshot() {
+    invalidate_plugin_vcs_backend_cache();
+
+    let first = backend_descriptor("git", "openvcs.git");
+    store_backends(vec![first.clone()]);
+
+    let listed = list_plugin_vcs_backends().expect("first cache result");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].plugin_id, first.plugin_id);
+
+    let replacement = backend_descriptor("hg", "openvcs.hg");
+    store_backends(vec![replacement.clone()]);
+
+    let relisted = list_plugin_vcs_backends().expect("replacement cache result");
+    assert_eq!(relisted.len(), 1);
+    assert_eq!(relisted[0].backend_id.as_ref(), replacement.backend_id.as_ref());
+    assert_eq!(relisted[0].plugin_id, replacement.plugin_id);
+
+    invalidate_plugin_vcs_backend_cache();
+}
+
+#[test]
 fn honors_disabled_overrides_when_resolving_enablement() {
     let mut cfg = AppConfig::default();
     cfg.plugins.disabled = vec!["OPENVCS.GIT".into()];
