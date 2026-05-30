@@ -26,7 +26,10 @@ function resolveNpmCli() {
 
 function runCommand(command, args, cwd, label) {
   const spawnOpts = { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true };
-  const result = spawnSync(command, [...npmArgsPrefix, ...args], spawnOpts);
+  const commandArgs = command === npmExecutable
+    ? [...npmArgsPrefix, ...args]
+    : args;
+  const result = spawnSync(command, commandArgs, spawnOpts);
   if (result.error) {
     throw new Error(`Failed to ${label}: ${result.error.message}`);
   }
