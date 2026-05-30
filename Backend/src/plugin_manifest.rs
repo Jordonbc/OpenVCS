@@ -54,8 +54,7 @@ pub fn read_package_json_top(plugin_dir: &Path) -> Result<PackageJsonTop, String
     let manifest_path = package_manifest_path(plugin_dir);
     let text = fs::read_to_string(&manifest_path)
         .map_err(|e| format!("read {}: {e}", manifest_path.display()))?;
-    serde_json::from_str(&text)
-        .map_err(|e| format!("parse {}: {e}", manifest_path.display()))
+    serde_json::from_str(&text).map_err(|e| format!("parse {}: {e}", manifest_path.display()))
 }
 
 /// Returns whether a plugin directory contains a package manifest.

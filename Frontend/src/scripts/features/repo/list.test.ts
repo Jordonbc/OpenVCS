@@ -22,6 +22,7 @@ vi.mock('./diffView', () => ({
   renderCombinedDiff: vi.fn(),
   selectFile: vi.fn(),
   toggleFilePick: vi.fn(),
+  updateDiffHeaderMeta: vi.fn(),
 }));
 
 vi.mock('./interactions', () => ({

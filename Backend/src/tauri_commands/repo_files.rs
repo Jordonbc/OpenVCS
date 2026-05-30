@@ -379,7 +379,10 @@ pub fn read_repo_file_text(state: State<'_, AppState>, path: String) -> Result<S
 /// # Returns
 /// - `Ok(RepoFileMeta)` when the file can be read.
 /// - `Err(String)` when no repo is selected, path is invalid, or read fails.
-pub fn read_repo_file_meta(state: State<'_, AppState>, path: String) -> Result<RepoFileMeta, String> {
+pub fn read_repo_file_meta(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<RepoFileMeta, String> {
     let repo = state
         .current_repo()
         .ok_or_else(|| "No repository selected".to_string())?;
