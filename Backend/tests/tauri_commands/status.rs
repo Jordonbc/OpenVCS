@@ -123,6 +123,7 @@ fn register_test_backend(backend_id: &str) {
 }
 
 fn build_vcs_status_app() -> (tauri::App<tauri::test::MockRuntime>, Arc<TestVcs>) {
+    crate::app_identity::setup_test_isolation();
     let vcs = Arc::new(TestVcs::new("test-vcs", tempfile::tempdir().unwrap().keep()));
     let repo = Arc::new(Repo::new(vcs.clone() as Arc<dyn Vcs>));
     let cfg = settings::AppConfig::default();

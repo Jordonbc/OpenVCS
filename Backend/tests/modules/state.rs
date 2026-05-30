@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::app_identity::{AppDirs, clear_test_app_dirs, set_test_app_dirs};
 use crate::core::{BackendId, Result as VcsResult, Vcs};
 use crate::core::models::{BranchItem, CommitItem, LogQuery, OnEvent, StatusPayload};
 use crate::output_log::{OutputLevel, OutputLogEntry};
@@ -11,6 +12,35 @@ use crate::repo::Repo;
 use crate::repo_settings::RepoConfig;
 use crate::settings::AppConfig;
 use crate::state::AppState;
+
+// ── Test isolation guard ───────────────────────────────────────────────────
+
+/// RAII guard that redirects config/data/cache dirs to a temporary
+/// directory for the duration of a test, then restores real paths on drop.
+///
+/// This prevents tests from writing to or reading from the user's real
+/// OpenVCS config, recents, and plugin directories.
+struct AppDirsGuard {
+    _dir: tempfile::TempDir,
+}
+
+impl AppDirsGuard {
+    fn new() -> Self {
+        let dir = tempfile::tempdir().expect("temp dir for test isolation");
+        let cfg_dir = dir.path().join("config");
+        let data_dir = dir.path().join("data");
+        std::fs::create_dir_all(&cfg_dir).expect("create cfg dir");
+        std::fs::create_dir_all(&data_dir).expect("create data dir");
+        set_test_app_dirs(AppDirs::new(cfg_dir, data_dir));
+        Self { _dir: dir }
+    }
+}
+
+impl Drop for AppDirsGuard {
+    fn drop(&mut self) {
+        clear_test_app_dirs();
+    }
+}
 
 // ── Dummy Vcs impl for testing ─────────────────────────────────────────────
 
@@ -63,6 +93,7 @@ fn constructs_state_from_config() {
 
 #[test]
 fn set_config_updates_snapshot() {
+    let _guard = AppDirsGuard::new();
     let state = AppState::new_with_config(AppConfig::default());
     let mut cfg = AppConfig::default();
     cfg.general.default_backend = "hg".into();
@@ -120,6 +151,7 @@ fn current_repo_starts_empty() {
 
 #[test]
 fn set_current_repo_stores_and_retrieves_repo() {
+    let _guard = AppDirsGuard::new();
     let state = AppState::new_with_config(AppConfig::default());
     let repo = dummy_repo(Path::new("/tmp/test-repo"));
     state.set_current_repo(repo.clone());
@@ -129,6 +161,7 @@ fn set_current_repo_stores_and_retrieves_repo() {
 
 #[test]
 fn clear_current_repo_removes_active_repo() {
+    let _guard = AppDirsGuard::new();
     let state = AppState::new_with_config(AppConfig::default());
     let repo = dummy_repo(Path::new("/tmp/test-repo"));
     state.set_current_repo(repo);
@@ -140,6 +173,7 @@ fn clear_current_repo_removes_active_repo() {
 
 #[test]
 fn set_current_repo_affects_recents() {
+    let _guard = AppDirsGuard::new();
     let state = AppState::new_with_config(AppConfig::default());
     let dir = tempfile::tempdir().expect("temp dir");
     let repo_path = dir.path().join("my-repo");
@@ -155,6 +189,7 @@ fn set_current_repo_affects_recents() {
 
 #[test]
 fn set_current_repo_places_new_path_at_front() {
+    let _guard = AppDirsGuard::new();
     let state = AppState::new_with_config(AppConfig::default());
     let dir = tempfile::tempdir().expect("temp dir");
     let repo_path = dir.path().join("front-repo");
@@ -169,6 +204,7 @@ fn set_current_repo_places_new_path_at_front() {
 
 #[test]
 fn recents_contains_paths_after_setting_current_repo() {
+    let _guard = AppDirsGuard::new();
     let state = AppState::new_with_config(AppConfig::default());
     let dir = tempfile::tempdir().expect("temp dir");
     let repo_path = dir.path().join("test-repo");

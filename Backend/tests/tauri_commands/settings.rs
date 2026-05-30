@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::diff_configs;
+use crate::app_identity::{AppDirs, clear_test_app_dirs, set_test_app_dirs};
 use crate::settings;
 use crate::settings::AppConfig;
 use crate::state::AppState;
@@ -9,6 +10,30 @@ use tauri::ipc::InvokeResponseBody;
 use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
 use tauri::WebviewWindowBuilder;
+
+// ── Test isolation guard ───────────────────────────────────────────────────
+
+struct AppDirsGuard {
+    _dir: tempfile::TempDir,
+}
+
+impl AppDirsGuard {
+    fn new() -> Self {
+        let dir = tempfile::tempdir().expect("temp dir for test isolation");
+        let cfg_dir = dir.path().join("config");
+        let data_dir = dir.path().join("data");
+        std::fs::create_dir_all(&cfg_dir).expect("create cfg dir");
+        std::fs::create_dir_all(&data_dir).expect("create data dir");
+        set_test_app_dirs(AppDirs::new(cfg_dir, data_dir));
+        Self { _dir: dir }
+    }
+}
+
+impl Drop for AppDirsGuard {
+    fn drop(&mut self) {
+        clear_test_app_dirs();
+    }
+}
 
 // ── Pure function tests ──
 
@@ -137,6 +162,7 @@ fn invoke_cmd(
 
 #[test]
 fn get_global_settings_returns_default_config() {
+    let _guard = AppDirsGuard::new();
     let app = build_app_no_repo();
     let wv = test_webview(&app);
 
@@ -146,6 +172,7 @@ fn get_global_settings_returns_default_config() {
 
 #[test]
 fn set_global_settings_accepts_valid_config_struct() {
+    let _guard = AppDirsGuard::new();
     let app = build_app_no_repo();
     let wv = test_webview(&app);
 
@@ -160,6 +187,7 @@ fn set_global_settings_accepts_valid_config_struct() {
 
 #[test]
 fn get_repo_settings_returns_defaults_without_repo() {
+    let _guard = AppDirsGuard::new();
     let app = build_app_no_repo();
     let wv = test_webview(&app);
 
@@ -169,6 +197,7 @@ fn get_repo_settings_returns_defaults_without_repo() {
 
 #[test]
 fn get_repo_settings_returns_defaults_with_repo() {
+    let _guard = AppDirsGuard::new();
     let app = build_app_with_repo();
     let wv = test_webview(&app);
 
@@ -178,6 +207,7 @@ fn get_repo_settings_returns_defaults_with_repo() {
 
 #[test]
 fn set_repo_settings_accepts_valid_config() {
+    let _guard = AppDirsGuard::new();
     let app = build_app_no_repo();
     let wv = test_webview(&app);
 

@@ -52,6 +52,7 @@ fn skips_auto_selection_when_backend_is_already_default_or_not_unique() {
 // ── Tauri IPC integration tests ──
 
 fn build_app() -> tauri::App<tauri::test::MockRuntime> {
+    crate::app_identity::setup_test_isolation();
     let cfg = settings::AppConfig::default();
     let app_state = AppState::new_with_config(cfg);
     mock_builder()

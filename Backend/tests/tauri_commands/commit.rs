@@ -140,6 +140,7 @@ fn register_test_backend(backend_id: &str) {
 }
 
 fn build_app_with_repo() -> (tauri::App<tauri::test::MockRuntime>, Arc<TestVcs>) {
+    crate::app_identity::setup_test_isolation();
     let vcs = Arc::new(TestVcs::new("test-vcs", tempfile::tempdir().unwrap().keep()));
     let repo = Arc::new(Repo::new(vcs.clone() as Arc<dyn Vcs>));
     let cfg = settings::AppConfig::default();
@@ -163,6 +164,7 @@ fn build_app_with_repo() -> (tauri::App<tauri::test::MockRuntime>, Arc<TestVcs>)
 }
 
 fn build_app_no_repo() -> tauri::App<tauri::test::MockRuntime> {
+    crate::app_identity::setup_test_isolation();
     let cfg = settings::AppConfig::default();
     let app_state = AppState::new_with_config(cfg);
     mock_builder()
