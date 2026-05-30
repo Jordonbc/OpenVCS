@@ -344,8 +344,15 @@ export function bindBranchUI() {
         }
     });
 
-    // React when a repo is selected somewhere else (add/clone/open)
-    window.addEventListener('app:repo-selected', () => void loadBranches());
+    window.addEventListener('app:repo-selected', (event) => {
+        const detail = (event as CustomEvent<{ path?: string }>).detail;
+        if (detail?.path) {
+            syncBranchLabelsFromState();
+            return;
+        }
+
+        void loadBranches();
+    });
     window.addEventListener('app:branches-updated', syncBranchLabelsFromState);
 
     // Initial state

@@ -4,7 +4,6 @@
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { hydrate, openModal, closeModal } from '../ui/modals';
-import { refreshRepoSummary } from './repoSelection';
 
 type Recent = { path: string; name?: string };
 
@@ -109,8 +108,6 @@ function renderRecents() {
 async function openRecent(path: string) {
     try {
         await TAURI.invoke('open_repo', { path });
-        await refreshRepoSummary();
-        notify(`Opened ${path}`);
         closeSwitchDrawer();
     } catch {
         notify('Open failed');

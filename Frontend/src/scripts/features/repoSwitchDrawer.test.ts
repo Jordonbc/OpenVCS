@@ -8,7 +8,6 @@ const mockNotify = vi.fn();
 const mockOpenModal = vi.fn();
 const mockCloseModal = vi.fn();
 const mockHydrate = vi.fn();
-const mockRefreshRepoSummary = vi.fn();
 
 vi.mock('../lib/tauri', () => ({
   TAURI: { invoke: mockInvoke },
@@ -24,10 +23,6 @@ vi.mock('../ui/modals', () => ({
   hydrate: mockHydrate,
 }));
 
-vi.mock('./repoSelection', () => ({
-  refreshRepoSummary: mockRefreshRepoSummary,
-}));
-
 beforeEach(() => {
   vi.resetModules();
   vi.useFakeTimers();
@@ -36,7 +31,6 @@ beforeEach(() => {
   mockOpenModal.mockReset();
   mockCloseModal.mockReset();
   mockHydrate.mockReset();
-  mockRefreshRepoSummary.mockReset();
   document.body.innerHTML = `
     <div id="app">
       <button id="repo-switch">Switch</button>
@@ -187,7 +181,6 @@ describe('openSwitchDrawer', () => {
 
     await vi.waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('open_repo', { path: '/repo/one' });
-      expect(mockRefreshRepoSummary).toHaveBeenCalled();
       expect(mockCloseModal).toHaveBeenCalled();
     });
   });

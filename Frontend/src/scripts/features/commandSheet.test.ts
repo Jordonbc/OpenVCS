@@ -190,11 +190,10 @@ describe('bindCommandSheet', () => {
     expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
   });
 
-  it('runs clone flow, refreshes summary, and closes the modal', async () => {
+  it('runs clone flow and closes the modal', async () => {
     const { TAURI } = await import('../lib/tauri');
     const { notify } = await import('../lib/notify');
     const { closeModal } = await import('../ui/modals');
-    const { refreshRepoSummary } = await import('./repoSelection');
     vi.mocked(TAURI.invoke)
       .mockResolvedValueOnce({ ok: true })
       .mockResolvedValueOnce({ ok: true })
@@ -214,7 +213,6 @@ describe('bindCommandSheet', () => {
       url: 'https://example.com/repo.git',
       dest: '/tmp/repo',
     });
-    expect(refreshRepoSummary).toHaveBeenCalled();
     expect(notify).toHaveBeenCalledWith('Cloned https://example.com/repo.git → /tmp/repo');
     expect(closeModal).toHaveBeenCalledWith('command-modal');
   });
@@ -240,7 +238,6 @@ describe('bindCommandSheet', () => {
     const { TAURI } = await import('../lib/tauri');
     const { notify } = await import('../lib/notify');
     const { closeModal } = await import('../ui/modals');
-    const { refreshRepoSummary } = await import('./repoSelection');
     vi.mocked(TAURI.invoke).mockResolvedValueOnce(undefined);
 
     const { bindCommandSheet } = await import('./commandSheet');
@@ -252,7 +249,6 @@ describe('bindCommandSheet', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(refreshRepoSummary).toHaveBeenCalled();
     expect(notify).toHaveBeenCalledWith('Added /tmp/repo');
     expect(closeModal).toHaveBeenCalledWith('command-modal');
   });

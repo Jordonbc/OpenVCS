@@ -682,4 +682,14 @@ describe('bindBranchUI', () => {
       });
     });
   });
+
+  it('does not refetch branches for repo-open events with a path detail', async () => {
+    const { bindBranchUI } = await import('./branches');
+    bindBranchUI();
+
+    window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path: '/repo' } }));
+
+    expect(mockInvoke).not.toHaveBeenCalledWith('vcs_list_branches');
+    expect(mockInvoke).not.toHaveBeenCalledWith('vcs_head_status');
+  });
 });

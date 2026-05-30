@@ -537,7 +537,6 @@ async function boot() {
         window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
         refreshRepoActions();
         await refreshPluginMenubarMenus().catch((err) => console.warn('Plugin menu refresh failed:', err));
-        schedulePluginMenuRefresh();
     });
 
   // If backend reopened a repo before the webview was ready, sync initial state.
@@ -554,7 +553,6 @@ async function boot() {
         refreshRepoActions();
         updateFetchUI();
         await refreshPluginMenubarMenus().catch((err) => console.warn('Plugin menu refresh failed:', err));
-        schedulePluginMenuRefresh();
       })
       .catch((err) => console.warn('Failed to restore initial repository state:', err));
 

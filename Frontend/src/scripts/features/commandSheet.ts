@@ -4,7 +4,6 @@
 import { TAURI } from "../lib/tauri";
 import { notify } from "../lib/notify";
 import { openModal, closeModal, hydrate } from "../ui/modals";
-import { refreshRepoSummary } from "./repoSelection";
 
 /** Available command-sheet tabs. */
 type Which = "clone" | "add";
@@ -152,9 +151,9 @@ export function bindCommandSheet() {
     doAddBtn = el<HTMLButtonElement>("#do-add", root);
 
     // Tab switching (click)
-    tabs.forEach((btn) =>
-        btn.addEventListener("click", () => setSheet((btn.dataset.sheet as Which) || "clone"))
-    );
+    tabs.forEach((btn) => {
+        btn.addEventListener("click", () => setSheet((btn.dataset.sheet as Which) || "clone"));
+    });
 
     // Keyboard navigation on the tablist
     seg?.addEventListener("keydown", (e: KeyboardEvent) => {
@@ -210,7 +209,6 @@ export function bindCommandSheet() {
         if (!url || !dest) return;
         try {
             await TAURI.invoke("clone_repo", { url, dest });
-            await refreshRepoSummary();               // ensure state + event
             notify(`Cloned ${url} → ${dest}`);
             closeSheet();
         } catch {
@@ -223,7 +221,6 @@ export function bindCommandSheet() {
         if (!path) return;
         try {
             await TAURI.invoke("add_repo", { path });
-            await refreshRepoSummary();               // ensure state + event
             notify(`Added ${path}`);
             closeSheet();
         } catch {
