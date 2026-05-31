@@ -1396,7 +1396,7 @@ describe('collectSettingsFromForm - edge cases', () => {
     });
   });
 
-  it('skips LFS and plugins sections when elements absent', async () => {
+  it('skips plugins sections when elements absent', async () => {
     document.body.innerHTML = [
       '<div id="settings-modal">',
       '  <div class="backdrop"></div>',
