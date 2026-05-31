@@ -124,9 +124,6 @@ impl AppConfig {
         self.diff.tab_width = self.diff.tab_width.clamp(1, 16);
         self.diff.max_file_size_mb = self.diff.max_file_size_mb.clamp(1, 1024);
 
-        // LFS
-        self.lfs.concurrency = self.lfs.concurrency.clamp(1, 16);
-
         // Performance
 
         // Plugin source list

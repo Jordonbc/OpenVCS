@@ -94,7 +94,7 @@ function forceCloseTransientUi() {
     const branchBtn = document.getElementById('branch-switch') as HTMLButtonElement | null;
     branchBtn?.setAttribute('aria-expanded', 'false');
 
-    // Plugin-contributed modal UIs (e.g. LFS Locks, Submodules) can close themselves.
+    // Plugin-contributed modal UIs can close themselves.
     window.dispatchEvent(new CustomEvent('app:repo-will-switch'));
 }
 
@@ -391,7 +391,6 @@ async function boot() {
                 catch (e) { console.error(`Could not open ${name}:`, e); notify(`Could not open ${name}`); }
                 break;
             }
-            case 'lfs-settings': openSettings('lfs'); break;
             case 'check_updates':
                 try {
                     const hasUpdate = await TAURI.invoke<boolean>('check_for_updates', {});

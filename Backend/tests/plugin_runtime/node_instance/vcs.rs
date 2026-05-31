@@ -368,7 +368,6 @@ fn vcs_get_conflict_details_returns_details() {
         "theirs": "their content",
         "base": "base content",
         "binary": false,
-        "lfs_pointer": false
     }));
     let details = rt.vcs_get_conflict_details("file.txt").unwrap();
     assert_eq!(details.path, "file.txt");

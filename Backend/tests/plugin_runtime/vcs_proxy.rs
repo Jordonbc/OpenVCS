@@ -404,7 +404,7 @@ fn proxy_conflict_details_returns_details() {
     rt.set_session_id(Some("s".into()));
     set_response(&rt, json!({
         "path": "file.txt", "ours": "our", "theirs": "their",
-        "base": "base", "binary": false, "lfs_pointer": false
+        "base": "base", "binary": false
     }));
     let details = proxy.conflict_details(PathBuf::from("file.txt").as_path()).unwrap();
     assert_eq!(details.path, "file.txt");

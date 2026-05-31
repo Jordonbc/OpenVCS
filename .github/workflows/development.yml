@@ -11,6 +11,8 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/development.yml'
+      - '!docs/**'
+      - '!**/*.md'
   pull_request:
     branches: [ Dev ]
     paths:
@@ -21,6 +23,8 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/development.yml'
+      - '!docs/**'
+      - '!**/*.md'
 
 concurrency:
   group: dev-${{ github.ref }}
