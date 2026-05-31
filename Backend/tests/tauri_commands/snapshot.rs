@@ -3,26 +3,26 @@
 
 #[test]
 fn revision_bumps_when_stash_count_changes() {
-    let base = super::build_repo_snapshot_revision(
-        "/repo",
-        "main",
-        Some("abc123"),
-        3,
-        10,
-        1,
-        2,
-        0,
-    );
-    let with_stash = super::build_repo_snapshot_revision(
-        "/repo",
-        "main",
-        Some("abc123"),
-        3,
-        10,
-        1,
-        2,
-        2,
-    );
+    let base = super::build_repo_snapshot_revision(&super::SnapshotRevisionParts {
+        repo_path: "/repo",
+        branch_label: "main",
+        head_commit: Some("abc123"),
+        file_count: 3,
+        commit_count: 10,
+        ahead: 1,
+        behind: 2,
+        stash_count: 0,
+    });
+    let with_stash = super::build_repo_snapshot_revision(&super::SnapshotRevisionParts {
+        repo_path: "/repo",
+        branch_label: "main",
+        head_commit: Some("abc123"),
+        file_count: 3,
+        commit_count: 10,
+        ahead: 1,
+        behind: 2,
+        stash_count: 2,
+    });
 
     assert_ne!(base, with_stash);
 }

@@ -68,40 +68,32 @@ pub struct SnapshotCommitItem {
     pub remote_ref: Option<String>,
 }
 
-/// Builds the snapshot revision token used by the frontend cache gate.
-///
-/// # Parameters
-/// - `repo_path`: Absolute repository path.
-/// - `branch_label`: Current branch label.
-/// - `head_commit`: Current HEAD commit id, if any.
-/// - `file_count`: Number of working tree entries.
-/// - `commit_count`: Number of visible commits.
-/// - `ahead`: Commits ahead of upstream.
-/// - `behind`: Commits behind upstream.
-/// - `stash_count`: Number of stash entries.
-///
-/// # Returns
-/// - Stable revision token for cache invalidation.
-fn build_repo_snapshot_revision(
-    repo_path: &str,
-    branch_label: &str,
-    head_commit: Option<&str>,
+struct SnapshotRevisionParts<'a> {
+    repo_path: &'a str,
+    branch_label: &'a str,
+    head_commit: Option<&'a str>,
     file_count: usize,
     commit_count: usize,
     ahead: u32,
     behind: u32,
     stash_count: usize,
-) -> String {
+}
+
+/// Builds the snapshot revision token used by the frontend cache gate.
+///
+/// # Returns
+/// - Stable revision token for cache invalidation.
+fn build_repo_snapshot_revision(parts: &SnapshotRevisionParts<'_>) -> String {
     format!(
         "{}:{}:{}:{}:{}:{}:{}:{}",
-        repo_path,
-        branch_label,
-        head_commit.unwrap_or_default(),
-        file_count,
-        commit_count,
-        ahead,
-        behind,
-        stash_count,
+        parts.repo_path,
+        parts.branch_label,
+        parts.head_commit.unwrap_or_default(),
+        parts.file_count,
+        parts.commit_count,
+        parts.ahead,
+        parts.behind,
+        parts.stash_count,
     )
 }
 
@@ -363,16 +355,16 @@ pub async fn get_repo_snapshot(state: State<'_, AppState>) -> Result<RepoSnapsho
                 });
 
         let stash = vcs.stash_list().map_err(|e| e.to_string())?;
-        let revision = build_repo_snapshot_revision(
-            &repo_path,
-            &branch_label,
-            head_commit.as_deref(),
-            status.files.len(),
-            commits.len(),
-            status.ahead,
-            status.behind,
-            stash.len(),
-        );
+        let revision = build_repo_snapshot_revision(&SnapshotRevisionParts {
+            repo_path: &repo_path,
+            branch_label: &branch_label,
+            head_commit: head_commit.as_deref(),
+            file_count: status.files.len(),
+            commit_count: commits.len(),
+            ahead: status.ahead,
+            behind: status.behind,
+            stash_count: stash.len(),
+        });
 
         Ok(RepoSnapshot {
             has_repo: true,
