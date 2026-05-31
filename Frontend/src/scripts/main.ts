@@ -16,7 +16,7 @@ import {
 import { clearPluginMenubarMenus, initMenubar, refreshPluginMenubarMenus } from './ui/menubar';
 import { closeAllModals } from './ui/modals';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
-import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash, hydrateVcsActionLabels, yieldToPaint } from './features/repo';
+import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, yieldToPaint } from './features/repo';
 import { bindBranchUI } from './features/branches';
 import { bindCommit } from './features/diff';
 import { openAbout } from './features/about';
@@ -29,6 +29,7 @@ import { initOutputLogViewIfRequested } from './features/outputLog';
 import { DEFAULT_LIGHT_THEME_ID, refreshAvailableThemes, selectThemePack } from './themes';
 import { initPlugins, invokePluginAction, runHook, runPluginAction } from './plugins';
 import { openSwitchDrawer, closeSwitchDrawer, registerDrawerActions } from './features/repoSwitchDrawer';
+import { hydrateSnapshot } from './features/repo/hydrate';
 
 const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
 
@@ -200,7 +201,7 @@ async function boot() {
                 notify('Fetched');
                 if (hydrate) {
                     await yieldToPaint();
-                    void Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                    void hydrateSnapshot();
                 }
                 success = true;
             } catch (error) {
@@ -225,7 +226,7 @@ async function boot() {
                 notify('Fetched all remotes');
                 if (hydrate) {
                     await yieldToPaint();
-                    void Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                    void hydrateSnapshot();
                 }
                 success = true;
             } catch (error) {
@@ -308,7 +309,7 @@ async function boot() {
             ctl.clearBusy();
         }
 
-        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash(), hydrateVcsActionLabels()]);
+            await hydrateSnapshot();
     }
 
     async function defaultFetchAction() {
@@ -355,7 +356,7 @@ async function boot() {
             await TAURI.invoke('vcs_push', {});
             await runHook('onPush', hookData);
             notify('Pushed');
-            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+            await hydrateSnapshot();
             await runHook('postPush', hookData);
         } catch (e) { console.error('Push failed:', e); notify('Push failed'); } finally { clearBusy(); }
     }
@@ -455,7 +456,7 @@ async function boot() {
             setBusy('Undoing…');
             await TAURI.invoke('vcs_undo_since_push', {});
             notify('Undid unpushed commits');
-            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+            await hydrateSnapshot();
         } catch (e) { console.error('Undo failed:', e); notify('Undo failed'); } finally { clearBusy(); }
     });
 
@@ -467,10 +468,7 @@ async function boot() {
     updateFetchUI();
 
     // initial data
-    hydrateBranches().then(() => setRepoHeader()).catch((err) => console.warn('Failed to hydrate branches on startup:', err));
-    hydrateStatus();
-    hydrateCommits();
-    hydrateStash();
+     hydrateSnapshot().then(() => setRepoHeader()).catch((err) => console.warn('Failed to hydrate repo snapshot on startup:', err));
 
     initMenubar(runMenuAction);
     refreshPluginMenubarMenus().catch((err) => console.warn('Plugin menu refresh failed:', err));
@@ -528,9 +526,9 @@ async function boot() {
         setRepoHeader(path);
         forceCloseTransientUi();
 
-        await hydrateBranches();
+        await hydrateSnapshot();
         setRepoHeader(path);
-        await Promise.allSettled([hydrateStatus(), hydrateCommits(), hydrateVcsActionLabels()]);
+        await hydrateSnapshot();
         updateFetchUI();
 
         // Broadcast app-level event so branch UI and actions can sync
@@ -546,9 +544,9 @@ async function boot() {
         if (!path) return;
         setRepoHeader(path);
         forceCloseTransientUi();
-        await hydrateBranches();
+        await hydrateSnapshot();
         setRepoHeader(path);
-        await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+        await hydrateSnapshot();
         window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
         refreshRepoActions();
         updateFetchUI();
@@ -586,7 +584,7 @@ async function boot() {
         if (doFetch) {
             await fetchCurrentRemoteOnly({ hydrate: false });
         }
-        await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits(), hydrateStash(), hydrateVcsActionLabels()]);
+        await hydrateSnapshot();
         updateFetchUI();
         })();
         try {
@@ -620,10 +618,10 @@ async function boot() {
                     const key = `${head?.detached ? 1 : 0}:${String(head?.branch || '')}:${String(head?.commit || '')}`;
                     if (key === lastHeadKey) return;
 
-                    const ok = await hydrateBranches();
+                    const ok = await hydrateSnapshot();
                     if (!ok) return;
                     setRepoHeader();
-                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                    await hydrateSnapshot();
                     updateFetchUI();
                     lastHeadKey = key;
                 } catch {

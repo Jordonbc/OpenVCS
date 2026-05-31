@@ -48,6 +48,51 @@ afterEach(() => {
 });
 
 describe('hydrateStatus selection reconciliation', () => {
+  it('uses one backend snapshot for all repo hydration calls', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'get_repo_snapshot') {
+        return {
+          has_repo: true,
+          revision: 'rev-1',
+          repo_path: '/repo',
+          branch: 'main',
+          branch_label: 'main',
+          branches: [{ name: 'main', full_ref: 'refs/heads/main', current: true, kind: { type: 'Local' } }],
+          files: [{ path: 'keep.txt', status: 'M', staged: false, resolved_conflict: false, hunks: [] }],
+          commits: [{ id: 'c1', msg: 'local', meta: '', author: 'A' }],
+          stash: [{ selector: 'stash@{0}', msg: 'WIP', meta: '' }],
+          ahead: 1,
+          behind: 0,
+          branch_on_remote: true,
+          merge_in_progress: false,
+          seen_conflicts: [],
+          vcs_action_labels: { 'VCS.Push': 'Ship' },
+          ahead_ids: ['c1'],
+        };
+      }
+      throw new Error(`unexpected command: ${cmd}`);
+    });
+    installTauriMock(invoke);
+
+    const { hydrateBranches, hydrateStatus, hydrateCommits, hydrateStash, hydrateVcsActionLabels } = await import('./hydrate');
+    const { state } = await import('../../state/state');
+
+    await Promise.allSettled([
+      hydrateBranches(),
+      hydrateStatus(),
+      hydrateCommits(),
+      hydrateStash(),
+      hydrateVcsActionLabels(),
+    ]);
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(state.branch).toBe('main');
+    expect(state.files).toHaveLength(1);
+    expect(state.commits).toHaveLength(1);
+    expect((state as any).stash).toHaveLength(1);
+    expect(state.vcsActionLabels).toEqual({ 'VCS.Push': 'Ship' });
+  });
+
   it('captures branch_on_remote and refreshes when only the remote-tracking flag changes', async () => {
     const statusResponses = [
       { files: [{ path: 'keep.txt', status: 'M' }], branch_on_remote: true },

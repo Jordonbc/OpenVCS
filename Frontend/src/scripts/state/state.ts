@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 // src/state/state.ts
-import type { AppPrefs, Branch, CommitItem, FileStatus, GlobalSettings, RepoFileMeta, StashItem } from '../types';
+import type { AppPrefs, Branch, CommitItem, FileStatus, GlobalSettings, RepoFileMeta, RepoSnapshotCache, StashItem } from '../types';
 
 /** Default application preferences. */
 export const defaultPrefs: AppPrefs = {
@@ -48,6 +48,8 @@ export type HunkNodeRefs = {
 
 /** Global application state. */
 export const state = {
+    /** Latest repository snapshot mirrored from Rust. */
+    repoSnapshotCache: null as RepoSnapshotCache | null,
     hasRepo: false,                 // backend truth (set after open/clone/add)
     branch: '' as string,           // current branch name
     branchLabel: '' as string,      // display label (e.g. Detached HEAD (abc1234))

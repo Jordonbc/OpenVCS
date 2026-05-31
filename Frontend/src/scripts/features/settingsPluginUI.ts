@@ -135,14 +135,7 @@ function renderPluginSettingFields(
 }
 
 // ---------------------------------------------------------------------------
-// Plugin settings cache
-// ---------------------------------------------------------------------------
-
-const loadedPluginSettings = new Map<string, PluginSettingFieldPayload[]>();
-
-/** Clears the cached plugin settings so they are reloaded on next open. */
 export function clearPluginSettingsCache(): void {
-    loadedPluginSettings.clear();
 }
 
 async function ensurePluginSettingsLoaded(modal: HTMLElement, pluginId: string, section: string): Promise<boolean> {
@@ -152,16 +145,6 @@ async function ensurePluginSettingsLoaded(modal: HTMLElement, pluginId: string, 
     const panel = panelsScroll.querySelector<HTMLElement>(`.panel-form[data-panel="${CSS.escape(section)}"]`);
     if (!panel) return false;
 
-    const cacheKey = pluginId.toLowerCase();
-    if (loadedPluginSettings.has(cacheKey)) {
-        const existing = panel.querySelector('.group');
-        if (existing) return true;
-        const fields = loadedPluginSettings.get(cacheKey)!;
-        const settingsWrap = renderPluginSettingFields(fields);
-        panel.appendChild(settingsWrap);
-        return true;
-    }
-
     const loading = panel.querySelector('.plugin-settings-loading');
     if (loading) {
         (loading as HTMLElement).dataset.loading = 'true';
@@ -169,10 +152,13 @@ async function ensurePluginSettingsLoaded(modal: HTMLElement, pluginId: string, 
 
     try {
         const fields = await TAURI.invoke<PluginSettingFieldPayload[]>('get_plugin_settings', { pluginId });
-        loadedPluginSettings.set(cacheKey, Array.isArray(fields) ? fields : []);
 
         const loadingEl = panel.querySelector('.plugin-settings-loading');
         if (loadingEl) loadingEl.remove();
+
+        panel.querySelectorAll('.group').forEach((node) => {
+            node.remove();
+        });
 
         if (!Array.isArray(fields) || fields.length === 0) {
             const empty = document.createElement('div');

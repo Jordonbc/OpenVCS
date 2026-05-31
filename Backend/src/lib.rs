@@ -402,6 +402,7 @@ fn build_invoke_handler<R: tauri::Runtime>()
         tauri_commands::vcs_operation_active,
         tauri_commands::list_recent_repos,
         tauri_commands::vcs_list_branches,
+        tauri_commands::get_repo_snapshot,
         tauri_commands::current_vcs_action_labels,
         tauri_commands::vcs_status,
         tauri_commands::vcs_log,

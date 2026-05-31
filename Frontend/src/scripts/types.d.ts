@@ -171,3 +171,23 @@ export interface RepoSettings {
     origin_url?: string;
     remotes?: Array<{ name: string; url: string }>;
 }
+
+/** Represents a backend-owned repository snapshot used by the frontend cache. */
+export interface RepoSnapshotCache {
+    has_repo: boolean;
+    repo_path: string;
+    branch: string;
+    branch_label: string;
+    branches: Branch[];
+    files: FileStatus[];
+    commits: CommitItem[];
+    stash: StashItem[];
+    ahead: number;
+    behind: number;
+    branch_on_remote: boolean;
+    merge_in_progress: boolean;
+    seen_conflicts: string[];
+    vcs_action_labels: Record<string, string>;
+    ahead_ids: string[];
+    revision: string;
+}

@@ -19,7 +19,6 @@ const BODY_MARKUP_NODES: ChildNode[] = [];
 const THEME_SCRIPT_NODES: HTMLScriptElement[] = [];
 
 let availableThemes: ThemeSummary[] = [defaultLightSummary(), defaultDarkSummary()];
-let fetchedThemes = false;
 let activeThemeId = defaultThemeIdForMode('system');
 let activeThemePackId = defaultThemeIdForMode('system');
 let activeStyles: string | null = null;
@@ -363,16 +362,12 @@ export async function refreshAvailableThemes(): Promise<ThemeSummary[]> {
         availableThemes = [defaultLightSummary(), defaultDarkSummary(), ...others];
     }
 
-    fetchedThemes = true;
     return availableThemes;
 }
 
 /** Ensures theme metadata has been loaded at least once. */
-export async function ensureThemesLoaded(force?: boolean): Promise<ThemeSummary[]> {
-    if (!fetchedThemes || force) {
-        return refreshAvailableThemes();
-    }
-    return availableThemes;
+export async function ensureThemesLoaded(_force?: boolean): Promise<ThemeSummary[]> {
+    return refreshAvailableThemes();
 }
 
 /** Loads and applies a theme pack for the requested mode. */

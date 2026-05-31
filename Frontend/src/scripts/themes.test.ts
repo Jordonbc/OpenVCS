@@ -233,16 +233,14 @@ describe('refreshAvailableThemes', () => {
     expect(result.find((t) => t.id === 'valid')).toBeDefined();
   });
 
-  it('sets fetchedThemes = true after completion', async () => {
+  it('refreshes themes on every load request', async () => {
     const { TAURI } = await import('./lib/tauri');
     vi.mocked(TAURI.invoke).mockResolvedValue([]);
 
     const mod = await load();
-    // ensureThemesLoaded will call refreshAvailableThemes since fetchedThemes=false
     await mod.refreshAvailableThemes();
-    // Subsequent call to ensureThemesLoaded should return cached
     const result = await mod.ensureThemesLoaded();
-    expect(TAURI.invoke).toHaveBeenCalledTimes(1); // not called again
+    expect(TAURI.invoke).toHaveBeenCalledTimes(2);
     expect(result).toBeDefined();
   });
 });
@@ -262,18 +260,14 @@ describe('ensureThemesLoaded', () => {
     expect(TAURI.invoke).toHaveBeenCalledWith('list_themes');
   });
 
-  it('returns cached themes when already fetched', async () => {
+  it('refreshes themes again on repeated calls', async () => {
     const { TAURI } = await import('./lib/tauri');
     vi.mocked(TAURI.invoke).mockResolvedValue([]);
 
     const mod = await load();
     await mod.ensureThemesLoaded(); // fetches
-    vi.mocked(TAURI.invoke).mockClear();
-    const spy = vi.spyOn(mod, 'refreshAvailableThemes');
-
-    const result = await mod.ensureThemesLoaded(); // cached
-    expect(spy).not.toHaveBeenCalled();
-    expect(result).toHaveLength(2);
+    await mod.ensureThemesLoaded();
+    expect(TAURI.invoke).toHaveBeenCalledTimes(2);
   });
 
   it('re-fetches when force=true', async () => {
@@ -281,11 +275,11 @@ describe('ensureThemesLoaded', () => {
     vi.mocked(TAURI.invoke).mockResolvedValue([]);
 
     const mod = await load();
-    await mod.ensureThemesLoaded(); // cache it
+    await mod.ensureThemesLoaded();
     vi.mocked(TAURI.invoke).mockClear();
     vi.mocked(TAURI.invoke).mockResolvedValue([{ id: 'new', name: 'New' }]);
 
-    await mod.ensureThemesLoaded(true); // force refetch
+    await mod.ensureThemesLoaded(true);
     expect(TAURI.invoke).toHaveBeenCalled();
   });
 });
