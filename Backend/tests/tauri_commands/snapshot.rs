@@ -3,28 +3,62 @@
 
 #[test]
 fn revision_bumps_when_stash_count_changes() {
-    let base = super::build_repo_snapshot_revision(&super::SnapshotRevisionParts {
-        repo_path: "/repo",
-        branch_label: "main",
-        head_commit: Some("abc123"),
-        file_count: 3,
-        commit_count: 10,
-        ahead: 1,
-        behind: 2,
-        stash_count: 0,
-    });
-    let with_stash = super::build_repo_snapshot_revision(&super::SnapshotRevisionParts {
-        repo_path: "/repo",
-        branch_label: "main",
-        head_commit: Some("abc123"),
-        file_count: 3,
-        commit_count: 10,
-        ahead: 1,
-        behind: 2,
-        stash_count: 2,
-    });
+    fn make(stash_count: usize) -> String {
+        super::build_repo_snapshot_revision(&super::SnapshotRevisionParts {
+            repo_path: "/repo",
+            branch_label: "main",
+            head_commit: Some("abc123"),
+            file_count: 3,
+            commit_count: 10,
+            ahead: 1,
+            behind: 2,
+            stash_count,
+            merge_in_progress: false,
+            branch_on_remote: true,
+        })
+    }
 
-    assert_ne!(base, with_stash);
+    assert_ne!(make(0), make(2));
+}
+
+#[test]
+fn revision_bumps_when_merge_state_changes() {
+    fn make(merge_in_progress: bool) -> String {
+        super::build_repo_snapshot_revision(&super::SnapshotRevisionParts {
+            repo_path: "/repo",
+            branch_label: "main",
+            head_commit: Some("abc123"),
+            file_count: 3,
+            commit_count: 10,
+            ahead: 1,
+            behind: 2,
+            stash_count: 1,
+            merge_in_progress,
+            branch_on_remote: true,
+        })
+    }
+
+    assert_ne!(make(false), make(true));
+}
+
+#[test]
+fn revision_bumps_when_branch_on_remote_changes() {
+    fn make(branch_on_remote: bool) -> String {
+        super::build_repo_snapshot_revision(&super::SnapshotRevisionParts {
+            repo_path: "/repo",
+            branch_label: "main",
+            head_commit: Some("abc123"),
+            file_count: 3,
+            commit_count: 10,
+            ahead: 1,
+            behind: 2,
+            stash_count: 1,
+            merge_in_progress: false,
+            branch_on_remote,
+        })
+    }
+
+    assert_ne!(make(false), make(true));
 }
 
 #[test]

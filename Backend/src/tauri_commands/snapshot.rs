@@ -138,6 +138,8 @@ struct SnapshotRevisionParts<'a> {
     ahead: u32,
     behind: u32,
     stash_count: usize,
+    merge_in_progress: bool,
+    branch_on_remote: bool,
 }
 
 /// Builds the snapshot revision token used by the frontend cache gate.
@@ -146,7 +148,7 @@ struct SnapshotRevisionParts<'a> {
 /// - Stable revision token for cache invalidation.
 fn build_repo_snapshot_revision(parts: &SnapshotRevisionParts<'_>) -> String {
     format!(
-        "{}:{}:{}:{}:{}:{}:{}:{}",
+        "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
         parts.repo_path,
         parts.branch_label,
         parts.head_commit.unwrap_or_default(),
@@ -155,6 +157,8 @@ fn build_repo_snapshot_revision(parts: &SnapshotRevisionParts<'_>) -> String {
         parts.ahead,
         parts.behind,
         parts.stash_count,
+        parts.merge_in_progress,
+        parts.branch_on_remote,
     )
 }
 
@@ -432,6 +436,8 @@ pub async fn get_repo_snapshot(state: State<'_, AppState>) -> Result<RepoSnapsho
             ahead: status.ahead,
             behind: status.behind,
             stash_count: stash.len(),
+            merge_in_progress,
+            branch_on_remote: status.branch_on_remote,
         });
 
         Ok(RepoSnapshot {
