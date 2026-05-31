@@ -29,16 +29,23 @@ function normalizeFiles(files: any[]): any[] {
 }
 
 let snapshotInFlight: Promise<RepoSnapshotCache | null> | null = null;
+let conflictStatusesInFlight: Promise<void> | null = null;
 let lastSnapshotRevision = '';
 
 /** Loads conflict-status codes from Rust when cache is empty. */
 export async function ensureConflictStatusesLoaded(): Promise<void> {
     if (state.conflictStatuses.size > 0) return;
-    try {
-        const codes = await TAURI.invoke<string[]>('list_conflict_statuses');
-        state.conflictStatuses = new Set(Array.isArray(codes) ? codes.map((code) => String(code || '').trim().toUpperCase()) : []);
-    } catch {
-    }
+    if (conflictStatusesInFlight) return conflictStatusesInFlight;
+    conflictStatusesInFlight = (async () => {
+        try {
+            const codes = await TAURI.invoke<string[]>('list_conflict_statuses');
+            state.conflictStatuses = new Set(Array.isArray(codes) ? codes.map((code) => String(code || '').trim().toUpperCase()) : []);
+        } catch {
+        }
+    })().finally(() => {
+        conflictStatusesInFlight = null;
+    });
+    return conflictStatusesInFlight;
 }
 
 /** Applies a backend snapshot to frontend mirror state. */

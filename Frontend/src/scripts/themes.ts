@@ -395,7 +395,7 @@ export async function selectThemePack(
     }
 
     if (isBuiltInDefaultThemeId(target)) {
-        activeThemeId = isBuiltInDefaultThemeId(target) ? target : defaultThemeIdForMode(desiredMode);
+        activeThemeId = target;
         activeThemePackId = activeThemeId;
         activeStyles = null;
         activeMarkup = null;

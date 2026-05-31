@@ -242,6 +242,28 @@ describe('hydrateStatus selection reconciliation', () => {
   });
 });
 
+describe('ensureConflictStatusesLoaded', () => {
+  it('dedupes in-flight list_conflict_statuses calls', async () => {
+    const invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'list_conflict_statuses') {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return ['U', 'UU', 'UA', 'AU', 'UD', 'DU', 'AA', 'DD'];
+      }
+      return [];
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { ensureConflictStatusesLoaded } = await import('./hydrate');
+    const { state } = await import('../../state/state');
+    state.conflictStatuses = new Set();
+
+    await Promise.all([ensureConflictStatusesLoaded(), ensureConflictStatusesLoaded()]);
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(Array.from(state.conflictStatuses)).toEqual(['U', 'UU', 'UA', 'AU', 'UD', 'DU', 'AA', 'DD']);
+  });
+});
+
 describe('yieldToPaint', () => {
   it('resolves via requestAnimationFrame when page is visible', async () => {
     const { yieldToPaint } = await import('./hydrate');
