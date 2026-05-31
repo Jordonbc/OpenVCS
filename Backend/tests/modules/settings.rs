@@ -105,12 +105,6 @@ fn section_defaults_stay_aligned_with_schema() {
     assert_eq!(diff.external_merge, ExternalTool::disabled());
     assert_eq!(diff.binary_exts, vec!["png", "jpg", "dds", "uasset"]);
 
-    let lfs = Lfs::default();
-    assert!(lfs.enabled);
-    assert_eq!(lfs.concurrency, 4);
-    assert!(!lfs.require_lock_before_edit);
-    assert!(lfs.background_fetch_on_checkout);
-
     let performance = Performance::default();
     assert!(performance.progressive_render);
     assert!(performance.gpu_accel);
@@ -171,7 +165,6 @@ enabled = ["openvcs.git"]
     assert_eq!(cfg.commit.commit_templates.commit_message_template_delete, "Delete {file:name}");
     assert_eq!(cfg.credentials.helper, CredentialHelper::OsKeychain);
     assert_eq!(cfg.diff.tab_width, 4);
-    assert_eq!(cfg.lfs.concurrency, 4);
     assert!(cfg.performance.animations);
     assert!(cfg.integrations.host_overrides.is_empty());
     assert_eq!(cfg.plugins.enabled, vec!["openvcs.git"]);
@@ -189,7 +182,6 @@ fn round_trips_configuration_through_toml() {
     cfg.commit.commit_templates.commit_message_template_update = "Update {file:name} now".into();
     cfg.credentials.sign_commits = true;
     cfg.diff.tab_width = 2;
-    cfg.lfs.concurrency = 8;
     cfg.performance.gpu_accel = false;
     cfg.integrations.host_overrides.insert("example.com".into(), IssueProvider::Forgejo);
     cfg.plugins.disabled = vec!["openvcs.git".into()];

@@ -14,7 +14,6 @@ fn validate_normalizes_invalid_values() {
     cfg.vcs.ssh_path = "   ".into();
     cfg.diff.tab_width = 0;
     cfg.diff.max_file_size_mb = 9_999;
-    cfg.lfs.concurrency = 0;
     cfg.plugin = vec![" openvcs.git ".into(), "".into(), "openvcs.git".into()];
     cfg.plugins.disabled = vec![" OpenVCS.Git ".into(), "".into(), "openvcs.git".into()];
     cfg.plugins.enabled = vec![" openvcs.git ".into(), "other.plugin".into(), "other.plugin".into()];
@@ -30,7 +29,6 @@ fn validate_normalizes_invalid_values() {
     assert_eq!(cfg.vcs.ssh_binary, GitSshBinary::Auto);
     assert_eq!(cfg.diff.tab_width, 1);
     assert_eq!(cfg.diff.max_file_size_mb, 1_024);
-    assert_eq!(cfg.lfs.concurrency, 1);
     assert_eq!(cfg.plugin, vec!["openvcs.git"]);
     assert_eq!(cfg.plugins.disabled, vec!["openvcs.git"]);
     assert_eq!(cfg.plugins.enabled, vec!["other.plugin"]);

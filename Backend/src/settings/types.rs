@@ -30,8 +30,6 @@ pub struct AppConfig {
     #[serde(default)]
     pub diff: Diff,
     #[serde(default)]
-    pub lfs: Lfs,
-    #[serde(default)]
     pub performance: Performance,
     #[serde(default)]
     pub integrations: Integrations,
@@ -61,7 +59,6 @@ impl Default for AppConfig {
             commit: Default::default(),
             credentials: Default::default(),
             diff: Default::default(),
-            lfs: Default::default(),
             performance: Default::default(),
             integrations: Default::default(),
             plugins: Default::default(),
@@ -309,33 +306,6 @@ impl Default for Diff {
             external_diff: ExternalTool::disabled(),
             external_merge: ExternalTool::disabled(),
             binary_exts: vec!["png".into(), "jpg".into(), "dds".into(), "uasset".into()],
-        }
-    }
-}
-
-/// Git LFS behavior settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Lfs {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default)]
-    pub concurrency: u8,
-    #[serde(default)]
-    pub require_lock_before_edit: bool,
-    #[serde(default)]
-    pub background_fetch_on_checkout: bool,
-}
-impl Default for Lfs {
-    /// Returns default LFS settings values.
-    ///
-    /// # Returns
-    /// - Default [`Lfs`].
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            concurrency: 4,
-            require_lock_before_edit: false,
-            background_fetch_on_checkout: true,
         }
     }
 }

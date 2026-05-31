@@ -28,9 +28,6 @@ fn diff_configs(old_cfg: &AppConfig, new_cfg: &AppConfig) -> Vec<String> {
     if old_cfg.diff != new_cfg.diff {
         changes.push("diff".to_string());
     }
-    if old_cfg.lfs != new_cfg.lfs {
-        changes.push("lfs".to_string());
-    }
     if old_cfg.performance != new_cfg.performance {
         changes.push("performance".to_string());
     }
