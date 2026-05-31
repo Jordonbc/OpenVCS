@@ -185,13 +185,10 @@ pub fn load_theme(state: State<'_, AppState>, id: String) -> Result<themes::Them
         payload.summary.plugin_id.as_deref(),
         &enabled,
     ) {
-        let plugin_id = normalize_plugin_id(payload.summary.plugin_id.as_deref());
-        if !plugin_id.is_empty() {
-            return Err(format!(
-                "theme `{}` belongs to a disabled plugin",
-                payload.summary.id
-            ));
-        }
+        return Err(format!(
+            "theme `{}` belongs to a disabled plugin",
+            payload.summary.id
+        ));
     }
     Ok(payload)
 }
