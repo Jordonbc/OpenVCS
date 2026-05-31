@@ -121,7 +121,7 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
         if (!id) return false;
         if (state.disabled.has(id)) return false;
         if (state.enabled.has(id)) return true;
-        return !!p.default_enabled;
+        return typeof p.enabled === 'boolean' ? p.enabled : !!p.default_enabled;
     };
 
     const enabledCount = state.list.filter((p) => p?.id && pluginIsEnabled(p)).length;

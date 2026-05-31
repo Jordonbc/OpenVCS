@@ -13,8 +13,6 @@ import {
     registeredThemeSummaries,
     contextMenuItems,
     settingsSections,
-    disabledPlugins,
-    enabledPlugins,
 } from './state';
 import type { ThemePayload, ThemeSummary } from '../types';
 
@@ -25,19 +23,6 @@ import type { ThemePayload, ThemeSummary } from '../types';
 const PLUGIN_SCRIPT_NODES: HTMLScriptElement[] = [];
 const pluginUiNodes = new Map<string, HTMLElement[]>();
 const menubarMenus = new Map<string, PluginMenubarMenu[]>();
-
-// ---------------------------------------------------------------------------
-// Plugin enable/disable helpers
-// ---------------------------------------------------------------------------
-
-/** Checks whether a plugin is enabled after overrides are applied. */
-function isPluginEnabled(summary: { id: string; default_enabled?: boolean }): boolean {
-    const id = normalizeId(summary?.id || '');
-    if (!id) return false;
-    if (disabledPlugins.has(id)) return false;
-    if (enabledPlugins.has(id)) return true;
-    return !!summary?.default_enabled;
-}
 
 // ---------------------------------------------------------------------------
 // Script injection & cleanup
@@ -414,7 +399,6 @@ function resetPluginRuntime() {
 }
 
 export {
-    isPluginEnabled,
     clearPluginScripts,
     injectPluginModule,
     clearPluginUi,

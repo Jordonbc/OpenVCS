@@ -77,8 +77,15 @@ type PluginSettingsDefaultsResolution = (Vec<SettingKv>, Option<Arc<dyn PluginRu
 ///
 /// # Returns
 /// - Plugin summaries for built-in and user plugins.
-pub fn list_plugins() -> Vec<plugins::PluginSummary> {
+pub fn list_plugins(state: State<'_, AppState>) -> Vec<plugins::PluginSummary> {
+    let cfg = state.config();
     plugins::list_plugins()
+        .into_iter()
+        .map(|mut summary| {
+            summary.enabled = cfg.is_plugin_enabled(&summary.id, summary.default_enabled);
+            summary
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -102,8 +109,11 @@ pub fn list_plugin_start_failures(state: State<'_, AppState>) -> Vec<String> {
 /// # Returns
 /// - `Ok(PluginPayload)` when found.
 /// - `Err(String)` when loading fails.
-pub fn load_plugin(id: String) -> Result<plugins::PluginPayload, String> {
-    plugins::load_plugin(id.trim())
+pub fn load_plugin(state: State<'_, AppState>, id: String) -> Result<plugins::PluginPayload, String> {
+    let cfg = state.config();
+    let mut payload = plugins::load_plugin(id.trim())?;
+    payload.summary.enabled = cfg.is_plugin_enabled(&payload.summary.id, payload.summary.default_enabled);
+    Ok(payload)
 }
 
 #[tauri::command]

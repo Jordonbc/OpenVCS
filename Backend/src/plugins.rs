@@ -45,6 +45,9 @@ pub struct PluginSummary {
     /// When true, the plugin is enabled by default (unless overridden in settings).
     #[serde(default, skip_serializing_if = "is_false")]
     pub default_enabled: bool,
+    /// Resolved enabled state after settings overrides are applied.
+    #[serde(default)]
+    pub enabled: bool,
     #[serde(default)]
     pub theme_dirs: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -634,6 +637,7 @@ fn manifest_to_summary(
         author: clean_opt(manifest.author),
         entry: clean_opt(manifest.entry),
         default_enabled: manifest.default_enabled,
+        enabled: manifest.default_enabled,
         theme_dirs,
         icon_data_url,
         source: source.as_str().to_string(),

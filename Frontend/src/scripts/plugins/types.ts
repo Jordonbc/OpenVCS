@@ -17,6 +17,7 @@ export interface PluginSummary {
     source_spec?: string;
     entry?: string;
     default_enabled?: boolean;
+    enabled?: boolean;
     theme_dirs?: number;
     icon_data_url?: string;
 }

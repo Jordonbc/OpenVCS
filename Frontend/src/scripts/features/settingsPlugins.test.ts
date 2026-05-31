@@ -161,6 +161,26 @@ describe('loadPluginsIntoForm - with plugins', () => {
     expect(document.getElementById('plugins-group-label')?.textContent).toContain('1 of 2 enabled');
   });
 
+  it('uses backend enabled state over manifest defaults', async () => {
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'list_plugins') return [
+          { id: 'p1', name: 'P1', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: false, enabled: true },
+          { id: 'p2', name: 'P2', version: '1.0', author: 'A', category: 'U', description: 'D', source: 'npm', tags: [], icon_data_url: '', default_enabled: false, enabled: false },
+        ];
+        if (cmd === 'list_plugin_start_failures') return [];
+        if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
+        return null;
+      })},
+      event: { listen: vi.fn() },
+    };
+    const { loadPluginsIntoForm } = await import('./settingsPlugins');
+    await loadPluginsIntoForm(document.getElementById('settings-modal') as HTMLElement, { plugins: {} } as any);
+    await flushPromises();
+
+    expect(document.getElementById('plugins-group-label')?.textContent).toContain('1 of 2 enabled');
+  });
+
   it('handles list_plugins failure', async () => {
     (window as any).__TAURI__ = {
       core: { invoke: vi.fn(async (cmd: string) => {

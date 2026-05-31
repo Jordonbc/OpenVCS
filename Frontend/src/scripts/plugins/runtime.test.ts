@@ -324,7 +324,6 @@ describe('initPlugins', () => {
   it('loads plugins from backend', async () => {
     const tauri = (window as any).__TAURI__;
     tauri.core.invoke.mockImplementation((cmd: string) => {
-      if (cmd === 'get_global_settings') return Promise.resolve({ plugins: { disabled: [], enabled: [] } });
       if (cmd === 'list_plugins') return Promise.resolve([{ id: 'plugin1', name: 'Plugin 1' }]);
       return Promise.reject(new Error('unknown'));
     });
@@ -332,25 +331,12 @@ describe('initPlugins', () => {
     const { initPlugins } = await import('./runtime');
     await initPlugins();
 
-    expect(tauri.core.invoke).toHaveBeenCalledWith('get_global_settings', undefined);
     expect(tauri.core.invoke).toHaveBeenCalledWith('list_plugins', undefined);
-  });
-
-  it('handles get_global_settings failure gracefully', async () => {
-    const tauri = (window as any).__TAURI__;
-    tauri.core.invoke.mockImplementation((cmd: string) => {
-      if (cmd === 'list_plugins') return Promise.resolve([]);
-      return Promise.reject(new Error('fail'));
-    });
-
-    const { initPlugins } = await import('./runtime');
-    await expect(initPlugins()).resolves.toBeUndefined();
   });
 
   it('handles list_plugins failure gracefully', async () => {
     const tauri = (window as any).__TAURI__;
     tauri.core.invoke.mockImplementation((cmd: string) => {
-      if (cmd === 'get_global_settings') return Promise.resolve({ plugins: { disabled: [], enabled: [] } });
       return Promise.reject(new Error('fail'));
     });
 
@@ -464,7 +450,6 @@ describe('initPlugins additional edge cases', () => {
   it('skips plugin summary with empty id', async () => {
     const tauri = (window as any).__TAURI__;
     tauri.core.invoke.mockImplementation((cmd: string) => {
-      if (cmd === 'get_global_settings') return Promise.resolve({ plugins: { disabled: [], enabled: [] } });
       if (cmd === 'list_plugins') return Promise.resolve([{ id: '', name: '' }, { id: 'real', name: 'Real Plugin' }]);
       return Promise.reject(new Error('unknown'));
     });
@@ -541,7 +526,6 @@ describe('reloadPlugins additional coverage', () => {
   it('reloads and returns when plugin list fetch fails', async () => {
     const tauri = (window as any).__TAURI__;
     tauri.core.invoke.mockImplementation((cmd: string) => {
-      if (cmd === 'get_global_settings') return Promise.resolve({ plugins: { disabled: [], enabled: [] } });
       if (cmd === 'list_plugins') return Promise.reject(new Error('fail'));
       return Promise.reject(new Error('unknown'));
     });

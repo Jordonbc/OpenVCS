@@ -31,39 +31,6 @@ function mountFullDom() {
   `;
 }
 
-describe('isPluginEnabled', () => {
-  beforeEach(() => {
-    setupTauri();
-    vi.resetModules();
-  });
-
-  it('returns false for empty or falsy id', async () => {
-    const { isPluginEnabled } = await import('./registration');
-    expect(isPluginEnabled({ id: '' })).toBe(false);
-    expect(isPluginEnabled({ id: '  ' })).toBe(false);
-  });
-
-  it('returns false when plugin is in disabled set', async () => {
-    const { setDisabledPlugins } = await import('./state');
-    setDisabledPlugins(new Set(['plugin1']));
-    const { isPluginEnabled } = await import('./registration');
-    expect(isPluginEnabled({ id: 'plugin1', default_enabled: true })).toBe(false);
-  });
-
-  it('returns true when plugin is in enabled set', async () => {
-    const { setEnabledPlugins } = await import('./state');
-    setEnabledPlugins(new Set(['plugin2']));
-    const { isPluginEnabled } = await import('./registration');
-    expect(isPluginEnabled({ id: 'plugin2', default_enabled: false })).toBe(true);
-  });
-
-  it('returns default_enabled when not in either set', async () => {
-    const { isPluginEnabled } = await import('./registration');
-    expect(isPluginEnabled({ id: 'plugin3', default_enabled: true })).toBe(true);
-    expect(isPluginEnabled({ id: 'plugin4', default_enabled: false })).toBe(false);
-  });
-});
-
 describe('injectPluginModule / clearPluginScripts', () => {
   beforeEach(() => {
     setupTauri();
