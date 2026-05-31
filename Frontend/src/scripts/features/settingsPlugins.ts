@@ -116,9 +116,12 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
         }
     };
 
-    const pluginIsEnabled = (p: PluginSummary): boolean => (
-        typeof p?.enabled === 'boolean' ? p.enabled : !!p?.default_enabled
-    );
+    const pluginIsEnabled = (p: PluginSummary): boolean => {
+        const id = String(p?.id || '').trim().toLowerCase();
+        if (state.disabled.has(id)) return false;
+        if (state.enabled.has(id)) return true;
+        return typeof p?.enabled === 'boolean' ? p.enabled : !!p?.default_enabled;
+    };
 
     const enabledCount = state.list.filter((p) => p?.id && pluginIsEnabled(p)).length;
     groupLabelEl.textContent = `Installed (${enabledCount} of ${state.list.length} enabled)`;
