@@ -33,7 +33,7 @@ import { openSwitchDrawer, closeSwitchDrawer, registerDrawerActions } from './fe
 const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
 
 // Title bar actions
-    const fetchBtn = qs<HTMLButtonElement>('#fetch-btn');
+const fetchBtn = qs<HTMLButtonElement>('#fetch-btn');
 const fetchCaret = qs<HTMLButtonElement>('#fetch-caret');
 const fetchPop = qs<HTMLElement>('#fetch-pop');
 const fetchList = qs<HTMLElement>('#fetch-list');
@@ -41,24 +41,24 @@ const pushBtn  = qs<HTMLButtonElement>('#push-btn');
 const cloneBtn = qs<HTMLButtonElement>('#clone-btn');
 const repoSwitch = qs<HTMLButtonElement>('#repo-switch');
 const commitBtn = qs<HTMLButtonElement>('#commit-btn');
-    const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
-    let fetchCloseTimer: number | null = null;
-    let pluginMenuRefreshTimer: number | null = null;
-    /** Matches the fetch popover close animation so the element hides after the transition finishes. */
-    const FETCH_CLOSE_MS = 130;
-    /** Gives repo-open plugin state time to settle before rebuilding contributed menubar items. */
-    const PLUGIN_MENU_REFRESH_SETTLE_MS = 400;
+const undoLeftBtn = qs<HTMLButtonElement>('#undo-left-btn');
+let fetchCloseTimer: number | null = null;
+let pluginMenuRefreshTimer: number | null = null;
+/** Matches the fetch popover close animation so the element hides after the transition finishes. */
+const FETCH_CLOSE_MS = 130;
+/** Gives repo-open plugin state time to settle before rebuilding contributed menubar items. */
+const PLUGIN_MENU_REFRESH_SETTLE_MS = 400;
 
-    /** Schedules a delayed plugin menubar refresh to avoid repo-open races while plugin state settles. */
-    function schedulePluginMenuRefresh(delayMs = 250) {
-        if (pluginMenuRefreshTimer !== null) {
-            window.clearTimeout(pluginMenuRefreshTimer);
-        }
-        pluginMenuRefreshTimer = window.setTimeout(() => {
-            pluginMenuRefreshTimer = null;
-            refreshPluginMenubarMenus().catch((err) => console.warn('Plugin menu refresh failed:', err));
-        }, delayMs);
+/** Schedules a delayed plugin menubar refresh to avoid repo-open races while plugin state settles. */
+function schedulePluginMenuRefresh(delayMs = 250) {
+    if (pluginMenuRefreshTimer !== null) {
+        window.clearTimeout(pluginMenuRefreshTimer);
     }
+    pluginMenuRefreshTimer = window.setTimeout(() => {
+        pluginMenuRefreshTimer = null;
+        refreshPluginMenubarMenus().catch((err) => console.warn('Plugin menu refresh failed:', err));
+    }, delayMs);
+}
 
 /** Closes the Fetch/Pull popover, optionally with a short close animation. */
 function closeFetchPopover() {
