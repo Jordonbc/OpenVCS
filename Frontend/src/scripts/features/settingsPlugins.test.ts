@@ -886,7 +886,7 @@ describe('enable all / disable all - state updates', () => {
     (document.getElementById('plugins-enable-all') as HTMLButtonElement).click();
     await flushPromises();
 
-    expect(invoke).toHaveBeenCalledWith('set_global_settings', expect.anything());
+    expect(invoke).toHaveBeenCalledWith('set_plugin_enabled', { pluginId: 'p1', enabled: true });
   });
 
   it('disable all adds all plugins to disabled set and triggers persist', async () => {
@@ -897,6 +897,7 @@ describe('enable all / disable all - state updates', () => {
       if (cmd === 'list_plugin_start_failures') return [];
       if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: [] } };
       if (cmd === 'set_global_settings') return null;
+      if (cmd === 'set_plugin_enabled') return null;
       return null;
     });
     (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
@@ -908,7 +909,7 @@ describe('enable all / disable all - state updates', () => {
     (document.getElementById('plugins-disable-all') as HTMLButtonElement).click();
     await flushPromises();
 
-    expect(invoke).toHaveBeenCalledWith('set_global_settings', expect.anything());
+    expect(invoke).toHaveBeenCalledWith('set_plugin_enabled', { pluginId: 'p1', enabled: false });
   });
 });
 
@@ -1197,13 +1198,7 @@ describe('persistPluginsDisabled', () => {
     (document.getElementById('plugins-disable-all') as HTMLButtonElement).click();
     await flushPromises();
 
-    expect(invoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
-      cfg: expect.objectContaining({
-        plugins: expect.objectContaining({
-          disabled: expect.arrayContaining(['p1']),
-        }),
-      }),
-    }));
+    expect(invoke).toHaveBeenCalledWith('set_plugin_enabled', { pluginId: 'p1', enabled: false });
   });
 });
 
