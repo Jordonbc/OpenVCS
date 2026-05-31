@@ -20,7 +20,8 @@ function clearAllFileSelections() {
 /** Toggles commit inclusion for a file and syncs current hunk selection. */
 export function toggleFilePick(path: string, on: boolean) {
     if (!path) return;
-    disableDefaultSelectAll();
+    const clearedImplicit = disableDefaultSelectAll(true);
+    if (clearedImplicit) clearAllFileSelections();
     if (on) state.selectedFiles.add(path);
     else state.selectedFiles.delete(path);
     if (state.currentFile && state.currentFile === path && !state.currentDiffBinary) {

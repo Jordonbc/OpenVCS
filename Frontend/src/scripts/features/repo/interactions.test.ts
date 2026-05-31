@@ -71,6 +71,29 @@ describe('onFileClick', () => {
 
     expect(Array.from(state.selectedFiles).sort()).toEqual(['a.txt', 'b.txt', 'c.txt']);
   });
+
+  it('clears implicit select-all before shift-range commit selection', async () => {
+    const { onFileClick } = await import('./interactions');
+    const { dragState } = await import('./context');
+    const { state } = await import('../../state/state');
+    const visible = [
+      { path: 'a.txt', status: 'M' },
+      { path: 'b.txt', status: 'M' },
+      { path: 'c.txt', status: 'M' },
+    ];
+
+    state.files = [];
+    state.defaultSelectAll = true;
+    state.selectionImplicitAll = true;
+    state.selectedFiles = new Set(['hidden.txt']);
+    dragState.lastClickedIndex = 0;
+
+    onFileClick({ shiftKey: true, ctrlKey: false, metaKey: false } as MouseEvent, visible[2] as any, 2, visible as any);
+
+    expect(Array.from(state.selectedFiles).sort()).toEqual(['a.txt', 'b.txt', 'c.txt']);
+    expect(state.defaultSelectAll).toBe(false);
+    expect(state.selectionImplicitAll).toBe(false);
+  });
 });
 
 describe('updateDragRange', () => {
@@ -341,6 +364,26 @@ describe('onFileMouseDown', () => {
     expect(dragState.dragStartIndex).toBe(0);
     expect(dragState.dragCurrentIndex).toBe(0);
     expect(dragState.dragPrePicked).toBeDefined();
+  });
+
+  it('clears implicit select-all before commit drag selection', async () => {
+    const { onFileMouseDown } = await import('./interactions');
+    const { dragState } = await import('./context');
+    const { state } = await import('../../state/state');
+    const visible = [{ path: 'a.txt', status: 'M' }];
+    state.defaultSelectAll = true;
+    state.selectionImplicitAll = true;
+    state.selectedFiles = new Set(['hidden.txt']);
+    const li = document.createElement('li');
+    li.setAttribute('data-path', 'a.txt');
+    document.getElementById('file-list')!.appendChild(li);
+
+    onFileMouseDown({ button: 0, shiftKey: false, ctrlKey: true, metaKey: false, clientX: 0, clientY: 0, preventDefault: vi.fn() } as any, visible[0] as any, 0, visible as any, li);
+
+    expect(Array.from(state.selectedFiles)).toEqual(['a.txt']);
+    expect(state.defaultSelectAll).toBe(false);
+    expect(state.selectionImplicitAll).toBe(false);
+    expect(dragState.dragMode).toBe('commit');
   });
 
   it('resets drag state when no modifier key is pressed', async () => {

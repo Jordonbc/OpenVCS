@@ -31,6 +31,7 @@ export function onFileClick(e: MouseEvent, file: FileStatus, index: number, visi
     const isRange = e.shiftKey && dragState.lastClickedIndex >= 0;
 
     if (isRange) {
+        disableDefaultSelectAll(true);
         const a = Math.min(dragState.lastClickedIndex, index);
         const b = Math.max(dragState.lastClickedIndex, index);
         for (let i = a; i <= b; i++) {
@@ -89,6 +90,7 @@ export function onFileMouseDown(e: MouseEvent, file: FileStatus, index: number, 
         dragState.dragPreDiff = new Set(state.diffSelectedFiles);
         updateDragRange(visible);
     } else if (dragState.dragMode === 'commit') {
+        disableDefaultSelectAll(true);
         const currentlyOn = state.selectedFiles.has(file.path);
         dragState.dragTargetState = !currentlyOn;
         dragState.dragStartIndex = index; dragState.dragCurrentIndex = index;
