@@ -187,6 +187,7 @@ export interface RepoSnapshotCache {
     branch_on_remote: boolean;
     merge_in_progress: boolean;
     seen_conflicts: string[];
+    conflict_statuses?: string[];
     vcs_action_labels: Record<string, string>;
     ahead_ids: string[];
     revision: string;

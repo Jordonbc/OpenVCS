@@ -41,6 +41,8 @@ pub struct RepoSnapshot {
     pub merge_in_progress: bool,
     /// Paths still conflicted during merge.
     pub seen_conflicts: Vec<String>,
+    /// Status codes currently classified as conflicts.
+    pub conflict_statuses: Vec<String>,
     /// Active backend action labels.
     pub vcs_action_labels: HashMap<String, String>,
     /// Commit ids that are ahead of upstream.
@@ -361,6 +363,7 @@ pub async fn get_repo_snapshot(state: State<'_, AppState>) -> Result<RepoSnapsho
                 Vec::new()
             }
         };
+        let conflict_statuses = collect_conflict_statuses(&status.files);
         let revision = build_repo_snapshot_revision(&SnapshotRevisionParts {
             repo_path: &repo_path,
             branch_label: &branch_label,
@@ -386,6 +389,7 @@ pub async fn get_repo_snapshot(state: State<'_, AppState>) -> Result<RepoSnapsho
             branch_on_remote: status.branch_on_remote,
             merge_in_progress,
             seen_conflicts,
+            conflict_statuses,
             vcs_action_labels,
             ahead_ids,
             revision,
@@ -397,6 +401,34 @@ pub async fn get_repo_snapshot(state: State<'_, AppState>) -> Result<RepoSnapsho
 fn is_conflict_status(status: &str) -> bool {
     let s = status.trim().to_uppercase();
     s.contains('U') || s == "AA" || s == "DD"
+}
+
+/// Returns conflict-status codes recognized by the backend.
+#[tauri::command]
+pub fn list_conflict_statuses() -> Vec<String> {
+    vec!["U", "UU", "UA", "AU", "UD", "DU", "AA", "DD"]
+        .into_iter()
+        .map(String::from)
+        .collect()
+}
+
+/// Collects distinct conflict status codes from a file-status list.
+fn collect_conflict_statuses(files: &[crate::core::models::FileEntry]) -> Vec<String> {
+    let mut statuses = files
+        .iter()
+        .filter_map(|file| {
+            let status = file.status.trim().to_uppercase();
+            if is_conflict_status(&status) {
+                Some(status)
+            } else {
+                None
+            }
+        })
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    statuses.shrink_to_fit();
+    statuses
 }
 
 #[cfg(test)]

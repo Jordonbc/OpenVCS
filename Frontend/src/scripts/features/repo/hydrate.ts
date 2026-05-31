@@ -31,6 +31,16 @@ function normalizeFiles(files: any[]): any[] {
 let snapshotInFlight: Promise<RepoSnapshotCache | null> | null = null;
 let lastSnapshotRevision = '';
 
+/** Loads conflict-status codes from Rust when cache is empty. */
+async function ensureConflictStatusesLoaded(): Promise<void> {
+    if (state.conflictStatuses.size > 0) return;
+    try {
+        const codes = await TAURI.invoke<string[]>('list_conflict_statuses');
+        state.conflictStatuses = new Set(Array.isArray(codes) ? codes.map((code) => String(code || '').trim().toUpperCase()) : []);
+    } catch {
+    }
+}
+
 /** Applies a backend snapshot to frontend mirror state. */
 function applyRepoSnapshot(snapshot: RepoSnapshotCache): void {
     if (!snapshot || snapshot.revision === lastSnapshotRevision) return;
@@ -49,6 +59,7 @@ function applyRepoSnapshot(snapshot: RepoSnapshotCache): void {
     state.branchOnRemote = Boolean(snapshot.branch_on_remote);
     state.mergeInProgress = Boolean(snapshot.merge_in_progress);
     state.seenConflicts = new Set(Array.isArray(snapshot.seen_conflicts) ? snapshot.seen_conflicts : []);
+    state.conflictStatuses = new Set(Array.isArray(snapshot.conflict_statuses) ? snapshot.conflict_statuses.map((s) => String(s || '').trim().toUpperCase()) : []);
     state.vcsActionLabels = { ...(snapshot.vcs_action_labels || {}) };
     (state as any).aheadIds = new Set(Array.isArray(snapshot.ahead_ids) ? snapshot.ahead_ids : []);
 
@@ -206,6 +217,7 @@ export async function hydrateStatus() {
             const ctx = await TAURI.invoke<{ in_progress: boolean }>('vcs_merge_context');
             nextMergeInProgress = !!ctx?.in_progress;
             if (nextMergeInProgress) {
+                await ensureConflictStatusesLoaded();
                 nextSeenConflicts = new Set<string>();
                 nextFiles.forEach((f: any) => {
                     if (isConflictStatus(f?.status) && f?.path) {

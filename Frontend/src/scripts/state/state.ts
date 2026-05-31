@@ -63,6 +63,7 @@ export const state = {
     behind: 0 as number,            // commits behind upstream
     branchOnRemote: false as boolean, // current branch has a tracking reference on a remote
     aheadIds: new Set<string>() as Set<string>, // IDs of commits ahead of upstream
+    conflictStatuses: new Set<string>() as Set<string>,
     mergeInProgress: false as boolean,
     seenConflicts: new Set<string>() as Set<string>,
     defaultSelectAll: true as boolean, // by default select all files/hunks until user toggles
@@ -95,7 +96,7 @@ export const hasChanges = (): boolean =>
 /** True iff a VCS status code represents an unresolved merge conflict. */
 export const isConflictStatus = (status: unknown): boolean => {
     const s = String(status || '').trim().toUpperCase();
-    return s === 'U' || s.includes('U') || s === 'AA' || s === 'DD';
+    return state.conflictStatuses.has(s);
 };
 
 /**

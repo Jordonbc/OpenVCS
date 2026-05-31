@@ -28,7 +28,12 @@ function mountRepoDom() {
 /** Installs a mocked Tauri runtime before modules capture it at import time. */
 function installTauriMock(invoke: (cmd: string) => Promise<unknown>) {
   (window as any).__TAURI__ = {
-    core: { invoke },
+    core: {
+      invoke: async (cmd: string) => {
+        if (cmd === 'list_conflict_statuses') return ['U', 'UU', 'UA', 'AU', 'UD', 'DU', 'AA', 'DD'];
+        return invoke(cmd);
+      },
+    },
     event: { listen: vi.fn() },
   };
 }
@@ -477,6 +482,7 @@ describe('pruneSelectionMaps', () => {
     const invoke = vi.fn(async (cmd: string) => {
       if (cmd === 'vcs_status') return { files: [{ path: 'keep.txt', status: 'M' }] };
       if (cmd === 'vcs_merge_context') return { in_progress: false };
+      if (cmd === 'list_conflict_statuses') return ['U', 'UU', 'UA', 'AU', 'UD', 'DU', 'AA', 'DD'];
       return [];
     });
     (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
