@@ -124,7 +124,6 @@ export const statusLabel = (s: string) =>
                 s === 'C' ? 'Copied' :
                     s === 'T' ? 'Type change' :
                         s === 'S' ? 'Submodule' :
-                        s === 'U' ? 'Conflicted' :
         s === 'M' ? 'Modified' :
             s === 'D' ? 'Deleted' : 'Changed';
 
@@ -141,7 +140,6 @@ export const statusClass = (s: string) =>
                 s === 'C' ? 'cpy' :
                     s === 'T' ? 'type' :
                         s === 'S' ? 'submodule' :
-                        s === 'U' ? 'conflict' :
                             s === 'M' ? 'mod' :
                                 s === 'D' ? 'del' : 'mod';
 
