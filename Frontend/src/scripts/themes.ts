@@ -394,7 +394,8 @@ export async function selectThemePack(
         }
     }
 
-    if (isBuiltInDefaultThemeId(target)) {
+    const targetId = target.trim().toLowerCase();
+    if (targetId === DEFAULT_LIGHT_THEME_ID || targetId === DEFAULT_DARK_THEME_ID) {
         activeThemeId = target;
         activeThemePackId = activeThemeId;
         activeStyles = null;
