@@ -90,10 +90,11 @@ function applyRepoSnapshot(snapshot: RepoSnapshotCache): void {
     window.dispatchEvent(new CustomEvent('app:vcs-action-labels-updated'));
 }
 
-/** Fetches one snapshot from Rust, with in-flight dedupe. */
-async function loadRepoSnapshot(): Promise<RepoSnapshotCache | null> {
+/** Fetches one snapshot from Rust, with in-flight dedupe.
+ * Pass `force=true` to bypass the in-flight cache (used after explicit user operations). */
+async function loadRepoSnapshot(force = false): Promise<RepoSnapshotCache | null> {
     if (!isTauriRuntimeAvailable()) return null;
-    if (snapshotInFlight) return snapshotInFlight;
+    if (!force && snapshotInFlight) return snapshotInFlight;
     snapshotInFlight = (async () => {
         try {
             const result = await TAURI.invoke<unknown>('get_repo_snapshot');
@@ -110,17 +111,19 @@ async function loadRepoSnapshot(): Promise<RepoSnapshotCache | null> {
     return snapshotInFlight;
 }
 
-/** Hydrates mirror state from Rust snapshot when available. */
-async function hydrateFromSnapshot(): Promise<boolean> {
-    const snapshot = await loadRepoSnapshot();
+/** Hydrates mirror state from Rust snapshot when available.
+ * Pass `force=true` to bypass the in-flight snapshot cache. */
+async function hydrateFromSnapshot(force = false): Promise<boolean> {
+    const snapshot = await loadRepoSnapshot(force);
     if (!snapshot) return false;
     applyRepoSnapshot(snapshot);
     return true;
 }
 
-/** Loads one full repo snapshot from Rust and applies it when available. */
-export async function hydrateSnapshot(): Promise<boolean> {
-    return hydrateFromSnapshot();
+/** Loads one full repo snapshot from Rust and applies it when available.
+ * Pass `force=true` to bypass the in-flight cache (e.g. after explicit user push/fetch). */
+export async function hydrateSnapshot(force = false): Promise<boolean> {
+    return hydrateFromSnapshot(force);
 }
 
 function buildStatusSignature(input: {

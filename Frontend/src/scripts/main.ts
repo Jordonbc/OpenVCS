@@ -201,7 +201,7 @@ async function boot() {
                 notify('Fetched');
                 if (hydrate) {
                     await yieldToPaint();
-                    void hydrateSnapshot();
+                    void hydrateSnapshot(true);
                 }
                 success = true;
             } catch (error) {
@@ -226,7 +226,7 @@ async function boot() {
                 notify('Fetched all remotes');
                 if (hydrate) {
                     await yieldToPaint();
-                    void hydrateSnapshot();
+                    void hydrateSnapshot(true);
                 }
                 success = true;
             } catch (error) {
@@ -309,7 +309,7 @@ async function boot() {
             ctl.clearBusy();
         }
 
-            await hydrateSnapshot();
+            await hydrateSnapshot(true);
     }
 
     async function defaultFetchAction() {
@@ -356,7 +356,7 @@ async function boot() {
             await TAURI.invoke('vcs_push', {});
             await runHook('onPush', hookData);
             notify('Pushed');
-            await hydrateSnapshot();
+            await hydrateSnapshot(true);
             await runHook('postPush', hookData);
         } catch (e) { console.error('Push failed:', e); notify('Push failed'); } finally { clearBusy(); }
     }
@@ -456,7 +456,7 @@ async function boot() {
             setBusy('Undoing…');
             await TAURI.invoke('vcs_undo_since_push', {});
             notify('Undid unpushed commits');
-            await hydrateSnapshot();
+            await hydrateSnapshot(true);
         } catch (e) { console.error('Undo failed:', e); notify('Undo failed'); } finally { clearBusy(); }
     });
 

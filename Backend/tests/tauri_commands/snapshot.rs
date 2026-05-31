@@ -15,6 +15,7 @@ fn revision_bumps_when_stash_count_changes() {
             stash_count,
             merge_in_progress: false,
             branch_on_remote: true,
+            branch_count: 5,
         })
     }
 
@@ -35,6 +36,7 @@ fn revision_bumps_when_merge_state_changes() {
             stash_count: 1,
             merge_in_progress,
             branch_on_remote: true,
+            branch_count: 5,
         })
     }
 
@@ -55,10 +57,32 @@ fn revision_bumps_when_branch_on_remote_changes() {
             stash_count: 1,
             merge_in_progress: false,
             branch_on_remote,
+            branch_count: 5,
         })
     }
 
     assert_ne!(make(false), make(true));
+}
+
+#[test]
+fn revision_bumps_when_branch_count_changes() {
+    fn make(branch_count: usize) -> String {
+        super::build_repo_snapshot_revision(&super::SnapshotRevisionParts {
+            repo_path: "/repo",
+            branch_label: "main",
+            head_commit: Some("abc123"),
+            file_count: 3,
+            commit_count: 10,
+            ahead: 1,
+            behind: 2,
+            stash_count: 1,
+            merge_in_progress: false,
+            branch_on_remote: true,
+            branch_count,
+        })
+    }
+
+    assert_ne!(make(3), make(7));
 }
 
 #[test]
