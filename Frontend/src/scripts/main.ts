@@ -528,7 +528,6 @@ async function boot() {
 
         await hydrateSnapshot();
         setRepoHeader(path);
-        await hydrateSnapshot();
         updateFetchUI();
 
         // Broadcast app-level event so branch UI and actions can sync
@@ -546,7 +545,6 @@ async function boot() {
         forceCloseTransientUi();
         await hydrateSnapshot();
         setRepoHeader(path);
-        await hydrateSnapshot();
         window.dispatchEvent(new CustomEvent('app:repo-selected', { detail: { path } }));
         refreshRepoActions();
         updateFetchUI();
