@@ -39,7 +39,9 @@ export async function ensureConflictStatusesLoaded(): Promise<void> {
     conflictStatusesInFlight = (async () => {
         try {
             const codes = await TAURI.invoke<string[]>('list_conflict_statuses');
-            state.conflictStatuses = new Set(Array.isArray(codes) ? codes.map((code) => String(code || '').trim().toUpperCase()) : []);
+            if (state.conflictStatuses.size === 0) {
+                state.conflictStatuses = new Set(Array.isArray(codes) ? codes.map((code) => String(code || '').trim().toUpperCase()) : []);
+            }
         } catch {
         }
     })().finally(() => {
