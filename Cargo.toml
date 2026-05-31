@@ -8,10 +8,8 @@ resolver = "2"
 default-members = ["Backend"]
 
 [profile.release]
-opt-level = "z"            # optimize for size
-lto = true                 # link-time optimizations
-codegen-units = 1          # single codegen unit for better inlining
-panic = "abort"            # no unwind tables
-debug = false              # drop debug info
-overflow-checks = false
-strip = "none"            # preserve symbols for tauri bundler/updater
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
