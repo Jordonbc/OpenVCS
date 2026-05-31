@@ -6,7 +6,10 @@ import type { FileStatus } from '../../types';
 vi.mock('../../lib/menu', () => ({ buildCtxMenu: vi.fn() }));
 vi.mock('../../lib/confirm', () => ({ confirmBool: vi.fn(async () => true) }));
 vi.mock('../../lib/notify', () => ({ notify: vi.fn() }));
-vi.mock('./hydrate', () => ({ hydrateStatus: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('./hydrate', () => ({
+  hydrateStatus: vi.fn().mockResolvedValue(undefined),
+  ensureConflictStatusesLoaded: vi.fn().mockResolvedValue(undefined),
+}));
 
 /** Provides a minimal `matchMedia` test shim used by state imports. */
 function createMatchMediaMock(query: string) {
@@ -170,6 +173,8 @@ describe('selectFile', () => {
   });
 
   it('handles conflict status', async () => {
+    const { state } = await import('../../state/state');
+    state.conflictStatuses = new Set(['U', 'UU', 'UA', 'AU', 'UD', 'DU', 'AA', 'DD']);
     const { selectFile } = await import('./diffView');
     (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'vcs_diff_file') return [];

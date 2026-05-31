@@ -18,6 +18,7 @@ vi.mock('../stashConfirm', () => ({ openStashConfirm: vi.fn() }));
 vi.mock('./hydrate', () => ({
   hydrateStatus: vi.fn().mockResolvedValue(undefined),
   hydrateStash: vi.fn().mockResolvedValue(undefined),
+  ensureConflictStatusesLoaded: vi.fn().mockResolvedValue(undefined),
 }));
 
 /** Provides a minimal `matchMedia` test shim used by state imports. */

@@ -30,8 +30,23 @@ fn revision_bumps_when_stash_count_changes() {
 #[test]
 fn conflict_status_matches_frontend_rules() {
     assert!(super::is_conflict_status("U"));
+    assert!(super::is_conflict_status("UA"));
+    assert!(super::is_conflict_status("AU"));
+    assert!(super::is_conflict_status("UD"));
+    assert!(super::is_conflict_status("DU"));
     assert!(super::is_conflict_status("UU"));
     assert!(super::is_conflict_status("AA"));
     assert!(super::is_conflict_status("DD"));
     assert!(!super::is_conflict_status("M"));
+}
+
+#[test]
+fn list_conflict_statuses_returns_exact_set() {
+    assert_eq!(
+        super::list_conflict_statuses(),
+        vec!["U", "UU", "UA", "AU", "UD", "DU", "AA", "DD"]
+            .into_iter()
+            .map(String::from)
+            .collect::<Vec<_>>()
+    );
 }

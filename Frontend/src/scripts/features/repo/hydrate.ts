@@ -32,7 +32,7 @@ let snapshotInFlight: Promise<RepoSnapshotCache | null> | null = null;
 let lastSnapshotRevision = '';
 
 /** Loads conflict-status codes from Rust when cache is empty. */
-async function ensureConflictStatusesLoaded(): Promise<void> {
+export async function ensureConflictStatusesLoaded(): Promise<void> {
     if (state.conflictStatuses.size > 0) return;
     try {
         const codes = await TAURI.invoke<string[]>('list_conflict_statuses');

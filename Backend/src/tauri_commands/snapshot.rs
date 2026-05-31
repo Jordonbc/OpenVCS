@@ -12,6 +12,65 @@ use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};
 
+/// Conflict-status classifications recognized by backend snapshot logic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConflictStatus {
+    Unmerged,
+    BothAdded,
+    BothDeleted,
+    AddedByUs,
+    AddedByThem,
+    DeletedByUs,
+    DeletedByThem,
+    BothModified,
+}
+
+impl ConflictStatus {
+    /// Returns all recognized conflict-status variants.
+    const fn all() -> [Self; 8] {
+        [
+            Self::Unmerged,
+            Self::BothModified,
+            Self::AddedByUs,
+            Self::AddedByThem,
+            Self::DeletedByUs,
+            Self::DeletedByThem,
+            Self::BothAdded,
+            Self::BothDeleted,
+        ]
+    }
+
+    /// Returns porcelain code for this conflict status.
+    const fn code(self) -> &'static str {
+        match self {
+            Self::Unmerged => "U",
+            Self::BothAdded => "AA",
+            Self::BothDeleted => "DD",
+            Self::AddedByUs => "UA",
+            Self::AddedByThem => "AU",
+            Self::DeletedByUs => "UD",
+            Self::DeletedByThem => "DU",
+            Self::BothModified => "UU",
+        }
+    }
+
+    /// Parses a porcelain status code into a conflict status.
+    fn parse(status: &str) -> Option<Self> {
+        let s = status.trim().to_uppercase();
+        match s.as_str() {
+            "U" => Some(Self::Unmerged),
+            "AA" => Some(Self::BothAdded),
+            "DD" => Some(Self::BothDeleted),
+            "UA" => Some(Self::AddedByUs),
+            "AU" => Some(Self::AddedByThem),
+            "UD" => Some(Self::DeletedByUs),
+            "DU" => Some(Self::DeletedByThem),
+            "UU" => Some(Self::BothModified),
+            _ => None,
+        }
+    }
+}
+
 /// Full repository snapshot returned to the frontend.
 #[derive(Debug, Clone, Serialize)]
 pub struct RepoSnapshot {
@@ -363,7 +422,7 @@ pub async fn get_repo_snapshot(state: State<'_, AppState>) -> Result<RepoSnapsho
                 Vec::new()
             }
         };
-        let conflict_statuses = collect_conflict_statuses(&status.files);
+        let conflict_statuses = list_conflict_statuses();
         let revision = build_repo_snapshot_revision(&SnapshotRevisionParts {
             repo_path: &repo_path,
             branch_label: &branch_label,
@@ -399,36 +458,16 @@ pub async fn get_repo_snapshot(state: State<'_, AppState>) -> Result<RepoSnapsho
 }
 
 fn is_conflict_status(status: &str) -> bool {
-    let s = status.trim().to_uppercase();
-    s.contains('U') || s == "AA" || s == "DD"
+    ConflictStatus::parse(status).is_some()
 }
 
 /// Returns conflict-status codes recognized by the backend.
 #[tauri::command]
 pub fn list_conflict_statuses() -> Vec<String> {
-    vec!["U", "UU", "UA", "AU", "UD", "DU", "AA", "DD"]
-        .into_iter()
-        .map(String::from)
-        .collect()
-}
-
-/// Collects distinct conflict status codes from a file-status list.
-fn collect_conflict_statuses(files: &[crate::core::models::FileEntry]) -> Vec<String> {
-    let mut statuses = files
+    ConflictStatus::all()
         .iter()
-        .filter_map(|file| {
-            let status = file.status.trim().to_uppercase();
-            if is_conflict_status(&status) {
-                Some(status)
-            } else {
-                None
-            }
-        })
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
-    statuses.shrink_to_fit();
-    statuses
+        .map(|status| status.code().to_string())
+        .collect()
 }
 
 #[cfg(test)]
