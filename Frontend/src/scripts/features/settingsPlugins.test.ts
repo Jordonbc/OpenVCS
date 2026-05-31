@@ -1069,7 +1069,7 @@ describe('pluginIsEnabled', () => {
         if (cmd === 'list_plugins') return [{
           id: 'p1', name: 'P1', version: '1.0', author: 'A',
           category: 'U', description: 'D', source: 'npm', tags: [],
-          icon_data_url: '', default_enabled: true,
+          icon_data_url: '', default_enabled: true, enabled: false,
         }];
         if (cmd === 'list_plugin_start_failures') return [];
         if (cmd === 'get_global_settings') return { plugins: { disabled: ['p1'], enabled: ['p1'] } };
@@ -1094,7 +1094,7 @@ describe('pluginIsEnabled', () => {
         if (cmd === 'list_plugins') return [{
           id: 'p1', name: 'P1', version: '1.0', author: 'A',
           category: 'U', description: 'D', source: 'npm', tags: [],
-          icon_data_url: '', default_enabled: false,
+          icon_data_url: '', default_enabled: false, enabled: true,
         }];
         if (cmd === 'list_plugin_start_failures') return [];
         if (cmd === 'get_global_settings') return { plugins: { disabled: [], enabled: ['p1'] } };

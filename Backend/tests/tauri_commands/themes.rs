@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 
 use crate::state::AppState;
-use crate::themes::ThemeSource;
+use crate::themes::{ThemeSource, ThemeSummary};
 use crate::settings;
 use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
@@ -58,6 +58,7 @@ fn build_app() -> tauri::App<tauri::test::MockRuntime> {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             super::list_themes,
+            super::resolve_theme_target,
         ])
         .build(mock_context(noop_assets()))
         .expect("build test app")
@@ -105,5 +106,77 @@ fn list_themes_returns_themes() {
             !matches!(theme.source, ThemeSource::Plugin),
             "should not include plugin themes by default"
         );
+    }
+}
+
+#[test]
+fn resolve_theme_target_returns_original_theme() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"id": "default-dark", "mode": "light"}));
+    let res = invoke_cmd(&webview, "resolve_theme_target", body);
+    assert!(res.is_ok(), "resolve_theme_target should succeed: {:?}", res);
+    let resolved: String = res.unwrap().deserialize().unwrap();
+    assert_eq!(resolved, "default-dark");
+}
+
+#[test]
+fn resolve_theme_target_inner_keeps_matching_themes() {
+    let themes = vec![paired_theme("default-light", "light", None)];
+    assert_eq!(
+        super::resolve_theme_target_from_themes("default-light", "light", &themes),
+        "default-light"
+    );
+    assert_eq!(
+        super::resolve_theme_target_from_themes("default-light", "system", &themes),
+        "default-light"
+    );
+}
+
+#[test]
+fn resolve_theme_target_inner_uses_explicit_pairing() {
+    let themes = vec![
+        paired_theme("custom-dark", "dark", Some("custom-light")),
+        paired_theme("custom-light", "light", Some("custom-dark")),
+    ];
+    assert_eq!(
+        super::resolve_theme_target_from_themes("custom-dark", "light", &themes),
+        "custom-light"
+    );
+    assert_eq!(
+        super::resolve_theme_target_from_themes("custom-light", "dark", &themes),
+        "custom-dark"
+    );
+}
+
+#[test]
+fn resolve_theme_target_inner_uses_suffix_heuristics() {
+    let themes = vec![
+        paired_theme("theme-dark", "dark", None),
+        paired_theme("theme-light", "light", None),
+        paired_theme("theme_dark", "dark", None),
+        paired_theme("theme_light", "light", None),
+    ];
+    assert_eq!(
+        super::resolve_theme_target_from_themes("theme_dark", "light", &themes),
+        "theme_light"
+    );
+    assert_eq!(
+        super::resolve_theme_target_from_themes("theme-light", "dark", &themes),
+        "theme-dark"
+    );
+}
+
+fn paired_theme(id: &str, appearance: &str, paired_with: Option<&str>) -> ThemeSummary {
+    ThemeSummary {
+        id: id.to_string(),
+        name: id.to_string(),
+        description: None,
+        version: None,
+        author: None,
+        appearance: Some(appearance.to_string()),
+        paired_with: paired_with.map(str::to_string),
+        source: ThemeSource::BuiltIn,
+        plugin_id: None,
     }
 }

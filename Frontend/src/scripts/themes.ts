@@ -113,16 +113,6 @@ function ensureSystemListener() {
     });
 }
 
-/** Builds the fallback generic default theme summary. */
-function defaultSummary(): ThemeSummary {
-    return {
-        id: DEFAULT_THEME_ID,
-        name: 'Default',
-        description: 'Built-in OpenVCS theme',
-        source: 'built-in',
-    };
-}
-
 /** Builds the fallback built-in light theme summary. */
 function defaultLightSummary(): ThemeSummary {
     return {
@@ -382,6 +372,19 @@ export async function selectThemePack(
     }
 
     if (desiredMode === 'system') {
+        try {
+            const resolved = await TAURI.invoke<string>('resolve_theme_target', {
+                id: target,
+                mode: effectiveSystemMode(),
+            });
+            const resolvedTarget = String(resolved || '').trim();
+            if (resolvedTarget) {
+                target = resolvedTarget;
+            }
+        } catch (error) {
+            console.warn('resolve_theme_target failed', error);
+        }
+
         const paired = resolvePairedThemeId(target);
         if (paired) target = paired;
     }

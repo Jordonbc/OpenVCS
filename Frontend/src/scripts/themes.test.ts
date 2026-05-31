@@ -352,12 +352,18 @@ describe('selectThemePack', () => {
     const { TAURI } = await import('./lib/tauri');
     const { getRegisteredThemePayload } = await import('./plugins');
     vi.mocked(getRegisteredThemePayload).mockReturnValue(null);
-    vi.mocked(TAURI.invoke).mockResolvedValue({
-      summary: { id: 'backend-theme', name: 'Backend Theme' },
-      styles: 'body { background: blue; }',
-      markup: null,
-      scripts: [],
-    } satisfies ThemePayload);
+    vi.mocked(TAURI.invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === 'resolve_theme_target') return 'backend-theme';
+      if (cmd === 'load_theme') {
+        return {
+          summary: { id: 'backend-theme', name: 'Backend Theme' },
+          styles: 'body { background: blue; }',
+          markup: null,
+          scripts: [],
+        } satisfies ThemePayload;
+      }
+      return null;
+    });
 
     const mod = await load();
     await mod.selectThemePack('backend-theme');
@@ -665,10 +671,26 @@ describe('paired theme resolution', () => {
   it('pairs registered themes with paired_with field', async () => {
     const { TAURI } = await import('./lib/tauri');
     const { getRegisteredThemeSummaries } = await import('./plugins');
-    vi.mocked(TAURI.invoke).mockResolvedValue([
-      { id: 'custom-dark', name: 'Custom Dark', appearance: 'dark', paired_with: 'custom-light' },
-      { id: 'custom-light', name: 'Custom Light', appearance: 'light', paired_with: 'custom-dark' },
-    ]);
+    vi.mocked(TAURI.invoke).mockImplementation(async (cmd: string, body?: unknown) => {
+      if (cmd === 'list_themes') {
+        return [
+          { id: 'custom-dark', name: 'Custom Dark', appearance: 'dark', paired_with: 'custom-light' },
+          { id: 'custom-light', name: 'Custom Light', appearance: 'light', paired_with: 'custom-dark' },
+        ];
+      }
+      if (cmd === 'resolve_theme_target') {
+        return String((body as { id?: string } | null)?.id ?? 'custom-dark');
+      }
+      if (cmd === 'load_theme') {
+        return {
+          summary: { id: 'custom-light', name: 'Custom Light' },
+          styles: '',
+          markup: null,
+          scripts: [],
+        } satisfies ThemePayload;
+      }
+      return null;
+    });
     vi.mocked(getRegisteredThemeSummaries).mockReturnValue([]);
 
     const mod = await load();
@@ -681,10 +703,21 @@ describe('paired theme resolution', () => {
 
   it('uses heuristic -dark/-light swap when no explicit paired_with', async () => {
     const { TAURI } = await import('./lib/tauri');
-    vi.mocked(TAURI.invoke).mockResolvedValue([
-      { id: 'my-dark', name: 'My Dark', appearance: 'dark' },
-      { id: 'my-light', name: 'My Light', appearance: 'light' },
-    ]);
+    vi.mocked(TAURI.invoke).mockImplementation(async (cmd: string, body?: unknown) => {
+      if (cmd === 'list_themes') {
+        return [
+          { id: 'my-dark', name: 'My Dark', appearance: 'dark' },
+          { id: 'my-light', name: 'My Light', appearance: 'light' },
+        ];
+      }
+      if (cmd === 'resolve_theme_target') {
+        return String((body as { id?: string } | null)?.id ?? 'my-dark');
+      }
+      if (cmd === 'load_theme') {
+        return { summary: { id: 'my-light', name: 'My Light' }, styles: '', markup: null, scripts: [] } satisfies ThemePayload;
+      }
+      return null;
+    });
 
     const mod = await load();
     await mod.refreshAvailableThemes();
@@ -696,10 +729,21 @@ describe('paired theme resolution', () => {
 
   it('uses heuristic _dark/_light swap', async () => {
     const { TAURI } = await import('./lib/tauri');
-    vi.mocked(TAURI.invoke).mockResolvedValue([
-      { id: 'my_dark', name: 'My Dark', appearance: 'dark' },
-      { id: 'my_light', name: 'My Light', appearance: 'light' },
-    ]);
+    vi.mocked(TAURI.invoke).mockImplementation(async (cmd: string, body?: unknown) => {
+      if (cmd === 'list_themes') {
+        return [
+          { id: 'my_dark', name: 'My Dark', appearance: 'dark' },
+          { id: 'my_light', name: 'My Light', appearance: 'light' },
+        ];
+      }
+      if (cmd === 'resolve_theme_target') {
+        return String((body as { id?: string } | null)?.id ?? 'my_dark');
+      }
+      if (cmd === 'load_theme') {
+        return { summary: { id: 'my_light', name: 'My Light' }, styles: '', markup: null, scripts: [] } satisfies ThemePayload;
+      }
+      return null;
+    });
 
     const mod = await load();
     await mod.refreshAvailableThemes();
@@ -922,7 +966,7 @@ describe('system listener change event', () => {
       { id: 'pair-light', name: 'light', appearance: 'light', paired_with: 'pair-dark' },
     ]);
 
-    await mod.setAppearanceMode('system');
+    mod.setAppearanceMode('system');
     (mq as any)._cb();
   });
 });

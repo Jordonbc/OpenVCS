@@ -109,10 +109,14 @@ pub fn list_plugin_start_failures(state: State<'_, AppState>) -> Vec<String> {
 /// # Returns
 /// - `Ok(PluginPayload)` when found.
 /// - `Err(String)` when loading fails.
-pub fn load_plugin(state: State<'_, AppState>, id: String) -> Result<plugins::PluginPayload, String> {
+pub fn load_plugin(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<plugins::PluginPayload, String> {
     let cfg = state.config();
     let mut payload = plugins::load_plugin(id.trim())?;
-    payload.summary.enabled = cfg.is_plugin_enabled(&payload.summary.id, payload.summary.default_enabled);
+    payload.summary.enabled =
+        cfg.is_plugin_enabled(&payload.summary.id, payload.summary.default_enabled);
     Ok(payload)
 }
 

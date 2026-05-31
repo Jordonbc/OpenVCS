@@ -453,6 +453,7 @@ fn build_invoke_handler<R: tauri::Runtime>()
         tauri_commands::read_repo_file_meta,
         tauri_commands::list_themes,
         tauri_commands::load_theme,
+        tauri_commands::resolve_theme_target,
         tauri_commands::list_plugins,
         tauri_commands::list_plugin_start_failures,
         tauri_commands::load_plugin,
