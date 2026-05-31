@@ -724,31 +724,51 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
 
         if (!(enableAllBtn as any).dataset?.bound) {
             (enableAllBtn as any).dataset.bound = '1';
-            enableAllBtn.addEventListener('click', () => {
+            enableAllBtn.addEventListener('click', async () => {
             for (const p of state.list) {
-                const id = String(p?.id || '').trim().toLowerCase();
+                const id = String(p?.id || '').trim();
                 if (!id) continue;
-                state.disabled.delete(id);
-                state.enabled.add(id);
+                const idLower = id.toLowerCase();
+                state.disabled.delete(idLower);
+                state.enabled.add(idLower);
+                try {
+                    await TAURI.invoke('set_plugin_enabled', { pluginId: id, enabled: true });
+                } catch (e) {
+                    console.warn(`enable-all: toggle ${id} failed`, e);
+                }
             }
             searchEl.dispatchEvent(new Event('input'));
             updateCounts();
-            persistPluginsDisabled().catch(() => {});
+            try {
+                await reloadPlugins();
+                clearPluginSettingsCache();
+                await renderPluginMenus(modal);
+            } catch (e) { console.warn('enable-all: reload failed', e); }
             });
         }
 
         if (!(disableAllBtn as any).dataset?.bound) {
             (disableAllBtn as any).dataset.bound = '1';
-            disableAllBtn.addEventListener('click', () => {
+            disableAllBtn.addEventListener('click', async () => {
             for (const p of state.list) {
-                const id = String(p?.id || '').trim().toLowerCase();
+                const id = String(p?.id || '').trim();
                 if (!id) continue;
-                state.enabled.delete(id);
-                state.disabled.add(id);
+                const idLower = id.toLowerCase();
+                state.enabled.delete(idLower);
+                state.disabled.add(idLower);
+                try {
+                    await TAURI.invoke('set_plugin_enabled', { pluginId: id, enabled: false });
+                } catch (e) {
+                    console.warn(`disable-all: toggle ${id} failed`, e);
+                }
             }
             searchEl.dispatchEvent(new Event('input'));
             updateCounts();
-            persistPluginsDisabled().catch(() => {});
+            try {
+                await reloadPlugins();
+                clearPluginSettingsCache();
+                await renderPluginMenus(modal);
+            } catch (e) { console.warn('disable-all: reload failed', e); }
             });
         }
 
