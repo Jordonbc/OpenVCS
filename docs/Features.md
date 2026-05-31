@@ -4,7 +4,7 @@
 
 # Features
 
-OpenVCS helps you work with Git repositories from the desktop.
+OpenVCS is plugin-first and VCS-agnostic. Features, themes, UI changes, and VCS integrations are all delivered by plugins.
 
 ## Current capability areas
 
