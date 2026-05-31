@@ -398,7 +398,7 @@ pub async fn get_repo_snapshot(state: State<'_, AppState>) -> Result<RepoSnapsho
 
 fn is_conflict_status(status: &str) -> bool {
     let s = status.trim().to_uppercase();
-    s == "U" || s.contains('U') || s == "AA" || s == "DD"
+    s.contains('U') || s == "AA" || s == "DD"
 }
 
 #[cfg(test)]
