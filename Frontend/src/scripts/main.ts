@@ -619,7 +619,6 @@ async function boot() {
                     const ok = await hydrateSnapshot();
                     if (!ok) return;
                     setRepoHeader();
-                    await hydrateSnapshot();
                     updateFetchUI();
                     lastHeadKey = key;
                 } catch {
