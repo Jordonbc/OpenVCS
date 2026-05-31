@@ -10,7 +10,7 @@ import type { FileStatus } from '../../types';
 import { openStashConfirm } from '../stashConfirm';
 import { dragState, listEl } from './context';
 import { updateCommitButton } from './commit';
-import { selectFile, renderCombinedDiff, clearDiffSelection, clearActiveRows, toggleFilePick, updateListCheckboxForPath, allHunkIndices, updateHunkCheckboxes } from './diffView';
+import { selectFile, renderCombinedDiff, clearDiffSelection, clearActiveRows, toggleFilePick, allHunkIndices, updateHunkCheckboxes } from './diffView';
 import { hydrateStatus, hydrateStash } from './hydrate';
 import { getVisibleFiles, updateSelectAllState } from './selectionState';
 
@@ -66,7 +66,7 @@ export function onFileClick(e: MouseEvent, file: FileStatus, index: number, visi
 }
 
 /** Starts drag-selection for diff or commit selection gestures. */
-export function onFileMouseDown(e: MouseEvent, file: FileStatus, index: number, visible: FileStatus[], li: HTMLElement) {
+export function onFileMouseDown(e: MouseEvent, file: FileStatus, index: number, visible: FileStatus[], _li: HTMLElement) {
     if (e.button !== 0) return;
     const mode = e.shiftKey ? 'diff' : (e.ctrlKey || e.metaKey) ? 'commit' : null;
     if (mode === null) {
@@ -131,7 +131,7 @@ export function onFileMouseDown(e: MouseEvent, file: FileStatus, index: number, 
 }
 
 /** Applies one row selection change for the active drag mode. */
-export function applySelect(path: string, on: boolean, rowEl: HTMLElement | null, visible: FileStatus[], mode: 'diff' | 'commit') {
+export function applySelect(path: string, on: boolean, rowEl: HTMLElement | null, _visible: FileStatus[], mode: 'diff' | 'commit') {
     disableDefaultSelectAll();
     if (mode === 'commit') {
         if (on) state.selectedFiles.add(path); else state.selectedFiles.delete(path);
