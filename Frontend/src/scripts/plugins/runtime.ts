@@ -1,10 +1,9 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { TAURI } from '../lib/tauri';
 import { initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from '../lib/scrollbars';
 import { notify } from '../lib/notify';
-import type { HookContext, HookName, PluginContextMenuItem, PluginContextMenuTarget, PluginSettingsSection, PluginSummary } from './types';
+import type { HookContext, HookName, PluginContextMenuItem, PluginContextMenuTarget } from './types';
 import type { ThemePayload, ThemeSummary } from '../types';
 import { escapeCssSelector, parseSanitizedPluginElement, normalizeId } from './sanitize';
 import {
@@ -212,13 +211,6 @@ export async function initPlugins(): Promise<void> {
 
     resetPluginRuntime();
     ensurePluginsMenuPlaceholder();
-
-    try {
-        await TAURI.invoke<PluginSummary[]>('list_plugins');
-    } catch (err) {
-        console.warn('list_plugins failed', err);
-        return;
-    }
 
     ensurePluginsMenuPlaceholder();
 }

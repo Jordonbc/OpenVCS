@@ -321,27 +321,20 @@ describe('initPlugins', () => {
     mountMinimalDom();
   });
 
-  it('loads plugins from backend', async () => {
+  it('does not make list_plugins IPC call', async () => {
     const tauri = (window as any).__TAURI__;
-    tauri.core.invoke.mockImplementation((cmd: string) => {
-      if (cmd === 'list_plugins') return Promise.resolve([{ id: 'plugin1', name: 'Plugin 1' }]);
-      return Promise.reject(new Error('unknown'));
-    });
-
     const { initPlugins } = await import('./runtime');
     await initPlugins();
 
-    expect(tauri.core.invoke).toHaveBeenCalledWith('list_plugins', undefined);
+    expect(tauri.core.invoke).not.toHaveBeenCalled();
   });
 
   it('handles list_plugins failure gracefully', async () => {
     const tauri = (window as any).__TAURI__;
-    tauri.core.invoke.mockImplementation((cmd: string) => {
-      return Promise.reject(new Error('fail'));
-    });
 
     const { initPlugins } = await import('./runtime');
     await expect(initPlugins()).resolves.toBeUndefined();
+    expect(tauri.core.invoke).not.toHaveBeenCalled();
   });
 });
 
@@ -354,10 +347,10 @@ describe('reloadPlugins', () => {
 
   it('resets initialized flag and re-initializes', async () => {
     const tauri = (window as any).__TAURI__;
-    tauri.core.invoke.mockResolvedValue({ plugins: { disabled: [], enabled: [] } });
 
     const { reloadPlugins } = await import('./runtime');
     await expect(reloadPlugins()).resolves.toBeUndefined();
+    expect(tauri.core.invoke).not.toHaveBeenCalled();
   });
 });
 
@@ -449,13 +442,10 @@ describe('initPlugins additional edge cases', () => {
 
   it('skips plugin summary with empty id', async () => {
     const tauri = (window as any).__TAURI__;
-    tauri.core.invoke.mockImplementation((cmd: string) => {
-      if (cmd === 'list_plugins') return Promise.resolve([{ id: '', name: '' }, { id: 'real', name: 'Real Plugin' }]);
-      return Promise.reject(new Error('unknown'));
-    });
 
     const { initPlugins } = await import('./runtime');
     await expect(initPlugins()).resolves.toBeUndefined();
+    expect(tauri.core.invoke).not.toHaveBeenCalled();
   });
 });
 
