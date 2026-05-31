@@ -336,7 +336,6 @@ describe('loadSettingsIntoForm', () => {
             general: { theme: 'light', theme_pack: 'default-light', language: 'en' },
             commit: { restrict_commit_summary: true },
             diff: { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true },
-            lfs: { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true },
             performance: { progressive_render: true, gpu_accel: true, animations: true },
             ux: { ui_scale: 1, font_mono: 'monospace', vim_nav: false, color_blind_mode: 'none', recents_limit: 10 },
             logging: { level: 'info', retain_archives: 10 },
@@ -535,49 +534,6 @@ describe('wireSettings (plugin actions)', () => {
         await vi.waitFor(() => {
             expect(mockNotify).toHaveBeenCalledWith('Plugin action failed');
         });
-    });
-});
-
-// ---------------------------------------------------------------------------
-// wireSettings - LFS toggle
-// ---------------------------------------------------------------------------
-
-describe('wireSettings (LFS toggle)', () => {
-    async function load() {
-        return import('./settings');
-    }
-
-    function mountWithLfs() {
-        const modal = mountSettingsModal();
-        modal.insertAdjacentHTML('beforeend', [
-            '<input id="set-lfs-enabled" type="checkbox" />',
-            '<input id="set-lfs-concurrency" type="number" />',
-            '<input id="set-lfs-require-lock" type="checkbox" />',
-            '<input id="set-lfs-bg-fetch" type="checkbox" />',
-        ].join('\n'));
-        return modal;
-    }
-
-    it('disables LFS dependents when LFS is unchecked', async () => {
-        mountWithLfs();
-        const { wireSettings } = await load();
-        wireSettings();
-        const lfsToggle = document.getElementById('set-lfs-enabled') as HTMLInputElement;
-        lfsToggle.checked = false;
-        lfsToggle.dispatchEvent(new Event('change'));
-        const concurrency = document.getElementById('set-lfs-concurrency') as HTMLInputElement;
-        expect(concurrency.disabled).toBe(true);
-    });
-
-    it('enables LFS dependents when LFS is checked', async () => {
-        mountWithLfs();
-        const { wireSettings } = await load();
-        wireSettings();
-        const lfsToggle = document.getElementById('set-lfs-enabled') as HTMLInputElement;
-        lfsToggle.checked = true;
-        lfsToggle.dispatchEvent(new Event('change'));
-        const concurrency = document.getElementById('set-lfs-concurrency') as HTMLInputElement;
-        expect(concurrency.disabled).toBe(false);
     });
 });
 
@@ -1074,7 +1030,6 @@ describe('collectSettingsFromForm', () => {
       '<select id="set-merge-mode"><option value="builtin">Built-in</option><option value="custom">Custom</option></select>',
       '<input id="set-merge-path" type="text" value="" />',
       '<input id="set-merge-args" type="text" value="" />',
-      '<input id="set-lfs-enabled" type="checkbox" />',
       '<input id="set-log-level" value="info" />',
       '<input id="set-log-keep" value="10" />',
       '<input id="set-restrict-commit-summary" type="checkbox" checked />',
@@ -1177,9 +1132,6 @@ describe('refreshDefaultBackendOptions', () => {
 });
 
 // ---------------------------------------------------------------------------
-// collectSettingsFromForm - LFS, merge, recents edge cases
-// ---------------------------------------------------------------------------
-
 describe('collectSettingsFromForm - edge cases', () => {
   async function load() {
     return import('./settings');
@@ -1192,7 +1144,6 @@ describe('collectSettingsFromForm - edge cases', () => {
       '<input id="set-gpu-accel" type="checkbox" />',
       '<input id="set-animations" type="checkbox" />',
       '<input id="set-progressive-render" type="checkbox" />',
-      '<input id="set-lfs-enabled" type="checkbox" />',
       '<input id="set-ui-scale" type="range" value="1" />',
       '<input id="set-font-mono" type="text" />',
       '<input id="set-vim-nav" type="checkbox" />',
@@ -1402,99 +1353,6 @@ describe('refreshDefaultBackendOptions error handling', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// collectSettingsFromForm - LFS elements present
-// ---------------------------------------------------------------------------
-
-describe('collectSettingsFromForm - LFS elements', () => {
-  async function load() {
-    return import('./settings');
-  }
-
-  it('collects LFS settings when LFS elements are present', async () => {
-    const modal = mountSettingsModal();
-    modal.dataset.currentCfg = JSON.stringify({});
-    modal.insertAdjacentHTML('beforeend', [
-      '<input id="set-lfs-enabled" type="checkbox" checked />',
-      '<input id="set-lfs-concurrency" type="number" value="8" />',
-      '<input id="set-lfs-require-lock" type="checkbox" />',
-      '<input id="set-lfs-bg-fetch" type="checkbox" checked />',
-      '<input id="set-gpu-accel" type="checkbox" />',
-      '<input id="set-animations" type="checkbox" />',
-      '<input id="set-progressive-render" type="checkbox" />',
-      '<input id="set-ui-scale" type="range" value="1" />',
-      '<input id="set-font-mono" type="text" />',
-      '<input id="set-vim-nav" type="checkbox" />',
-      '<select id="set-cb-mode"><option value="none">None</option></select>',
-      '<input id="set-recents-limit" type="number" value="10" />',
-      '<input id="set-tab-width" type="number" value="4" />',
-      '<input id="set-max-file-size-mb" type="number" value="10" />',
-      '<input id="set-intraline" type="checkbox" />',
-      '<input id="set-binary-placeholders" type="checkbox" />',
-      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
-      '<input id="set-log-level" value="info" />',
-      '<input id="set-log-keep" value="10" />',
-    ].join('\n'));
-    mockCollectGeneralSettings.mockReturnValue({});
-    mockCollectCommitSettings.mockReturnValue({});
-    mockCollectCommitTemplateSettings.mockReturnValue({});
-    mockInvoke.mockResolvedValue(undefined);
-    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
-
-    const { wireSettings } = await load();
-    wireSettings();
-    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
-    saveBtn.click();
-    await vi.waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
-        cfg: expect.objectContaining({
-          lfs: expect.objectContaining({ enabled: true, concurrency: 8 }),
-        }),
-      }));
-    });
-  });
-
-  it('collects LFS with invalid concurrency falling back to default', async () => {
-    const modal = mountSettingsModal();
-    modal.dataset.currentCfg = JSON.stringify({});
-    modal.insertAdjacentHTML('beforeend', [
-      '<input id="set-lfs-enabled" type="checkbox" />',
-      '<input id="set-lfs-concurrency" type="number" value="0" />',
-      '<input id="set-lfs-require-lock" type="checkbox" />',
-      '<input id="set-lfs-bg-fetch" type="checkbox" />',
-      '<input id="set-gpu-accel" type="checkbox" />',
-      '<input id="set-animations" type="checkbox" />',
-      '<input id="set-progressive-render" type="checkbox" />',
-      '<input id="set-ui-scale" type="range" value="1" />',
-      '<input id="set-font-mono" type="text" />',
-      '<input id="set-vim-nav" type="checkbox" />',
-      '<select id="set-cb-mode"><option value="none">None</option></select>',
-      '<input id="set-recents-limit" type="number" value="10" />',
-      '<input id="set-tab-width" type="number" value="4" />',
-      '<input id="set-max-file-size-mb" type="number" value="10" />',
-      '<input id="set-intraline" type="checkbox" />',
-      '<input id="set-binary-placeholders" type="checkbox" />',
-      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
-      '<input id="set-log-level" value="info" />',
-      '<input id="set-log-keep" value="10" />',
-    ].join('\n'));
-    mockCollectGeneralSettings.mockReturnValue({});
-    mockCollectCommitSettings.mockReturnValue({});
-    mockCollectCommitTemplateSettings.mockReturnValue({});
-    mockInvoke.mockResolvedValue(undefined);
-    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
-
-    const { wireSettings } = await load();
-    wireSettings();
-    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
-    saveBtn.click();
-    await vi.waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalled();
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
 // collectSettingsFromForm - edge cases
 // ---------------------------------------------------------------------------
 
@@ -1594,17 +1452,13 @@ describe('loadSettingsIntoForm - element filling', () => {
       '  <input id="set-max-file-size-mb" />',
       '  <input id="set-intraline" type="checkbox" />',
       '  <input id="set-binary-placeholders" type="checkbox" />',
-      '  <input id="set-restrict-commit-summary" type="checkbox" />',
-      '  <select id="set-merge-mode"><option value="builtin">Built-in</option><option value="custom">Custom</option></select>',
-      '  <input id="set-merge-path" />',
-      '  <input id="set-merge-args" />',
-      '  <input id="set-lfs-enabled" type="checkbox" />',
-      '  <input id="set-lfs-concurrency" />',
-      '  <input id="set-lfs-require-lock" type="checkbox" />',
-      '  <input id="set-lfs-bg-fetch" type="checkbox" />',
-      '  <input id="set-animations" type="checkbox" />',
-      '  <input id="set-progressive-render" type="checkbox" />',
-      '  <input id="set-gpu-accel" type="checkbox" />',
+       '  <input id="set-restrict-commit-summary" type="checkbox" />',
+       '  <select id="set-merge-mode"><option value="builtin">Built-in</option><option value="custom">Custom</option></select>',
+       '  <input id="set-merge-path" />',
+       '  <input id="set-merge-args" />',
+       '  <input id="set-animations" type="checkbox" />',
+       '  <input id="set-progressive-render" type="checkbox" />',
+       '  <input id="set-gpu-accel" type="checkbox" />',
       '  <input id="set-ui-scale" />',
       '  <input id="set-font-mono" />',
       '  <input id="set-vim-nav" type="checkbox" />',
@@ -1631,7 +1485,6 @@ describe('loadSettingsIntoForm - element filling', () => {
         show_binary_placeholders: false,
         external_merge: { enabled: true, path: '/usr/bin/merge', args: '--diff3' },
       },
-      lfs: { enabled: false, concurrency: 8, require_lock_before_edit: true, background_fetch_on_checkout: false },
       performance: { progressive_render: false, gpu_accel: true, animations: false },
       ux: { ui_scale: 1.5, font_mono: 'Fira Code', vim_nav: true, color_blind_mode: 'deuteranopia' as const, recents_limit: 25 },
       logging: { level: 'debug' as const, retain_archives: 50 },
@@ -1652,10 +1505,6 @@ describe('loadSettingsIntoForm - element filling', () => {
     expect((document.getElementById('set-merge-mode') as HTMLSelectElement).value).toBe('custom');
     expect((document.getElementById('set-merge-path') as HTMLInputElement).value).toBe('/usr/bin/merge');
     expect((document.getElementById('set-merge-args') as HTMLInputElement).value).toBe('--diff3');
-    expect((document.getElementById('set-lfs-enabled') as HTMLInputElement).checked).toBe(false);
-    expect((document.getElementById('set-lfs-concurrency') as HTMLInputElement).value).toBe('8');
-    expect((document.getElementById('set-lfs-require-lock') as HTMLInputElement).checked).toBe(true);
-    expect((document.getElementById('set-lfs-bg-fetch') as HTMLInputElement).checked).toBe(false);
     expect((document.getElementById('set-animations') as HTMLInputElement).checked).toBe(false);
     expect((document.getElementById('set-progressive-render') as HTMLInputElement).checked).toBe(false);
     expect((document.getElementById('set-gpu-accel') as HTMLInputElement).checked).toBe(true);

@@ -173,18 +173,6 @@ function collectSettingsFromForm(root: HTMLElement): GlobalSettings {
         })(),
     };
 
-    if (get('#set-lfs-enabled') || get('#set-lfs-concurrency') || get('#set-lfs-require-lock')) {
-        const rawConc = Number(get<HTMLInputElement>('#set-lfs-concurrency')?.value ?? 0);
-        const conc = rawConc && isFinite(rawConc) ? Math.max(1, Math.min(16, rawConc)) : 4;
-        o.lfs = {
-            ...o.lfs,
-            enabled: !!get<HTMLInputElement>('#set-lfs-enabled')?.checked,
-            concurrency: conc,
-            require_lock_before_edit: !!get<HTMLInputElement>('#set-lfs-require-lock')?.checked,
-            background_fetch_on_checkout: !!get<HTMLInputElement>('#set-lfs-bg-fetch')?.checked,
-        };
-    }
-
     o.performance = {
         ...o.performance,
         animations: !!get<HTMLInputElement>('#set-animations')?.checked,
@@ -291,13 +279,6 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
         elMm.dispatchEvent(new Event('change'));
     }
 
-    const elLe = get<HTMLInputElement>('#set-lfs-enabled'); if (elLe) elLe.checked = !!cfg.lfs?.enabled;
-    const elLc = get<HTMLInputElement>('#set-lfs-concurrency'); if (elLc) elLc.value = String(cfg.lfs?.concurrency ?? 0);
-
-    const elLl = get<HTMLInputElement>('#set-lfs-require-lock'); if (elLl) elLl.checked = !!cfg.lfs?.require_lock_before_edit;
-    const elBg = get<HTMLInputElement>('#set-lfs-bg-fetch'); if (elBg) elBg.checked = !!cfg.lfs?.background_fetch_on_checkout;
-    elLe?.dispatchEvent(new Event('change'));
-
     const elAni= get<HTMLInputElement>('#set-animations'); if (elAni) elAni.checked = cfg.performance?.animations !== false;
     const elPrg= get<HTMLInputElement>('#set-progressive-render'); if (elPrg) elPrg.checked = !!cfg.performance?.progressive_render;
     const elGpu= get<HTMLInputElement>('#set-gpu-accel'); if (elGpu) elGpu.checked = !!cfg.performance?.gpu_accel;
@@ -358,19 +339,6 @@ export function wireSettings() {
             }
         });
     }
-
-    const lfsToggle = modal.querySelector<HTMLInputElement>('#set-lfs-enabled');
-    const lfsDependents = ['#set-lfs-concurrency', '#set-lfs-require-lock', '#set-lfs-bg-fetch']
-        .map(sel => modal.querySelector<HTMLInputElement>(sel))
-        .filter((el): el is HTMLInputElement => !!el);
-    const updateLfsDependentState = () => {
-        const enabled = !!lfsToggle?.checked;
-        lfsDependents.forEach((input) => {
-            input.disabled = !enabled;
-        });
-    };
-    updateLfsDependentState();
-    lfsToggle?.addEventListener('change', updateLfsDependentState);
 
     const mergeModeSel = modal.querySelector('#set-merge-mode') as HTMLSelectElement | null;
     const mergeCustomGroups = Array.from(modal.querySelectorAll<HTMLElement>('[data-merge-custom]'));
@@ -567,7 +535,6 @@ export function wireSettings() {
                 },
             };
             cur.diff = { tab_width: 4, ignore_whitespace: 'none', max_file_size_mb: 10, intraline: true, show_binary_placeholders: true, external_diff: {enabled:false,path:'',args:''}, external_merge: {enabled:false,path:'',args:''}, binary_exts: ['png','jpg','dds','uasset'] };
-            cur.lfs = { enabled: true, concurrency: 4, require_lock_before_edit: false, background_fetch_on_checkout: true };
             cur.performance = { progressive_render: true, gpu_accel: true, animations: true };
             cur.ux = { ui_scale: 1.0, font_mono: 'monospace', vim_nav: false, color_blind_mode: 'none', recents_limit: 10 };
             cur.logging = { level: 'info', live_viewer: false, retain_archives: 10 };

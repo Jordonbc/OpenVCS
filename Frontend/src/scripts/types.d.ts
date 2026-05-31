@@ -111,12 +111,6 @@ export interface GlobalSettings {
         external_merge?: { enabled:boolean; path:string; args:string };
         binary_exts?: string[];
     };
-    lfs?: {
-        enabled?: boolean;
-        concurrency?: number;
-        require_lock_before_edit?: boolean;
-        background_fetch_on_checkout?: boolean;
-    };
     performance?: {
         progressive_render?: boolean;
         gpu_accel?: boolean;
