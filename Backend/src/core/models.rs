@@ -72,9 +72,6 @@ pub struct ConflictDetails {
     /// Whether the file is binary.
     #[serde(default)]
     pub binary: bool,
-    /// Whether the file is an LFS pointer.
-    #[serde(default)]
-    pub lfs_pointer: bool,
 }
 
 /// Side of a merge conflict.
