@@ -19,7 +19,6 @@ const BODY_MARKUP_NODES: ChildNode[] = [];
 const THEME_SCRIPT_NODES: HTMLScriptElement[] = [];
 
 let availableThemes: ThemeSummary[] = [defaultLightSummary(), defaultDarkSummary()];
-let fetchedThemes = false;
 let activeThemeId = defaultThemeIdForMode('system');
 let activeThemePackId = defaultThemeIdForMode('system');
 let activeStyles: string | null = null;
@@ -112,16 +111,6 @@ function ensureSystemListener() {
         }
         applyModeStyles('system');
     });
-}
-
-/** Builds the fallback generic default theme summary. */
-function defaultSummary(): ThemeSummary {
-    return {
-        id: DEFAULT_THEME_ID,
-        name: 'Default',
-        description: 'Built-in OpenVCS theme',
-        source: 'built-in',
-    };
 }
 
 /** Builds the fallback built-in light theme summary. */
@@ -363,16 +352,12 @@ export async function refreshAvailableThemes(): Promise<ThemeSummary[]> {
         availableThemes = [defaultLightSummary(), defaultDarkSummary(), ...others];
     }
 
-    fetchedThemes = true;
     return availableThemes;
 }
 
 /** Ensures theme metadata has been loaded at least once. */
-export async function ensureThemesLoaded(force?: boolean): Promise<ThemeSummary[]> {
-    if (!fetchedThemes || force) {
-        return refreshAvailableThemes();
-    }
-    return availableThemes;
+export async function ensureThemesLoaded(_force?: boolean): Promise<ThemeSummary[]> {
+    return refreshAvailableThemes();
 }
 
 /** Loads and applies a theme pack for the requested mode. */
@@ -387,12 +372,31 @@ export async function selectThemePack(
     }
 
     if (desiredMode === 'system') {
-        const paired = resolvePairedThemeId(target);
-        if (paired) target = paired;
+        const originalTarget = target;
+        let backendChangedTarget = false;
+        try {
+            const resolved = await TAURI.invoke<string>('resolve_theme_target', {
+                id: target,
+                mode: effectiveSystemMode(),
+            });
+            const resolvedTarget = String(resolved || '').trim();
+            if (resolvedTarget) {
+                backendChangedTarget = resolvedTarget.toLowerCase() !== originalTarget.toLowerCase();
+                target = resolvedTarget;
+            }
+        } catch (error) {
+            console.warn('resolve_theme_target failed', error);
+        }
+
+        if (!backendChangedTarget) {
+            const paired = resolvePairedThemeId(target);
+            if (paired) target = paired;
+        }
     }
 
-    if (isBuiltInDefaultThemeId(target)) {
-        activeThemeId = isBuiltInDefaultThemeId(target) ? target : defaultThemeIdForMode(desiredMode);
+    const targetId = target.trim().toLowerCase();
+    if (targetId === DEFAULT_LIGHT_THEME_ID || targetId === DEFAULT_DARK_THEME_ID) {
+        activeThemeId = target;
         activeThemePackId = activeThemeId;
         activeStyles = null;
         activeMarkup = null;

@@ -25,23 +25,7 @@ export const settingsSections = new Map<string, PluginSettingsSection[]>();
 /** Whether the plugin system has been initialized. */
 export let initialized = false;
 
-/** Tracks the currently disabled plugin ids (normalized). */
-export let disabledPlugins = new Set<string>();
-
-/** Tracks the currently enabled plugin ids (normalized). */
-export let enabledPlugins = new Set<string>();
-
 /** Sets the initialized flag for the plugin system. */
 export function setInitialized(value: boolean): void {
     initialized = value;
-}
-
-/** Replaces the disabled-plugins set with a new one. */
-export function setDisabledPlugins(set: Set<string>): void {
-    disabledPlugins = set;
-}
-
-/** Replaces the enabled-plugins set with a new one. */
-export function setEnabledPlugins(set: Set<string>): void {
-    enabledPlugins = set;
 }

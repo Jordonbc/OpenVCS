@@ -11,8 +11,7 @@ import type { RepoFileMeta } from '../../types';
 import { buildPatchForSelectedHunks } from '../diff';
 import { diffEl, diffHeadPath, diffHeadMeta, diffLineEndingEl, diffEncodingEl, diffBomEl, listEl } from './context';
 import { updateCommitButton } from './commit';
-import { hydrateStatus } from './hydrate';
-import { getVisibleFiles, updateSelectAllState } from './selectionState';
+import { ensureConflictStatusesLoaded, hydrateStatus } from './hydrate';
 import {
     scrollDiffToTop,
     detectBinaryDiff,
@@ -81,6 +80,7 @@ export async function selectFile(file: FileStatus, index: number) {
         return;
     }
     highlightRow(index);
+    await ensureConflictStatusesLoaded();
     const status = String(file.status || '').toUpperCase();
     if (isConflictStatus(status)) {
         diffHeadPath.textContent = `${file.path || '(unknown file)'} (conflicted)`;

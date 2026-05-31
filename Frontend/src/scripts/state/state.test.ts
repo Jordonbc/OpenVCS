@@ -12,11 +12,16 @@ function createMatchMediaMock(query: string) {
 
 import { disableDefaultSelectAll, hasChanges, hasRepo, isConflictStatus, resolveVcsActionLabel, state, statusClass, statusLabel } from './state';
 
+const CONFLICT_STATUSES = new Set(['U', 'UU', 'UA', 'AU', 'UD', 'DU', 'AA', 'DD']);
+
+state.conflictStatuses = new Set(CONFLICT_STATUSES);
+
 /** Resets mutable state between assertions. */
 afterEach(() => {
   state.hasRepo = false;
   state.files = [];
   state.vcsActionLabels = {};
+  state.conflictStatuses = new Set(CONFLICT_STATUSES);
   state.defaultSelectAll = true;
   state.selectionImplicitAll = true;
   state.selectedFiles = new Set();

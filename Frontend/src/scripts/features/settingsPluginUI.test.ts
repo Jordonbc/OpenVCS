@@ -79,23 +79,6 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// clearPluginSettingsCache
-// ---------------------------------------------------------------------------
-
-describe('clearPluginSettingsCache', () => {
-    async function load() {
-        return import('./settingsPluginUI');
-    }
-
-    it('clears the plugin settings cache', async () => {
-        const { clearPluginSettingsCache } = await load();
-        expect(() => clearPluginSettingsCache()).not.toThrow();
-        clearPluginSettingsCache();
-        expect(() => clearPluginSettingsCache()).not.toThrow();
-    });
-});
-
-// ---------------------------------------------------------------------------
 // collectPluginSettingsFromPanel
 // ---------------------------------------------------------------------------
 
@@ -732,7 +715,7 @@ describe('renderPluginSettingFields (via activateSection)', () => {
         });
     });
 
-    it('uses cached settings on re-activate without re-fetching', async () => {
+    it('re-fetches settings on re-activate', async () => {
         mockInvoke.mockResolvedValueOnce([makeField({ id: 'x', kind: 'text', value: 'first' })]);
         const { activateSection } = await load();
         const modal = createModal();
@@ -743,9 +726,8 @@ describe('renderPluginSettingFields (via activateSection)', () => {
         });
         expect(mockInvoke).toHaveBeenCalledTimes(1);
 
-        // Second activation of same modal uses cache (does not re-fetch)
         activateSection(modal, 'plugin-settings-test-plugin');
-        expect(mockInvoke).toHaveBeenCalledTimes(1);
+        expect(mockInvoke).toHaveBeenCalledTimes(2);
     });
 });
 

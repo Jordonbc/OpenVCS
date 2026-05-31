@@ -10,7 +10,7 @@ import { DEFAULT_LIGHT_THEME_ID, refreshAvailableThemes, selectThemePack } from 
 import { setTheme } from '../ui/layout';
 import type { GlobalSettings } from '../types';
 import { modeForTheme, rebuildThemePackOptions } from './settingsTheme';
-import { clearPluginSettingsCache, renderPluginMenus, activateSection } from './settingsPluginUI';
+import { renderPluginMenus, activateSection } from './settingsPluginUI';
 import { parsePluginQuery, pluginSearchScore } from './settingsPluginSearch';
 
 /** Loads plugin data and renders the full plugins management panel into the settings modal. */
@@ -118,10 +118,9 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
 
     const pluginIsEnabled = (p: PluginSummary): boolean => {
         const id = String(p?.id || '').trim().toLowerCase();
-        if (!id) return false;
         if (state.disabled.has(id)) return false;
         if (state.enabled.has(id)) return true;
-        return !!p.default_enabled;
+        return typeof p?.enabled === 'boolean' ? p.enabled : !!p?.default_enabled;
     };
 
     const enabledCount = state.list.filter((p) => p?.id && pluginIsEnabled(p)).length;
@@ -311,7 +310,6 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
                 img.alt = `${String(plugin.name || '').trim() || 'Plugin'} icon`;
                 img.decoding = 'async';
                 img.loading = 'lazy';
-                img.src = iconUrl;
                 img.addEventListener('load', () => {
                     icon.classList.add('has-img');
                     icon.replaceChildren(img);
@@ -321,6 +319,7 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
                     icon.classList.remove('has-img');
                     if (!icon.textContent?.trim()) icon.textContent = initial;
                 });
+                img.src = iconUrl;
                 icon.appendChild(img);
             }
 
@@ -456,7 +455,6 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
             }
             console.debug(`Plugin '${pluginId}' ${enabled ? 'enabled' : 'disabled'}`);
             await reloadPlugins();
-            clearPluginSettingsCache();
             await renderPluginMenus(modal);
             if (activeSection) activateSection(modal, activeSection);
             try {
@@ -604,7 +602,6 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
                         ?.getAttribute('data-section') || '',
                 ).trim();
                 await reloadPluginSummaries();
-                clearPluginSettingsCache();
                 await renderPluginMenus(modal);
                 const nav = modal.querySelector('#settings-nav');
                 const safeSection = activeSection && nav?.querySelector(`[data-section="${CSS.escape(activeSection)}"]`) ? activeSection : 'plugins';
@@ -725,31 +722,49 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
 
         if (!(enableAllBtn as any).dataset?.bound) {
             (enableAllBtn as any).dataset.bound = '1';
-            enableAllBtn.addEventListener('click', () => {
+            enableAllBtn.addEventListener('click', async () => {
             for (const p of state.list) {
-                const id = String(p?.id || '').trim().toLowerCase();
+                const id = String(p?.id || '').trim();
                 if (!id) continue;
-                state.disabled.delete(id);
-                state.enabled.add(id);
+                const idLower = id.toLowerCase();
+                state.disabled.delete(idLower);
+                state.enabled.add(idLower);
+                try {
+                    await TAURI.invoke('set_plugin_enabled', { pluginId: id, enabled: true });
+                } catch (e) {
+                    console.warn(`enable-all: toggle ${id} failed`, e);
+                }
             }
             searchEl.dispatchEvent(new Event('input'));
             updateCounts();
-            persistPluginsDisabled().catch(() => {});
+            try {
+                await reloadPlugins();
+                await renderPluginMenus(modal);
+            } catch (e) { console.warn('enable-all: reload failed', e); }
             });
         }
 
         if (!(disableAllBtn as any).dataset?.bound) {
             (disableAllBtn as any).dataset.bound = '1';
-            disableAllBtn.addEventListener('click', () => {
+            disableAllBtn.addEventListener('click', async () => {
             for (const p of state.list) {
-                const id = String(p?.id || '').trim().toLowerCase();
+                const id = String(p?.id || '').trim();
                 if (!id) continue;
-                state.enabled.delete(id);
-                state.disabled.add(id);
+                const idLower = id.toLowerCase();
+                state.enabled.delete(idLower);
+                state.disabled.add(idLower);
+                try {
+                    await TAURI.invoke('set_plugin_enabled', { pluginId: id, enabled: false });
+                } catch (e) {
+                    console.warn(`disable-all: toggle ${id} failed`, e);
+                }
             }
             searchEl.dispatchEvent(new Event('input'));
             updateCounts();
-            persistPluginsDisabled().catch(() => {});
+            try {
+                await reloadPlugins();
+                await renderPluginMenus(modal);
+            } catch (e) { console.warn('disable-all: reload failed', e); }
             });
         }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { TAURI, isTauriRuntimeAvailable } from '../../lib/tauri';
 import { isConflictStatus, state, prefs } from '../../state/state';
+import type { RepoSnapshotCache } from '../../types';
 import { renderList } from './list';
 import { autoOpenFirstConflict } from '../conflicts';
 
@@ -25,6 +26,101 @@ export function yieldToPaint(): Promise<void> {
 
 function normalizeFiles(files: any[]): any[] {
     return [...files].sort((a, b) => String(a?.path || '').localeCompare(String(b?.path || '')));
+}
+
+let snapshotInFlight: Promise<RepoSnapshotCache | null> | null = null;
+let conflictStatusesInFlight: Promise<void> | null = null;
+let lastSnapshotRevision = '';
+
+/** Loads conflict-status codes from Rust when cache is empty. */
+export async function ensureConflictStatusesLoaded(): Promise<void> {
+    if (state.conflictStatuses.size > 0) return;
+    if (conflictStatusesInFlight) return conflictStatusesInFlight;
+    conflictStatusesInFlight = (async () => {
+        try {
+            const codes = await TAURI.invoke<string[]>('list_conflict_statuses');
+            if (state.conflictStatuses.size === 0) {
+                state.conflictStatuses = new Set(Array.isArray(codes) ? codes.map((code) => String(code || '').trim().toUpperCase()) : []);
+            }
+        } catch {
+        }
+    })().finally(() => {
+        conflictStatusesInFlight = null;
+    });
+    return conflictStatusesInFlight;
+}
+
+/** Applies a backend snapshot to frontend mirror state. */
+function applyRepoSnapshot(snapshot: RepoSnapshotCache): void {
+    if (!snapshot || snapshot.revision === lastSnapshotRevision) return;
+
+    lastSnapshotRevision = snapshot.revision;
+    state.repoSnapshotCache = snapshot;
+    state.hasRepo = Boolean(snapshot.has_repo);
+    state.branch = String(snapshot.branch || '');
+    state.branchLabel = String(snapshot.branch_label || '');
+    state.branches = Array.isArray(snapshot.branches) ? (snapshot.branches as any) : [];
+    state.files = Array.isArray(snapshot.files) ? (snapshot.files as any) : [];
+    state.commits = Array.isArray(snapshot.commits) ? (snapshot.commits as any) : [];
+    (state as any).stash = Array.isArray(snapshot.stash) ? (snapshot.stash as any) : [];
+    (state as any).ahead = Number(snapshot.ahead || 0);
+    (state as any).behind = Number(snapshot.behind || 0);
+    state.branchOnRemote = Boolean(snapshot.branch_on_remote);
+    state.mergeInProgress = Boolean(snapshot.merge_in_progress);
+    state.seenConflicts = new Set(Array.isArray(snapshot.seen_conflicts) ? snapshot.seen_conflicts : []);
+    state.conflictStatuses = new Set(Array.isArray(snapshot.conflict_statuses) ? snapshot.conflict_statuses.map((s) => String(s || '').trim().toUpperCase()) : []);
+    state.vcsActionLabels = { ...(snapshot.vcs_action_labels || {}) };
+    (state as any).aheadIds = new Set(Array.isArray(snapshot.ahead_ids) ? snapshot.ahead_ids : []);
+
+    const currentPaths = new Set<string>(state.files.map((f: any) => String(f?.path || '')));
+    if (state.defaultSelectAll) {
+        state.selectionImplicitAll = true;
+        state.selectedFiles = new Set<string>(Array.from(currentPaths));
+    } else {
+        state.selectionImplicitAll = false;
+        state.selectedFiles.forEach((p) => { if (!currentPaths.has(p)) state.selectedFiles.delete(p); });
+    }
+    pruneSelectionMaps(currentPaths);
+
+    state.diffDirty = true;
+    renderList();
+    void autoOpenFirstConflict(state.files as any);
+    window.dispatchEvent(new CustomEvent('app:branches-updated'));
+    window.dispatchEvent(new CustomEvent('app:status-updated'));
+    window.dispatchEvent(new CustomEvent('app:vcs-action-labels-updated'));
+}
+
+/** Fetches one snapshot from Rust, with in-flight dedupe. */
+async function loadRepoSnapshot(): Promise<RepoSnapshotCache | null> {
+    if (!isTauriRuntimeAvailable()) return null;
+    if (snapshotInFlight) return snapshotInFlight;
+    snapshotInFlight = (async () => {
+        try {
+            const result = await TAURI.invoke<unknown>('get_repo_snapshot');
+            if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
+            const snapshot = result as Partial<RepoSnapshotCache>;
+            if (typeof snapshot.revision !== 'string' || !snapshot.revision) return null;
+            return snapshot as RepoSnapshotCache;
+        } catch {
+            return null;
+        }
+    })().finally(() => {
+        snapshotInFlight = null;
+    });
+    return snapshotInFlight;
+}
+
+/** Hydrates mirror state from Rust snapshot when available. */
+async function hydrateFromSnapshot(): Promise<boolean> {
+    const snapshot = await loadRepoSnapshot();
+    if (!snapshot) return false;
+    applyRepoSnapshot(snapshot);
+    return true;
+}
+
+/** Loads one full repo snapshot from Rust and applies it when available. */
+export async function hydrateSnapshot(): Promise<boolean> {
+    return hydrateFromSnapshot();
 }
 
 function buildStatusSignature(input: {
@@ -92,6 +188,7 @@ function describeHydrationFailure(operation: string, error: unknown): string {
 
 export async function hydrateBranches(): Promise<boolean> {
     if (!isTauriRuntimeAvailable()) return false;
+    if (await hydrateFromSnapshot()) return Boolean(state.hasRepo);
     try {
         await yieldToPaint();
         const list = await TAURI.invoke<any[]>('vcs_list_branches');
@@ -117,6 +214,7 @@ export async function hydrateBranches(): Promise<boolean> {
 }
 
 export async function hydrateStatus() {
+    if (await hydrateFromSnapshot()) return;
     try {
         await yieldToPaint();
         const result = await TAURI.invoke<{ files: any[]; ahead?: number; behind?: number }>('vcs_status');
@@ -128,6 +226,7 @@ export async function hydrateStatus() {
             const ctx = await TAURI.invoke<{ in_progress: boolean }>('vcs_merge_context');
             nextMergeInProgress = !!ctx?.in_progress;
             if (nextMergeInProgress) {
+                await ensureConflictStatusesLoaded();
                 nextSeenConflicts = new Set<string>();
                 nextFiles.forEach((f: any) => {
                     if (isConflictStatus(f?.status) && f?.path) {
@@ -193,6 +292,7 @@ export async function hydrateStatus() {
  * Uses a bounded initial history window so large repositories do not block startup.
  */
 export async function hydrateCommits(): Promise<void> {
+    if (await hydrateFromSnapshot()) return;
     try {
         await yieldToPaint();
         const list = await TAURI.invoke<any[]>('vcs_log', { limit: 500 });
@@ -252,6 +352,7 @@ export async function hydrateCommits(): Promise<void> {
 }
 
 export async function hydrateStash(): Promise<void> {
+    if (await hydrateFromSnapshot()) return;
     try {
         await yieldToPaint();
         const list = await TAURI.invoke<any[]>('vcs_stash_list');
@@ -267,6 +368,7 @@ export async function hydrateStash(): Promise<void> {
  * Loads the resolved action-label map for the active backend and notifies the UI.
  */
 export async function hydrateVcsActionLabels(): Promise<void> {
+    if (await hydrateFromSnapshot()) return;
     try {
         const labels = await TAURI.invoke<Array<[string, string]>>('current_vcs_action_labels');
         const resolved: Record<string, string> = {};

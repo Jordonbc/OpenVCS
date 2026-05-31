@@ -29,22 +29,4 @@ describe('plugin state', () => {
     mod.setInitialized(true);
     expect((await import('./state')).initialized).toBe(true);
   });
-
-  it('disabledPlugins and enabledPlugins start empty', async () => {
-    const mod = await import('./state');
-    expect(mod.disabledPlugins.size).toBe(0);
-    expect(mod.enabledPlugins.size).toBe(0);
-  });
-
-  it('setDisabledPlugins replaces the set', async () => {
-    const mod = await import('./state');
-    mod.setDisabledPlugins(new Set(['plugin-a']));
-    expect((await import('./state')).disabledPlugins.has('plugin-a')).toBe(true);
-  });
-
-  it('setEnabledPlugins replaces the set', async () => {
-    const mod = await import('./state');
-    mod.setEnabledPlugins(new Set(['plugin-b']));
-    expect((await import('./state')).enabledPlugins.has('plugin-b')).toBe(true);
-  });
 });

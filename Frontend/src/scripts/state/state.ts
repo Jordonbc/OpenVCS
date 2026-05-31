@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 // src/state/state.ts
-import type { AppPrefs, Branch, CommitItem, FileStatus, GlobalSettings, RepoFileMeta, StashItem } from '../types';
+import type { AppPrefs, Branch, CommitItem, FileStatus, GlobalSettings, RepoFileMeta, RepoSnapshotCache, StashItem } from '../types';
 
 /** Default application preferences. */
 export const defaultPrefs: AppPrefs = {
@@ -48,6 +48,8 @@ export type HunkNodeRefs = {
 
 /** Global application state. */
 export const state = {
+    /** Latest repository snapshot mirrored from Rust. */
+    repoSnapshotCache: null as RepoSnapshotCache | null,
     hasRepo: false,                 // backend truth (set after open/clone/add)
     branch: '' as string,           // current branch name
     branchLabel: '' as string,      // display label (e.g. Detached HEAD (abc1234))
@@ -61,6 +63,7 @@ export const state = {
     behind: 0 as number,            // commits behind upstream
     branchOnRemote: false as boolean, // current branch has a tracking reference on a remote
     aheadIds: new Set<string>() as Set<string>, // IDs of commits ahead of upstream
+    conflictStatuses: new Set<string>() as Set<string>,
     mergeInProgress: false as boolean,
     seenConflicts: new Set<string>() as Set<string>,
     defaultSelectAll: true as boolean, // by default select all files/hunks until user toggles
@@ -93,7 +96,7 @@ export const hasChanges = (): boolean =>
 /** True iff a VCS status code represents an unresolved merge conflict. */
 export const isConflictStatus = (status: unknown): boolean => {
     const s = String(status || '').trim().toUpperCase();
-    return s === 'U' || s.includes('U') || s === 'AA' || s === 'DD';
+    return state.conflictStatuses.has(s);
 };
 
 /**
@@ -122,7 +125,6 @@ export const statusLabel = (s: string) =>
                 s === 'C' ? 'Copied' :
                     s === 'T' ? 'Type change' :
                         s === 'S' ? 'Submodule' :
-                        s === 'U' ? 'Conflicted' :
         s === 'M' ? 'Modified' :
             s === 'D' ? 'Deleted' : 'Changed';
 
@@ -139,7 +141,6 @@ export const statusClass = (s: string) =>
                 s === 'C' ? 'cpy' :
                     s === 'T' ? 'type' :
                         s === 'S' ? 'submodule' :
-                        s === 'U' ? 'conflict' :
                             s === 'M' ? 'mod' :
                                 s === 'D' ? 'del' : 'mod';
 

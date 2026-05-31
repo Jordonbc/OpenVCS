@@ -1,11 +1,9 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-import { TAURI } from '../lib/tauri';
 import { initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from '../lib/scrollbars';
 import { notify } from '../lib/notify';
-import type { GlobalSettings } from '../types';
-import type { HookContext, HookName, PluginContextMenuItem, PluginContextMenuTarget, PluginSettingsSection, PluginSummary } from './types';
+import type { HookContext, HookName, PluginContextMenuItem, PluginContextMenuTarget } from './types';
 import type { ThemePayload, ThemeSummary } from '../types';
 import { escapeCssSelector, parseSanitizedPluginElement, normalizeId } from './sanitize';
 import {
@@ -16,11 +14,7 @@ import {
     contextMenuItems,
     settingsSections,
     initialized,
-    disabledPlugins,
-    enabledPlugins,
     setInitialized,
-    setDisabledPlugins,
-    setEnabledPlugins,
 } from './state';
 import {
     trackUiNode,
@@ -213,36 +207,7 @@ export async function initPlugins(): Promise<void> {
     installGlobalApi();
     wirePluginModalActions();
 
-    ensurePluginsMenuPlaceholder();
-
     resetPluginRuntime();
-    ensurePluginsMenuPlaceholder();
-
-    try {
-        const cfg = await TAURI.invoke<GlobalSettings>('get_global_settings');
-        const disabledIds = Array.isArray(cfg?.plugins?.disabled) ? cfg.plugins!.disabled! : [];
-        const enabledIds = Array.isArray(cfg?.plugins?.enabled) ? cfg.plugins!.enabled! : [];
-        setDisabledPlugins(new Set(disabledIds.map((s: string) => normalizeId(s)).filter(Boolean)));
-        setEnabledPlugins(new Set(enabledIds.map((s: string) => normalizeId(s)).filter(Boolean)));
-    } catch {
-        setDisabledPlugins(new Set());
-        setEnabledPlugins(new Set());
-    }
-
-    let list: PluginSummary[] = [];
-    try {
-        list = await TAURI.invoke<PluginSummary[]>('list_plugins');
-    } catch (err) {
-        console.warn('list_plugins failed', err);
-        return;
-    }
-
-    for (const summary of Array.isArray(list) ? list : []) {
-        const pluginId = String(summary?.id || '').trim();
-        if (!pluginId) continue;
-        // Filtering by isPluginEnabled happens implicitly via injectPluginModule.
-    }
-
     ensurePluginsMenuPlaceholder();
 }
 

@@ -118,7 +118,8 @@ fn build_app_no_repo() -> tauri::App<tauri::test::MockRuntime> {
 fn build_app_with_repo() -> tauri::App<tauri::test::MockRuntime> {
     let vcs = Arc::new(TestVcs::new("test-vcs", tempfile::tempdir().unwrap().keep()));
     let repo = Arc::new(Repo::new(vcs.clone() as Arc<dyn Vcs>));
-    let cfg = settings::AppConfig::default();
+    let mut cfg = settings::AppConfig::default();
+    cfg.plugins.enabled = vec!["test.test-vcs".into()];
     let app_state = AppState::new_with_config(cfg);
     app_state.set_current_repo(repo);
     mock_builder()

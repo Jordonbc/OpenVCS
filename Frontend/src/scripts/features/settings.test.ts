@@ -31,7 +31,6 @@ const mockApplyAnimationPreference = vi.fn();
 const mockModeForTheme = vi.fn(() => 'light' as const);
 const mockRebuildThemePackOptions = vi.fn();
 const mockThemeTooltip = vi.fn(() => 'Tooltip');
-const mockClearPluginSettingsCache = vi.fn();
 const mockRenderPluginMenus = vi.fn();
 const mockCollectPluginSettingsFromPanel = vi.fn(() => [] as Array<{ id: string; value: unknown }>);
 const mockActivateSection = vi.fn();
@@ -98,7 +97,6 @@ vi.mock('./settingsTheme', () => ({
     themeTooltip: mockThemeTooltip,
 }));
 vi.mock('./settingsPluginUI', () => ({
-    clearPluginSettingsCache: mockClearPluginSettingsCache,
     renderPluginMenus: mockRenderPluginMenus,
     collectPluginSettingsFromPanel: mockCollectPluginSettingsFromPanel,
     activateSection: mockActivateSection,
@@ -161,7 +159,6 @@ beforeEach(() => {
     mockModeForTheme.mockReturnValue('light');
     mockRebuildThemePackOptions.mockReset();
     mockThemeTooltip.mockReturnValue('Tooltip');
-    mockClearPluginSettingsCache.mockReset();
     mockRenderPluginMenus.mockReset();
     mockCollectPluginSettingsFromPanel.mockReturnValue([]);
     mockActivateSection.mockReset();
@@ -192,11 +189,6 @@ describe('re-exported symbols', () => {
     it('re-exports applyAnimationPreference', async () => {
         const mod = await load();
         expect(typeof mod.applyAnimationPreference).toBe('function');
-    });
-
-    it('re-exports clearPluginSettingsCache', async () => {
-        const mod = await load();
-        expect(typeof mod.clearPluginSettingsCache).toBe('function');
     });
 });
 
@@ -817,7 +809,6 @@ describe('wireSettings (reset button)', () => {
         await vi.waitFor(() => {
             expect(mockInvoke).toHaveBeenCalledWith('reset_plugin_settings', { pluginId: 'reset-plugin' });
             expect(mockNotify).toHaveBeenCalledWith('Plugin settings reset');
-            expect(mockClearPluginSettingsCache).toHaveBeenCalled();
             expect(mockRenderPluginMenus).toHaveBeenCalledWith(modal);
         });
     });
