@@ -132,7 +132,6 @@ fn resolve_theme_target_from_themes(
     requested.to_string()
 }
 
-
 /// Returns themes that should be visible for the current enabled-plugin set.
 fn enabled_plugin_themes(cfg: &settings::AppConfig) -> Vec<themes::ThemeSummary> {
     let enabled = enabled_plugins(cfg);
