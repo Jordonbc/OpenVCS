@@ -307,7 +307,6 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
                 img.alt = `${String(plugin.name || '').trim() || 'Plugin'} icon`;
                 img.decoding = 'async';
                 img.loading = 'lazy';
-                img.src = iconUrl;
                 img.addEventListener('load', () => {
                     icon.classList.add('has-img');
                     icon.replaceChildren(img);
@@ -317,6 +316,7 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
                     icon.classList.remove('has-img');
                     if (!icon.textContent?.trim()) icon.textContent = initial;
                 });
+                img.src = iconUrl;
                 icon.appendChild(img);
             }
 
