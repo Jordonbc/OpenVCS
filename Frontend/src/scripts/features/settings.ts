@@ -28,12 +28,11 @@ import type { GlobalSettings } from '../types';
 import { setGlobalSettings } from '../state/state';
 import { updateCommitButton } from './repo/commit';
 import { applyAnimationPreference, modeForTheme, rebuildThemePackOptions, themeTooltip } from './settingsTheme';
-import { clearPluginSettingsCache, renderPluginMenus, collectPluginSettingsFromPanel, activateSection } from './settingsPluginUI';
+import { renderPluginMenus, collectPluginSettingsFromPanel, activateSection } from './settingsPluginUI';
 import { loadPluginsIntoForm } from './settingsPlugins';
 
 // Re-export symbols that external consumers import from this module.
 export { applyAnimationPreference };
-export { clearPluginSettingsCache } from './settingsPluginUI';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -540,7 +539,6 @@ export function wireSettings() {
                 }
                 await TAURI.invoke('reset_plugin_settings', { pluginId });
                 notify('Plugin settings reset');
-                clearPluginSettingsCache();
                 await renderPluginMenus(modal);
                 if (section) activateSection(modal, section);
                 return;

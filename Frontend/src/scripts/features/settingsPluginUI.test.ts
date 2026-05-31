@@ -79,23 +79,6 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// clearPluginSettingsCache
-// ---------------------------------------------------------------------------
-
-describe('clearPluginSettingsCache', () => {
-    async function load() {
-        return import('./settingsPluginUI');
-    }
-
-    it('clears the plugin settings cache', async () => {
-        const { clearPluginSettingsCache } = await load();
-        expect(() => clearPluginSettingsCache()).not.toThrow();
-        clearPluginSettingsCache();
-        expect(() => clearPluginSettingsCache()).not.toThrow();
-    });
-});
-
-// ---------------------------------------------------------------------------
 // collectPluginSettingsFromPanel
 // ---------------------------------------------------------------------------
 

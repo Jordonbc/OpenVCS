@@ -17,7 +17,6 @@ vi.mock('./settingsTheme', () => ({
   rebuildThemePackOptions: vi.fn(),
 }));
 vi.mock('./settingsPluginUI', () => ({
-  clearPluginSettingsCache: vi.fn(),
   renderPluginMenus: vi.fn(),
   activateSection: vi.fn(),
 }));

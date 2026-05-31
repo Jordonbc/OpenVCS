@@ -10,7 +10,7 @@ import { DEFAULT_LIGHT_THEME_ID, refreshAvailableThemes, selectThemePack } from 
 import { setTheme } from '../ui/layout';
 import type { GlobalSettings } from '../types';
 import { modeForTheme, rebuildThemePackOptions } from './settingsTheme';
-import { clearPluginSettingsCache, renderPluginMenus, activateSection } from './settingsPluginUI';
+import { renderPluginMenus, activateSection } from './settingsPluginUI';
 import { parsePluginQuery, pluginSearchScore } from './settingsPluginSearch';
 
 /** Loads plugin data and renders the full plugins management panel into the settings modal. */
@@ -455,7 +455,6 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
             }
             console.debug(`Plugin '${pluginId}' ${enabled ? 'enabled' : 'disabled'}`);
             await reloadPlugins();
-            clearPluginSettingsCache();
             await renderPluginMenus(modal);
             if (activeSection) activateSection(modal, activeSection);
             try {
@@ -603,7 +602,6 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
                         ?.getAttribute('data-section') || '',
                 ).trim();
                 await reloadPluginSummaries();
-                clearPluginSettingsCache();
                 await renderPluginMenus(modal);
                 const nav = modal.querySelector('#settings-nav');
                 const safeSection = activeSection && nav?.querySelector(`[data-section="${CSS.escape(activeSection)}"]`) ? activeSection : 'plugins';
@@ -741,7 +739,6 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
             updateCounts();
             try {
                 await reloadPlugins();
-                clearPluginSettingsCache();
                 await renderPluginMenus(modal);
             } catch (e) { console.warn('enable-all: reload failed', e); }
             });
@@ -766,7 +763,6 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
             updateCounts();
             try {
                 await reloadPlugins();
-                clearPluginSettingsCache();
                 await renderPluginMenus(modal);
             } catch (e) { console.warn('disable-all: reload failed', e); }
             });

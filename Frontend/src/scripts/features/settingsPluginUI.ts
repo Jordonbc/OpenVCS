@@ -134,9 +134,6 @@ function renderPluginSettingFields(
     return settingsWrap;
 }
 
-// ---------------------------------------------------------------------------
-export function clearPluginSettingsCache(): void {
-}
 
 async function ensurePluginSettingsLoaded(modal: HTMLElement, pluginId: string, section: string): Promise<boolean> {
     const panelsScroll = modal.querySelector('#settings-panels-scroll');
