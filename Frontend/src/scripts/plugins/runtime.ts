@@ -207,11 +207,7 @@ export async function initPlugins(): Promise<void> {
     installGlobalApi();
     wirePluginModalActions();
 
-    ensurePluginsMenuPlaceholder();
-
     resetPluginRuntime();
-    ensurePluginsMenuPlaceholder();
-
     ensurePluginsMenuPlaceholder();
 }
 
