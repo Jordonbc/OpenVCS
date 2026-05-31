@@ -752,6 +752,47 @@ describe('paired theme resolution', () => {
     expect(mod.getActiveThemeId()).toBe('my_light');
   });
 
+  it('pairs plugin-only themes in system mode when backend does not know them', async () => {
+    const { TAURI } = await import('./lib/tauri');
+    const { getRegisteredThemeSummaries, getRegisteredThemePayload } = await import('./plugins');
+    vi.mocked(TAURI.invoke).mockImplementation(async (cmd: string, body?: unknown) => {
+      if (cmd === 'list_themes') return [];
+      if (cmd === 'resolve_theme_target') {
+        return String((body as { id?: string } | null)?.id ?? 'plugin-dark');
+      }
+      if (cmd === 'load_theme') {
+        return {
+          summary: { id: 'plugin-light', name: 'Plugin Light', source: 'plugin' },
+          styles: '',
+          markup: null,
+          scripts: [],
+        } satisfies ThemePayload;
+      }
+      return null;
+    });
+    vi.mocked(getRegisteredThemeSummaries).mockReturnValue([
+      { id: 'plugin-dark', name: 'Plugin Dark', appearance: 'dark', paired_with: 'plugin-light' },
+      { id: 'plugin-light', name: 'Plugin Light', appearance: 'light', paired_with: 'plugin-dark' },
+    ]);
+    vi.mocked(getRegisteredThemePayload).mockImplementation((id: string) => {
+      if (id === 'plugin-light') {
+        return {
+          summary: { id: 'plugin-light', name: 'Plugin Light', source: 'plugin' },
+          styles: '',
+          markup: null,
+          scripts: [],
+        } satisfies ThemePayload;
+      }
+      return null;
+    });
+
+    const mod = await load();
+    await mod.refreshAvailableThemes();
+
+    await mod.selectThemePack('plugin-dark', { mode: 'system' });
+    expect(mod.getActiveThemeId()).toBe('plugin-light');
+  });
+
   it('does not pair when appearance already matches system mode (line 73)', async () => {
     // mq.matches = false → light system mode
     // A theme with appearance='light' should NOT pair because it matches

@@ -372,6 +372,8 @@ export async function selectThemePack(
     }
 
     if (desiredMode === 'system') {
+        const originalTarget = target;
+        let backendChangedTarget = false;
         try {
             const resolved = await TAURI.invoke<string>('resolve_theme_target', {
                 id: target,
@@ -379,14 +381,17 @@ export async function selectThemePack(
             });
             const resolvedTarget = String(resolved || '').trim();
             if (resolvedTarget) {
+                backendChangedTarget = resolvedTarget.toLowerCase() !== originalTarget.toLowerCase();
                 target = resolvedTarget;
             }
         } catch (error) {
             console.warn('resolve_theme_target failed', error);
         }
 
-        const paired = resolvePairedThemeId(target);
-        if (paired) target = paired;
+        if (!backendChangedTarget) {
+            const paired = resolvePairedThemeId(target);
+            if (paired) target = paired;
+        }
     }
 
     if (isBuiltInDefaultThemeId(target)) {
