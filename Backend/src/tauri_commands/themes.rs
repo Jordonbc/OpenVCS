@@ -132,17 +132,16 @@ fn resolve_theme_target_from_themes(
     requested.to_string()
 }
 
-/// Resolves a requested theme id to a paired theme when the requested appearance differs.
-///
-/// # Parameters
-/// - `theme_id`: Requested theme id.
-/// - `mode`: Requested appearance mode (`light` or `dark`).
-///
-/// # Returns
-/// - Resolved theme id when a pairing exists.
-/// - The original id when no pairing is needed or no match exists.
-fn resolve_theme_target_inner(theme_id: &str, mode: &str) -> String {
-    resolve_theme_target_from_themes(theme_id, mode, &themes::list_themes())
+
+/// Returns themes that should be visible for the current enabled-plugin set.
+fn enabled_plugin_themes(cfg: &settings::AppConfig) -> Vec<themes::ThemeSummary> {
+    let enabled = enabled_plugins(cfg);
+    themes::list_themes()
+        .into_iter()
+        .filter(|theme| {
+            theme_allowed_for_enabled_plugins(&theme.source, theme.plugin_id.as_deref(), &enabled)
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -155,14 +154,7 @@ fn resolve_theme_target_inner(theme_id: &str, mode: &str) -> String {
 /// - Theme summaries visible to the current configuration.
 pub fn list_themes(state: State<'_, AppState>) -> Vec<themes::ThemeSummary> {
     let cfg: settings::AppConfig = state.config();
-    let enabled = enabled_plugins(&cfg);
-
-    themes::list_themes()
-        .into_iter()
-        .filter(|theme| {
-            theme_allowed_for_enabled_plugins(&theme.source, theme.plugin_id.as_deref(), &enabled)
-        })
-        .collect()
+    enabled_plugin_themes(&cfg)
 }
 
 #[tauri::command]
@@ -202,8 +194,10 @@ pub fn load_theme(state: State<'_, AppState>, id: String) -> Result<themes::Them
 ///
 /// # Returns
 /// - Resolved theme id string.
-pub fn resolve_theme_target(id: String, mode: String) -> String {
-    resolve_theme_target_inner(id.trim(), mode.trim())
+pub fn resolve_theme_target(state: State<'_, AppState>, id: String, mode: String) -> String {
+    let cfg: settings::AppConfig = state.config();
+    let filtered = enabled_plugin_themes(&cfg);
+    resolve_theme_target_from_themes(id.trim(), mode.trim(), &filtered)
 }
 
 #[cfg(test)]
