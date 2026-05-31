@@ -354,7 +354,13 @@ pub async fn get_repo_snapshot(state: State<'_, AppState>) -> Result<RepoSnapsho
                     HashMap::new()
                 });
 
-        let stash = vcs.stash_list().map_err(|e| e.to_string())?;
+        let stash = match vcs.stash_list() {
+            Ok(items) => items,
+            Err(err) => {
+                warn!("snapshot: failed to load stash entries: {err}");
+                Vec::new()
+            }
+        };
         let revision = build_repo_snapshot_revision(&SnapshotRevisionParts {
             repo_path: &repo_path,
             branch_label: &branch_label,
