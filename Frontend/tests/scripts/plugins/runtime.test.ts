@@ -469,6 +469,89 @@ describe('runPluginAction error handling', () => {
 });
 
 // ============================================================================
+// applyPluginSettingsSections - os-host without os-content (lines 55-56)
+// ============================================================================
+describe('applyPluginSettingsSections os-host without os-content', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('handles os-host without .os-content child', async () => {
+    mountSettingsDom();
+    const panelsScroll = document.getElementById('settings-panels-scroll')!;
+    const osHost = document.createElement('div');
+    osHost.className = 'os-host';
+    // No .os-content child inside os-host
+    osHost.textContent = 'empty';
+    panelsScroll.appendChild(osHost);
+
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('@scripts/plugins/registration');
+    const { applyPluginSettingsSections } = await import('@scripts/plugins/runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test', { id: 'no-os-content', label: 'No OS', html: '<div class="panel-form">Content</div>' });
+    applyPluginSettingsSections();
+
+    // Panel should be inserted in panelsScroll (not os-content) since no .os-content was found
+    expect(document.querySelector('#settings-panels-scroll .panel-form[data-panel="no-os-content"]')).not.toBeNull();
+  });
+
+  it('skips non-HTMLElement child in panelsScroll loop', async () => {
+    mountSettingsDom();
+    const panelsScroll = document.getElementById('settings-panels-scroll')!;
+    // Text node is not an HTMLElement
+    panelsScroll.appendChild(document.createTextNode('some text'));
+
+    const osHost = document.createElement('div');
+    osHost.className = 'os-host';
+    const osContent = document.createElement('div');
+    osContent.className = 'os-content';
+    osHost.appendChild(osContent);
+    panelsScroll.appendChild(osHost);
+
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('@scripts/plugins/registration');
+    const { applyPluginSettingsSections } = await import('@scripts/plugins/runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test', { id: 'after-text', label: 'After Text', html: '<div class="panel-form">Content</div>' });
+    applyPluginSettingsSections();
+
+    expect(document.querySelector('.os-content .panel-form[data-panel="after-text"]')).not.toBeNull();
+  });
+});
+
+// ============================================================================
+// runHook catch with falsy error (line 162)
+// ============================================================================
+describe('runHook catch falsy error', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('sets default reason when handler throws empty string', async () => {
+    const { registerHook } = await import('@scripts/plugins/registration');
+    registerHook('p1', 'preCommit', async () => { throw ''; });
+
+    const { runHook } = await import('@scripts/plugins/runtime');
+    const ctx = await runHook('preCommit', {});
+    expect(ctx.cancelled).toBe(true);
+    expect(ctx.reason).toBe('Hook failed');
+  });
+
+  it('sets default reason when handler throws null', async () => {
+    const { registerHook } = await import('@scripts/plugins/registration');
+    registerHook('p1', 'preCommit', async () => { throw null; });
+
+    const { runHook } = await import('@scripts/plugins/runtime');
+    const ctx = await runHook('preCommit', {});
+    expect(ctx.cancelled).toBe(true);
+    expect(ctx.reason).toBe('Hook failed');
+  });
+});
+
+// ============================================================================
 // runHook - cancel closure with reason
 // ============================================================================
 describe('runHook cancel closure', () => {
@@ -522,5 +605,104 @@ describe('reloadPlugins additional coverage', () => {
 
     const { reloadPlugins } = await import('@scripts/plugins/runtime');
     await expect(reloadPlugins()).resolves.toBeUndefined();
+  });
+});
+
+// ============================================================================
+// applyPluginSettingsSections - non-array sections in map (line 65)
+// ============================================================================
+describe('applyPluginSettingsSections non-array sections', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('handles sections value that is not an array (line 65 Array.isArray false)', async () => {
+    mountSettingsDom();
+    const settingsSections = (await import('@scripts/plugins/state')).settingsSections;
+    // Directly set a non-array value to cover the Array.isArray false branch
+    settingsSections.set('test-plugin', null as unknown as any[]);
+
+    const { applyPluginSettingsSections } = await import('@scripts/plugins/runtime');
+    expect(() => applyPluginSettingsSections()).not.toThrow();
+  });
+});
+
+// ============================================================================
+// applyPluginSettingsSections - section with null fields (lines 66-68)
+// ============================================================================
+describe('applyPluginSettingsSections null field fallbacks', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('handles section with null id, label and html (lines 66-69 fallbacks)', async () => {
+    mountSettingsDom();
+    const settingsSections = (await import('@scripts/plugins/state')).settingsSections;
+    // Put a section where all fields are null/undefined — lines 66-68 use || ''
+    settingsSections.set('null-plugin', [{ id: null, label: null, html: null } as any]);
+
+    const { applyPluginSettingsSections } = await import('@scripts/plugins/runtime');
+    applyPluginSettingsSections();
+
+    // The section should be skipped because id/label/html are all empty after trim
+    expect(document.querySelector('#settings-nav [data-section="null"]')).toBeNull();
+  });
+
+  it('handles section with empty id, label, and html (line 69 continue)', async () => {
+    mountSettingsDom();
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('@scripts/plugins/registration');
+    const { applyPluginSettingsSections } = await import('@scripts/plugins/runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test', { id: '', label: '  ', html: '' });
+    applyPluginSettingsSections();
+
+    // All three fields are empty after trim — should be skipped
+    expect(document.querySelector('#settings-nav [data-section=""]')).toBeNull();
+  });
+});
+
+// ============================================================================
+// applyPluginSettingsSections - before/after edge cases
+// ============================================================================
+describe('applyPluginSettingsSections positioning edge cases', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+  });
+
+  it('inserts before another section when before target exists', async () => {
+    mountSettingsDom();
+    document.querySelector('#settings-nav')!.innerHTML =
+      '<li><button class="seg-btn" data-section="first">First</button></li>' +
+      '<li><button class="seg-btn" data-section="last">Last</button></li>';
+
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('@scripts/plugins/registration');
+    const { applyPluginSettingsSections } = await import('@scripts/plugins/runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test', { id: 'middle', label: 'Middle', html: '<div>Content</div>', before: 'last' });
+
+    const items = Array.from(document.querySelectorAll('#settings-nav [data-section]'));
+    expect(items[0].getAttribute('data-section')).toBe('first');
+    expect(items[1].getAttribute('data-section')).toBe('middle');
+    expect(items[2].getAttribute('data-section')).toBe('last');
+  });
+
+  it('appends to nav when both before and after targets are missing', async () => {
+    mountSettingsDom();
+    document.querySelector('#settings-nav')!.innerHTML =
+      '<li><button class="seg-btn" data-section="existing">Existing</button></li>';
+
+    const { _setApplyPluginSectionsFallback, upsertSettingsSection } = await import('@scripts/plugins/registration');
+    const { applyPluginSettingsSections } = await import('@scripts/plugins/runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+
+    upsertSettingsSection('test', { id: 'orphan', label: 'Orphan', html: '<div>No target</div>', before: 'nonexistent', after: 'nowhere' });
+
+    const items = Array.from(document.querySelectorAll('#settings-nav [data-section]'));
+    expect(items[items.length - 1].getAttribute('data-section')).toBe('orphan');
   });
 });

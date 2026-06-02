@@ -47,6 +47,22 @@ describe('isConflictStatus', () => {
     expect(isConflictStatus('DD')).toBe(true);
     expect(isConflictStatus('M')).toBe(false);
   });
+
+  it('handles null status', () => {
+    expect(isConflictStatus(null)).toBe(false);
+  });
+
+  it('handles undefined status', () => {
+    expect(isConflictStatus(undefined)).toBe(false);
+  });
+
+  it('handles empty string status', () => {
+    expect(isConflictStatus('')).toBe(false);
+  });
+
+  it('handles whitespace status', () => {
+    expect(isConflictStatus('   ')).toBe(false);
+  });
 });
 
 describe('statusLabel', () => {

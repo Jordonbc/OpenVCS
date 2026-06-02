@@ -257,6 +257,106 @@ describe('setInitial', () => {
   });
 });
 
+describe('wireRenameBranch - validation edge cases', () => {
+  it('validate handles missing oldBranch dataset', async () => {
+    const { wireRenameBranch } = await import('@scripts/features/renameBranch');
+    wireRenameBranch();
+    const modal = document.getElementById('rename-branch-modal') as HTMLElement;
+    const confirm = modal.querySelector('#rename-branch-confirm') as HTMLButtonElement;
+    const nameEl = modal.querySelector('#rename-branch-name') as HTMLInputElement;
+
+    delete modal.dataset.oldBranch;
+    nameEl.value = 'new-name';
+    nameEl.dispatchEvent(new Event('input'));
+
+    expect(confirm.disabled).toBe(false);
+  });
+
+  it('validate handles missing confirm button', async () => {
+    const { wireRenameBranch } = await import('@scripts/features/renameBranch');
+    document.getElementById('rename-branch-confirm')?.remove();
+    wireRenameBranch();
+    const modal = document.getElementById('rename-branch-modal') as HTMLElement;
+    const nameEl = modal.querySelector('#rename-branch-name') as HTMLInputElement;
+
+    modal.dataset.oldBranch = 'main';
+    nameEl.value = 'new-name';
+    expect(() => nameEl.dispatchEvent(new Event('input'))).not.toThrow();
+  });
+
+  it('validate with empty oldBranch and newName same as empty', async () => {
+    const { wireRenameBranch } = await import('@scripts/features/renameBranch');
+    wireRenameBranch();
+    const modal = document.getElementById('rename-branch-modal') as HTMLElement;
+    const confirm = modal.querySelector('#rename-branch-confirm') as HTMLButtonElement;
+    const nameEl = modal.querySelector('#rename-branch-name') as HTMLInputElement;
+
+    modal.dataset.oldBranch = '';
+    nameEl.value = '';
+    nameEl.dispatchEvent(new Event('input'));
+
+    expect(confirm.disabled).toBe(true);
+  });
+
+  it('handles falsy error string in catch block', async () => {
+    const invoke = vi.fn(async () => { throw ''; });
+    (window as any).__TAURI__.core.invoke = invoke;
+    const { notify } = await import('@scripts/lib/notify');
+
+    const { wireRenameBranch } = await import('@scripts/features/renameBranch');
+    wireRenameBranch();
+    const modal = document.getElementById('rename-branch-modal') as HTMLElement;
+    const confirm = modal.querySelector('#rename-branch-confirm') as HTMLButtonElement;
+    const nameEl = modal.querySelector('#rename-branch-name') as HTMLInputElement;
+
+    modal.dataset.oldBranch = 'old-name';
+    nameEl.value = 'new-name';
+    confirm.click();
+    await flushPromises();
+
+    expect(notify).toHaveBeenCalledWith('Rename failed');
+  });
+
+  it('handles null error in catch block', async () => {
+    const invoke = vi.fn(async () => { throw null; });
+    (window as any).__TAURI__.core.invoke = invoke;
+    const { notify } = await import('@scripts/lib/notify');
+
+    const { wireRenameBranch } = await import('@scripts/features/renameBranch');
+    wireRenameBranch();
+    const modal = document.getElementById('rename-branch-modal') as HTMLElement;
+    const confirm = modal.querySelector('#rename-branch-confirm') as HTMLButtonElement;
+    const nameEl = modal.querySelector('#rename-branch-name') as HTMLInputElement;
+
+    modal.dataset.oldBranch = 'old-name';
+    nameEl.value = 'new-name';
+    confirm.click();
+    await flushPromises();
+
+    expect(notify).toHaveBeenCalledWith('Rename failed');
+  });
+});
+
+describe('setInitial edge cases', () => {
+  it('handles missing currentEl', async () => {
+    const { wireRenameBranch } = await import('@scripts/features/renameBranch');
+    wireRenameBranch();
+    document.getElementById('rename-branch-current')?.remove();
+    const modal = document.getElementById('rename-branch-modal') as any;
+    expect(() => modal.setInitial('feature-branch')).not.toThrow();
+    expect(modal.dataset.oldBranch).toBe('feature-branch');
+  });
+
+  it('handles missing nameEl', async () => {
+    const { wireRenameBranch } = await import('@scripts/features/renameBranch');
+    wireRenameBranch();
+    document.getElementById('rename-branch-name')?.remove();
+    const modal = document.getElementById('rename-branch-modal') as any;
+    expect(() => modal.setInitial('feature-branch')).not.toThrow();
+    expect(modal.dataset.oldBranch).toBe('feature-branch');
+  });
+});
+
 describe('openRenameBranch', () => {
   it('hydrates, wires, sets initial, and opens modal', async () => {
     const { hydrate, openModal } = await import('@scripts/ui/modals');

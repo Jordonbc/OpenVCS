@@ -366,4 +366,302 @@ describe('missing UI elements', () => {
     await new Promise((r) => setTimeout(r, 0));
   });
 
+  it('handles missing update-install button gracefully', async () => {
+    document.body.innerHTML = '<div id="update-modal"><div id="update-version"></div></div>';
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: { listen: vi.fn(async () => ({ unlisten: vi.fn() })) },
+    };
+    const update = await import('@scripts/features/update');
+    expect(() => update.wireUpdate()).not.toThrow();
+  });
+});
+
+// ===========================================================================
+// Branch coverage: ensureUpdateProgressListener phase checks (lines 103-109)
+// ===========================================================================
+describe('ensureUpdateProgressListener phase checks', () => {
+  it('handles progress event while installPhase is idle', async () => {
+    let listenCallback: ((evt: { payload: unknown }) => void) | undefined;
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: {
+        listen: vi.fn((_event: string, cb: (evt: { payload: unknown }) => void) => {
+          listenCallback = cb;
+          return Promise.resolve({ unlisten: vi.fn() });
+        }),
+      },
+    };
+
+    const update = await import('@scripts/features/update');
+    update.wireUpdate();
+    await Promise.resolve();
+
+    const button = document.getElementById('update-install') as HTMLButtonElement;
+    expect(button.textContent).toBe('Install');
+
+    // Send progress while phase is still idle (before button click)
+    listenCallback?.({ payload: { kind: 'progress', received: 50, total: 100 } });
+    expect(button.textContent).toBe('Downloading…50%');
+  });
+
+  it('ignores progress event while installPhase is installing', async () => {
+    let listenCallback: ((evt: { payload: unknown }) => void) | undefined;
+    let resolveInstall: (() => void) | undefined;
+    const invokeMock: TauriInvoke = vi.fn((cmd: string) => {
+      if (cmd === 'updater_install_now') return new Promise<void>((r) => { resolveInstall = r; });
+      return Promise.resolve(undefined);
+    }) as unknown as TauriInvoke;
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: invokeMock },
+      event: {
+        listen: vi.fn((_event: string, cb: (evt: { payload: unknown }) => void) => {
+          listenCallback = cb;
+          return Promise.resolve({ unlisten: vi.fn() });
+        }),
+      },
+    };
+
+    const update = await import('@scripts/features/update');
+    update.wireUpdate();
+    await Promise.resolve();
+
+    const button = document.getElementById('update-install') as HTMLButtonElement;
+    button.click();
+
+    // Simulate downloaded to move to installing phase
+    listenCallback?.({ payload: { kind: 'downloaded' } });
+    expect(button.textContent).toBe('Installing');
+
+    // Progress while installing should be ignored
+    listenCallback?.({ payload: { kind: 'progress', received: 80, total: 100 } });
+    expect(button.textContent).toBe('Installing');
+
+    // Complete the install
+    resolveInstall?.();
+    await new Promise((r) => setTimeout(r, 0));
+  });
+
+  it('ignores progress event while installPhase is done', async () => {
+    let listenCallback: ((evt: { payload: unknown }) => void) | undefined;
+    let resolveInstall: (() => void) | undefined;
+    const invokeMock: TauriInvoke = vi.fn((cmd: string) => {
+      if (cmd === 'updater_install_now') return new Promise<void>((r) => { resolveInstall = r; });
+      return Promise.resolve(undefined);
+    }) as unknown as TauriInvoke;
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: invokeMock },
+      event: {
+        listen: vi.fn((_event: string, cb: (evt: { payload: unknown }) => void) => {
+          listenCallback = cb;
+          return Promise.resolve({ unlisten: vi.fn() });
+        }),
+      },
+    };
+
+    const update = await import('@scripts/features/update');
+    update.wireUpdate();
+    await Promise.resolve();
+
+    const button = document.getElementById('update-install') as HTMLButtonElement;
+    button.click();
+    listenCallback?.({ payload: { kind: 'downloaded' } });
+
+    // Complete the install to reach 'done' phase
+    resolveInstall?.();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(button.textContent).toBe('Done, please restart');
+
+    // Progress while done should be ignored (button stays at done)
+    listenCallback?.({ payload: { kind: 'progress', received: 90, total: 100 } });
+    expect(button.textContent).toBe('Done, please restart');
+  });
+
+  it('handles payload with unknown kind (neither progress nor downloaded)', async () => {
+    let listenCallback: ((evt: { payload: unknown }) => void) | undefined;
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: {
+        listen: vi.fn((_event: string, cb: (evt: { payload: unknown }) => void) => {
+          listenCallback = cb;
+          return Promise.resolve({ unlisten: vi.fn() });
+        }),
+      },
+    };
+
+    const update = await import('@scripts/features/update');
+    update.wireUpdate();
+    await Promise.resolve();
+
+    const button = document.getElementById('update-install') as HTMLButtonElement;
+    expect(button.textContent).toBe('Install');
+
+    // Unknown kind should be ignored without error
+    listenCallback?.({ payload: { kind: 'unknown_event' } });
+    expect(button.textContent).toBe('Install');
+
+    // Followed by valid progress still works
+    listenCallback?.({ payload: { kind: 'progress', received: 10, total: 100 } });
+    expect(button.textContent).toBe('Downloading…10%');
+  });
+
+  it('handles null payload gracefully', async () => {
+    let listenCallback: ((evt: { payload: unknown }) => void) | undefined;
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: {
+        listen: vi.fn((_event: string, cb: (evt: { payload: unknown }) => void) => {
+          listenCallback = cb;
+          return Promise.resolve({ unlisten: vi.fn() });
+        }),
+      },
+    };
+
+    const update = await import('@scripts/features/update');
+    update.wireUpdate();
+    await Promise.resolve();
+
+    // Null/undefined payload should not crash
+    listenCallback?.({ payload: null });
+    listenCallback?.({ payload: undefined });
+  });
+});
+
+// ===========================================================================
+// Branch coverage: showUpdateDialog with missing elements (lines 154, 160)
+// ===========================================================================
+describe('showUpdateDialog missing elements', () => {
+  it('handles missing modal element after openModal (line 154)', async () => {
+    // Remove update-modal so getElementById returns null on line 153
+    document.body.innerHTML = '<div id="status"></div>';
+    const invokeMock = vi.fn((cmd: string) => {
+      if (cmd === 'get_update_status') {
+        return Promise.resolve({
+          available: true,
+          version: '1.0.0',
+          current_version: '0.9.0',
+          body: 'Release notes',
+          date: '2026-01-01',
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: invokeMock as unknown as TauriInvoke },
+      event: { listen: vi.fn(async () => ({ unlisten: vi.fn() })) },
+    };
+
+    const update = await import('@scripts/features/update');
+    await expect(update.showUpdateDialog({})).resolves.toBeUndefined();
+  });
+
+  it('handles missing update-notes element (line 160)', async () => {
+    document.body.innerHTML = `
+      <div id="status"></div>
+      <div id="update-modal" aria-hidden="true">
+        <button id="update-install" type="button">Install</button>
+        <div id="update-version"></div>
+      </div>
+    `;
+    const invokeMock = vi.fn((cmd: string) => {
+      if (cmd === 'get_update_status') {
+        return Promise.resolve({
+          available: true,
+          version: '1.0.0',
+          current_version: '0.9.0',
+          body: 'Release notes',
+          date: '2026-01-01',
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: invokeMock as unknown as TauriInvoke },
+      event: { listen: vi.fn(async () => ({ unlisten: vi.fn() })) },
+    };
+    const { openModal } = await import('@scripts/ui/modals');
+    vi.spyOn(await import('@scripts/ui/modals'), 'openModal');
+
+    const update = await import('@scripts/features/update');
+    await expect(update.showUpdateDialog({})).resolves.toBeUndefined();
+    const verEl = document.getElementById('update-version') as HTMLElement;
+    expect(verEl.textContent).toBe('Version 1.0.0');
+  });
+
+  it('shows fallback text when notesEl exists but body is empty string', async () => {
+    const invokeMock = vi.fn((cmd: string) => {
+      if (cmd === 'get_update_status') {
+        return Promise.resolve({
+          available: true,
+          version: '2.0.0',
+          current_version: '1.0.0',
+          body: '',
+          date: '2026-06-01',
+        });
+      }
+      return Promise.resolve(undefined);
+    });
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: invokeMock as unknown as TauriInvoke },
+      event: { listen: vi.fn(async () => ({ unlisten: vi.fn() })) },
+    };
+
+    const update = await import('@scripts/features/update');
+    await update.showUpdateDialog({});
+    const notesEl = document.getElementById('update-notes') as HTMLElement;
+    expect(notesEl.textContent).toBe('(No changelog provided)');
+  });
+});
+
+// ===========================================================================
+// Branch coverage: formatDownloadingLabel edge cases
+// ===========================================================================
+describe('formatDownloadingLabel edge cases', () => {
+  it('handles negative total in progress', async () => {
+    let listenCallback: ((evt: { payload: unknown }) => void) | undefined;
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: {
+        listen: vi.fn((_event: string, cb: (evt: { payload: unknown }) => void) => {
+          listenCallback = cb;
+          return Promise.resolve({ unlisten: vi.fn() });
+        }),
+      },
+    };
+
+    const update = await import('@scripts/features/update');
+    update.wireUpdate();
+    await Promise.resolve();
+
+    const button = document.getElementById('update-install') as HTMLButtonElement;
+    button.click();
+
+    // Negative total → formatDownloadingLabel returns 'Downloading…'
+    listenCallback?.({ payload: { kind: 'progress', received: 30, total: -1 } });
+    expect(button.textContent).toBe('Downloading…');
+  });
+
+  it('handles NaN/undefined received in progress', async () => {
+    let listenCallback: ((evt: { payload: unknown }) => void) | undefined;
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: {
+        listen: vi.fn((_event: string, cb: (evt: { payload: unknown }) => void) => {
+          listenCallback = cb;
+          return Promise.resolve({ unlisten: vi.fn() });
+        }),
+      },
+    };
+
+    const update = await import('@scripts/features/update');
+    update.wireUpdate();
+    await Promise.resolve();
+
+    const button = document.getElementById('update-install') as HTMLButtonElement;
+    button.click();
+
+    // Undefined received/total → generic Downloading…
+    listenCallback?.({ payload: { kind: 'progress' } });
+    expect(button.textContent).toBe('Downloading…');
+  });
 });

@@ -345,3 +345,116 @@ describe('wireStashConfirm no modal', () => {
     expect(() => wireStashConfirm()).not.toThrow();
   });
 });
+
+// ---------------------------------------------------------------------------
+// runStash - edge cases
+// ---------------------------------------------------------------------------
+
+describe('runStash edge cases', () => {
+  it('does not crash when message input element is missing', async () => {
+    document.body.innerHTML = `
+      <div id="stash-confirm-modal">
+        <span id="stash-file-count"></span>
+        <ul id="stash-file-list"></ul>
+        <div id="stash-empty" hidden></div>
+        <button id="stash-confirm-btn"></button>
+      </div>
+    `;
+    (window as any).__TAURI__.core.invoke = vi.fn(async () => null);
+
+    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
+    wireStashConfirm();
+    const modal = document.getElementById('stash-confirm-modal') as any;
+    modal.refreshFiles();
+
+    const confirmBtn = document.getElementById('stash-confirm-btn') as HTMLButtonElement;
+    expect(confirmBtn.disabled).toBe(false);
+
+    confirmBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect((window as any).__TAURI__.core.invoke).toHaveBeenCalledWith('vcs_stash_push', {
+      includeUntracked: true,
+      message: undefined,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// keydown handler - non-Enter keys
+// ---------------------------------------------------------------------------
+
+describe('keydown handler non-Enter keys', () => {
+  it('does not trigger stash on Escape key', async () => {
+    const invoke = vi.fn(async () => null);
+    (window as any).__TAURI__.core.invoke = invoke;
+
+    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
+    wireStashConfirm();
+
+    const msgInput = document.getElementById('stash-message') as HTMLInputElement;
+    msgInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('does not trigger stash on typing a character', async () => {
+    const invoke = vi.fn(async () => null);
+    (window as any).__TAURI__.core.invoke = invoke;
+
+    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
+    wireStashConfirm();
+
+    const msgInput = document.getElementById('stash-message') as HTMLInputElement;
+    msgInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// openStashConfirm - with missing modal
+// ---------------------------------------------------------------------------
+
+describe('openStashConfirm with missing modal', () => {
+  it('does not crash when modal is missing from DOM', async () => {
+    document.body.innerHTML = '';
+    const { openStashConfirm } = await import('@scripts/features/stashConfirm');
+    expect(() => openStashConfirm()).not.toThrow();
+  });
+
+  it('handles options without defaultMessage', async () => {
+    const invoke = vi.fn(async () => null);
+    (window as any).__TAURI__.core.invoke = invoke;
+
+    const { openStashConfirm } = await import('@scripts/features/stashConfirm');
+    openStashConfirm({ includeUntracked: false });
+
+    const confirmBtn = document.getElementById('stash-confirm-btn') as HTMLButtonElement;
+    confirmBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(invoke).toHaveBeenCalledWith('vcs_stash_push', {
+      includeUntracked: false,
+      message: 'WIP',
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// wireStashConfirm - multiple wiring
+// ---------------------------------------------------------------------------
+
+describe('wireStashConfirm multiple wiring', () => {
+  it('calling wireStashConfirm twice runs wiring only once', async () => {
+    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
+    const modal = document.getElementById('stash-confirm-modal') as any;
+
+    wireStashConfirm();
+    expect(modal.__wired).toBe(true);
+
+    const firstRefresh = modal.refreshFiles;
+    wireStashConfirm();
+    expect(modal.refreshFiles).toBe(firstRefresh);
+  });
+});

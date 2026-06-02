@@ -156,4 +156,14 @@ describe('openAbout', () => {
     const { openAbout } = await import('@scripts/features/about');
     await expect(openAbout()).resolves.toBeUndefined();
   });
+
+  it('shows error notification when TAURI.invoke throws synchronously', async () => {
+    mockInvoke.mockImplementation(() => { throw new Error('network error'); });
+    mountModal();
+
+    const { openAbout } = await import('@scripts/features/about');
+    await openAbout();
+
+    expect(mockNotify).toHaveBeenCalledWith('Unable to load About');
+  });
 });

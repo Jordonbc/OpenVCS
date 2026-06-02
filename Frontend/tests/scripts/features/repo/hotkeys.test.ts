@@ -315,6 +315,26 @@ describe('bindRepoHotkeys', () => {
     expect(mockRenderList).not.toHaveBeenCalled();
   });
 
+  it('does nothing on Shift+A when modal is open', async () => {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.appendChild(modal);
+
+    const { prefs } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    mockGetVisibleFiles.mockReturnValue([{ path: 'a.js' as string }]);
+
+    const mod = await loadHotkeys();
+    mod.bindRepoHotkeys(null, vi.fn());
+
+    const event = fireKeydown('a', { shiftKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(mockRenderList).not.toHaveBeenCalled();
+    document.body.removeChild(modal);
+  });
+
   it('dismisses about-modal on Escape', async () => {
     const aboutModal = document.createElement('div');
     aboutModal.id = 'about-modal';
@@ -344,5 +364,19 @@ describe('bindRepoHotkeys', () => {
 
     await fireKeydown('F5');
     // The catch handler should swallow the rejection
+  });
+
+  it('handles null activeElement on keydown', async () => {
+    mockGetVisibleFiles.mockReturnValue([]);
+    Object.defineProperty(document, 'activeElement', {
+      writable: true,
+      configurable: true,
+      value: null,
+    });
+
+    const mod = await loadHotkeys();
+    mod.bindRepoHotkeys(null, vi.fn());
+
+    expect(() => fireKeydown('a', { ctrlKey: true })).not.toThrow();
   });
 });

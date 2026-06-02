@@ -219,4 +219,142 @@ describe('initOutputLogViewIfRequested', () => {
     const list = document.getElementById('outlog-list-vcs') as HTMLElement;
     expect(list.textContent).toContain('log msg');
   });
+
+  it('escapeHtml escapes special characters in messages', async () => {
+    mockLocation('?view=output-log');
+    mockInvoke.mockResolvedValue([{
+      ts_ms: 1000, level: 'info', source: 'git',
+      message: '<script>alert("xss")</script> & \"quoted\" \'text\'',
+    }]);
+
+    const { initOutputLogViewIfRequested } = await import('@scripts/features/outputLog');
+    await initOutputLogViewIfRequested();
+
+    const list = document.getElementById('outlog-list-vcs') as HTMLElement;
+    expect(list.innerHTML).toContain('&lt;script&gt;alert(');
+    expect(list.innerHTML).toContain('&amp;');
+    expect(list.textContent).toContain('"quoted"');
+    expect(list.textContent).toContain("'text'");
+  });
+
+  it('fmtTime handles invalid timestamp via rendered output', async () => {
+    mockLocation('?view=output-log');
+    mockInvoke.mockResolvedValue([{
+      ts_ms: NaN, level: 'info', source: 'git', message: 'timestamp test',
+    }]);
+
+    const { initOutputLogViewIfRequested } = await import('@scripts/features/outputLog');
+    await initOutputLogViewIfRequested();
+
+    const list = document.getElementById('outlog-list-vcs') as HTMLElement;
+    expect(list.textContent).toContain('timestamp test');
+  });
+
+  it('levelFrom maps "warning" alias to warn class', async () => {
+    mockLocation('?view=output-log');
+    mockInvoke.mockResolvedValue([{
+      ts_ms: 1000, level: 'warning', source: 'git', message: 'warning test',
+    }]);
+
+    const { initOutputLogViewIfRequested } = await import('@scripts/features/outputLog');
+    await initOutputLogViewIfRequested();
+
+    const row = document.querySelector('.outlog-row') as HTMLElement;
+    expect(row.classList.contains('outlog-warn')).toBe(true);
+  });
+
+  it('levelFrom falls back to info for unknown level', async () => {
+    mockLocation('?view=output-log');
+    mockInvoke.mockResolvedValue([{
+      ts_ms: 1000, level: 'debug', source: 'app', message: 'debug test',
+    }]);
+
+    const { initOutputLogViewIfRequested } = await import('@scripts/features/outputLog');
+    await initOutputLogViewIfRequested();
+
+    const row = document.querySelector('.outlog-row') as HTMLElement;
+    expect(row.classList.contains('outlog-info')).toBe(true);
+  });
+
+  it('renderRow shows empty source gracefully', async () => {
+    mockLocation('?view=output-log');
+    mockInvoke.mockResolvedValue([{
+      ts_ms: 1000, level: 'info', source: '', message: 'no source',
+    }]);
+
+    const { initOutputLogViewIfRequested } = await import('@scripts/features/outputLog');
+    await initOutputLogViewIfRequested();
+
+    const list = document.getElementById('outlog-list-vcs') as HTMLElement;
+    expect(list.textContent).toContain('no source');
+  });
+
+  it('renderRow shows empty message gracefully', async () => {
+    mockLocation('?view=output-log');
+    mockInvoke.mockResolvedValue([{
+      ts_ms: 1000, level: 'info', source: 'git', message: '',
+    }]);
+
+    const { initOutputLogViewIfRequested } = await import('@scripts/features/outputLog');
+    await initOutputLogViewIfRequested();
+
+    expect(document.querySelector('.outlog-row')).not.toBeNull();
+  });
+
+  it('append does not throw when list element is null', async () => {
+    mockLocation('?view=output-log');
+    mockInvoke.mockResolvedValue([{ ts_ms: 1000, level: 'info', source: 'git', message: 'entry' }]);
+
+    const { initOutputLogViewIfRequested } = await import('@scripts/features/outputLog');
+    await initOutputLogViewIfRequested();
+
+    const listVcs = document.getElementById('outlog-list-vcs')!;
+    listVcs.remove();
+
+    const appTab = document.querySelector<HTMLButtonElement>('.outlog-tab[data-tab="app"]')!;
+    appTab.click();
+
+    expect(mockInvoke).toHaveBeenCalledWith('tail_app_log', { maxLines: 1500 });
+  });
+
+  it('setActiveTab toggles aria-selected attributes', async () => {
+    mockLocation('?view=output-log');
+    mockInvoke.mockResolvedValue([]);
+
+    const { initOutputLogViewIfRequested } = await import('@scripts/features/outputLog');
+    await initOutputLogViewIfRequested();
+
+    const root = document.getElementById('output-log-view')!;
+    const vcsTab = root.querySelector<HTMLButtonElement>('.outlog-tab[data-tab="vcs"]')!;
+    const appTab = root.querySelector<HTMLButtonElement>('.outlog-tab[data-tab="app"]')!;
+
+    expect(vcsTab.getAttribute('aria-selected')).toBe('true');
+    expect(appTab.getAttribute('aria-selected')).toBe('false');
+    expect(root.dataset.activeTab).toBe('vcs');
+
+    appTab.click();
+
+    expect(vcsTab.getAttribute('aria-selected')).toBe('false');
+    expect(appTab.getAttribute('aria-selected')).toBe('true');
+    expect(root.dataset.activeTab).toBe('app');
+    expect(vcsTab.tabIndex).toBe(-1);
+    expect(appTab.tabIndex).toBe(0);
+  });
+
+  it('syncVisibility handles auto-scroll checked', async () => {
+    mockLocation('?view=output-log');
+    mockInvoke.mockResolvedValue([]);
+
+    const { initOutputLogViewIfRequested } = await import('@scripts/features/outputLog');
+    await initOutputLogViewIfRequested();
+
+    const auto = document.getElementById('outlog-autoscroll') as HTMLInputElement;
+    auto.checked = true;
+
+    const appTab = document.querySelector<HTMLButtonElement>('.outlog-tab[data-tab="app"]')!;
+    appTab.click();
+
+    expect(document.getElementById('outlog-list-vcs')!.classList.contains('outlog-hidden')).toBe(true);
+    expect(document.getElementById('outlog-list-app')!.classList.contains('outlog-hidden')).toBe(false);
+  });
 });

@@ -115,4 +115,15 @@ describe('bindFilter', () => {
 
     expect(_toggleSelectAll).not.toHaveBeenCalled();
   });
+
+  it('skips renderList when isDragSelecting returns true', async () => {
+    _isDragSelecting.mockReturnValue(true);
+
+    const mod = await import('@scripts/features/repo/filter');
+    mod.bindFilter();
+
+    mockFilterInput.dispatchEvent(new Event('input'));
+
+    expect(_renderList).not.toHaveBeenCalled();
+  });
 });

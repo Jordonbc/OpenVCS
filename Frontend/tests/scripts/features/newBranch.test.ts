@@ -468,3 +468,159 @@ describe('populateBaseSelect', () => {
     expect(select.options[2].textContent).toBe('origin/main');
   });
 });
+
+// ---------------------------------------------------------------------------
+// createBranch - hook cancellation with no reason (lines 130, 136)
+// ---------------------------------------------------------------------------
+
+describe('createBranch hook cancellation with no reason', () => {
+  it('cancels when preBranchCreate hook returns cancelled with no reason', async () => {
+    const { runHook } = await import('@scripts/plugins');
+    vi.mocked(runHook).mockResolvedValue({
+      name: 'preBranchCreate',
+      data: undefined,
+      cancelled: true,
+      reason: undefined as any,
+      cancel: vi.fn(),
+    });
+
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: { listen: vi.fn() },
+    };
+    const { wireNewBranch } = await import('@scripts/features/newBranch');
+    wireNewBranch();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const createBtn = document.getElementById('new-branch-create') as HTMLButtonElement;
+    nameInput.value = 'my-branch';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    createBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const { notify } = await import('@scripts/lib/notify');
+    expect(vi.mocked(notify)).toHaveBeenCalledWith('Create branch cancelled');
+  });
+
+  it('cancels when preSwitchBranch hook returns cancelled with no reason', async () => {
+    const { runHook } = await import('@scripts/plugins');
+    vi.mocked(runHook)
+      .mockResolvedValueOnce({
+        name: 'preBranchCreate',
+        data: undefined,
+        cancelled: false,
+        cancel: vi.fn(),
+      })
+      .mockResolvedValueOnce({
+        name: 'preSwitchBranch',
+        data: undefined,
+        cancelled: true,
+        reason: undefined as any,
+        cancel: vi.fn(),
+      });
+
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn() },
+      event: { listen: vi.fn() },
+    };
+    const { wireNewBranch } = await import('@scripts/features/newBranch');
+    wireNewBranch();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const checkout = document.getElementById('new-branch-checkout') as HTMLInputElement;
+    const createBtn = document.getElementById('new-branch-create') as HTMLButtonElement;
+    checkout.checked = true;
+    nameInput.value = 'my-branch';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    createBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const { notify } = await import('@scripts/lib/notify');
+    expect(vi.mocked(notify)).toHaveBeenCalledWith('Create branch cancelled');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// keyboard events on name input
+// ---------------------------------------------------------------------------
+
+describe('name input keyboard events', () => {
+  it('ignores non-Enter key on name input', async () => {
+    const invoke = vi.fn(async () => null);
+    (window as any).__TAURI__ = {
+      core: { invoke },
+      event: { listen: vi.fn() },
+    };
+
+    const { wireNewBranch } = await import('@scripts/features/newBranch');
+    wireNewBranch();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    nameInput.value = 'my-branch';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+
+    nameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('Enter key on name input with invalid name returns early', async () => {
+    const invoke = vi.fn(async () => null);
+    (window as any).__TAURI__ = {
+      core: { invoke },
+      event: { listen: vi.fn() },
+    };
+
+    const { wireNewBranch } = await import('@scripts/features/newBranch');
+    wireNewBranch();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    nameInput.value = 'bad~branch';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+
+    nameInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// wireNewBranch - app:repo-selected event
+// ---------------------------------------------------------------------------
+
+describe('wireNewBranch repo-selected event', () => {
+  it('repopulates base select on app:repo-selected event', async () => {
+    const stateModule = await import('@scripts/state/state');
+    (stateModule.state as any).branch = 'main';
+    (stateModule.state as any).branches = [
+      { name: 'main', current: true, kind: { type: 'local' } },
+    ];
+
+    installTauriMock();
+    const { wireNewBranch } = await import('@scripts/features/newBranch');
+    wireNewBranch();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const select = document.getElementById('new-branch-base') as HTMLSelectElement;
+    expect(select.options.length).toBe(1);
+
+    // Update state and dispatch event
+    (stateModule.state as any).branches = [
+      { name: 'main', current: true, kind: { type: 'local' } },
+      { name: 'develop', current: false, kind: { type: 'local' } },
+    ];
+    window.dispatchEvent(new CustomEvent('app:repo-selected'));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(select.options.length).toBe(2);
+    expect(select.options[1].textContent).toBe('develop');
+  });
+});

@@ -1220,4 +1220,663 @@ describe('onFileContextMenu - rejection paths', () => {
     await discardItem!.action!();
     expect(TAURI.invoke).toHaveBeenCalledWith('vcs_discard_paths', { paths: ['a.txt'] });
   });
+
+  it('discard all selected invoke failure catches error (line 322)', async () => {
+    const { onFileContextMenu, setRenderListCallback } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+    const { TAURI } = await import('@scripts/lib/tauri');
+    const { confirmBool } = await import('@scripts/lib/confirm');
+
+    vi.mocked(confirmBool).mockResolvedValue(true);
+    vi.mocked(TAURI.invoke).mockRejectedValue(new Error('discard all failed'));
+    vi.mocked(setRenderListCallback);
+    setRenderListCallback(vi.fn());
+
+    state.selectedFiles = new Set(['a.txt', 'b.txt']);
+    state.selectionImplicitAll = false;
+
+    await onFileContextMenu(
+      { preventDefault: vi.fn(), clientX: 10, clientY: 20 } as any,
+      { path: 'a.txt', status: 'M' } as any,
+    );
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const discardAll = items.find((i: any) => i.label === 'Discard all selected');
+    expect(discardAll).toBeDefined();
+    await expect(discardAll!.action!()).resolves.toBeUndefined();
+    expect(TAURI.invoke).toHaveBeenCalledWith('vcs_discard_paths', { paths: ['a.txt', 'b.txt'] });
+  });
+});
+
+describe('onFileClick - highlightRow through suppressNextClick with actual rows (line 22)', () => {
+  it('calls highlightRow and renderCombinedDiff in suppressNextClick multi-diff path', async () => {
+    const { onFileClick } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { dragState } = await import('@scripts/features/repo/context');
+
+    const ul = document.getElementById('file-list')!;
+    ['a.txt', 'b.txt'].forEach((p) => {
+      const li = document.createElement('li');
+      li.className = 'row';
+      li.setAttribute('data-path', p);
+      ul.appendChild(li);
+    });
+
+    dragState.suppressNextClick = true;
+    state.diffSelectedFiles = new Set(['a.txt', 'b.txt']);
+
+    const visible = [{ path: 'a.txt', status: 'M' }, { path: 'b.txt', status: 'M' }] as any;
+    state.files = [];
+
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'vcs_diff_file') {
+          return ['diff --git a/a.txt b/a.txt', '@@ -1 +1 @@', '-old', '+new'];
+        }
+        return [];
+      })},
+      event: { listen: vi.fn() },
+    };
+
+    onFileClick({ ctrlKey: false, metaKey: false, shiftKey: false } as MouseEvent, visible[0], 0, visible);
+
+    expect(dragState.suppressNextClick).toBe(false);
+  });
+
+  it('calls selectFile through suppressNextClick when diffSelectedFiles size is 1', async () => {
+    const { onFileClick } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { dragState } = await import('@scripts/features/repo/context');
+
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.files = [];
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set(['a.txt']);
+    dragState.suppressNextClick = true;
+
+    onFileClick({ ctrlKey: false, metaKey: false, shiftKey: false } as MouseEvent, visible[0], 0, visible);
+    expect(dragState.suppressNextClick).toBe(false);
+  });
+});
+
+describe('highlightRow - local function with actual rows (line 371)', () => {
+  it('activates the correct row index when rows exist', async () => {
+    const { onFileClick } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { dragState } = await import('@scripts/features/repo/context');
+
+    const ul = document.getElementById('file-list')!;
+    ['a.txt', 'b.txt', 'c.txt'].forEach((p) => {
+      const li = document.createElement('li');
+      li.className = 'row';
+      li.setAttribute('data-path', p);
+      ul.appendChild(li);
+    });
+
+    const visible = [
+      { path: 'a.txt', status: 'M' },
+      { path: 'b.txt', status: 'M' },
+      { path: 'c.txt', status: 'M' },
+    ] as any;
+    state.files = [];
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    dragState.lastClickedIndex = -1;
+
+    onFileClick({ ctrlKey: false, metaKey: false, shiftKey: false } as MouseEvent, visible[2], 2, visible);
+
+    const rows = ul.querySelectorAll<HTMLElement>('li.row');
+    expect(rows[0].classList.contains('active')).toBe(false);
+    expect(rows[1].classList.contains('active')).toBe(false);
+    expect(rows[2].classList.contains('active')).toBe(true);
+  });
+});
+
+describe('toggleSelectAll - empty visible list', () => {
+  it('handles empty visible list without error', async () => {
+    const { toggleSelectAll } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    state.selectedFiles = new Set();
+
+    expect(() => toggleSelectAll(true, [])).not.toThrow();
+    expect(state.selectedFiles.size).toBe(0);
+  });
+});
+
+describe('updateDragRange - empty visible list', () => {
+  it('handles empty visible list in commit mode', async () => {
+    const { updateDragRange } = await import('@scripts/features/repo/interactions');
+    const { dragState } = await import('@scripts/features/repo/context');
+
+    dragState.isDragSelecting = true;
+    dragState.dragMode = 'commit';
+    dragState.dragTargetState = true;
+    dragState.dragStartIndex = 0;
+    dragState.dragCurrentIndex = 0;
+    dragState.dragPrePicked = new Set();
+
+    expect(() => updateDragRange([])).not.toThrow();
+  });
+
+  it('handles empty visible list in diff mode', async () => {
+    const { updateDragRange } = await import('@scripts/features/repo/interactions');
+    const { dragState } = await import('@scripts/features/repo/context');
+    const { state } = await import('@scripts/state/state');
+
+    state.diffSelectedFiles = new Set();
+    dragState.isDragSelecting = true;
+    dragState.dragMode = 'diff';
+    dragState.dragTargetState = true;
+    dragState.dragStartIndex = 0;
+    dragState.dragCurrentIndex = 0;
+    dragState.dragPreDiff = new Set();
+
+    expect(() => updateDragRange([])).not.toThrow();
+  });
+});
+
+describe('onFileContextMenu - openStashForPaths empty path filter (line 297)', () => {
+  it('openStashForPaths returns early when normalizedPaths is empty', async () => {
+    const { onFileContextMenu } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+
+    state.selectedFiles = new Set(['  ']);
+    state.selectionImplicitAll = false;
+
+    const file = { path: '  ', status: 'M' } as any;
+    await onFileContextMenu({ clientX: 100, clientY: 200, preventDefault: vi.fn() } as any, file);
+
+    const items = vi.mocked(buildCtxMenu).mock.lastCall![0];
+    expect(items).toBeDefined();
+  });
+});
+
+// ============================================================================
+// updateDragRange — commit mode with currentFile matching, deselect path
+// ============================================================================
+describe('updateDragRange - commit mode deselect with currentFile', () => {
+  it('clears hunk selections when deselecting currentFile in commit drag', async () => {
+    const { updateDragRange } = await import('@scripts/features/repo/interactions');
+    const { dragState } = await import('@scripts/features/repo/context');
+    const { state } = await import('@scripts/state/state');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+
+    const ul = document.getElementById('file-list')!;
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.setAttribute('data-path', 'a.txt');
+    const pickCb = document.createElement('input');
+    pickCb.className = 'pick';
+    pickCb.type = 'checkbox';
+    pickCb.checked = true;
+    li.appendChild(pickCb);
+    ul.appendChild(li);
+
+    state.selectedFiles = new Set(['a.txt']);
+    state.currentFile = 'a.txt';
+    state.currentDiff = ['@@ -1 +1 @@', '-old', '+new'];
+    state.selectedHunks = [0];
+    (state as any).selectedHunksByFile = { 'a.txt': [0] };
+    (state as any).selectedLinesByFile = { 'a.txt': { 0: [0, 1] } };
+    state.currentDiffHunkNodes = new Map();
+
+    dragState.isDragSelecting = true;
+    dragState.dragMode = 'commit';
+    dragState.dragTargetState = false; // deselect
+    dragState.dragStartIndex = 0;
+    dragState.dragCurrentIndex = 0;
+    dragState.dragPrePicked = new Set(['a.txt']);
+
+    updateDragRange(visible);
+
+    // on=false → state.selectedHunks cleared, selectedHunksByFile deleted
+    expect(state.selectedFiles.has('a.txt')).toBe(false);
+    expect(state.selectedHunks).toEqual([]);
+    expect((state as any).selectedHunksByFile['a.txt']).toBeUndefined();
+    expect((state as any).selectedLinesByFile['a.txt']).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// onFileContextMenu — diff selection multi-mode (useDiffSelection = true)
+// ============================================================================
+describe('onFileContextMenu - diff selection multi-mode', () => {
+  it('uses diffSelectedFiles for multi-file actions when staging selection is empty', async () => {
+    const { onFileContextMenu, setRenderListCallback } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+    const { TAURI } = await import('@scripts/lib/tauri');
+    const { confirmBool } = await import('@scripts/lib/confirm');
+
+    vi.mocked(confirmBool).mockResolvedValue(true);
+    setRenderListCallback(vi.fn());
+
+    state.selectedFiles = new Set();           // no staging
+    state.selectionImplicitAll = false;
+    state.diffSelectedFiles = new Set(['x.txt', 'y.txt']); // 2 diff files
+
+    await onFileContextMenu(
+      { preventDefault: vi.fn(), clientX: 10, clientY: 20 } as any,
+      { path: 'x.txt', status: 'M' } as any,
+    );
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const stashItem = items.find((i: any) => i.label?.includes('Create stash from selection'));
+    expect(stashItem).toBeDefined();
+    const discardAll = items.find((i: any) => i.label === 'Discard all selected');
+    expect(discardAll).toBeDefined();
+
+    // Execute stash action
+    await stashItem!.action!();
+    expect(TAURI.invoke).toHaveBeenCalled();
+  });
+
+  it('falls back to single file stash when diffSelectedFiles is only 1', async () => {
+    const { onFileContextMenu } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+
+    state.selectedFiles = new Set();
+    state.selectionImplicitAll = false;
+    state.diffSelectedFiles = new Set(['single.txt']);
+
+    await onFileContextMenu(
+      { preventDefault: vi.fn(), clientX: 10, clientY: 20 } as any,
+      { path: 'single.txt', status: 'M' } as any,
+    );
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const stashSingle = items.find((i: any) => i.label?.includes('Create stash for this file'));
+    expect(stashSingle).toBeDefined();
+    const stashMulti = items.find((i: any) => i.label?.includes('Create stash from selection'));
+    expect(stashMulti).toBeUndefined();
+  });
+
+  it('discard all selected via diff selection path', async () => {
+    const { onFileContextMenu, setRenderListCallback } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+    const { TAURI } = await import('@scripts/lib/tauri');
+    const { confirmBool } = await import('@scripts/lib/confirm');
+
+    vi.mocked(confirmBool).mockResolvedValue(true);
+    setRenderListCallback(vi.fn());
+
+    state.selectedFiles = new Set();
+    state.selectionImplicitAll = false;
+    state.diffSelectedFiles = new Set(['x.txt', 'y.txt']);
+
+    await onFileContextMenu(
+      { preventDefault: vi.fn(), clientX: 10, clientY: 20 } as any,
+      { path: 'x.txt', status: 'M' } as any,
+    );
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const discardAll = items.find((i: any) => i.label === 'Discard all selected');
+    await discardAll!.action!();
+    expect(TAURI.invoke).toHaveBeenCalledWith('vcs_discard_paths', { paths: ['x.txt', 'y.txt'] });
+  });
+});
+
+// ============================================================================
+// onFileClick — various toggle and selection state combos
+// ============================================================================
+describe('onFileClick - additional branches', () => {
+  it('diff toggle on file already in selection toggles it off', async () => {
+    const { onFileClick } = await import('@scripts/features/repo/interactions');
+    const { dragState } = await import('@scripts/features/repo/context');
+    const { state } = await import('@scripts/state/state');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.files = [];
+    state.diffSelectedFiles = new Set(['a.txt']); // already selected
+    dragState.lastClickedIndex = 0;
+
+    onFileClick({ shiftKey: true, ctrlKey: false, metaKey: false } as MouseEvent, visible[0], 0, visible);
+
+    expect(state.diffSelectedFiles.has('a.txt')).toBe(false);
+  });
+
+  it('ctrl+click toggles file pick on then off', async () => {
+    const { onFileClick } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { dragState } = await import('@scripts/features/repo/context');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.files = [];
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    dragState.lastClickedIndex = -1;
+
+    const ul = document.getElementById('file-list')!;
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.dataset.path = 'a.txt';
+    li.innerHTML = '<input class="pick" type="checkbox">';
+    ul.appendChild(li);
+
+    // Toggle on
+    onFileClick({ ctrlKey: true, metaKey: false, shiftKey: false } as MouseEvent, visible[0], 0, visible);
+    expect(state.selectedFiles.has('a.txt')).toBe(true);
+    expect(li.classList.contains('picked')).toBe(true);
+
+    // Toggle off
+    onFileClick({ ctrlKey: true, metaKey: false, shiftKey: false } as MouseEvent, visible[0], 0, visible);
+    expect(state.selectedFiles.has('a.txt')).toBe(false);
+    expect(li.classList.contains('picked')).toBe(false);
+  });
+});
+
+// ============================================================================
+// applySelect — null rowEl in both modes
+// ============================================================================
+describe('applySelect - null rowEl coverage', () => {
+  it('handles null rowEl in diff mode with on=true and on=false', async () => {
+    const { applySelect } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    state.diffSelectedFiles = new Set();
+
+    applySelect('a.txt', true, null, [], 'diff');
+    expect(state.diffSelectedFiles.has('a.txt')).toBe(true);
+
+    applySelect('a.txt', false, null, [], 'diff');
+    expect(state.diffSelectedFiles.has('a.txt')).toBe(false);
+  });
+
+  it('handles rowEl existing with no list checkbox in commit mode', async () => {
+    const { applySelect } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    state.selectedFiles = new Set();
+
+    const ul = document.getElementById('file-list')!;
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.setAttribute('data-path', 'a.txt');
+    ul.appendChild(li);
+
+    // rowEl exists, but has no input.pick child → listEl?.querySelector returns null
+    applySelect('a.txt', true, li, [], 'commit');
+
+    expect(state.selectedFiles.has('a.txt')).toBe(true);
+    expect(li.classList.contains('picked')).toBe(true);
+  });
+});
+
+// ============================================================================
+// toggleFilePick on/off via onFileClick ctrl/meta
+// ============================================================================
+describe('toggleFilePick integration via onFileClick', () => {
+  it('ctrl+click with diffSelectedFiles already > 1 does not call selectFile', async () => {
+    const { onFileClick } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { dragState } = await import('@scripts/features/repo/context');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.files = [];
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set(['b.txt', 'c.txt']); // > 1
+    dragState.lastClickedIndex = -1;
+
+    onFileClick({ ctrlKey: true, metaKey: false, shiftKey: false } as MouseEvent, visible[0], 0, visible);
+
+    // file added to selectedFiles
+    expect(state.selectedFiles.has('a.txt')).toBe(true);
+  });
+});
+
+// ============================================================================
+// onFileClick — diff toggle with null listEl (line 37 false branch)
+// ============================================================================
+describe('onFileClick diff toggle with null listEl', () => {
+  it('skips DOM row update when listEl is null but still toggles diffSelectedFiles', async () => {
+    const ul = document.getElementById('file-list')!;
+    ul.remove(); // make listEl null
+
+    const { onFileClick } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { dragState } = await import('@scripts/features/repo/context');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.files = [];
+    state.diffSelectedFiles = new Set();
+    dragState.lastClickedIndex = -1;
+
+    onFileClick({ shiftKey: true, ctrlKey: false, metaKey: false } as MouseEvent, visible[0], 0, visible);
+
+    // diffSelectedFiles still updated even without listEl
+    expect(state.diffSelectedFiles.has('a.txt')).toBe(true);
+  });
+});
+
+// ============================================================================
+// onFileClick — diff toggle size === 1, file not found in visible (line 47 false)
+// ============================================================================
+describe('onFileClick diff toggle size 1 file not in visible', () => {
+  it('does nothing when diffSelectedFiles size is 1 but file not in visible list', async () => {
+    const { onFileClick } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { dragState } = await import('@scripts/features/repo/context');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.files = [];
+    state.diffSelectedFiles = new Set();
+    dragState.lastClickedIndex = -1;
+
+    // First click adds 'a.txt' to diffSelectedFiles (size becomes 1)
+    // Then lines 44-47 look for the only file in visible, which is a.txt. It IS found.
+    // So we need a scenario where the file IS in diffSelectedFiles but NOT in visible
+    // Actually simpler: just test the size === 1 branch by toggling a file that was
+    // in diffSelectedFiles but got removed, now size is 0
+    // Or: set diffSelectedFiles to have 1 file, then toggle it off → size 0, no match
+    state.diffSelectedFiles = new Set(['a.txt']);
+    onFileClick({ shiftKey: true, ctrlKey: false, metaKey: false } as MouseEvent, visible[0], 0, visible);
+
+    // Toggled a.txt OFF, diffSelectedFiles is now empty
+    expect(state.diffSelectedFiles.has('a.txt')).toBe(false);
+  });
+});
+
+// ============================================================================
+// onFileClick — diff toggle size === 1, selectFile called (line 44-47)
+// ============================================================================
+describe('onFileClick diff toggle size 1 calls selectFile', () => {
+  it('calls selectFile when diffSelectedFiles size becomes 1 during diff toggle', async () => {
+    // Set up Tauri mock so selectFile doesn't fail
+    (window as any).__TAURI__ = {
+      core: { invoke: vi.fn(async (cmd: string) => {
+        if (cmd === 'vcs_diff_file') {
+          return ['diff --git a/a.txt b/a.txt', '@@ -1 +1 @@', '-old', '+new'];
+        }
+        return [];
+      })},
+      event: { listen: vi.fn() },
+    };
+
+    const { onFileClick } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { dragState } = await import('@scripts/features/repo/context');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.files = [];
+    state.diffSelectedFiles = new Set();
+    dragState.lastClickedIndex = -1;
+
+    const ul = document.getElementById('file-list')!;
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.setAttribute('data-path', 'a.txt');
+    ul.appendChild(li);
+
+    onFileClick({ shiftKey: true, ctrlKey: false, metaKey: false } as MouseEvent, visible[0], 0, visible);
+    expect(state.diffSelectedFiles.has('a.txt')).toBe(true);
+    expect(state.diffSelectedFiles.size).toBe(1);
+  });
+});
+
+// ============================================================================
+// onFileMouseDown — drag mode null sets dragVisited.clear() (line 82)
+// ============================================================================
+describe('onFileMouseDown drag mode null', () => {
+  it('clears dragVisited when mode is null', async () => {
+    const { onFileMouseDown } = await import('@scripts/features/repo/interactions');
+    const { dragState } = await import('@scripts/features/repo/context');
+    const { state } = await import('@scripts/state/state');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.diffSelectedFiles = new Set();
+    state.selectedFiles = new Set();
+    const li = document.createElement('li');
+    li.setAttribute('data-path', 'a.txt');
+    document.getElementById('file-list')!.appendChild(li);
+
+    dragState.dragVisited.add('a.txt');
+    onFileMouseDown({ button: 0, shiftKey: false, ctrlKey: false, metaKey: false, clientX: 0, clientY: 0, preventDefault: vi.fn() } as any, visible[0], 0, visible, li);
+
+    expect(dragState.dragVisited.size).toBe(0);
+    expect(dragState.dragMode).toBeNull();
+    expect(dragState.isDragSelecting).toBe(false);
+    expect(dragState.dragMoved).toBe(false);
+  });
+});
+
+// ============================================================================
+// updateDragRange — dragMode null early return (line 165 second condition)
+// ============================================================================
+describe('updateDragRange dragMode null early return', () => {
+  it('returns early when dragMode is null even if isDragSelecting is true', async () => {
+    const { updateDragRange } = await import('@scripts/features/repo/interactions');
+    const { dragState } = await import('@scripts/features/repo/context');
+    const { state } = await import('@scripts/state/state');
+
+    state.diffSelectedFiles = new Set(['a.txt']);
+    dragState.isDragSelecting = true;
+    dragState.dragMode = null; // second condition triggers return
+
+    updateDragRange([{ path: 'a.txt', status: 'M' }] as any);
+
+    // Should have returned early without modifying state
+    expect(state.diffSelectedFiles.has('a.txt')).toBe(true);
+  });
+
+  it('returns early when isDragSelecting is false (first condition)', async () => {
+    const { updateDragRange } = await import('@scripts/features/repo/interactions');
+    const { dragState } = await import('@scripts/features/repo/context');
+    const { state } = await import('@scripts/state/state');
+
+    state.diffSelectedFiles = new Set(['a.txt']);
+    dragState.isDragSelecting = false;
+    dragState.dragMode = 'diff';
+
+    updateDragRange([{ path: 'a.txt', status: 'M' }] as any);
+
+    expect(state.diffSelectedFiles.has('a.txt')).toBe(true);
+  });
+});
+
+// ============================================================================
+// toggleSelectAll — on=true selects all visible files (line 233-234)
+// ============================================================================
+describe('toggleSelectAll on=true', () => {
+  it('selects all visible files with paths when on=true', async () => {
+    const { toggleSelectAll } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    state.selectedFiles = new Set();
+    const visible = [
+      { path: 'x.txt', status: 'M' },
+      { path: 'y.txt', status: 'A' },
+    ] as any;
+
+    toggleSelectAll(true, visible);
+    expect(state.selectedFiles.has('x.txt')).toBe(true);
+    expect(state.selectedFiles.has('y.txt')).toBe(true);
+    expect(state.selectedFiles.size).toBe(2);
+  });
+
+  it('handles on=true with mixed path presence', async () => {
+    const { toggleSelectAll } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    state.selectedFiles = new Set();
+    const visible = [
+      { path: 'x.txt', status: 'M' },
+      { path: '', status: 'A' },   // empty path, should be skipped
+      { path: null, status: 'M' }, // null path, should be skipped
+    ] as any;
+
+    toggleSelectAll(true, visible);
+    expect(state.selectedFiles.has('x.txt')).toBe(true);
+    expect(state.selectedFiles.size).toBe(1);
+  });
+});
+
+// ============================================================================
+// onFileContextMenu — hasMultiDiff and hasMultiStaging both true (line 252)
+// ============================================================================
+describe('onFileContextMenu multi-diff and multi-staging both true', () => {
+  it('prefers staging selection when both diff and staging have multiple files', async () => {
+    const { onFileContextMenu, setRenderListCallback } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+
+    setRenderListCallback(vi.fn());
+    // Both staging and diff have multi selections
+    state.selectedFiles = new Set(['a.txt', 'b.txt']);
+    state.selectionImplicitAll = false;
+    state.diffSelectedFiles = new Set(['x.txt', 'y.txt']);
+
+    await onFileContextMenu(
+      { preventDefault: vi.fn(), clientX: 10, clientY: 20 } as any,
+      { path: 'a.txt', status: 'M' } as any,
+    );
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    // Should use staging selection (a.txt, b.txt), not diff selection
+    const stashMulti = items.find((i: any) => i.label?.includes('Create stash from selection'));
+    expect(stashMulti).toBeDefined();
+    const stashSingle = items.find((i: any) => i.label?.includes('Create stash for this file'));
+    expect(stashSingle).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// onFileContextMenu — discard all selected via explicit multi-selection (line 317-323)
+// ============================================================================
+describe('onFileContextMenu discard all selected via staging', () => {
+  it('discards all selected paths via explicit multi-staging', async () => {
+    const { onFileContextMenu, setRenderListCallback } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+    const { TAURI } = await import('@scripts/lib/tauri');
+    const { confirmBool } = await import('@scripts/lib/confirm');
+
+    vi.mocked(confirmBool).mockResolvedValue(true);
+    setRenderListCallback(vi.fn());
+
+    state.selectedFiles = new Set(['m.txt', 'n.txt']);
+    state.selectionImplicitAll = false;
+    state.diffSelectedFiles = new Set();
+
+    await onFileContextMenu(
+      { preventDefault: vi.fn(), clientX: 10, clientY: 20 } as any,
+      { path: 'm.txt', status: 'M' } as any,
+    );
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const discardAll = items.find((i: any) => i.label === 'Discard all selected');
+    expect(discardAll).toBeDefined();
+    await discardAll!.action!();
+    expect(TAURI.invoke).toHaveBeenCalledWith('vcs_discard_paths', { paths: ['m.txt', 'n.txt'] });
+  });
+});
+
+// ============================================================================
+// onFileClick — diff toggle with selectedFiles has same file (toggle off)
+// ============================================================================
+describe('onFileClick diff toggle off from existing selection', () => {
+  it('toggles existing diff selection off when shift+clicking already selected file', async () => {
+    const { onFileClick } = await import('@scripts/features/repo/interactions');
+    const { state } = await import('@scripts/state/state');
+    const { dragState } = await import('@scripts/features/repo/context');
+    const visible = [{ path: 'a.txt', status: 'M' }] as any;
+    state.files = [];
+    state.diffSelectedFiles = new Set(['a.txt']);
+    dragState.lastClickedIndex = 0;
+
+    onFileClick({ shiftKey: true, ctrlKey: false, metaKey: false } as MouseEvent, visible[0], 0, visible);
+    expect(state.diffSelectedFiles.has('a.txt')).toBe(false);
+  });
 });

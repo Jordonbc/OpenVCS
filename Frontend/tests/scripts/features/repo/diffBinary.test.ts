@@ -148,3 +148,60 @@ describe('isUntrackedStatus', () => {
     expect(isUntrackedStatus(undefined as any)).toBe(false);
   });
 });
+
+describe('normalizeDiffResult', () => {
+  it('returns empty lines for null payload', async () => {
+    const { normalizeDiffResult } = await import('@scripts/features/repo/diffBinary');
+    const result = normalizeDiffResult(null);
+    expect(result).toEqual({ lines: [] });
+  });
+
+  it('returns empty lines for undefined payload', async () => {
+    const { normalizeDiffResult } = await import('@scripts/features/repo/diffBinary');
+    const result = normalizeDiffResult(undefined);
+    expect(result).toEqual({ lines: [] });
+  });
+
+  it('returns empty lines for string payload', async () => {
+    const { normalizeDiffResult } = await import('@scripts/features/repo/diffBinary');
+    const result = normalizeDiffResult('some diff' as any);
+    expect(result).toEqual({ lines: [] });
+  });
+
+  it('returns empty lines for number payload', async () => {
+    const { normalizeDiffResult } = await import('@scripts/features/repo/diffBinary');
+    const result = normalizeDiffResult(42 as any);
+    expect(result).toEqual({ lines: [] });
+  });
+
+  it('returns payload as lines when given an array', async () => {
+    const { normalizeDiffResult } = await import('@scripts/features/repo/diffBinary');
+    const input = ['line1', 'line2'];
+    const result = normalizeDiffResult(input);
+    expect(result).toEqual({ lines: input });
+  });
+
+  it('normalizes VcsDiffResult object with lines', async () => {
+    const { normalizeDiffResult } = await import('@scripts/features/repo/diffBinary');
+    const result = normalizeDiffResult({ lines: ['a', 'b'], binary: false });
+    expect(result).toEqual({ lines: ['a', 'b'], binary: false });
+  });
+
+  it('normalizes VcsDiffResult with binary true', async () => {
+    const { normalizeDiffResult } = await import('@scripts/features/repo/diffBinary');
+    const result = normalizeDiffResult({ lines: [], binary: true });
+    expect(result).toEqual({ lines: [], binary: true });
+  });
+
+  it('handles VcsDiffResult with non-array lines', async () => {
+    const { normalizeDiffResult } = await import('@scripts/features/repo/diffBinary');
+    const result = normalizeDiffResult({ lines: 'not-an-array' as any, binary: false });
+    expect(result).toEqual({ lines: [], binary: false });
+  });
+
+  it('handles VcsDiffResult with null lines', async () => {
+    const { normalizeDiffResult } = await import('@scripts/features/repo/diffBinary');
+    const result = normalizeDiffResult({ lines: null as any });
+    expect(result).toEqual({ lines: [] });
+  });
+});

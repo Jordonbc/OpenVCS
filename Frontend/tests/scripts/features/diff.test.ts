@@ -1496,3 +1496,410 @@ describe('buildPatchForSelectedHunks falsy lines', () => {
     expect(result).toContain('+new');
   });
 });
+
+// ---------------------------------------------------------------------------
+// buildPatchForSelected - picksRaw/picksAdj uncovered branches (lines 236-239)
+// ---------------------------------------------------------------------------
+
+describe('buildPatchForSelected selLines edge cases', () => {
+  it('handles null selLines falling through to empty picksRaw', async () => {
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedLinesByFile = null as any;
+    state.selectedHunksByFile = {} as any;
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return [
+          'diff --git a/file.txt b/file.txt',
+          '--- a/file.txt',
+          '+++ b/file.txt',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+        ];
+      }
+      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      return [];
+    });
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'Null selLines';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const call = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+      );
+      expect(call?.[1].summary).toBe('Null selLines');
+    }, { timeout: 3000, interval: 20 });
+  });
+
+  it('handles selLines[h] as non-array truthy value', async () => {
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedHunksByFile = {} as any;
+    state.selectedLinesByFile = { 'file.txt': { 0: 'not-an-array' as any } };
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return [
+          'diff --git a/file.txt b/file.txt',
+          '--- a/file.txt',
+          '+++ b/file.txt',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+        ];
+      }
+      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      return [];
+    });
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'Non-array selLines';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const call = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+      );
+      expect(call?.[1].summary).toBe('Non-array selLines');
+    }, { timeout: 3000, interval: 20 });
+  });
+
+  it('handles selLines with missing hunk index', async () => {
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedHunksByFile = {} as any;
+    state.selectedLinesByFile = { 'file.txt': { } };
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return [
+          'diff --git a/file.txt b/file.txt',
+          '--- a/file.txt',
+          '+++ b/file.txt',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+        ];
+      }
+      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      return [];
+    });
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'Missing hunk index';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const call = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+      );
+      expect(call?.[1].summary).toBe('Missing hunk index');
+    }, { timeout: 3000, interval: 20 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildPatchForSelected - flush function branches (line 255)
+// ---------------------------------------------------------------------------
+
+describe('buildPatchForSelected flush function edge cases', () => {
+  it('handles flush with single selected line', async () => {
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedHunksByFile = {} as any;
+    state.selectedLinesByFile = { 'file.txt': { 0: [1] } };
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return [
+          'diff --git a/file.txt b/file.txt',
+          '--- a/file.txt',
+          '+++ b/file.txt',
+          '@@ -1,2 +1,2 @@',
+          '-old1',
+          '+new1',
+        ];
+      }
+      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      return [];
+    });
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'Single line flush';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const call = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+      );
+      // Single selected deletion line produces mini-hunk with old_count=1 new_count=0
+      expect(call?.[1].patch).toContain('@@ -1,1 +1,0 @@');
+    }, { timeout: 3000, interval: 20 });
+  });
+
+  it('handles flush with add-only selected lines', async () => {
+    state.selectedFiles = new Set(['addonly.txt']);
+    state.selectedHunksByFile = {} as any;
+    state.selectedLinesByFile = { 'addonly.txt': { 0: [1, 2] } };
+    state.files = [{ path: 'addonly.txt', status: 'M' }] as any;
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return [
+          'diff --git a/addonly.txt b/addonly.txt',
+          '--- a/addonly.txt',
+          '+++ b/addonly.txt',
+          '@@ -1,2 +1,4 @@',
+          ' context',
+          '+new1',
+          '+new2',
+          ' context',
+        ];
+      }
+      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      return [];
+    });
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'Add-only flush';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const call = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+      );
+      expect(call?.[1].patch).toContain('@@');
+    }, { timeout: 3000, interval: 20 });
+  });
+
+  it('handles flush with delete-only selected lines', async () => {
+    state.selectedFiles = new Set(['delonly.txt']);
+    state.selectedHunksByFile = {} as any;
+    state.selectedLinesByFile = { 'delonly.txt': { 0: [2, 3] } };
+    state.files = [{ path: 'delonly.txt', status: 'M' }] as any;
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return [
+          'diff --git a/delonly.txt b/delonly.txt',
+          '--- a/delonly.txt',
+          '+++ b/delonly.txt',
+          '@@ -1,4 +1,2 @@',
+          ' context',
+          '-old1',
+          '-old2',
+          ' context',
+        ];
+      }
+      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      return [];
+    });
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'Delete-only flush';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const call = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+      );
+      expect(call?.[1].patch).toContain('@@');
+    }, { timeout: 3000, interval: 20 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bindCommit - summary truncation with hook data (line 129 coverage)
+// ---------------------------------------------------------------------------
+
+describe('bindCommit summary truncation with hook data', () => {
+  it('truncates when hook provides summary over 72 chars with maxLength=72', async () => {
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedHunksByFile = {};
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+
+    const { runHook } = await import('@scripts/plugins');
+    vi.mocked(runHook).mockImplementation(async (name, data: any) => {
+      if (name === 'preCommit') data.summary = 'a'.repeat(100);
+      return { cancelled: false } as any;
+    });
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'commit_patch_and_files') return 'oid-789';
+      return [];
+    });
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.maxLength = 72;
+    commitSummary.value = 'Short summary';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const call = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+      );
+      expect(call?.[1].summary.length).toBeLessThanOrEqual(72);
+    }, { timeout: 3000, interval: 20 });
+  });
+
+  it('keeps summary when hook changes it but it fits 72 chars', async () => {
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedHunksByFile = {};
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+
+    const { runHook } = await import('@scripts/plugins');
+    vi.mocked(runHook).mockImplementation(async (name, data: any) => {
+      if (name === 'preCommit') data.summary = 'Hook modified summary';
+      return { cancelled: false } as any;
+    });
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'commit_patch_and_files') return 'oid-789';
+      return [];
+    });
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.maxLength = 72;
+    commitSummary.value = 'Original summary';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const call = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+      );
+      expect(call?.[1].summary).toBe('Hook modified summary');
+    }, { timeout: 3000, interval: 20 });
+  });
+
+  it('falls back to original summary when hook provides empty and maxLength=72', async () => {
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedHunksByFile = {};
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+
+    const { runHook } = await import('@scripts/plugins');
+    vi.mocked(runHook).mockImplementation(async (name, data: any) => {
+      if (name === 'preCommit') data.summary = '';
+      return { cancelled: false } as any;
+    });
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'commit_patch_and_files') return 'oid-789';
+      return [];
+    });
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.maxLength = 72;
+    commitSummary.value = 'Fallback summary';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const call = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+      );
+      expect(call?.[1].summary).toBe('Fallback summary');
+    }, { timeout: 3000, interval: 20 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildPatchForSelected - picksRaw and flush combined with prefix calc
+// ---------------------------------------------------------------------------
+
+describe('buildPatchForSelected picksRaw and prefix calc', () => {
+  it('handles selLines with picksRaw falling through to [] when selLines[h] is missing', async () => {
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedHunksByFile = {} as any;
+    state.selectedLinesByFile = {} as any;
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return [
+          'diff --git a/file.txt b/file.txt',
+          '--- a/file.txt',
+          '+++ b/file.txt',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+        ];
+      }
+      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      return [];
+    });
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'Missing hunk in selLines';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const call = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+      );
+      expect(call?.[1].summary).toBe('Missing hunk in selLines');
+    }, { timeout: 3000, interval: 20 });
+  });
+});

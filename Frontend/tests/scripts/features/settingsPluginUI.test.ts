@@ -190,6 +190,82 @@ describe('collectPluginSettingsFromPanel', () => {
         const result = collectPluginSettingsFromPanel(panel);
         expect(result).toEqual([{ id: 'bad', value: 0 }]);
     });
+
+    it('clamps non-finite u32 value to zero (line 370)', async () => {
+        const { collectPluginSettingsFromPanel } = await load();
+        const panel = document.createElement('div');
+        panel.innerHTML = '<input type="number" data-setting-id="bad-u32" data-setting-kind="u32" value="Infinity" />';
+        const result = collectPluginSettingsFromPanel(panel);
+        expect(result).toEqual([{ id: 'bad-u32', value: 0 }]);
+    });
+
+    it('clamps non-finite f64 value to zero (line 370)', async () => {
+        const { collectPluginSettingsFromPanel } = await load();
+        const panel = document.createElement('div');
+        panel.innerHTML = '<input type="number" data-setting-id="bad-f64" data-setting-kind="f64" value="NaN" />';
+        const result = collectPluginSettingsFromPanel(panel);
+        expect(result).toEqual([{ id: 'bad-f64', value: 0 }]);
+    });
+
+    it('clamps negative Infinity s32 to zero', async () => {
+        const { collectPluginSettingsFromPanel } = await load();
+        const panel = document.createElement('div');
+        panel.innerHTML = '<input type="number" data-setting-id="neg-inf" data-setting-kind="s32" value="-Infinity" />';
+        const result = collectPluginSettingsFromPanel(panel);
+        expect(result).toEqual([{ id: 'neg-inf', value: 0 }]);
+    });
+
+    it('truncates s32 with positive float value', async () => {
+        const { collectPluginSettingsFromPanel } = await load();
+        const panel = document.createElement('div');
+        panel.innerHTML = '<input type="number" data-setting-id="s32-float" data-setting-kind="s32" value="3.99" />';
+        const result = collectPluginSettingsFromPanel(panel);
+        expect(result).toEqual([{ id: 's32-float', value: 3 }]);
+    });
+
+    it('truncates s32 with negative float value', async () => {
+        const { collectPluginSettingsFromPanel } = await load();
+        const panel = document.createElement('div');
+        panel.innerHTML = '<input type="number" data-setting-id="s32-neg" data-setting-kind="s32" value="-2.5" />';
+        const result = collectPluginSettingsFromPanel(panel);
+        expect(result).toEqual([{ id: 's32-neg', value: -2 }]);
+    });
+
+    it('truncates and clamps u32 with positive float value', async () => {
+        const { collectPluginSettingsFromPanel } = await load();
+        const panel = document.createElement('div');
+        panel.innerHTML = '<input type="number" data-setting-id="u32-float" data-setting-kind="u32" value="5.99" />';
+        const result = collectPluginSettingsFromPanel(panel);
+        expect(result).toEqual([{ id: 'u32-float', value: 5 }]);
+    });
+
+    it('clamps u32 with negative float value to 0', async () => {
+        const { collectPluginSettingsFromPanel } = await load();
+        const panel = document.createElement('div');
+        panel.innerHTML = '<input type="number" data-setting-id="u32-neg" data-setting-kind="u32" value="-1.5" />';
+        const result = collectPluginSettingsFromPanel(panel);
+        expect(result).toEqual([{ id: 'u32-neg', value: 0 }]);
+    });
+
+    it('clamps positive Infinity f64 to zero', async () => {
+        const { collectPluginSettingsFromPanel } = await load();
+        const panel = document.createElement('div');
+        panel.innerHTML = '<input type="number" data-setting-id="inf-f64" data-setting-kind="f64" value="Infinity" />';
+        const result = collectPluginSettingsFromPanel(panel);
+        expect(result).toEqual([{ id: 'inf-f64', value: 0 }]);
+    });
+
+    it('collects text value from select element as plain string', async () => {
+        const { collectPluginSettingsFromPanel } = await load();
+        const panel = document.createElement('div');
+        panel.innerHTML = [
+            '<select data-setting-id="my-select" data-setting-kind="text">',
+            '  <option value="hello">Hello</option>',
+            '</select>',
+        ].join('');
+        const result = collectPluginSettingsFromPanel(panel);
+        expect(result).toEqual([{ id: 'my-select', value: 'hello' }]);
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -814,6 +890,236 @@ describe('ensurePluginSettingsLoaded - early returns', () => {
 });
 
 // ---------------------------------------------------------------------------
+// activateSection - edge cases
+// ---------------------------------------------------------------------------
+
+describe('activateSection - edge cases', () => {
+    async function load() {
+        return import('@scripts/features/settingsPluginUI');
+    }
+
+    it('falls back to general when section is empty string', async () => {
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav">',
+            '  <ul>',
+            '    <li><button class="seg-btn active" data-section="general">General</button></li>',
+            '  </ul>',
+            '</nav>',
+            '<div id="settings-panels-scroll">',
+            '  <div id="settings-panels">',
+            '    <form class="panel-form" data-panel="general">General Panel</form>',
+            '    <form class="panel-form hidden" data-panel="other">Other Panel</form>',
+            '  </div>',
+            '</div>',
+            '<div class="sheet-actions"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        const { activateSection } = await load();
+        activateSection(modal, '');
+        const panels = modal.querySelectorAll<HTMLElement>('.panel-form');
+        expect(panels[0].classList.contains('hidden')).toBe(false);
+        expect(panels[1].classList.contains('hidden')).toBe(true);
+        document.body.removeChild(modal);
+    });
+
+    it('returns early when nav exists but panels are missing', async () => {
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav">',
+            '  <button class="seg-btn" data-section="general">General</button>',
+            '</nav>',
+            '<div class="sheet-actions"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        const { activateSection } = await load();
+        expect(() => activateSection(modal, 'general')).not.toThrow();
+        document.body.removeChild(modal);
+    });
+
+    it('handles missing .sheet-actions element gracefully', async () => {
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav">',
+            '  <ul>',
+            '    <li><button class="seg-btn" data-section="general">General</button></li>',
+            '  </ul>',
+            '</nav>',
+            '<div id="settings-panels-scroll">',
+            '  <div id="settings-panels">',
+            '    <form class="panel-form" data-panel="general">General Panel</form>',
+            '  </div>',
+            '</div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        const { activateSection } = await load();
+        expect(() => activateSection(modal, 'general')).not.toThrow();
+        document.body.removeChild(modal);
+    });
+
+    it('activates plugin-settings panel with empty pluginId (no backend call)', async () => {
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav">',
+            '  <ul>',
+            '    <li><button class="seg-btn" data-section="plugin-settings-test">Test Plugin</button></li>',
+            '  </ul>',
+            '</nav>',
+            '<div id="settings-panels-scroll">',
+            '  <div id="settings-panels">',
+            '    <form class="panel-form hidden" data-panel="plugin-settings-test"',
+            '          data-plugin-settings="true" data-plugin-id="">',
+            '      <div class="plugin-settings-loading">Loading...</div>',
+            '    </form>',
+            '  </div>',
+            '</div>',
+            '<div class="sheet-actions"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        const { activateSection } = await load();
+        activateSection(modal, 'plugin-settings-test');
+        expect(mockInvoke).not.toHaveBeenCalledWith('get_plugin_settings', expect.anything());
+        document.body.removeChild(modal);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// ensurePluginSettingsLoaded - missing elements
+// ---------------------------------------------------------------------------
+
+describe('ensurePluginSettingsLoaded - missing elements (via activateSection)', () => {
+    async function load() {
+        return import('@scripts/features/settingsPluginUI');
+    }
+
+    it('handles missing panels-scroll gracefully via activateSection', async () => {
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav"><button class="seg-btn" data-section="general">General</button></nav>',
+            '<div class="sheet-actions"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        const { activateSection } = await load();
+        expect(() => activateSection(modal, 'general')).not.toThrow();
+        document.body.removeChild(modal);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// renderPluginMenus - edge cases
+// ---------------------------------------------------------------------------
+
+describe('renderPluginMenus - edge cases', () => {
+    async function load() {
+        return import('@scripts/features/settingsPluginUI');
+    }
+
+    function createModal(): HTMLElement {
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav">',
+            '  <ul>',
+            '    <li><button class="seg-btn" data-section="general">General</button></li>',
+            '    <li><button class="seg-btn" data-section="plugins">Plugins</button></li>',
+            '  </ul>',
+            '</nav>',
+            '<div id="settings-panels-scroll"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        return modal;
+    }
+
+    it('no-ops when nav is missing', async () => {
+        const { renderPluginMenus } = await load();
+        const modal = document.createElement('div');
+        modal.innerHTML = '<div id="settings-panels-scroll"></div>';
+        document.body.appendChild(modal);
+        await renderPluginMenus(modal);
+        expect(mockInvoke).not.toHaveBeenCalled();
+        document.body.removeChild(modal);
+    });
+
+    it('no-ops when panels-scroll is missing', async () => {
+        const { renderPluginMenus } = await load();
+        const modal = document.createElement('div');
+        modal.innerHTML = '<nav id="settings-nav"></nav>';
+        document.body.appendChild(modal);
+        await renderPluginMenus(modal);
+        expect(mockInvoke).not.toHaveBeenCalled();
+        document.body.removeChild(modal);
+    });
+
+    it('handles menu with null elements gracefully', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            plugin_id: 'my-plugin', id: 'my-menu', label: 'My Menu',
+            surface: 'settings', elements: null,
+        }]);
+        mockInvoke.mockResolvedValueOnce([]);
+        const { renderPluginMenus } = await load();
+        const modal = createModal();
+        await expect(renderPluginMenus(modal)).resolves.toBeUndefined();
+        const navBtn = modal.querySelector('[data-section="plugin-my-plugin-my-menu"]');
+        expect(navBtn).not.toBeNull();
+        document.body.removeChild(modal);
+    });
+
+    it('handles menu with empty elements gracefully', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            plugin_id: 'empty-plugin', id: 'empty-menu', label: 'Empty Menu',
+            surface: 'settings', elements: [],
+        }]);
+        mockInvoke.mockResolvedValueOnce([]);
+        const { renderPluginMenus } = await load();
+        const modal = createModal();
+        await renderPluginMenus(modal);
+        const panel = modal.querySelector('[data-panel="plugin-empty-plugin-empty-menu"]');
+        expect(panel).not.toBeNull();
+        expect(panel!.querySelectorAll('.group').length).toBe(0);
+        document.body.removeChild(modal);
+    });
+
+    it('handles menu elements with unknown type (creates empty group)', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            plugin_id: 'unk-plugin', id: 'unk-menu', label: 'Unknown',
+            surface: 'settings', elements: [
+                { type: 'unknown_type', id: 'x', content: 'should be ignored' },
+            ],
+        }]);
+        mockInvoke.mockResolvedValueOnce([]);
+        const { renderPluginMenus } = await load();
+        const modal = createModal();
+        await renderPluginMenus(modal);
+        const panel = modal.querySelector('[data-panel="plugin-unk-plugin-unk-menu"]');
+        expect(panel).not.toBeNull();
+        expect(panel!.querySelectorAll('.group').length).toBe(1);
+        expect(panel!.querySelector('.group')!.textContent).toBe('');
+        document.body.removeChild(modal);
+    });
+
+    it('handles null pluginSummaries gracefully', async () => {
+        mockInvoke.mockResolvedValueOnce([]);
+        mockInvoke.mockResolvedValueOnce(null);
+        const { renderPluginMenus } = await load();
+        const modal = createModal();
+        await expect(renderPluginMenus(modal)).resolves.toBeUndefined();
+        document.body.removeChild(modal);
+    });
+
+    it('renders menu with blank plugin_id without crashing', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            plugin_id: '', id: 'blank-id', label: 'Blank Plugin',
+            surface: 'settings', elements: [],
+        }]);
+        mockInvoke.mockResolvedValueOnce([]);
+        const { renderPluginMenus } = await load();
+        const modal = createModal();
+        await expect(renderPluginMenus(modal)).resolves.toBeUndefined();
+        expect(modal.querySelector('[data-section^="plugin-"]')).not.toBeNull();
+        document.body.removeChild(modal);
+    });
+});
+
+// ---------------------------------------------------------------------------
 // renderPluginMenus - built-in nav fallback
 // ---------------------------------------------------------------------------
 
@@ -1018,6 +1324,455 @@ describe('renderPluginSettingFields - edge cases', () => {
         await vi.waitFor(() => {
             expect(modal.textContent).toContain('Help text');
         });
+        document.body.removeChild(modal);
+    });
+
+    it('renders bool field unchecked when value is false', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'enable-y', kind: 'bool', label: 'Enable Y', value: false,
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const cb = modal.querySelector<HTMLInputElement>('input[type="checkbox"][data-setting-id="enable-y"]');
+            expect(cb).not.toBeNull();
+            expect(cb!.checked).toBe(false);
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders unknown field kind as text input', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'custom', kind: 'color', label: 'Color', value: '#ff0000',
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const input = modal.querySelector<HTMLInputElement>('input[type="text"][data-setting-id="custom"]');
+            expect(input).not.toBeNull();
+            expect(input!.value).toBe('#ff0000');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders select with empty value string (falls to first option)', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'mode', kind: 'text', label: 'Mode', value: '',
+            options: [
+                { value: 'manual', label: 'Manual' },
+                { value: 'auto', label: 'Auto' },
+            ],
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const sel = modal.querySelector<HTMLSelectElement>('select[data-setting-id="mode"]');
+            expect(sel).not.toBeNull();
+            expect(sel!.value).toBe('manual');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders description on bool field', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'flag', kind: 'bool', label: 'Flag', value: true, description: 'Enable flag',
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            expect(modal.textContent).toContain('Enable flag');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders description on number (s32) field', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'count', kind: 's32', label: 'Count', value: 5, description: 'Number of items',
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            expect(modal.textContent).toContain('Number of items');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders description on select field', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'mode', kind: 'text', label: 'Mode', value: 'auto', description: 'Select operation mode',
+            options: [
+                { value: 'manual', label: 'Manual' },
+                { value: 'auto', label: 'Auto' },
+            ],
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            expect(modal.textContent).toContain('Select operation mode');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders number field with non-finite default_value', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'nan-val', kind: 's32', label: 'NaN Val', value: undefined, default_value: NaN,
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const input = modal.querySelector<HTMLInputElement>('input[type="number"][data-setting-id="nan-val"]');
+            expect(input).not.toBeNull();
+            expect(input!.value).toBe('0');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders number field with null value and null default_value (falls to 0)', async () => {
+        mockInvoke.mockResolvedValueOnce([{
+            id: 'null-val', kind: 's32', label: 'Null Val', value: null, default_value: null,
+        }]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const input = modal.querySelector<HTMLInputElement>('input[type="number"][data-setting-id="null-val"]');
+            expect(input).not.toBeNull();
+            expect(input!.value).toBe('0');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders s32 field with Infinity value (non-finite, falls to 0)', async () => {
+        mockInvoke.mockResolvedValueOnce([makeField({
+            id: 'inf-val', kind: 's32', label: 'Inf Val', value: Infinity,
+        })]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const input = modal.querySelector<HTMLInputElement>('input[type="number"][data-setting-id="inf-val"]');
+            expect(input).not.toBeNull();
+            expect(input!.value).toBe('0');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders s32 field with -Infinity value (non-finite, falls to 0)', async () => {
+        mockInvoke.mockResolvedValueOnce([makeField({
+            id: 'neg-inf-val', kind: 's32', label: 'Neg Inf', value: -Infinity,
+        })]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const input = modal.querySelector<HTMLInputElement>('input[type="number"][data-setting-id="neg-inf-val"]');
+            expect(input).not.toBeNull();
+            expect(input!.value).toBe('0');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders u32 field with NaN value (non-finite, falls to 0)', async () => {
+        mockInvoke.mockResolvedValueOnce([makeField({
+            id: 'nan-u32', kind: 'u32', label: 'NaN U32', value: NaN,
+        })]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const input = modal.querySelector<HTMLInputElement>('input[type="number"][data-setting-id="nan-u32"]');
+            expect(input).not.toBeNull();
+            expect(input!.value).toBe('0');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders text field with undefined value and default_value fallback', async () => {
+        mockInvoke.mockResolvedValueOnce([makeField({
+            id: 'fallback-text', kind: 'text', label: 'Fallback', value: undefined, default_value: 'defaulted',
+        })]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const input = modal.querySelector<HTMLInputElement>('input[type="text"][data-setting-id="fallback-text"]');
+            expect(input).not.toBeNull();
+            expect(input!.value).toBe('defaulted');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders text field with null value (nullish coalescing falls to default_value)', async () => {
+        mockInvoke.mockResolvedValueOnce([makeField({
+            id: 'null-text', kind: 'text', label: 'Null Text', value: null,
+        })]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const input = modal.querySelector<HTMLInputElement>('input[type="text"][data-setting-id="null-text"]');
+            expect(input).not.toBeNull();
+            expect(input!.value).toBe('');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('renders s32 field with value that is non-numeric string (NaN -> 0)', async () => {
+        mockInvoke.mockResolvedValueOnce([makeField({
+            id: 'nan-str', kind: 's32', label: 'NaN Str', value: 'not-a-number',
+        })]);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_testp');
+        await vi.waitFor(() => {
+            const input = modal.querySelector<HTMLInputElement>('input[type="number"][data-setting-id="nan-str"]');
+            expect(input).not.toBeNull();
+            expect(input!.value).toBe('0');
+        });
+        document.body.removeChild(modal);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// ensurePluginSettingsLoaded - no loading element in panel
+// ---------------------------------------------------------------------------
+describe('ensurePluginSettingsLoaded - no loading element', () => {
+    async function load() {
+        return import('@scripts/features/settingsPluginUI');
+    }
+
+    it('handles panel without plugin-settings-loading element', async () => {
+        mockInvoke.mockResolvedValueOnce([makeField({ id: 'x', kind: 'text', value: 'works' })]);
+        const { activateSection } = await load();
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav"><ul><li><button class="seg-btn" data-section="pluginsettings_noload">P</button></li></ul></nav>',
+            '<div id="settings-panels-scroll"><div id="settings-panels">',
+            '  <form class="panel-form hidden" data-panel="pluginsettings_noload"',
+            '        data-plugin-settings="true" data-plugin-id="noload">',
+            '  </form>',
+            '</div></div>',
+            '<div class="sheet-actions"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        activateSection(modal, 'pluginsettings_noload');
+        await vi.waitFor(() => {
+            const input = modal.querySelector('[data-setting-id="x"]');
+            expect(input).not.toBeNull();
+            expect(input!.value).toBe('works');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('shows error when backend fails and no loading element present', async () => {
+        mockInvoke.mockRejectedValueOnce(new Error('fail'));
+        const { activateSection } = await load();
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav"><ul><li><button class="seg-btn" data-section="pluginsettings_noerr">P</button></li></ul></nav>',
+            '<div id="settings-panels-scroll"><div id="settings-panels">',
+            '  <form class="panel-form hidden" data-panel="pluginsettings_noerr"',
+            '        data-plugin-settings="true" data-plugin-id="noerr">',
+            '  </form>',
+            '</div></div>',
+            '<div class="sheet-actions"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        expect(() => activateSection(modal, 'pluginsettings_noerr')).not.toThrow();
+        document.body.removeChild(modal);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// ensurePluginSettingsLoaded - fields is not an array
+// ---------------------------------------------------------------------------
+describe('ensurePluginSettingsLoaded - non-array fields', () => {
+    async function load() {
+        return import('@scripts/features/settingsPluginUI');
+    }
+
+    function createModal(): HTMLElement {
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav"><ul><li><button class="seg-btn" data-section="pluginsettings_nullf">P</button></li></ul></nav>',
+            '<div id="settings-panels-scroll"><div id="settings-panels">',
+            '  <form class="panel-form hidden" data-panel="pluginsettings_nullf"',
+            '        data-plugin-settings="true" data-plugin-id="nullf">',
+            '    <div class="plugin-settings-loading" data-loading="true">Loading...</div>',
+            '  </form>',
+            '</div></div>',
+            '<div class="sheet-actions"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        return modal;
+    }
+
+    it('handles null fields result from backend (shows no settings)', async () => {
+        mockInvoke.mockResolvedValueOnce(null);
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_nullf');
+        await vi.waitFor(() => {
+            expect(modal.textContent).toContain('No settings available');
+        });
+        document.body.removeChild(modal);
+    });
+
+    it('handles non-array object fields result (shows no settings)', async () => {
+        mockInvoke.mockResolvedValueOnce({ not: 'an array' });
+        const { activateSection } = await load();
+        const modal = createModal();
+        activateSection(modal, 'pluginsettings_nullf');
+        await vi.waitFor(() => {
+            expect(modal.textContent).toContain('No settings available');
+        });
+        document.body.removeChild(modal);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// collectPluginSettingsFromPanel - select element with numeric kind
+// ---------------------------------------------------------------------------
+describe('collectPluginSettingsFromPanel - select with numeric kind', () => {
+    async function load() {
+        return import('@scripts/features/settingsPluginUI');
+    }
+
+    it('collects value from select with kind=s32 (falls to else branch)', async () => {
+        const { collectPluginSettingsFromPanel } = await load();
+        const panel = document.createElement('div');
+        panel.innerHTML = [
+            '<select data-setting-id="num-sel" data-setting-kind="s32">',
+            '  <option value="42">42</option>',
+            '  <option value="99" selected>99</option>',
+            '</select>',
+        ].join('');
+        const result = collectPluginSettingsFromPanel(panel);
+        expect(result).toEqual([{ id: 'num-sel', value: 99 }]);
+    });
+
+    it('collects NaN from select with kind=s32 and non-numeric option value', async () => {
+        const { collectPluginSettingsFromPanel } = await load();
+        const panel = document.createElement('div');
+        panel.innerHTML = [
+            '<select data-setting-id="nan-sel" data-setting-kind="s32">',
+            '  <option value="abc">ABC</option>',
+            '</select>',
+        ].join('');
+        const result = collectPluginSettingsFromPanel(panel);
+        expect(result).toEqual([{ id: 'nan-sel', value: 0 }]);
+    });
+
+    it('collects value from select with kind=bool (not HTMLInputElement, falls to else)', async () => {
+        const { collectPluginSettingsFromPanel } = await load();
+        const panel = document.createElement('div');
+        panel.innerHTML = [
+            '<select data-setting-id="bool-sel" data-setting-kind="bool">',
+            '  <option value="true">True</option>',
+            '  <option value="false" selected>False</option>',
+            '</select>',
+        ].join('');
+        const result = collectPluginSettingsFromPanel(panel);
+        expect(result).toEqual([{ id: 'bool-sel', value: 'false' }]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// activateSection - plugin-settings with missing active panel
+// ---------------------------------------------------------------------------
+describe('activateSection - plugin-settings with missing active panel', () => {
+    async function load() {
+        return import('@scripts/features/settingsPluginUI');
+    }
+
+    it('handles isPluginSettingsPanel but no matching panel-form in panels', async () => {
+        mockInvoke.mockResolvedValueOnce([]);
+        const { activateSection } = await load();
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav"><ul><li><button class="seg-btn" data-section="plugin-settings-missing">P</button></li></ul></nav>',
+            '<div id="settings-panels-scroll"><div id="settings-panels">',
+            '  <form class="panel-form" data-panel="other">Other</form>',
+            '</div></div>',
+            '<div class="sheet-actions"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        expect(() => activateSection(modal, 'plugin-settings-missing')).not.toThrow();
+        expect(mockInvoke).not.toHaveBeenCalledWith('get_plugin_settings', expect.anything());
+        document.body.removeChild(modal);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// renderPluginMenus - text/button elements edge cases
+// ---------------------------------------------------------------------------
+describe('renderPluginMenus - text and button element edge cases', () => {
+    async function load() {
+        return import('@scripts/features/settingsPluginUI');
+    }
+
+    function createModal(): HTMLElement {
+        const modal = document.createElement('div');
+        modal.innerHTML = [
+            '<nav id="settings-nav"><ul><li><button class="seg-btn" data-section="general">General</button></li>',
+            '  <li><button class="seg-btn" data-section="plugins">Plugins</button></li></ul></nav>',
+            '<div id="settings-panels-scroll"></div>',
+        ].join('\n');
+        document.body.appendChild(modal);
+        return modal;
+    }
+
+    it('renders text element without content (empty div)', async () => {
+        mockInvoke.mockResolvedValueOnce([makeMenu({
+            plugin_id: 'tp', id: 'm1', label: 'M1', surface: 'settings',
+            elements: [{ type: 'text' }],
+        })]);
+        mockInvoke.mockResolvedValueOnce([makePluginSummary({ id: 'tp', source: 'built-in' })]);
+        const { renderPluginMenus } = await load();
+        const modal = createModal();
+        await renderPluginMenus(modal);
+        const groups = modal.querySelectorAll('.group');
+        expect(groups.length).toBeGreaterThanOrEqual(1);
+        expect(groups[0].textContent).toBe('');
+        document.body.removeChild(modal);
+    });
+
+    it('renders button element without label and id (uses defaults)', async () => {
+        mockInvoke.mockResolvedValueOnce([makeMenu({
+            plugin_id: 'tp', id: 'm2', label: 'M2', surface: 'settings',
+            elements: [{ type: 'button' }],
+        })]);
+        mockInvoke.mockResolvedValueOnce([makePluginSummary({ id: 'tp', source: 'built-in' })]);
+        const { renderPluginMenus } = await load();
+        const modal = createModal();
+        await renderPluginMenus(modal);
+        const btn = modal.querySelector('[data-plugin-action]') as HTMLButtonElement;
+        expect(btn).not.toBeNull();
+        expect(btn!.textContent).toBe('Action');
+        expect(btn!.dataset.pluginAction).toBe('');
+        document.body.removeChild(modal);
+    });
+
+    it('renders button element with label and id', async () => {
+        mockInvoke.mockResolvedValueOnce([makeMenu({
+            plugin_id: 'tp', id: 'm3', label: 'M3', surface: 'settings',
+            elements: [{ type: 'button', id: 'do-thing', label: 'Do It' }],
+        })]);
+        mockInvoke.mockResolvedValueOnce([makePluginSummary({ id: 'tp', source: 'built-in' })]);
+        const { renderPluginMenus } = await load();
+        const modal = createModal();
+        await renderPluginMenus(modal);
+        const btn = modal.querySelector('[data-plugin-action="do-thing"]') as HTMLButtonElement;
+        expect(btn).not.toBeNull();
+        expect(btn!.textContent).toBe('Do It');
+        expect(btn!.dataset.pluginAction).toBe('do-thing');
         document.body.removeChild(modal);
     });
 });

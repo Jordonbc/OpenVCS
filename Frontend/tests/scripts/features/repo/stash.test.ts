@@ -1070,3 +1070,134 @@ describe('renderStashList filter predicate edge cases', () => {
     expect(rows.length).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Branch coverage: query matching both msg and selector
+// ---------------------------------------------------------------------------
+describe('renderStashList query matching multiple fields', () => {
+  it('matches items where query appears in both msg and selector', async () => {
+    mockState.stash = [
+      { selector: 'stash@{0}', msg: 'main work', meta: '' },
+      { selector: 'stash@{1}', msg: 'feature work', meta: '' },
+    ];
+    const mod = await loadStash();
+    mod.renderStashList('main');
+    const rows = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows.length).toBe(1);
+    expect(rows[0].textContent).toContain('main work');
+  });
+
+  it('matches by selector when msg has no match', async () => {
+    mockState.stash = [
+      { selector: 'stash@{0}', msg: 'WIP on main', meta: '' },
+      { selector: 'refs/stash@{1}', msg: 'WIP on feature', meta: '' },
+    ];
+    const mod = await loadStash();
+    mod.renderStashList('refs/');
+    const rows = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows.length).toBe(1);
+    expect(rows[0].dataset.selector).toBe('refs/stash@{1}');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: renderStashList with null/undefined meta
+// ---------------------------------------------------------------------------
+describe('renderStashList null/undefined meta', () => {
+  it('renders items with null meta without crashing', async () => {
+    mockState.stash = [
+      { selector: 'stash@{0}', msg: 'WIP', meta: null },
+    ];
+    const mod = await loadStash();
+    mod.renderStashList('');
+    const rows = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows.length).toBe(1);
+  });
+
+  it('renders items with undefined meta without crashing', async () => {
+    mockState.stash = [
+      { selector: 'stash@{0}', msg: 'WIP', meta: undefined },
+    ];
+    const mod = await loadStash();
+    mod.renderStashList('');
+    const rows = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows.length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: getActiveStashSelector multiple active rows
+// ---------------------------------------------------------------------------
+describe('getActiveStashSelector edge cases', () => {
+  it('returns empty string when no active row and no currentStash', async () => {
+    mockState.currentStash = '';
+    mockListEl.innerHTML = '<li class="row commit"></li><li class="row commit"></li>';
+    const mod = await loadStash();
+    const result = mod.getActiveStashSelector();
+    expect(result).toBe('');
+  });
+});
+
+// ===========================================================================
+// Branch coverage: filter predicate selector matching is case-sensitive (line 42)
+// ===========================================================================
+describe('renderStashList filter case sensitivity', () => {
+  it('matches selector case-sensitively (selector does NOT use toLowerCase)', async () => {
+    mockState.stash = [
+      { selector: 'Stash@{0}', msg: 'WIP on main', meta: '' },
+    ];
+    const mod = await loadStash();
+    // Lowercase query does NOT match uppercase selector since .includes() is case-sensitive
+    mod.renderStashList('stash@{0}');
+    const rows = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows.length).toBe(0);
+
+    // Exact case match works
+    mod.renderStashList('Stash@{0}');
+    const rows2 = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows2.length).toBe(1);
+  });
+
+  it('matches msg case-insensitively (msg uses toLowerCase)', async () => {
+    mockState.stash = [
+      { selector: 'stash@{0}', msg: 'WIP ON MAIN', meta: '' },
+    ];
+    const mod = await loadStash();
+    // Lowercase query matches uppercase msg because toLowerCase is used
+    mod.renderStashList('wip on main');
+    const rows = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows.length).toBe(1);
+  });
+
+  it('filters items where query matches neither msg nor selector', async () => {
+    mockState.stash = [
+      { selector: 'stash@{0}', msg: 'WIP on main', meta: '' },
+      { selector: 'stash@{1}', msg: 'feature work', meta: '' },
+    ];
+    const mod = await loadStash();
+    mod.renderStashList('zzzzz');
+    const rows = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows.length).toBe(0);
+  });
+});
+
+// ===========================================================================
+// Branch coverage: showStashFooter / hideStashFooter edge cases (lines 129, 158)
+// ===========================================================================
+describe('showStashFooter and hideStashFooter edge cases', () => {
+  it('hideStashFooter does not crash when called without showStashFooter first (stashFootEl is null)', async () => {
+    const mod = await loadStash();
+    expect(() => mod.hideStashFooter()).not.toThrow();
+  });
+
+  it('showStashFooter called twice with same leftFootEl does not re-create controls', async () => {
+    const mod = await loadStash();
+    mod.showStashFooter();
+    const controls = mockLeftFootEl.querySelectorAll('#stash-foot-controls');
+    expect(controls.length).toBe(1);
+    // Second call should re-use existing controls
+    mod.showStashFooter();
+    const controls2 = mockLeftFootEl.querySelectorAll('#stash-foot-controls');
+    expect(controls2.length).toBe(1);
+  });
+});

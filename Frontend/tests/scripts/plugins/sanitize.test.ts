@@ -38,6 +38,115 @@ describe('escapeCssSelector', () => {
   });
 });
 
+describe('escapeCssSelector edge cases', () => {
+  beforeEach(() => {
+    if (typeof CSS === 'undefined') {
+      (globalThis as any).CSS = {};
+    }
+  });
+
+  it('handles null and undefined values via CSS.escape', async () => {
+    (CSS as any).escape = (s: string) => `esc-${s}`;
+    const { escapeCssSelector } = await import('@scripts/plugins/sanitize');
+    expect(escapeCssSelector(null as unknown as string)).toBe('esc-');
+    expect(escapeCssSelector(undefined as unknown as string)).toBe('esc-');
+  });
+
+  it('handles null and undefined values via fallback', async () => {
+    (CSS as any).escape = undefined;
+    const { escapeCssSelector } = await import('@scripts/plugins/sanitize');
+    expect(escapeCssSelector(null as unknown as string)).toBe('');
+    expect(escapeCssSelector(undefined as unknown as string)).toBe('');
+  });
+
+  it('handles empty string via CSS.escape', async () => {
+    (CSS as any).escape = (s: string) => `esc-${s}`;
+    const { escapeCssSelector } = await import('@scripts/plugins/sanitize');
+    expect(escapeCssSelector('')).toBe('esc-');
+  });
+
+  it('handles empty string via fallback', async () => {
+    (CSS as any).escape = undefined;
+    const { escapeCssSelector } = await import('@scripts/plugins/sanitize');
+    expect(escapeCssSelector('')).toBe('');
+  });
+});
+
+describe('isSafePluginUrl edge cases', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('keeps empty href attributes (considered safe)', async () => {
+    const { parseSanitizedPluginElement } = await import('@scripts/plugins/sanitize');
+    const el = parseSanitizedPluginElement('<a href="">link</a>');
+    expect(el).not.toBeNull();
+    // Empty/whitespace-only href is treated as safe by isSafePluginUrl
+    expect(el!.getAttribute('href')).toBe('');
+  });
+
+  it('keeps whitespace-only href (considered safe)', async () => {
+    const { parseSanitizedPluginElement } = await import('@scripts/plugins/sanitize');
+    const el = parseSanitizedPluginElement('<a href="   ">link</a>');
+    expect(el).not.toBeNull();
+    expect(el!.getAttribute('href')).toBe('   ');
+  });
+
+  it('removes base tag', async () => {
+    const { parseSanitizedPluginElement } = await import('@scripts/plugins/sanitize');
+    const el = parseSanitizedPluginElement('<div><base href="https://evil.com"><span>safe</span></div>');
+    expect(el).not.toBeNull();
+    expect(el!.querySelector('base')).toBeNull();
+    expect(el!.textContent).toBe('safe');
+  });
+
+  it('removes meta tag', async () => {
+    const { parseSanitizedPluginElement } = await import('@scripts/plugins/sanitize');
+    const el = parseSanitizedPluginElement('<div><meta http-equiv="refresh" content="0;url=evil"><span>safe</span></div>');
+    expect(el).not.toBeNull();
+    expect(el!.querySelector('meta')).toBeNull();
+    expect(el!.textContent).toBe('safe');
+  });
+
+  it('removes link tag', async () => {
+    const { parseSanitizedPluginElement } = await import('@scripts/plugins/sanitize');
+    const el = parseSanitizedPluginElement('<div><link rel="stylesheet" href="evil.css"><span>safe</span></div>');
+    expect(el).not.toBeNull();
+    expect(el!.querySelector('link')).toBeNull();
+    expect(el!.textContent).toBe('safe');
+  });
+
+  it('removes svg tag', async () => {
+    const { parseSanitizedPluginElement } = await import('@scripts/plugins/sanitize');
+    const el = parseSanitizedPluginElement('<div><svg onload="alert(1)"></svg><span>safe</span></div>');
+    expect(el).not.toBeNull();
+    expect(el!.querySelector('svg')).toBeNull();
+    expect(el!.textContent).toBe('safe');
+  });
+
+  it('removes style attribute on nested elements', async () => {
+    const { parseSanitizedPluginElement } = await import('@scripts/plugins/sanitize');
+    const el = parseSanitizedPluginElement('<div><span style="font-size:100px">big</span></div>');
+    expect(el).not.toBeNull();
+    expect(el!.querySelector('span')!.getAttribute('style')).toBeNull();
+  });
+
+  it('strips action attribute with javascript: URL', async () => {
+    const { parseSanitizedPluginElement } = await import('@scripts/plugins/sanitize');
+    const el = parseSanitizedPluginElement('<form action="javascript:alert(1)"><button>submit</button></form>');
+    expect(el).not.toBeNull();
+    expect(el!.getAttribute('action')).toBeNull();
+  });
+
+  it('strips xlink:href with javascript: URL', async () => {
+    const { parseSanitizedPluginElement } = await import('@scripts/plugins/sanitize');
+    // SVG is blocked entirely, so test on a custom element with xlink:href
+    const el = parseSanitizedPluginElement('<div><a xlink:href="javascript:void(0)">link</a></div>');
+    expect(el).not.toBeNull();
+    expect(el!.querySelector('a')!.getAttribute('xlink:href')).toBeNull();
+  });
+});
+
 describe('parseSanitizedPluginElement', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
@@ -151,5 +260,19 @@ describe('parseSanitizedPluginElement', () => {
     expect(anchors[0].getAttribute('href')).toBeNull();
     expect(anchors[1].getAttribute('href')).toBeNull();
     expect(anchors[2].getAttribute('href')).toBe('https://safe.com');
+  });
+
+  it('handles formaction attribute with javascript: URL', async () => {
+    const { parseSanitizedPluginElement } = await import('@scripts/plugins/sanitize');
+    const el = parseSanitizedPluginElement('<button formaction="javascript:alert(1)">click</button>');
+    expect(el).not.toBeNull();
+    expect(el!.getAttribute('formaction')).toBeNull();
+  });
+
+  it('handles src attribute with javascript: URL', async () => {
+    const { parseSanitizedPluginElement } = await import('@scripts/plugins/sanitize');
+    const el = parseSanitizedPluginElement('<img src="javascript:alert(1)">');
+    expect(el).not.toBeNull();
+    expect(el!.getAttribute('src')).toBeNull();
   });
 });

@@ -69,3 +69,18 @@ describe('assertDesktopRuntime', () => {
     expect(() => assertDesktopRuntime()).not.toThrow();
   });
 });
+
+describe('TAURI.listen with event runtime', () => {
+  it('resolves when event runtime is available', async () => {
+    const unlistenMock = vi.fn();
+    const listenMock = vi.fn().mockResolvedValue({ unlisten: unlistenMock });
+    (window as any).__TAURI__ = { core: { invoke: vi.fn() }, event: { listen: listenMock } };
+    const { TAURI } = await loadTauriModule();
+
+    const cb = vi.fn();
+    const result = await TAURI.listen('test-event', cb);
+
+    expect(listenMock).toHaveBeenCalledWith('test-event', cb);
+    expect(result.unlisten).toBe(unlistenMock);
+  });
+});

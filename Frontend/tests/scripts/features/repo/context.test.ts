@@ -101,3 +101,19 @@ describe('context event listeners', () => {
     expect(() => document.dispatchEvent(ev)).not.toThrow();
   });
 });
+
+describe('context null element exports', () => {
+  it('exports null for elements not in the DOM', async () => {
+    const ctx = await import('@scripts/features/repo/context');
+    expect(ctx.diffHeadMeta).toBeNull();
+    expect(ctx.diffLineEndingEl).toBeNull();
+    expect(ctx.diffEncodingEl).toBeNull();
+    expect(ctx.diffBomEl).toBeNull();
+  });
+
+  it('exports null for undoLeftBtn when leftFootEl has no child', async () => {
+    const ctx = await import('@scripts/features/repo/context');
+    expect(ctx.undoLeftBtn).toBeNull();
+    expect(ctx.leftFootEl).not.toBeNull();
+  });
+});

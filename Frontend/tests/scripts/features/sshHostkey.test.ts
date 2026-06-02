@@ -250,3 +250,171 @@ describe('initSshHostkeyPrompt', () => {
     expect(document.getElementById('ssh-hostkey-host')!.textContent).toBe('testhost');
   });
 });
+
+// ---------------------------------------------------------------------------
+// wireModalOnce - element null safety branches (setBusy, fill)
+// ---------------------------------------------------------------------------
+
+describe('wireModalOnce element null branches', () => {
+  it('fill handles missing host element', async () => {
+    document.body.innerHTML = `
+      <div id="ssh-hostkey-modal">
+        <span id="ssh-hostkey-remote"></span>
+        <span id="ssh-hostkey-url"></span>
+        <span id="ssh-hostkey-msg"></span>
+        <button id="ssh-hostkey-accept">Accept</button>
+        <button id="ssh-hostkey-deny">Deny</button>
+      </div>
+    `;
+    mockInvoke.mockResolvedValue(undefined);
+
+    const { initSshHostkeyPrompt } = await import('@scripts/features/sshHostkey');
+    initSshHostkeyPrompt();
+    triggerSshHostkeyEvent({ host: 'example.com', remote: 'origin', url: 'git@example.com:repo', message: 'Key: abc' });
+
+    // Other elements still get filled despite missing host element
+    expect(document.getElementById('ssh-hostkey-remote')!.textContent).toBe('origin');
+    expect(document.getElementById('ssh-hostkey-url')!.textContent).toBe('git@example.com:repo');
+    expect(document.getElementById('ssh-hostkey-msg')!.textContent).toBe('Key: abc');
+  });
+
+  it('fill handles missing remote element', async () => {
+    document.body.innerHTML = `
+      <div id="ssh-hostkey-modal">
+        <span id="ssh-hostkey-host"></span>
+        <span id="ssh-hostkey-url"></span>
+        <span id="ssh-hostkey-msg"></span>
+        <button id="ssh-hostkey-accept">Accept</button>
+        <button id="ssh-hostkey-deny">Deny</button>
+      </div>
+    `;
+    mockInvoke.mockResolvedValue(undefined);
+
+    const { initSshHostkeyPrompt } = await import('@scripts/features/sshHostkey');
+    initSshHostkeyPrompt();
+    triggerSshHostkeyEvent({ host: 'example.com', remote: 'origin', url: 'git@example.com:repo', message: 'Key: abc' });
+
+    expect(document.getElementById('ssh-hostkey-host')!.textContent).toBe('example.com');
+    expect(document.getElementById('ssh-hostkey-url')!.textContent).toBe('git@example.com:repo');
+    expect(document.getElementById('ssh-hostkey-msg')!.textContent).toBe('Key: abc');
+  });
+
+  it('fill handles missing url element', async () => {
+    document.body.innerHTML = `
+      <div id="ssh-hostkey-modal">
+        <span id="ssh-hostkey-host"></span>
+        <span id="ssh-hostkey-remote"></span>
+        <span id="ssh-hostkey-msg"></span>
+        <button id="ssh-hostkey-accept">Accept</button>
+        <button id="ssh-hostkey-deny">Deny</button>
+      </div>
+    `;
+    mockInvoke.mockResolvedValue(undefined);
+
+    const { initSshHostkeyPrompt } = await import('@scripts/features/sshHostkey');
+    initSshHostkeyPrompt();
+    triggerSshHostkeyEvent({ host: 'example.com', remote: 'origin', url: 'git@example.com:repo', message: 'Key: abc' });
+
+    expect(document.getElementById('ssh-hostkey-host')!.textContent).toBe('example.com');
+    expect(document.getElementById('ssh-hostkey-remote')!.textContent).toBe('origin');
+    expect(document.getElementById('ssh-hostkey-msg')!.textContent).toBe('Key: abc');
+  });
+
+  it('fill handles missing msg element', async () => {
+    document.body.innerHTML = `
+      <div id="ssh-hostkey-modal">
+        <span id="ssh-hostkey-host"></span>
+        <span id="ssh-hostkey-remote"></span>
+        <span id="ssh-hostkey-url"></span>
+        <button id="ssh-hostkey-accept">Accept</button>
+        <button id="ssh-hostkey-deny">Deny</button>
+      </div>
+    `;
+    mockInvoke.mockResolvedValue(undefined);
+
+    const { initSshHostkeyPrompt } = await import('@scripts/features/sshHostkey');
+    initSshHostkeyPrompt();
+    triggerSshHostkeyEvent({ host: 'example.com', remote: 'origin', url: 'git@example.com:repo' });
+
+    expect(document.getElementById('ssh-hostkey-host')!.textContent).toBe('example.com');
+    expect(document.getElementById('ssh-hostkey-remote')!.textContent).toBe('origin');
+    expect(document.getElementById('ssh-hostkey-url')!.textContent).toBe('git@example.com:repo');
+  });
+
+  it('setBusy handles missing deny button during accept', async () => {
+    document.body.innerHTML = `
+      <div id="ssh-hostkey-modal">
+        <span id="ssh-hostkey-host"></span>
+        <span id="ssh-hostkey-remote"></span>
+        <span id="ssh-hostkey-url"></span>
+        <span id="ssh-hostkey-msg"></span>
+        <button id="ssh-hostkey-accept">Accept</button>
+      </div>
+    `;
+    mockInvoke.mockResolvedValue(undefined);
+
+    const { initSshHostkeyPrompt } = await import('@scripts/features/sshHostkey');
+    initSshHostkeyPrompt();
+    triggerSshHostkeyEvent({ host: 'example.com' });
+
+    const acceptBtn = document.getElementById('ssh-hostkey-accept') as HTMLButtonElement;
+    acceptBtn.click();
+
+    // Should not throw despite missing deny button
+    await vi.waitFor(() => {
+      expect(mockNotify).toHaveBeenCalled();
+    });
+  });
+
+  it('fill converts null host value to empty string', async () => {
+    mountModal();
+    mockInvoke.mockResolvedValue(undefined);
+
+    const { initSshHostkeyPrompt } = await import('@scripts/features/sshHostkey');
+    initSshHostkeyPrompt();
+    triggerSshHostkeyEvent({ host: null as any, remote: 'origin', url: '', message: '' });
+
+    expect(document.getElementById('ssh-hostkey-host')!.textContent).toBe('');
+    expect(document.getElementById('ssh-hostkey-remote')!.textContent).toBe('origin');
+    expect(document.getElementById('ssh-hostkey-url')!.textContent).toBe('');
+    expect(document.getElementById('ssh-hostkey-msg')!.textContent).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// initSshHostkeyPrompt - event payload edge cases
+// ---------------------------------------------------------------------------
+
+describe('initSshHostkeyPrompt event edge cases', () => {
+  it('handles event with null payload', async () => {
+    mountModal();
+    const { initSshHostkeyPrompt } = await import('@scripts/features/sshHostkey');
+    initSshHostkeyPrompt();
+    sshHostkeyCb?.({ payload: null });
+    expect(mockOpenModal).toHaveBeenCalledWith('ssh-hostkey-modal');
+  });
+
+  it('handles event with undefined payload', async () => {
+    mountModal();
+    const { initSshHostkeyPrompt } = await import('@scripts/features/sshHostkey');
+    initSshHostkeyPrompt();
+    sshHostkeyCb?.({});
+    expect(mockOpenModal).toHaveBeenCalledWith('ssh-hostkey-modal');
+  });
+
+  it('handles completely null event without crashing', async () => {
+    mountModal();
+    const { initSshHostkeyPrompt } = await import('@scripts/features/sshHostkey');
+    initSshHostkeyPrompt();
+    expect(() => sshHostkeyCb?.(null)).not.toThrow();
+  });
+
+  it('fills with empty strings when payload has no matching keys', async () => {
+    mountModal();
+    const { initSshHostkeyPrompt } = await import('@scripts/features/sshHostkey');
+    initSshHostkeyPrompt();
+    sshHostkeyCb?.({ payload: { unrelated: 'value' } });
+    expect(document.getElementById('ssh-hostkey-host')!.textContent).toBe('');
+    expect(document.getElementById('ssh-hostkey-msg')!.textContent).toBe('');
+  });
+});

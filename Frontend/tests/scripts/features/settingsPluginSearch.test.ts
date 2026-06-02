@@ -115,6 +115,23 @@ describe('parsePluginQuery', () => {
         const q = parsePluginQuery('#GitHub');
         expect(q.tags).toEqual(['github']);
     });
+
+    it('skips tokens that normalize to empty string', () => {
+        const q = parsePluginQuery('hello ... foo');
+        expect(q.terms).toEqual(['hello', 'foo']);
+    });
+
+    it('skips tokens of pure punctuation', () => {
+        const q = parsePluginQuery('!!! ... ,,,');
+        expect(q.terms).toEqual([]);
+    });
+
+    it('handles empty match result gracefully', () => {
+        const q = parsePluginQuery('');
+        expect(q.terms).toEqual([]);
+        expect(q.authors).toEqual([]);
+        expect(q.tags).toEqual([]);
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -375,6 +392,30 @@ describe('pluginSearchScore', () => {
 
     it('handles undefined/null tags gracefully', () => {
         const plugin = makePlugin({ tags: undefined });
+        const score = pluginSearchScore(plugin, { terms: ['test'], authors: [], tags: [] });
+        expect(score).toBeGreaterThan(0);
+    });
+
+    it('handles tags as null instead of array', () => {
+        const plugin = makePlugin({ tags: null as any });
+        const score = pluginSearchScore(plugin, { terms: ['test'], authors: [], tags: [] });
+        expect(score).toBeGreaterThan(0);
+    });
+
+    it('handles tags as non-array type', () => {
+        const plugin = makePlugin({ tags: 'git' as any });
+        const score = pluginSearchScore(plugin, { terms: ['test'], authors: [], tags: [] });
+        expect(score).toBeGreaterThan(0);
+    });
+
+    it('handles tags with empty string entries', () => {
+        const plugin = makePlugin({ tags: ['git', '', '  '] });
+        const score = pluginSearchScore(plugin, { terms: ['test'], authors: [], tags: [] });
+        expect(score).toBeGreaterThan(0);
+    });
+
+    it('handles plugin with null/undefined field values', () => {
+        const plugin = makePlugin({ category: undefined, description: undefined });
         const score = pluginSearchScore(plugin, { terms: ['test'], authors: [], tags: [] });
         expect(score).toBeGreaterThan(0);
     });

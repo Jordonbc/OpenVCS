@@ -187,6 +187,35 @@ describe('modeForTheme', () => {
         const { modeForTheme } = await loadSut();
         expect(modeForTheme('my-theme')).toBe('dark');
     });
+
+    it('falls back to DEFAULT_LIGHT_THEME_ID when given null themeId', async () => {
+        const themes = await loadThemesModule();
+        vi.mocked(themes.getAvailableThemes).mockReturnValue([
+            makeTheme({ id: 'default-light', appearance: 'light' }),
+        ]);
+
+        const { modeForTheme } = await loadSut();
+        expect(modeForTheme(null as any)).toBe('light');
+    });
+
+    it('falls back to system default when theme id is whitespace', async () => {
+        const themes = await loadThemesModule();
+        vi.mocked(themes.getAvailableThemes).mockReturnValue([]);
+
+        const { modeForTheme } = await loadSut();
+        expect(modeForTheme('   ')).toBe('light');
+    });
+
+    it('handles theme with null id in lookup', async () => {
+        const themes = await loadThemesModule();
+        vi.mocked(themes.getAvailableThemes).mockReturnValue([
+            makeTheme({ id: null as any, name: 'Null ID Theme', appearance: 'dark' }),
+            makeTheme({ id: 'valid-id', appearance: 'light' }),
+        ]);
+
+        const { modeForTheme } = await loadSut();
+        expect(modeForTheme('valid-id')).toBe('light');
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -422,5 +451,35 @@ describe('rebuildThemePackOptions', () => {
         await rebuildThemePackOptions(select, { desiredId: 'my-theme' });
 
         expect(select.title).toContain('Top pick');
+    });
+
+    it('falls back to default-light when both desiredId and selectEl.value are empty', async () => {
+        const themes = await loadThemesModule();
+        vi.mocked(themes.getAvailableThemes).mockReturnValue([
+            makeTheme({ id: 'default-light', name: 'Default Light' }),
+            makeTheme({ id: 'theme-b', name: 'Theme B' }),
+        ]);
+
+        const select = createSelect();
+        select.value = '';
+        const { rebuildThemePackOptions } = await loadSut();
+        await rebuildThemePackOptions(select, { desiredId: '' });
+
+        expect(select.value).toBe('default-light');
+    });
+
+    it('handles explicit null desiredId falls back to DEFAULT_LIGHT_THEME_ID', async () => {
+        const themes = await loadThemesModule();
+        const { DEFAULT_LIGHT_THEME_ID } = await loadThemesModule();
+        vi.mocked(themes.getAvailableThemes).mockReturnValue([
+            makeTheme({ id: 'theme-a', name: 'Theme A' }),
+            makeTheme({ id: DEFAULT_LIGHT_THEME_ID, name: 'Default Light' }),
+        ]);
+
+        const select = createSelect();
+        const { rebuildThemePackOptions } = await loadSut();
+        await rebuildThemePackOptions(select, { desiredId: null });
+
+        expect(select.value).toBe(DEFAULT_LIGHT_THEME_ID);
     });
 });

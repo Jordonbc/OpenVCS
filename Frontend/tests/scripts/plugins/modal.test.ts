@@ -359,6 +359,81 @@ describe('isPluginModalDefinition edge cases', () => {
     handlePluginActionResult('p1', [] as unknown as Record<string, unknown>);
     expect(document.querySelector('.modal')).toBeNull();
   });
+
+  it('rejects null as modal definition', async () => {
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p1', null as unknown as Record<string, unknown>);
+    expect(document.querySelector('.modal')).toBeNull();
+  });
+});
+
+describe('renderPluginModal missing title or body', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('returns early when body element is missing', async () => {
+    // Create a modal element via the normal path, then remove the body
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p1', { title: 'Test', content: [{ type: 'text', content: 'X' }] });
+    const modal = document.getElementById('plugin-modal-p1')!;
+    const body = modal.querySelector('.sheet-body')!;
+    body.remove();
+
+    // Second render should find no body and return early
+    expect(() => handlePluginActionResult('p1', { title: 'Test', content: [{ type: 'text', content: 'Y' }] })).not.toThrow();
+  });
+
+  it('returns early when title element is missing', async () => {
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p1', { title: 'Test', content: [{ type: 'text', content: 'X' }] });
+    const modal = document.getElementById('plugin-modal-p1')!;
+    const title = modal.querySelector('h3')!;
+    title.remove();
+
+    expect(() => handlePluginActionResult('p1', { title: 'Test', content: [{ type: 'text', content: 'Y' }] })).not.toThrow();
+  });
+});
+
+describe('wirePluginModalActions edge cases', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('ignores click that does not match the modal action selector', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockResolvedValue({});
+
+    const { wirePluginModalActions } = await import('@scripts/plugins/modal');
+    wirePluginModalActions();
+
+    // Click on document body - should not invoke anything
+    document.body.click();
+    expect(tauri.core.invoke).not.toHaveBeenCalled();
+  });
+
+  it('ignores click with empty pluginId', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockResolvedValue({});
+
+    const { wirePluginModalActions } = await import('@scripts/plugins/modal');
+    wirePluginModalActions();
+
+    // Create a button matching the selector but with empty pluginId
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.setAttribute('data-plugin-id', '');
+    modal.innerHTML = '<div class="dialog"><div class="sheet-head"><h3>Title</h3></div><section class="sheet-body"><button data-plugin-action="" data-plugin-id="">Click</button></section></div>';
+    document.body.appendChild(modal);
+
+    const btn = modal.querySelector('button')!;
+    btn.click();
+    expect(tauri.core.invoke).not.toHaveBeenCalled();
+  });
 });
 
 describe('ensurePluginModalElement edge cases', () => {
@@ -686,5 +761,287 @@ describe('collectPluginModalPayload and wirePluginModalActions coverage', () => 
     await vi.waitFor(() => {
       expect(tauri.core.invoke).toHaveBeenCalled();
     });
+  });
+});
+
+// ============================================================================
+// Branch coverage: renderPluginModal title fallback (line 302)
+// ============================================================================
+describe('renderPluginModal title edge cases', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('shows "Plugin" fallback when title is empty (line 302)', async () => {
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p-empty-title', {
+      title: '',
+      content: [{ type: 'text', content: 'No title' }],
+    });
+    const modal = document.getElementById('plugin-modal-p-empty-title');
+    const titleEl = modal?.querySelector('h3');
+    expect(titleEl?.textContent).toBe('Plugin');
+  });
+
+  it('shows "Plugin" fallback when title is only whitespace (line 302)', async () => {
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p-ws-title', {
+      title: '   ',
+      content: [{ type: 'text', content: 'Whitespace title' }],
+    });
+    const modal = document.getElementById('plugin-modal-p-ws-title');
+    const titleEl = modal?.querySelector('h3');
+    expect(titleEl?.textContent).toBe('Plugin');
+  });
+});
+
+// ============================================================================
+// Branch coverage: renderPluginModal content array edge cases (lines 304-305)
+// ============================================================================
+describe('renderPluginModal content array edge cases', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('renders modal with empty content array (no items to iterate)', async () => {
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p-empty-arr', {
+      title: 'Empty Array',
+      content: [],
+    });
+    const modal = document.getElementById('plugin-modal-p-empty-arr');
+    expect(modal).not.toBeNull();
+    const body = modal?.querySelector('.sheet-body');
+    expect(body?.children.length).toBe(0);
+  });
+
+  it('skips null items in content array (line 305 if (!item) continue)', async () => {
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p-null-items', {
+      title: 'Null Items',
+      content: [
+        null as unknown as Record<string, unknown>,
+        { type: 'text', content: 'After null' },
+      ],
+    });
+    const modal = document.getElementById('plugin-modal-p-null-items');
+    expect(modal).not.toBeNull();
+    const body = modal?.querySelector('.sheet-body');
+    expect(body?.textContent).toContain('After null');
+  });
+});
+
+// ============================================================================
+// Branch coverage: wirePluginModalActions button click with modal payload
+// ============================================================================
+describe('wirePluginModalActions button click payload', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('invokes action via wired click with no extra payload on button', async () => {
+    const tauri = (window as any).__TAURI__;
+    tauri.core.invoke.mockResolvedValue({});
+
+    const { wirePluginModalActions, handlePluginActionResult } = await import('@scripts/plugins/modal');
+    wirePluginModalActions();
+
+    handlePluginActionResult('p-plain', {
+      title: 'Plain',
+      content: [
+        { type: 'button', id: 'go', content: 'Go' },
+      ],
+    });
+
+    const btn = document.querySelector('button[data-plugin-action="go"]') as HTMLButtonElement;
+    btn.click();
+
+    await vi.waitFor(() => {
+      expect(tauri.core.invoke).toHaveBeenCalledWith('invoke_plugin_action', {
+        pluginId: 'p-plain',
+        actionId: 'go',
+        payload: {},
+      });
+    });
+  });
+});
+
+// ============================================================================
+// Branch coverage: renderPluginModalItem unknown type ignored (line 288)
+// ============================================================================
+describe('renderPluginModalItem unknown type', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('silently ignores items with unknown type and no content string (line 288)', async () => {
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p-unknown', {
+      title: 'Unknown',
+      content: [
+        { type: 'unknown_type', id: 'weird' },
+        { type: 'text', content: 'After unknown' },
+      ],
+    });
+    const body = document.querySelector('.sheet-body');
+    expect(body?.textContent).toContain('After unknown');
+    // The unknown item should produce no DOM nodes
+  });
+});
+
+// ============================================================================
+// Branch coverage: input with non-default kind (line 187)
+// ============================================================================
+describe('renderPluginModalItem input kinds', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('renders input with kind="email"', async () => {
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p-input', {
+      title: 'Input Types',
+      content: [
+        { type: 'input', id: 'email-field', label: 'Email', kind: 'email', value: 'test@example.com' },
+      ],
+    });
+    const input = document.querySelector<HTMLInputElement>('input[data-plugin-field="email-field"]');
+    expect(input).not.toBeNull();
+    expect(input?.type).toBe('email');
+    expect(input?.value).toBe('test@example.com');
+  });
+});
+
+// ============================================================================
+// Branch coverage: select with no matching value (line 211-214)
+// ============================================================================
+describe('renderPluginModalItem select edge cases', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('renders select with value not matching any option', async () => {
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p-select', {
+      title: 'Select',
+      content: [
+        {
+          type: 'select', id: 'mode', label: 'Mode', value: 'nonexistent',
+          options: [
+            { value: 'manual', label: 'Manual' },
+            { value: 'auto', label: 'Auto' },
+          ],
+        },
+      ],
+    });
+    const select = document.querySelector<HTMLSelectElement>('select[data-plugin-field="mode"]');
+    expect(select).not.toBeNull();
+    // When value doesn't match any option, the browser defaults to first option
+    // Verify no option has the HTML `selected` attribute set explicitly
+    expect(select?.querySelector('option[selected]')).toBeNull();
+  });
+});
+
+// ============================================================================
+// Branch coverage: list with items having only meta field (line 255)
+// ============================================================================
+describe('renderPluginModalItem list meta edge cases', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('renders list item with meta but no description or status', async () => {
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p-list-meta', {
+      title: 'List Meta',
+      content: [
+        {
+          type: 'list', id: 'items', label: 'Items',
+          items: [
+            { id: 'i1', title: 'Item 1', meta: 'Meta only' },
+          ],
+        },
+      ],
+    });
+    expect(document.querySelector('.sheet-body')?.textContent).toContain('Item 1');
+    expect(document.querySelector('.sheet-body')?.textContent).toContain('Meta only');
+  });
+
+  it('renders list item with description but no meta or status', async () => {
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p-list-desc', {
+      title: 'List Desc',
+      content: [
+        {
+          type: 'list', id: 'items', label: 'Items',
+          items: [
+            { id: 'i1', title: 'Item 1', description: 'Description only' },
+          ],
+        },
+      ],
+    });
+    expect(document.querySelector('.sheet-body')?.textContent).toContain('Description only');
+  });
+
+  it('renders list item with actions but no meta/description/status', async () => {
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p-list-actions', {
+      title: 'List Actions',
+      content: [
+        {
+          type: 'list', id: 'items', label: 'Items',
+          items: [
+            { id: 'i1', title: 'Item 1', actions: [{ id: 'act1', content: 'Action1' }] },
+          ],
+        },
+      ],
+    });
+    expect(document.querySelector('button[data-plugin-action="act1"]')).not.toBeNull();
+  });
+});
+
+// ============================================================================
+// Branch coverage: grid with explicit gap (line 170)
+// ============================================================================
+describe('renderPluginModalItem grid gap', () => {
+  beforeEach(() => {
+    setupTauri();
+    vi.resetModules();
+    mountRoot();
+  });
+
+  it('renders grid with explicit gap and columns', async () => {
+    const { handlePluginActionResult } = await import('@scripts/plugins/modal');
+    handlePluginActionResult('p-grid-gap', {
+      title: 'Grid Gap',
+      content: [
+        {
+          type: 'grid', columns: '1fr 1fr 1fr', gap: '2rem',
+          content: [
+            { type: 'text', content: 'A' },
+            { type: 'text', content: 'B' },
+            { type: 'text', content: 'C' },
+          ],
+        },
+      ],
+    });
+    const grid = document.querySelector('.sheet-body > div') as HTMLElement;
+    expect(grid.style.gridTemplateColumns).toBe('1fr 1fr 1fr');
+    expect(grid.style.gap).toBe('2rem');
+    expect(grid.children.length).toBe(3);
   });
 });

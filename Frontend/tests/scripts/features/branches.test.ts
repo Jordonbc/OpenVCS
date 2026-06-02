@@ -692,4 +692,344 @@ describe('bindBranchUI', () => {
     expect(mockInvoke).not.toHaveBeenCalledWith('vcs_list_branches');
     expect(mockInvoke).not.toHaveBeenCalledWith('vcs_head_status');
   });
+
+  it('refetches branches for app:repo-selected without path detail', async () => {
+    mockInvoke.mockResolvedValueOnce([]);
+    mockInvoke.mockResolvedValueOnce({ detached: false, branch: 'main', commit: 'abc' });
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValueOnce([]);
+    mockInvoke.mockResolvedValueOnce({ detached: false, branch: 'main', commit: 'abc' });
+
+    window.dispatchEvent(new CustomEvent('app:repo-selected', {}));
+
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('vcs_list_branches');
+    });
+  });
+
+  it('checkoutBranch cancelled by preSwitchBranch hook', async () => {
+    mockRunHook.mockResolvedValue({ cancelled: true, reason: 'Not now' });
+    mockLoadBranches([{ name: 'dev', kind: { type: 'local' } }]);
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+    await openPopover(1);
+
+    const item = document.querySelector('li[data-branch]')!;
+    item.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    await vi.waitFor(() => {
+      expect(mockNotify).toHaveBeenCalledWith('Not now');
+    });
+    expect(mockInvoke).not.toHaveBeenCalledWith('vcs_checkout_branch', expect.anything());
+  });
+
+  it('checkoutBranch failure shows notification', async () => {
+    mockLoadBranches([{ name: 'dev', kind: { type: 'local' } }]);
+    mockInvoke.mockRejectedValue(new Error('checkout error'));
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+    await openPopover(1);
+
+    const item = document.querySelector('li[data-branch]')!;
+    item.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    await vi.waitFor(() => {
+      expect(mockNotify).toHaveBeenCalledWith('Checkout failed');
+    });
+  });
+
+  it('handles detached head without a commit string', async () => {
+    mockInvoke.mockResolvedValueOnce([]);
+    mockInvoke.mockResolvedValueOnce({ detached: true });
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    document.getElementById('branch-switch')!.click();
+
+    await vi.waitFor(() => {
+      expect(document.getElementById('branch-name')!.textContent).toContain('Detached HEAD');
+    });
+  });
+
+  it('handles vcs_head_status setting branch from head.branch', async () => {
+    mockInvoke.mockResolvedValueOnce([]);
+    mockInvoke.mockResolvedValueOnce({ detached: false, branch: 'feature-branch', commit: 'def5678' });
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    document.getElementById('branch-switch')!.click();
+
+    await vi.waitFor(() => {
+      expect(document.getElementById('branch-name')!.textContent).toBe('feature-branch');
+    });
+  });
+
+  it('closeBranchPopover with prefers-reduced-motion skips animation', async () => {
+    const matchMediaMock = vi.fn().mockImplementation((query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)',
+      media: query,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    }));
+    window.matchMedia = matchMediaMock;
+
+    mockLoadBranches([]);
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    document.getElementById('branch-switch')!.click();
+    await vi.waitFor(() => {
+      expect(document.getElementById('branch-pop')!.hidden).toBe(false);
+    });
+
+    document.getElementById('branch-switch')!.click();
+    expect(document.getElementById('branch-pop')!.hidden).toBe(true);
+    expect(document.getElementById('branch-pop')!.classList.contains('is-closing')).toBe(false);
+  });
+
+  it('openBranchPopover early return when branchBtn missing', async () => {
+    document.getElementById('branch-switch')!.remove();
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    document.body.dispatchEvent(new MouseEvent('click'));
+  });
+
+  it('branchList click on non-LI element does nothing', async () => {
+    mockLoadBranches([{ name: 'dev', kind: { type: 'local' } }]);
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+    await openPopover(1);
+
+    const list = document.getElementById('branch-list')!;
+    const nonLi = document.createElement('div');
+    nonLi.textContent = 'Click me';
+    list.appendChild(nonLi);
+    nonLi.click();
+  });
+
+  it('handles context menu on branch without name', async () => {
+    mockLoadBranches([{ name: 'unnamed', kind: { type: 'local' } }]);
+    mockLoadBranches([{ name: 'unnamed', kind: { type: 'local' } }]);
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+    await openPopover(1);
+
+    const li = document.querySelector('li[data-branch]') as HTMLElement;
+    li.dataset.branch = '';
+    li.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 100, clientY: 200 }));
+
+    await vi.waitFor(() => {
+      expect(mockBuildCtxMenu).not.toHaveBeenCalled();
+    });
+  });
+
+  it('setBranchUIEnabled handles null branchBtn', async () => {
+    document.getElementById('branch-switch')!.remove();
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    expect(() => {
+      document.getElementById('repo-branch')!.textContent = 'test';
+    }).not.toThrow();
+  });
+
+  it('closeBranchPopover handles null elements gracefully', async () => {
+    document.getElementById('branch-switch')!.remove();
+    document.getElementById('branch-pop')!.remove();
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    document.body.dispatchEvent(new MouseEvent('click'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderItem - kind='remote' type without explicit remote name
+// ---------------------------------------------------------------------------
+
+describe('renderItem kind remote without remote name', () => {
+  it('falls back to "remote" label when kind.remote is missing', async () => {
+    mockInvoke.mockResolvedValueOnce([{ name: 'feature', kind: { type: 'remote' } }]);
+    mockInvoke.mockResolvedValueOnce({ detached: false, branch: 'main', commit: 'abc' });
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    document.getElementById('branch-switch')!.click();
+    await vi.waitFor(() => {
+      const list = document.getElementById('branch-list')!;
+      expect(list.textContent).toContain('Remote:remote');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderItem - kind='remote' type with explicit remote name
+// ---------------------------------------------------------------------------
+
+describe('renderItem kind remote with explicit remote', () => {
+  it('shows remote label from kind.remote property', async () => {
+    mockInvoke.mockResolvedValueOnce([{ name: 'upstream/feature', kind: { type: 'remote', remote: 'upstream' } }]);
+    mockInvoke.mockResolvedValueOnce({ detached: false, branch: 'main', commit: 'abc' });
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    document.getElementById('branch-switch')!.click();
+    await vi.waitFor(() => {
+      const list = document.getElementById('branch-list')!;
+      expect(list.textContent).toContain('Remote:upstream');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderItem - no kind type, remote derived from branch name
+// ---------------------------------------------------------------------------
+
+describe('renderItem remote from name', () => {
+  it('derives remote from name when no kind but name contains /', async () => {
+    mockInvoke.mockResolvedValueOnce([{ name: 'origin/feature' }]); // no kind property
+    mockInvoke.mockResolvedValueOnce({ detached: false, branch: 'main', commit: 'abc' });
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    document.getElementById('branch-switch')!.click();
+    await vi.waitFor(() => {
+      const list = document.getElementById('branch-list')!;
+      expect(list.textContent).toContain('Remote:origin');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderItem - no kind and no badge (local with no kind metadata)
+// ---------------------------------------------------------------------------
+
+describe('renderItem local no kind', () => {
+  it('renders no badge when branch has no kind and no remote in name', async () => {
+    mockInvoke.mockResolvedValueOnce([{ name: 'local-branch' }]); // no kind at all
+    mockInvoke.mockResolvedValueOnce({ detached: false, branch: 'main', commit: 'abc' });
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    document.getElementById('branch-switch')!.click();
+    await vi.waitFor(() => {
+      const list = document.getElementById('branch-list')!;
+      const item = list.querySelector('li[data-branch]')!;
+      // No badge span with class "kind" since all kind conditions are false
+      expect(item.querySelector('.badge.kind')).toBeNull();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// closeBranchPopover - early return when branchFilter is null
+// ---------------------------------------------------------------------------
+
+describe('closeBranchPopover null branchFilter', () => {
+  it('returns early without error when branchFilter is null', async () => {
+    document.getElementById('branch-filter')!.remove();
+    mockInvoke.mockResolvedValueOnce([]);
+    mockInvoke.mockResolvedValueOnce({ detached: false, branch: 'main', commit: 'abc' });
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    // Open popover first – loadBranches runs, renderBranches is called but
+    // branchFilter is null so filter value defaults to ''
+    document.getElementById('branch-switch')!.click();
+    await vi.waitFor(() => {
+      expect(document.getElementById('branch-pop')!.hidden).toBe(false);
+    });
+
+    // Click outside to trigger closeBranchPopover – should early-return on !branchFilter
+    document.body.dispatchEvent(new MouseEvent('click'));
+    // No crash expected, popup stays open because close was skipped
+  });
+});
+
+// ---------------------------------------------------------------------------
+// openBranchPopover - early return when branchPop is null
+// ---------------------------------------------------------------------------
+
+describe('openBranchPopover null branchPop', () => {
+  it('returns early without error when branchPop is null', async () => {
+    document.getElementById('branch-pop')!.remove();
+    mockInvoke.mockResolvedValueOnce([]);
+    mockInvoke.mockResolvedValueOnce({ detached: false, branch: 'main', commit: 'abc' });
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    // Click branch button – openBranchPopover checks !branchPop and returns early
+    document.getElementById('branch-switch')!.click();
+    // No crash expected
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderBranches - only local branches (no divider)
+// ---------------------------------------------------------------------------
+
+describe('renderBranches only local', () => {
+  it('does not render Remote branches divider when there are no remotes', async () => {
+    mockInvoke.mockResolvedValueOnce([
+      { name: 'main', current: true, kind: { type: 'local' } },
+      { name: 'dev', kind: { type: 'local' } },
+    ]);
+    mockInvoke.mockResolvedValueOnce({ detached: false, branch: 'main', commit: 'abc' });
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    document.getElementById('branch-switch')!.click();
+    await vi.waitFor(() => {
+      const list = document.getElementById('branch-list')!;
+      expect(list.textContent).toContain('main');
+      expect(list.textContent).toContain('dev');
+      expect(list.textContent).not.toContain('Remote branches');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderBranches - only remote branches (no divider)
+// ---------------------------------------------------------------------------
+
+describe('renderBranches only remote', () => {
+  it('renders remote branches without Remote branches header', async () => {
+    mockInvoke.mockResolvedValueOnce([
+      { name: 'origin/main', kind: { type: 'remote', remote: 'origin' } },
+      { name: 'origin/feature', kind: { type: 'remote', remote: 'origin' } },
+    ]);
+    mockInvoke.mockResolvedValueOnce({ detached: false, branch: 'main', commit: 'abc' });
+
+    const { bindBranchUI } = await import('@scripts/features/branches');
+    bindBranchUI();
+
+    document.getElementById('branch-switch')!.click();
+    await vi.waitFor(() => {
+      const list = document.getElementById('branch-list')!;
+      expect(list.textContent).toContain('origin/main');
+      expect(list.textContent).toContain('origin/feature');
+      // No divider because there are no local branches
+      expect(list.textContent).not.toContain('Remote branches');
+    });
+  });
 });

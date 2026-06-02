@@ -75,6 +75,52 @@ describe('getVisibleFiles', () => {
     const result = getVisibleFiles();
     expect(result).toHaveLength(1);
   });
+
+  it('returns empty array when state.files is undefined', async () => {
+    const { getVisibleFiles } = await import('@scripts/features/repo/selectionState');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    delete (state as any).files;
+    const result = getVisibleFiles();
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty array when state.files is null', async () => {
+    const { getVisibleFiles } = await import('@scripts/features/repo/selectionState');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    (state as any).files = null;
+    const result = getVisibleFiles();
+    expect(result).toEqual([]);
+  });
+
+  it('filters files by query with null path in file', async () => {
+    const { getVisibleFiles } = await import('@scripts/features/repo/selectionState');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [
+      { path: null, status: 'M' },
+      { path: 'a.txt', status: 'A' },
+    ] as any;
+    (document.getElementById('filter') as HTMLInputElement).value = '.txt';
+    const result = getVisibleFiles();
+    expect(result).toHaveLength(1);
+    expect(result[0].path).toBe('a.txt');
+  });
+
+  it('handles case-insensitive filter matching', async () => {
+    const { getVisibleFiles } = await import('@scripts/features/repo/selectionState');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [
+      { path: 'README.md', status: 'M' },
+      { path: 'main.rs', status: 'A' },
+    ] as any;
+    (document.getElementById('filter') as HTMLInputElement).value = 'Readme';
+    const result = getVisibleFiles();
+    expect(result).toHaveLength(1);
+    expect(result[0].path).toBe('README.md');
+  });
 });
 
 describe('updateSelectAllState', () => {
@@ -147,5 +193,11 @@ describe('updateSelectAllState', () => {
     updateSelectAllState(visible);
     expect(selectAll.checked).toBe(false);
     expect(selectAll.indeterminate).toBe(false);
+  });
+
+  it('does nothing when selectAllBox is null', async () => {
+    const { updateSelectAllState } = await import('@scripts/features/repo/selectionState');
+    document.getElementById('select-all')?.remove();
+    expect(() => updateSelectAllState([] as any)).not.toThrow();
   });
 });

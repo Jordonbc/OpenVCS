@@ -743,7 +743,183 @@ describe('openSshKeysModal', () => {
     it('does not throw when modal is missing from DOM', async () => {
         document.body.innerHTML = '';
 
-        const { openSshKeysModal } = await loadSut();
+        const { openSshKeysModal } = await import('@scripts/features/sshKeys');
         expect(() => openSshKeysModal()).not.toThrow();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// wireSshKeys - add key with edge case exit codes / empty output
+// ---------------------------------------------------------------------------
+
+describe('wireSshKeys (add key exit code edge cases)', () => {
+    async function loadSut() {
+        return import('@scripts/features/sshKeys');
+    }
+
+    async function waitForAddEnabled(): Promise<HTMLButtonElement> {
+        const addBtn = document.getElementById('ssh-keys-add') as HTMLButtonElement;
+        await vi.waitFor(() => { expect(addBtn.disabled).toBe(false); });
+        return addBtn;
+    }
+
+    it('shows fallback message for non-zero code with empty output', async () => {
+        mockInvoke
+            .mockResolvedValueOnce(agentResult(0))
+            .mockResolvedValueOnce([keyCandidate('/home/user/.ssh/id_rsa', 'id_rsa')])
+            .mockResolvedValueOnce(agentResult(3));
+
+        const { wireSshKeys } = await loadSut();
+        wireSshKeys();
+
+        const modal = getModal() as any;
+        await modal.__open('/home/user/.ssh/id_rsa');
+        const addBtn = await waitForAddEnabled();
+
+        addBtn.click();
+
+        await vi.waitFor(() => {
+            expect(mockNotify).toHaveBeenCalledWith('ssh-add failed (code 3)');
+        });
+    });
+
+    it('uses stdout as message for non-zero code with stdout only', async () => {
+        mockInvoke
+            .mockResolvedValueOnce(agentResult(0))
+            .mockResolvedValueOnce([keyCandidate('/home/user/.ssh/id_rsa', 'id_rsa')])
+            .mockResolvedValueOnce(agentResult(3, { stdout: 'keysize mismatch' }));
+
+        const { wireSshKeys } = await loadSut();
+        wireSshKeys();
+
+        const modal = getModal() as any;
+        await modal.__open('/home/user/.ssh/id_rsa');
+        const addBtn = await waitForAddEnabled();
+
+        addBtn.click();
+
+        await vi.waitFor(() => {
+            expect(mockNotify).toHaveBeenCalledWith('keysize mismatch');
+        });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// wireSshKeys - refresh with modal missing child elements
+// ---------------------------------------------------------------------------
+
+describe('wireSshKeys (refresh with missing elements)', () => {
+    async function loadSut() {
+        return import('@scripts/features/sshKeys');
+    }
+
+    it('handles missing add button during refresh', async () => {
+        document.body.innerHTML = `
+            <div id="ssh-keys-modal">
+                <pre id="ssh-keys-agent-status"></pre>
+                <div id="ssh-keys-list"></div>
+                <div id="ssh-keys-none"></div>
+                <span id="ssh-keys-selected"></span>
+                <button id="ssh-keys-refresh">Refresh</button>
+                <button id="ssh-keys-copy">Copy</button>
+            </div>
+        `;
+        mockInvoke
+            .mockResolvedValueOnce(agentResult(0))
+            .mockResolvedValueOnce([keyCandidate('/home/user/.ssh/id_rsa', 'id_rsa')]);
+
+        const { wireSshKeys } = await loadSut();
+        wireSshKeys();
+
+        const modal = getModal() as any;
+        await modal.__open('/home/user/.ssh/id_rsa');
+
+        await vi.waitFor(() => {
+            const listEl = document.getElementById('ssh-keys-list')!;
+            expect(listEl.children.length).toBe(1);
+        });
+    });
+
+    it('handles missing refresh button during refresh', async () => {
+        document.body.innerHTML = `
+            <div id="ssh-keys-modal">
+                <pre id="ssh-keys-agent-status"></pre>
+                <div id="ssh-keys-list"></div>
+                <div id="ssh-keys-none"></div>
+                <span id="ssh-keys-selected"></span>
+                <button id="ssh-keys-copy">Copy</button>
+                <button id="ssh-keys-add">Add</button>
+            </div>
+        `;
+        mockInvoke
+            .mockResolvedValueOnce(agentResult(0))
+            .mockResolvedValueOnce([]);
+
+        const { wireSshKeys } = await loadSut();
+        wireSshKeys();
+
+        const modal = getModal() as any;
+        await modal.__open();
+
+        await vi.waitFor(() => {
+            const statusEl = document.getElementById('ssh-keys-agent-status') as HTMLPreElement;
+            expect(statusEl.textContent).toBe('Keys loaded.');
+        });
+    });
+
+    it('handles missing status element during refresh', async () => {
+        document.body.innerHTML = `
+            <div id="ssh-keys-modal">
+                <div id="ssh-keys-list"></div>
+                <div id="ssh-keys-none"></div>
+                <span id="ssh-keys-selected"></span>
+                <button id="ssh-keys-refresh">Refresh</button>
+                <button id="ssh-keys-copy">Copy</button>
+                <button id="ssh-keys-add">Add</button>
+            </div>
+        `;
+        mockInvoke
+            .mockResolvedValueOnce(agentResult(0))
+            .mockResolvedValueOnce([]);
+
+        const { wireSshKeys } = await loadSut();
+        wireSshKeys();
+
+        const modal = getModal() as any;
+        // Should not throw despite missing status element
+        expect(() => modal.__open()).not.toThrow();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// openSshKeysModal - wired guard
+// ---------------------------------------------------------------------------
+
+describe('openSshKeysModal (wired guard)', () => {
+    async function loadSut() {
+        return import('@scripts/features/sshKeys');
+    }
+
+    it('skips wireSshKeys on subsequent open calls', async () => {
+        mockInvoke
+            .mockResolvedValue(agentResult(0))
+            .mockResolvedValue([]);
+
+        const { openSshKeysModal } = await loadSut();
+        openSshKeysModal();
+        // Second call should not re-wire (wired=true) and not throw
+        expect(() => openSshKeysModal()).not.toThrow();
+    });
+
+    it('refreshes with preselected path on open', async () => {
+        mockInvoke
+            .mockResolvedValueOnce(agentResult(0))
+            .mockResolvedValueOnce([keyCandidate('/home/.ssh/id_rsa', 'id_rsa')]);
+
+        const { openSshKeysModal } = await loadSut();
+        openSshKeysModal('/home/.ssh/id_rsa');
+
+        const selectedEl = document.getElementById('ssh-keys-selected')!;
+        expect(selectedEl.textContent).toBe('/home/.ssh/id_rsa');
     });
 });

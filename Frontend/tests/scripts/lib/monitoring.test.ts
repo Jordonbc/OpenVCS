@@ -328,4 +328,67 @@ describe('syncFrontendMonitoring', () => {
       }));
     });
   });
+
+  it('reports "Unknown error" when error event message is empty and error is not Error', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+    const monitoring = (await import('@scripts/lib/monitoring')) as MonitoringModule;
+    await monitoring.syncFrontendMonitoring({ general: { crash_reports: true } });
+
+    window.dispatchEvent(new ErrorEvent('error', { error: 'string-error', message: '' }));
+
+    const [, payload] = invoke.mock.calls[0] ?? [];
+    expect(payload?.payload?.message).toBe('Unknown error');
+  });
+
+  it('handles error event with Error but null stack (?? null branch)', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+    const monitoring = (await import('@scripts/lib/monitoring')) as MonitoringModule;
+    await monitoring.syncFrontendMonitoring({ general: { crash_reports: true } });
+
+    const err = new Error('no-stack');
+    Object.defineProperty(err, 'stack', { value: undefined, configurable: true });
+
+    window.dispatchEvent(new ErrorEvent('error', { error: err, message: 'no-stack' }));
+
+    const [, payload] = invoke.mock.calls[0] ?? [];
+    expect(payload?.payload?.message).toBe('no-stack');
+    expect(payload?.payload?.stack).toBeNull();
+  });
+
+  it('reports null lineno when error event has no lineno', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+    const monitoring = (await import('@scripts/lib/monitoring')) as MonitoringModule;
+    await monitoring.syncFrontendMonitoring({ general: { crash_reports: true } });
+
+    const event = new ErrorEvent('error', { error: new Error('test'), message: 'test' });
+    Object.defineProperty(event, 'lineno', { value: undefined, configurable: true });
+    Object.defineProperty(event, 'colno', { value: undefined, configurable: true });
+    window.dispatchEvent(event);
+
+    const [, payload] = invoke.mock.calls[0] ?? [];
+    expect(payload?.payload?.line).toBeNull();
+    expect(payload?.payload?.column).toBeNull();
+  });
+
+  it('reports null stack for Error rejection with null stack', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined);
+    (window as Window & { __TAURI__?: unknown }).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+    const monitoring = (await import('@scripts/lib/monitoring')) as MonitoringModule;
+    await monitoring.syncFrontendMonitoring({ general: { crash_reports: true } });
+
+    const err = new Error('rejection-no-stack');
+    Object.defineProperty(err, 'stack', { value: undefined, configurable: true });
+
+    const event = new Event('unhandledrejection') as PromiseRejectionEvent & { reason: unknown };
+    Object.defineProperty(event, 'reason', { value: err, configurable: true });
+    window.dispatchEvent(event);
+
+    const [, payload] = invoke.mock.calls[0] ?? [];
+    expect(payload?.payload?.kind).toBe('unhandledrejection');
+    expect(payload?.payload?.message).toBe('rejection-no-stack');
+    expect(payload?.payload?.stack).toBeNull();
+  });
 });

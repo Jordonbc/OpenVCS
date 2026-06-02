@@ -289,6 +289,20 @@ describe('openSettings', () => {
             expect(modal.hasAttribute('aria-busy')).toBe(false);
         });
     });
+
+    it('logs error when loadPluginsIntoForm rejects in openSettings', async () => {
+        mountSettingsModal();
+        mockRenderPluginMenus.mockResolvedValue(undefined);
+        mockInvoke.mockResolvedValue({});
+        mockLoadPluginsIntoForm.mockRejectedValue(new Error('plugin form failed'));
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const { openSettings } = await load();
+        openSettings();
+        await vi.waitFor(() => {
+            expect(consoleSpy).toHaveBeenCalledWith('Failed to load settings into form:', expect.any(Error));
+        });
+        consoleSpy.mockRestore();
+    });
 });
 
 describe('openSettings with theme select', () => {
@@ -1137,7 +1151,7 @@ describe('collectSettingsFromForm - edge cases', () => {
     return import('@scripts/features/settings');
   }
 
-  function mountEdgeDom() {
+  function mountBaseForm(): HTMLElement {
     const modal = mountSettingsModal();
     modal.dataset.currentCfg = JSON.stringify({});
     modal.insertAdjacentHTML('beforeend', [
@@ -1163,7 +1177,7 @@ describe('collectSettingsFromForm - edge cases', () => {
   }
 
   it('handles empty recents limit and log keep values', async () => {
-    mountEdgeDom();
+    mountBaseForm();
     mockCollectGeneralSettings.mockReturnValue({});
     mockCollectCommitSettings.mockReturnValue({});
     mockCollectCommitTemplateSettings.mockReturnValue({});
@@ -1180,7 +1194,7 @@ describe('collectSettingsFromForm - edge cases', () => {
   });
 
   it('enables external merge when mode is custom with path', async () => {
-    mountEdgeDom();
+    mountBaseForm();
     // Set custom merge path
     (document.getElementById('set-merge-path') as HTMLInputElement).value = '/usr/bin/merge';
     mockCollectGeneralSettings.mockReturnValue({});
@@ -1197,6 +1211,63 @@ describe('collectSettingsFromForm - edge cases', () => {
         cfg: expect.objectContaining({
           diff: expect.objectContaining({
             external_merge: expect.objectContaining({ enabled: true, path: '/usr/bin/merge' }),
+          }),
+        }),
+      }));
+    });
+  });
+
+  it('maps unknown disabled plugin ids through byLower fallback', async () => {
+    const modal = mountBaseForm();
+    (modal as any).__pluginsPanelState = {
+      list: [{ id: 'p1', name: 'P1' }],
+      disabled: new Set<string>(['p1', 'unknown-id']),
+      enabled: new Set<string>([]),
+    };
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          plugins: expect.objectContaining({
+            disabled: expect.arrayContaining(['unknown-id', 'p1']),
+          }),
+        }),
+      }));
+    });
+  });
+
+  it('collects disabled plugins from unchecked DOM toggles', async () => {
+    const modal = mountBaseForm();
+    delete (modal as any).__pluginsPanelState;
+    modal.insertAdjacentHTML('beforeend', [
+      '<input type="checkbox" data-plugin-id="p1" checked />',
+      '<input type="checkbox" data-plugin-id="p2" />',
+    ].join('\n'));
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          plugins: expect.objectContaining({
+            disabled: ['p2'],
+            enabled: ['p1'],
           }),
         }),
       }));
@@ -1894,5 +1965,583 @@ describe('loadSettingsIntoForm - merge mode change event', () => {
     await loadSettingsIntoForm();
     const mergeSel = document.getElementById('set-merge-mode') as HTMLSelectElement;
     expect(mergeSel.value).toBe('custom');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// collectSettingsFromForm - clamping edge cases
+// ---------------------------------------------------------------------------
+
+describe('collectSettingsFromForm - clamping edge cases', () => {
+  async function load() {
+    return import('@scripts/features/settings');
+  }
+
+  function mountWithClamping() {
+    const modal = mountSettingsModal();
+    modal.dataset.currentCfg = JSON.stringify({});
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-gpu-accel" type="checkbox" />',
+      '<input id="set-animations" type="checkbox" />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1" />',
+      '<input id="set-font-mono" type="text" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" type="number" value="0" />',
+      '<input id="set-tab-width" type="number" value="4" />',
+      '<input id="set-max-file-size-mb" type="number" value="10" />',
+      '<input id="set-intraline" type="checkbox" />',
+      '<input id="set-binary-placeholders" type="checkbox" />',
+      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="0" />',
+      '<input id="set-restrict-commit-summary" type="checkbox" />',
+    ].join('\n'));
+    return modal;
+  }
+
+  it('clamps recents_limit value 0 to 1', async () => {
+    mountWithClamping();
+    const modal = document.getElementById('settings-modal')!;
+    (document.getElementById('set-recents-limit') as HTMLInputElement).value = '0';
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValueOnce(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          ux: expect.objectContaining({ recents_limit: 1 }),
+        }),
+      }));
+    });
+  });
+
+  it('clamps recents_limit value 150 to 100', async () => {
+    mountWithClamping();
+    (document.getElementById('set-recents-limit') as HTMLInputElement).value = '150';
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValueOnce(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          ux: expect.objectContaining({ recents_limit: 100 }),
+        }),
+      }));
+    });
+  });
+
+  it('clamps log_keep value 0 to 1', async () => {
+    mountWithClamping();
+    (document.getElementById('set-log-keep') as HTMLInputElement).value = '0';
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValueOnce(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          logging: expect.objectContaining({ retain_archives: 1 }),
+        }),
+      }));
+    });
+  });
+
+  it('clamps log_keep value 200 to 100', async () => {
+    mountWithClamping();
+    (document.getElementById('set-log-keep') as HTMLInputElement).value = '200';
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValueOnce(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          logging: expect.objectContaining({ retain_archives: 100 }),
+        }),
+      }));
+    });
+  });
+
+  it('collects merge mode as builtin (disabled) when mode is builtin', async () => {
+    const modal = mountSettingsModal();
+    modal.dataset.currentCfg = JSON.stringify({});
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-gpu-accel" type="checkbox" />',
+      '<input id="set-animations" type="checkbox" />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1" />',
+      '<input id="set-font-mono" type="text" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" value="10" />',
+      '<input id="set-tab-width" value="4" />',
+      '<input id="set-max-file-size-mb" value="10" />',
+      '<input id="set-intraline" type="checkbox" />',
+      '<input id="set-binary-placeholders" type="checkbox" />',
+      '<select id="set-merge-mode"><option value="builtin" selected>Built-in</option></select>',
+      '<input id="set-merge-path" value="" />',
+      '<input id="set-merge-args" value="" />',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="10" />',
+    ].join('\n'));
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValueOnce(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          diff: expect.objectContaining({
+            external_merge: expect.objectContaining({ enabled: false }),
+          }),
+        }),
+      }));
+    });
+  });
+
+  it('collects ui_scale and font_mono from form inputs', async () => {
+    mountSettingsModal();
+    const modal = document.getElementById('settings-modal')!;
+    modal.dataset.currentCfg = JSON.stringify({});
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-gpu-accel" type="checkbox" />',
+      '<input id="set-animations" type="checkbox" />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1.5" />',
+      '<input id="set-font-mono" type="text" value="Fira Code" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="deuteranopia">Deuteranopia</option></select>',
+      '<input id="set-recents-limit" value="10" />',
+      '<input id="set-tab-width" value="4" />',
+      '<input id="set-max-file-size-mb" value="10" />',
+      '<input id="set-intraline" type="checkbox" />',
+      '<input id="set-binary-placeholders" type="checkbox" />',
+      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="10" />',
+    ].join('\n'));
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValueOnce(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          ux: expect.objectContaining({
+            ui_scale: 1.5,
+            font_mono: 'Fira Code',
+            color_blind_mode: 'deuteranopia',
+          }),
+        }),
+      }));
+    });
+  });
+
+  it('collects gpu_accel checked and animations unchecked', async () => {
+    mountSettingsModal();
+    const modal = document.getElementById('settings-modal')!;
+    modal.dataset.currentCfg = JSON.stringify({});
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-gpu-accel" type="checkbox" checked />',
+      '<input id="set-animations" type="checkbox" />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1" />',
+      '<input id="set-font-mono" type="text" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" value="10" />',
+      '<input id="set-tab-width" value="4" />',
+      '<input id="set-max-file-size-mb" value="10" />',
+      '<input id="set-intraline" type="checkbox" />',
+      '<input id="set-binary-placeholders" type="checkbox" />',
+      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="10" />',
+    ].join('\n'));
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValueOnce(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          performance: expect.objectContaining({
+            gpu_accel: true,
+            animations: false,
+            progressive_render: false,
+          }),
+        }),
+      }));
+    });
+  });
+
+  it('collects intraline and binary_placeholders checkbox values', async () => {
+    mountSettingsModal();
+    const modal = document.getElementById('settings-modal')!;
+    modal.dataset.currentCfg = JSON.stringify({});
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-gpu-accel" type="checkbox" />',
+      '<input id="set-animations" type="checkbox" />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1" />',
+      '<input id="set-font-mono" type="text" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" value="10" />',
+      '<input id="set-tab-width" value="8" />',
+      '<input id="set-max-file-size-mb" value="20" />',
+      '<input id="set-intraline" type="checkbox" checked />',
+      '<input id="set-binary-placeholders" type="checkbox" />',
+      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="10" />',
+    ].join('\n'));
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValueOnce(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', expect.objectContaining({
+        cfg: expect.objectContaining({
+          diff: expect.objectContaining({
+            intraline: true,
+            show_binary_placeholders: false,
+          }),
+        }),
+      }));
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadSettingsIntoForm - false boolean branches
+// ---------------------------------------------------------------------------
+
+describe('loadSettingsIntoForm - false boolean branches', () => {
+  async function load() {
+    return import('@scripts/features/settings');
+  }
+
+  it('sets restrict_commit_summary checkbox unchecked when false in config', async () => {
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <input id="set-restrict-commit-summary" type="checkbox" checked />
+        <input id="set-recents-limit" />
+        <input id="set-tab-width" />
+        <input id="set-max-file-size-mb" />
+        <select id="set-merge-mode"><option value="builtin">Built-in</option></select>
+        <input id="set-log-level" />
+        <input id="set-log-keep" />
+        <div class="backdrop"></div>
+        <nav id="settings-nav"></nav>
+        <div id="settings-panels"></div>
+        <div class="sheet-actions">
+          <button id="settings-save">Save</button>
+          <button id="settings-reset">Reset</button>
+        </div>
+      </div>
+    `;
+    const cfg = {
+      general: { theme: 'light' },
+      commit: { restrict_commit_summary: false },
+      diff: {},
+      performance: {},
+      ux: { recents_limit: 10 },
+      logging: { level: 'info', retain_archives: 10 },
+    };
+    mockInvoke.mockResolvedValue(cfg);
+    mockLoadPluginsIntoForm.mockResolvedValue(undefined);
+    mockLoadGeneralSettingsIntoForm.mockResolvedValue(undefined);
+    const { loadSettingsIntoForm } = await load();
+    await loadSettingsIntoForm();
+    const el = document.getElementById('set-restrict-commit-summary') as HTMLInputElement;
+    expect(el.checked).toBe(false);
+  });
+
+  it('sets animations checkbox unchecked when false in config', async () => {
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <input id="set-animations" type="checkbox" checked />
+        <input id="set-gpu-accel" type="checkbox" />
+        <input id="set-progressive-render" type="checkbox" />
+        <input id="set-recents-limit" />
+        <input id="set-tab-width" />
+        <input id="set-max-file-size-mb" />
+        <select id="set-merge-mode"><option value="builtin">Built-in</option></select>
+        <input id="set-log-level" />
+        <input id="set-log-keep" />
+        <div class="backdrop"></div>
+        <nav id="settings-nav"></nav>
+        <div id="settings-panels"></div>
+        <div class="sheet-actions">
+          <button id="settings-save">Save</button>
+          <button id="settings-reset">Reset</button>
+        </div>
+      </div>
+    `;
+    const cfg = {
+      general: { theme: 'light' },
+      performance: { animations: false, progressive_render: true, gpu_accel: true },
+      diff: {},
+      ux: { recents_limit: 10 },
+      logging: { level: 'info', retain_archives: 10 },
+    };
+    mockInvoke.mockResolvedValue(cfg);
+    mockLoadPluginsIntoForm.mockResolvedValue(undefined);
+    mockLoadGeneralSettingsIntoForm.mockResolvedValue(undefined);
+    const { loadSettingsIntoForm } = await load();
+    await loadSettingsIntoForm();
+    const el = document.getElementById('set-animations') as HTMLInputElement;
+    expect(el.checked).toBe(false);
+  });
+
+  it('sets merge mode to builtin when external_merge is disabled', async () => {
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <select id="set-merge-mode"><option value="builtin">Built-in</option><option value="custom">Custom</option></select>
+        <input id="set-merge-path" />
+        <input id="set-merge-args" />
+        <input id="set-recents-limit" />
+        <input id="set-tab-width" />
+        <input id="set-max-file-size-mb" />
+        <input id="set-log-level" />
+        <input id="set-log-keep" />
+        <div class="backdrop"></div>
+        <nav id="settings-nav"></nav>
+        <div id="settings-panels"></div>
+        <div class="sheet-actions">
+          <button id="settings-save">Save</button>
+          <button id="settings-reset">Reset</button>
+        </div>
+      </div>
+    `;
+    const cfg = {
+      general: { theme: 'light' },
+      diff: { external_merge: { enabled: false, path: '', args: '' } },
+      performance: {},
+      ux: { recents_limit: 10 },
+      logging: { level: 'info', retain_archives: 10 },
+    };
+    mockInvoke.mockResolvedValue(cfg);
+    mockLoadPluginsIntoForm.mockResolvedValue(undefined);
+    mockLoadGeneralSettingsIntoForm.mockResolvedValue(undefined);
+    const { loadSettingsIntoForm } = await load();
+    await loadSettingsIntoForm();
+    const el = document.getElementById('set-merge-mode') as HTMLSelectElement;
+    expect(el.value).toBe('builtin');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// wireSettings - save handler edge cases
+// ---------------------------------------------------------------------------
+
+describe('wireSettings - save handler edge cases', () => {
+  async function load() {
+    return import('@scripts/features/settings');
+  }
+
+  it('saves gpu_accel unchanged (no GPU change notification)', async () => {
+    mountSettingsModal();
+    const modal = document.getElementById('settings-modal')!;
+    modal.dataset.currentCfg = JSON.stringify({
+      performance: { gpu_accel: false },
+    });
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-gpu-accel" type="checkbox" />',
+      '<input id="set-animations" type="checkbox" />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1" />',
+      '<input id="set-font-mono" type="text" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" value="10" />',
+      '<input id="set-tab-width" value="4" />',
+      '<input id="set-max-file-size-mb" value="10" />',
+      '<input id="set-intraline" type="checkbox" />',
+      '<input id="set-binary-placeholders" type="checkbox" />',
+      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="10" />',
+    ].join('\n'));
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(mockNotify).toHaveBeenCalledWith('Settings saved');
+    });
+  });
+
+  it('handles missing save button gracefully in save handler', async () => {
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <div class="backdrop"></div>
+        <nav id="settings-nav"></nav>
+        <div id="settings-panels"></div>
+        <div class="sheet-actions"></div>
+      </div>
+    `;
+    const { wireSettings } = await load();
+    expect(() => wireSettings()).not.toThrow();
+  });
+
+  it('handles missing reset button gracefully', async () => {
+    document.body.innerHTML = `
+      <div id="settings-modal">
+        <div class="backdrop"></div>
+        <nav id="settings-nav"></nav>
+        <div id="settings-panels"></div>
+        <div class="sheet-actions">
+          <button id="settings-save">Save</button>
+        </div>
+      </div>
+    `;
+    mockCollectGeneralSettings.mockReturnValue({});
+    mockCollectCommitSettings.mockReturnValue({});
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    expect(() => wireSettings()).not.toThrow();
+  });
+
+  it('sets theme CSS custom properties on save with tab_width and ui_scale', async () => {
+    mountSettingsModal();
+    const modal = document.getElementById('settings-modal')!;
+    modal.dataset.currentCfg = JSON.stringify({
+      performance: { gpu_accel: false },
+    });
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-gpu-accel" type="checkbox" checked />',
+      '<input id="set-animations" type="checkbox" checked />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1.25" />',
+      '<input id="set-font-mono" type="text" value="Fira Code" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" value="10" />',
+      '<input id="set-tab-width" value="8" />',
+      '<input id="set-max-file-size-mb" value="10" />',
+      '<input id="set-intraline" type="checkbox" checked />',
+      '<input id="set-binary-placeholders" type="checkbox" checked />',
+      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="10" />',
+    ].join('\n'));
+    mockCollectGeneralSettings.mockReturnValue({ theme: 'light', theme_pack: 'default-light' });
+    mockCollectCommitSettings.mockReturnValue({ restrict_commit_summary: true });
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+    mockSelectThemePack.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--tab-size')).toBe('8');
+      expect(document.documentElement.style.getPropertyValue('--ui-scale')).toBe('1.25');
+      expect(document.documentElement.style.getPropertyValue('--mono')).toBe('Fira Code');
+    });
+  });
+
+  it('removes --mono CSS prop when font_mono is empty', async () => {
+    mountSettingsModal();
+    const modal = document.getElementById('settings-modal')!;
+    modal.dataset.currentCfg = JSON.stringify({
+      performance: { gpu_accel: false },
+    });
+    modal.insertAdjacentHTML('beforeend', [
+      '<input id="set-gpu-accel" type="checkbox" checked />',
+      '<input id="set-animations" type="checkbox" checked />',
+      '<input id="set-progressive-render" type="checkbox" />',
+      '<input id="set-ui-scale" type="range" value="1" />',
+      '<input id="set-font-mono" type="text" value="" />',
+      '<input id="set-vim-nav" type="checkbox" />',
+      '<select id="set-cb-mode"><option value="none">None</option></select>',
+      '<input id="set-recents-limit" value="10" />',
+      '<input id="set-tab-width" value="4" />',
+      '<input id="set-max-file-size-mb" value="10" />',
+      '<input id="set-intraline" type="checkbox" />',
+      '<input id="set-binary-placeholders" type="checkbox" />',
+      '<select id="set-merge-mode"><option value="builtin">Built-in</option></select>',
+      '<input id="set-log-level" value="info" />',
+      '<input id="set-log-keep" value="10" />',
+    ].join('\n'));
+    mockCollectGeneralSettings.mockReturnValue({ theme: 'light', theme_pack: 'default-light' });
+    mockCollectCommitSettings.mockReturnValue({ restrict_commit_summary: true });
+    mockCollectCommitTemplateSettings.mockReturnValue({});
+    mockInvoke.mockResolvedValue(undefined);
+    mockSyncFrontendMonitoring.mockResolvedValue(undefined);
+    mockSelectThemePack.mockResolvedValue(undefined);
+
+    const { wireSettings } = await load();
+    wireSettings();
+    const saveBtn = document.getElementById('settings-save') as HTMLButtonElement;
+    saveBtn.click();
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--mono')).toBe('');
+    });
   });
 });

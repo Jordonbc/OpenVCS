@@ -481,3 +481,83 @@ describe('openSheet default parameter and edge cases', () => {
     expect(() => bindCommandSheet()).not.toThrow();
   });
 });
+
+describe('browse directory edge cases', () => {
+  it('browse clone returns null dir and does not set path', async () => {
+    const { TAURI } = await import('@scripts/lib/tauri');
+    vi.mocked(TAURI.invoke).mockResolvedValueOnce('');
+    const { bindCommandSheet } = await import('@scripts/features/commandSheet');
+    bindCommandSheet();
+    (document.getElementById('browse-clone') as HTMLButtonElement).click();
+    await Promise.resolve();
+    expect((document.getElementById('clone-path') as HTMLInputElement).value).toBe('');
+  });
+
+  it('browse add returns null dir and does not set path', async () => {
+    const { TAURI } = await import('@scripts/lib/tauri');
+    vi.mocked(TAURI.invoke).mockResolvedValueOnce('');
+    const { bindCommandSheet } = await import('@scripts/features/commandSheet');
+    bindCommandSheet();
+    (document.getElementById('browse-add') as HTMLButtonElement).click();
+    await Promise.resolve();
+    expect((document.getElementById('add-path') as HTMLInputElement).value).toBe('');
+  });
+
+  it('browse clone when clonePath element is missing', async () => {
+    const { TAURI } = await import('@scripts/lib/tauri');
+    vi.mocked(TAURI.invoke).mockResolvedValueOnce('/some/dir');
+    document.getElementById('clone-path')?.remove();
+    const { bindCommandSheet } = await import('@scripts/features/commandSheet');
+    bindCommandSheet();
+    expect(() => {
+      (document.getElementById('browse-clone') as HTMLButtonElement).click();
+    }).not.toThrow();
+    await Promise.resolve();
+  });
+
+  it('browse add when addPath element is missing', async () => {
+    const { TAURI } = await import('@scripts/lib/tauri');
+    vi.mocked(TAURI.invoke).mockResolvedValueOnce('/some/dir');
+    document.getElementById('add-path')?.remove();
+    const { bindCommandSheet } = await import('@scripts/features/commandSheet');
+    bindCommandSheet();
+    expect(() => {
+      (document.getElementById('browse-add') as HTMLButtonElement).click();
+    }).not.toThrow();
+    await Promise.resolve();
+  });
+});
+
+describe('openSheet edge cases', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.resetAllMocks();
+    vi.useFakeTimers();
+    mountCommandModal();
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    window.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+    window.MutationObserver = MutationObserverMock as unknown as typeof MutationObserver;
+  });
+
+  it('openSheet with invalid which does not crash', async () => {
+    const { openModal } = await import('@scripts/ui/modals');
+    const { openSheet } = await import('@scripts/features/commandSheet');
+    expect(() => openSheet('invalid' as any)).not.toThrow();
+    expect(openModal).toHaveBeenCalledWith('command-modal');
+  });
+
+  it('tab click with empty dataset.sheet defaults to clone', async () => {
+    const { bindCommandSheet } = await import('@scripts/features/commandSheet');
+    bindCommandSheet();
+    const addTab = document.querySelector('[data-sheet="add"]') as HTMLButtonElement;
+    delete addTab.dataset.sheet;
+    addTab.click();
+    // Should default to "clone" due to || "clone"
+    const cloneTab = document.querySelector('[data-sheet="clone"]') as HTMLButtonElement;
+    expect(cloneTab.classList.contains('active')).toBe(true);
+    expect(document.getElementById('sheet-clone')?.classList.contains('hidden')).toBe(false);
+  });
+});

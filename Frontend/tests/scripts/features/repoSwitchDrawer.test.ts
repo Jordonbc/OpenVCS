@@ -381,3 +381,122 @@ describe('closeSwitchDrawer animate close', () => {
     expect(drawer.classList.contains('is-closing')).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// renderRecents - edge cases
+// ---------------------------------------------------------------------------
+
+describe('renderRecents edge cases', () => {
+  it('renders fallback when path split returns empty basename', async () => {
+    mountDrawerInBody();
+    mockInvoke.mockResolvedValue([{ path: '/' }]);
+    const { openSwitchDrawer } = await import('@scripts/features/repoSwitchDrawer');
+    openSwitchDrawer();
+    await vi.waitFor(() => {
+      const list = document.getElementById('drawer-recent-list')!;
+      expect(list.children.length).toBe(1);
+      expect(list.textContent).toContain('/');
+    });
+  });
+
+  it('filters recents by path when name does not match', async () => {
+    mountDrawerInBody();
+    mockInvoke.mockResolvedValue([
+      { path: '/home/user/projects/secret-project', name: 'My Project' },
+    ]);
+    const { openSwitchDrawer } = await import('@scripts/features/repoSwitchDrawer');
+    openSwitchDrawer();
+    await vi.waitFor(() => {
+      expect(document.getElementById('drawer-recent-list')!.children.length).toBe(1);
+    });
+    const filter = document.getElementById('drawer-filter') as HTMLInputElement;
+    filter.value = 'secret';
+    filter.dispatchEvent(new Event('input'));
+    // Item should still be visible because path includes 'secret'
+    expect(document.getElementById('drawer-recent-list')!.children.length).toBe(1);
+  });
+
+  it('click on list but not on item row does not open', async () => {
+    mountDrawerInBody();
+    mockInvoke.mockResolvedValue([{ path: '/repo/one' }]);
+    const { openSwitchDrawer } = await import('@scripts/features/repoSwitchDrawer');
+    openSwitchDrawer();
+    await vi.waitFor(() => {
+      expect(document.getElementById('drawer-recent-list')!.children.length).toBe(1);
+    });
+    const list = document.getElementById('drawer-recent-list')!;
+    list.click();
+    expect(mockInvoke).not.toHaveBeenCalledWith('open_repo', expect.anything());
+  });
+
+  it('keyboard Enter on list but not on item row does not open', async () => {
+    mountDrawerInBody();
+    mockInvoke.mockResolvedValue([{ path: '/repo/one' }]);
+    const { openSwitchDrawer } = await import('@scripts/features/repoSwitchDrawer');
+    openSwitchDrawer();
+    await vi.waitFor(() => {
+      expect(document.getElementById('drawer-recent-list')!.children.length).toBe(1);
+    });
+    const list = document.getElementById('drawer-recent-list')!;
+    list.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(mockInvoke).not.toHaveBeenCalledWith('open_repo', expect.anything());
+  });
+
+  it('keyboard Space on list but not on item row does not open', async () => {
+    mountDrawerInBody();
+    mockInvoke.mockResolvedValue([{ path: '/repo/one' }]);
+    const { openSwitchDrawer } = await import('@scripts/features/repoSwitchDrawer');
+    openSwitchDrawer();
+    await vi.waitFor(() => {
+      expect(document.getElementById('drawer-recent-list')!.children.length).toBe(1);
+    });
+    const list = document.getElementById('drawer-recent-list')!;
+    list.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    expect(mockInvoke).not.toHaveBeenCalledWith('open_repo', expect.anything());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// positionDrawer - edge cases
+// ---------------------------------------------------------------------------
+
+describe('positionDrawer edge cases', () => {
+  it('handles missing anchor element', async () => {
+    mountDrawerInBody();
+    document.getElementById('repo-switch')?.remove();
+    mockInvoke.mockResolvedValue([]);
+    const { openSwitchDrawer } = await import('@scripts/features/repoSwitchDrawer');
+    expect(() => openSwitchDrawer()).not.toThrow();
+  });
+
+  it('handles missing drawer dialog element', async () => {
+    document.body.innerHTML = `
+      <div id="app"><button id="repo-switch">Switch</button></div>
+      <div id="repo-switch-drawer" class="modal"></div>
+    `;
+    mockInvoke.mockResolvedValue([]);
+    const { openSwitchDrawer } = await import('@scripts/features/repoSwitchDrawer');
+    expect(() => openSwitchDrawer()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadRecents - missing recentList
+// ---------------------------------------------------------------------------
+
+describe('loadRecents with missing list', () => {
+  it('handles missing recentList element', async () => {
+    document.body.innerHTML = `
+      <div id="app"><button id="repo-switch">Switch</button></div>
+      <div id="repo-switch-drawer" class="modal">
+        <div class="dialog drawer">
+          <input id="drawer-filter" />
+          <button id="drawer-add-trigger">Add</button>
+        </div>
+      </div>
+    `;
+    mockInvoke.mockResolvedValue([{ path: '/repo/one' }]);
+    const { openSwitchDrawer } = await import('@scripts/features/repoSwitchDrawer');
+    expect(() => openSwitchDrawer()).not.toThrow();
+  });
+});

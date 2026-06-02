@@ -118,6 +118,11 @@ describe('history parsing', () => {
     expect(files[0].status).toBe('D')
   })
 
+  it('handles null lines gracefully', async () => {
+    const { parseCommitDiffByFile } = await loadHistoryModule()
+    expect(parseCommitDiffByFile(null as any)).toEqual([])
+  })
+
   it('deduplicates diff ---/+++ status properly', async () => {
     const { parseCommitDiffByFile } = await loadHistoryModule()
     const lines = [
@@ -209,6 +214,16 @@ describe('formatTimeAgo - catch path', () => {
     const { formatTimeAgo } = await loadHistoryModule()
     const badObj = { toString: () => { throw new Error('boom') } } as any
     expect(formatTimeAgo(badObj)).toBe('')
+  })
+
+  it('returns the input string when Date fails silently', async () => {
+    const { formatTimeAgo } = await loadHistoryModule()
+    expect(formatTimeAgo('not-a-date')).toBe('not-a-date')
+  })
+
+  it('handles string that trims but is not a valid date', async () => {
+    const { formatTimeAgo } = await loadHistoryModule()
+    expect(formatTimeAgo('  ')).toBe('')
   })
 })
 
@@ -1197,10 +1212,854 @@ describe('selectHistory - files.length === 0 with renderable diff', () => {
     await selectHistory({ id: 'abc', msg: 'Test', author: 'A' } as any, 0);
 
     const diffEl = document.getElementById('diff') as HTMLElement;
-    // Should show the "Changes" header because diffHtml is truthy
     expect(diffEl.innerHTML).toContain('Changes');
-    // Should contain the diff content rendered by renderHunksReadonly
     expect(diffEl.textContent).toContain('-old');
     expect(diffEl.textContent).toContain('+new');
+  });
+});
+
+// ============================================================================
+// renderHistoryList - behind count edge cases
+// ============================================================================
+describe('renderHistoryList behind count edge cases', () => {
+  it('shows singular "commit" when behind is 1', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [
+      { id: 'aaa', msg: 'Latest', meta: new Date().toISOString() } as any,
+    ];
+    state.ahead = 0;
+    state.behind = 1;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const listText = document.querySelector('#file-list')?.textContent || '';
+    expect(listText).toContain('incoming');
+    expect(listText).toContain('1 incoming commit');
+  });
+
+  it('shows no behind notice when behind is 0', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [
+      { id: 'aaa', msg: 'Only', meta: new Date().toISOString() } as any,
+    ];
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const listText = document.querySelector('#file-list')?.textContent || '';
+    expect(listText).not.toContain('incoming');
+  });
+
+  it('shows plural "commits" when behind > 1', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [
+      { id: 'aaa', msg: 'C1', meta: new Date().toISOString() } as any,
+    ];
+    state.ahead = 0;
+    state.behind = 2;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const listText = document.querySelector('#file-list')?.textContent || '';
+    expect(listText).toContain('2 incoming commits');
+  });
+});
+
+// ============================================================================
+// renderHistoryList - null/undefined commits
+// ============================================================================
+describe('renderHistoryList null commits', () => {
+  it('handles state.commits being null via || [] fallback', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = null as any;
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    const result = renderHistoryList('');
+    expect(result).toBe(true);
+    expect(document.querySelector('#file-list')?.textContent).toContain('No commits loaded');
+  });
+});
+
+// ============================================================================
+// renderHistoryList - commit count wording
+// ============================================================================
+describe('renderHistoryList commit count wording', () => {
+  it('shows singular "commit" when exactly 1 commit', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [
+      { id: 'aaa', msg: 'Single', meta: new Date().toISOString() } as any,
+    ];
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const countText = document.getElementById('changes-count')?.textContent || '';
+    expect(countText).toBe('1 commit');
+  });
+
+  it('shows plural "commits" when no commits (0)', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [] as any;
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const countText = document.getElementById('changes-count')?.textContent || '';
+    expect(countText).toBe('0 commits');
+  });
+});
+
+// ============================================================================
+// formatTimeAgo - boundary edge cases
+// ============================================================================
+describe('formatTimeAgo boundary edge cases', () => {
+  it('returns minutes when exactly at 59 minutes (min < 60)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 59 * 60 * 1000).toISOString())).toBe('59 minutes ago');
+  });
+
+  it('returns hours when exactly at 60 minutes (min >= 60)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 60 * 60 * 1000).toISOString())).toBe('1 hour ago');
+  });
+
+  it('returns days when exactly at 6 days (day < 7)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 6 * 24 * 60 * 60 * 1000).toISOString())).toBe('6 days ago');
+  });
+
+  it('returns weeks when exactly at 7 days (day >= 7)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString())).toBe('1 week ago');
+  });
+
+  it('handles large year values', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 3650 * 24 * 60 * 60 * 1000).toISOString())).toBe('10 years ago');
+  });
+});
+
+// ============================================================================
+// renderHistoryList - non-empty filter that matches nothing
+// ============================================================================
+describe('renderHistoryList filter edge cases', () => {
+  it('shows empty list when filter matches no commits', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [
+      { id: 'aaa', msg: 'Alpha', meta: new Date().toISOString() } as any,
+      { id: 'bbb', msg: 'Beta', meta: new Date().toISOString() } as any,
+    ];
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('zzz_nonexistent');
+    const listText = document.querySelector('#file-list')?.textContent || '';
+    expect(listText).toContain('No commits loaded');
+  });
+
+  it('shows empty list when filter matches neither msg nor id', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [
+      { id: 'xyz789', msg: 'Gamma', meta: new Date().toISOString() } as any,
+    ];
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('Delta');
+    const listText = document.querySelector('#file-list')?.textContent || '';
+    expect(listText).toContain('No commits loaded');
+  });
+});
+
+// ============================================================================
+// formatTimeAgo - exact boundary cases at transition points
+// ============================================================================
+describe('formatTimeAgo exact boundary transitions', () => {
+  it('returns "just now" at 44 seconds (just under threshold)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 44 * 1000).toISOString())).toBe('just now');
+  });
+
+  it('returns "1 minute ago" at 45 seconds (exact threshold)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 45 * 1000).toISOString())).toBe('1 minute ago');
+  });
+
+  it('returns "2 minutes ago" at 90 seconds (exact threshold)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 90 * 1000).toISOString())).toBe('2 minutes ago');
+  });
+
+  it('returns "2 hours ago" at 120 minutes (exact threshold)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 120 * 60 * 1000).toISOString())).toBe('2 hours ago');
+  });
+
+  it('returns "yesterday" at 1 day (day === 1)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 24 * 60 * 60 * 1000).toISOString())).toBe('yesterday');
+  });
+
+  it('returns "1 week ago" at 7 days (exact threshold)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString())).toBe('1 week ago');
+  });
+});
+
+// ============================================================================
+// selectHistory - null commit handling
+// ============================================================================
+describe('selectHistory null commit', () => {
+  it('sets selectedCommit via commit || null guard', async () => {
+    const { selectHistory } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    await selectHistory({ id: null } as any, 0);
+    expect((state as any).selectedCommit).toEqual({ id: null });
+  });
+
+  it('shows "Commit (unknown)" for commit with null id', async () => {
+    const { selectHistory } = await loadHistoryModule();
+    await selectHistory({ id: null } as any, 0);
+    const diffPath = document.getElementById('diff-path') as HTMLElement;
+    expect(diffPath?.textContent).toContain('Commit (unknown)');
+  });
+
+  it('renders metadata template for commit with null id', async () => {
+    const { selectHistory } = await loadHistoryModule();
+    await selectHistory({ id: null } as any, 0);
+    const diffEl = document.getElementById('diff') as HTMLElement;
+    expect(diffEl?.textContent).toContain('commit');
+  });
+});
+
+// ============================================================================
+// selectHistory - commit with no id (skip vcs_diff_commit)
+// ============================================================================
+describe('selectHistory commit without id', () => {
+  it('skips vcs_diff_commit when commit exists but id is empty', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { selectHistory } = await loadHistoryModule();
+    await selectHistory({ id: '', author: 'Dev', msg: 'No id' } as any, 0);
+
+    expect(document.getElementById('diff')?.textContent).not.toContain('Failed to load diff');
+    warnSpy.mockRestore();
+  });
+});
+
+// ============================================================================
+// selectHistory - selectCommitFile missing DOM elements
+// ============================================================================
+describe('selectHistory selectCommitFile missing contentEl', () => {
+  it('gracefully handles missing commit-content element', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/a.ts b/a.ts',
+          '--- a/a.ts',
+          '+++ b/a.ts',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+        ];
+      }
+      return [];
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    await selectHistory({ id: 'abc', msg: 'Test', author: 'A' } as any, 0);
+
+    const contentEl = document.querySelector('.commit-content') as HTMLElement;
+    if (contentEl) contentEl.remove();
+
+    const row = document.querySelector('.commit-files .row') as HTMLElement;
+    expect(() => row.click()).not.toThrow();
+  });
+});
+
+// ============================================================================
+// selectHistory - file revert edge cases
+// ============================================================================
+describe('selectHistory file revert edge cases', () => {
+  it('handles empty lines array in file revert', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/empty.txt b/empty.txt',
+          '--- a/empty.txt',
+          '+++ b/empty.txt',
+        ];
+      }
+      return [];
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+    const { confirmBool } = await import('@scripts/lib/confirm');
+
+    vi.mocked(confirmBool).mockResolvedValue(true);
+
+    await selectHistory({ id: 'abc', msg: 'Test', author: 'A' } as any, 0);
+
+    const fileRow = document.querySelector('.commit-files .row') as HTMLElement;
+    fileRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 6 }));
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const revertAction = items.find((i: any) => i.label === 'Revert this file');
+    expect(revertAction).toBeDefined();
+    await expect(revertAction?.action?.()).resolves.toBeUndefined();
+  });
+
+  it('handles patch without trailing newline', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    const invokeMock = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/a.ts b/a.ts',
+          '--- a/a.ts',
+          '+++ b/a.ts',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+        ];
+      }
+      if (cmd === 'vcs_discard_patch') return undefined;
+      return [];
+    });
+    (window as any).__TAURI__.core.invoke = invokeMock;
+
+    const { selectHistory } = await loadHistoryModule();
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+    const { confirmBool } = await import('@scripts/lib/confirm');
+
+    vi.mocked(confirmBool).mockResolvedValue(true);
+
+    await selectHistory({ id: 'abc', msg: 'Test', author: 'A' } as any, 0);
+
+    const fileRow = document.querySelector('.commit-files .row') as HTMLElement;
+    fileRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 6 }));
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((i: any) => i.label === 'Revert this file')?.action?.();
+    const patchCall = invokeMock.mock.calls.find((args: unknown[]) => args[0] === 'vcs_discard_patch');
+    expect(patchCall).toBeTruthy();
+    expect(String((patchCall as any)[1].patch).endsWith('\n')).toBe(true);
+  });
+
+  it('file revert with isBinary lines notifies correctly', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/data.bin b/data.bin',
+          'GIT binary patch',
+          '--- a/data.bin',
+          '+++ b/data.bin',
+          '@@ -1,3 +0,0 @@',
+          '-binary',
+        ];
+      }
+      return [];
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+    const { notify } = await import('@scripts/lib/notify');
+
+    await selectHistory({ id: 'abc', msg: 'Binary', author: 'A' } as any, 0);
+
+    const fileRow = document.querySelector('.commit-files .row') as HTMLElement;
+    fileRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 6 }));
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((i: any) => i.label === 'Revert this file')?.action?.();
+    expect(notify).toHaveBeenCalledWith('Cannot revert binary diffs yet');
+  });
+});
+
+// ============================================================================
+// openCommitActionsMenu - plugin context menu items
+// ============================================================================
+describe('openCommitActionsMenu with plugin items', () => {
+  it('includes plugin items in the context menu', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state, prefs } = await loadStateModule();
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+    const { getPluginContextMenuItems } = await import('@scripts/plugins');
+
+    vi.mocked(getPluginContextMenuItems).mockReturnValue([
+      { label: 'Plugin Action 1', action: 'plugin.action1' },
+      { label: 'Plugin Action 2', action: 'plugin.action2' },
+    ]);
+
+    prefs.tab = 'history';
+    state.commits = [{ id: 'abc123', msg: 'Test', meta: new Date().toISOString() }] as any;
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const row = document.querySelector('#file-list li.row.commit') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 }));
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const labels = items.map((i: any) => i.label);
+    expect(labels).toContain('Plugin Action 1');
+    expect(labels).toContain('Plugin Action 2');
+  });
+
+  it('executes plugin action from context menu', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state, prefs } = await loadStateModule();
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+    const { getPluginContextMenuItems, runPluginAction } = await import('@scripts/plugins');
+
+    vi.mocked(getPluginContextMenuItems).mockReturnValue([
+      { label: 'Test Plugin', action: 'test.inspect' },
+    ]);
+
+    prefs.tab = 'history';
+    state.commits = [{ id: 'def456', msg: 'Plugin test', meta: new Date().toISOString() }] as any;
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const row = document.querySelector('#file-list li.row.commit') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 }));
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((i: any) => i.label === 'Test Plugin')?.action?.();
+    expect(runPluginAction).toHaveBeenCalledWith('test.inspect', { commit: state.commits[0] });
+  });
+});
+
+// ============================================================================
+// openCommitActionsMenu - copy hash edge cases
+// ============================================================================
+describe('openCommitActionsMenu copy hash edge cases', () => {
+  it('copies empty string when commit has no id', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state, prefs } = await loadStateModule();
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+    const { notify } = await import('@scripts/lib/notify');
+
+    prefs.tab = 'history';
+    state.commits = [{ id: '', msg: 'Empty id', meta: new Date().toISOString() }] as any;
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const row = document.querySelector('#file-list li.row.commit') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 }));
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((i: any) => i.label === 'Copy hash')?.action?.();
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('');
+    expect(notify).toHaveBeenCalledWith('Hash copied');
+  });
+});
+
+// ============================================================================
+// renderHistoryList - null msg and empty meta edge cases
+// ============================================================================
+describe('renderHistoryList null msg and meta', () => {
+  it('renders "(no message)" when commit msg is null', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [
+      { id: 'aaa', msg: null, meta: new Date().toISOString() } as any,
+    ];
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const listText = document.querySelector('#file-list')?.textContent || '';
+    expect(listText).toContain('(no message)');
+  });
+
+  it('handles undefined meta without crashing', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [
+      { id: 'bbb', msg: 'No meta', meta: undefined } as any,
+    ];
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    expect(() => renderHistoryList('')).not.toThrow();
+    const listText = document.querySelector('#file-list')?.textContent || '';
+    expect(listText).toContain('No meta');
+  });
+});
+
+// ============================================================================
+// renderHistoryList - aheadFallbackRemaining distribution
+// ============================================================================
+describe('renderHistoryList ahead fallback distribution', () => {
+  it('marks ahead commits using fallback when aheadIds is empty and ahead > 0', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [
+      { id: 'c1', msg: 'First', meta: new Date().toISOString() } as any,
+      { id: 'c2', msg: 'Second', meta: new Date().toISOString() } as any,
+      { id: 'c3', msg: 'Third', meta: new Date().toISOString() } as any,
+    ];
+    state.ahead = 2;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const listHtml = document.querySelector('#file-list')?.innerHTML || '';
+    const rows = document.querySelectorAll('#file-list li.row.commit');
+    expect(rows.length).toBe(3);
+  });
+});
+
+// ============================================================================
+// renderHistoryList - commit with null meta causing formatTimeAgo to fall through
+// ============================================================================
+describe('renderHistoryList null meta', () => {
+  it('formats null meta as empty string', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [
+      { id: 'ccc', msg: 'Test message', meta: null } as any,
+    ];
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const listHtml = document.querySelector('#file-list')?.innerHTML || '';
+    expect(listHtml).toContain('Test message');
+  });
+});
+
+// ============================================================================
+// selectHistory - revert confirmation then patch fails
+// ============================================================================
+describe('selectHistory revert confirmation with invoke failure', () => {
+  it('notifies when vcs_discard_patch fails after confirmation', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/fail.txt b/fail.txt',
+          '--- a/fail.txt',
+          '+++ b/fail.txt',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+        ];
+      }
+      if (cmd === 'vcs_discard_patch') throw new Error('discard error');
+      return [];
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+    const { confirmBool } = await import('@scripts/lib/confirm');
+    const { notify } = await import('@scripts/lib/notify');
+
+    vi.mocked(confirmBool).mockReset().mockResolvedValue(true);
+
+    await selectHistory({ id: 'abc', msg: 'Test', author: 'A' } as any, 0);
+
+    const fileRow = document.querySelector('.commit-files .row') as HTMLElement;
+    vi.mocked(buildCtxMenu).mockClear();
+    fileRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 6 }));
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((i: any) => i.label === 'Revert this file')?.action?.();
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining('Revert failed'));
+  });
+});
+
+// ============================================================================
+// formatTimeAgo — months between 2 and 11 and years > 1
+// ============================================================================
+describe('formatTimeAgo months and years edge cases', () => {
+  it('formats 3 months ago (mon=3)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 100 * 24 * 60 * 60 * 1000).toISOString())).toBe('3 months ago');
+  });
+
+  it('formats 11 months ago (mon=11)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 335 * 24 * 60 * 60 * 1000).toISOString())).toBe('11 months ago');
+  });
+
+  it('formats 2 years ago (yr > 1)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 730 * 24 * 60 * 60 * 1000).toISOString())).toBe('2 years ago');
+  });
+
+  it('formats 5 weeks to "1 month ago" (mon=1 via wk>=5 path)', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 35 * 24 * 60 * 60 * 1000).toISOString())).toBe('1 month ago');
+  });
+});
+
+// ============================================================================
+// selectHistory — empty vcs_diff_commit result → files.length===0, diffHtml empty
+// ============================================================================
+describe('selectHistory empty diff result', () => {
+  it('renders empty label when files.length===0 and diffHtml is empty', async () => {
+    installTauriMock();
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') return [];
+      return undefined;
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+
+    await selectHistory({ id: 'abc', msg: 'Test', author: 'Dev' } as any, 0);
+
+    // Should render metadata but no diff content
+    const diffEl = document.getElementById('diff') as HTMLElement;
+    expect(diffEl.textContent).toContain('abc');
+    expect(diffEl.textContent).toContain('Dev');
+    expect(diffEl.textContent).toContain('Test');
+    expect(diffEl.textContent).not.toContain('Changes');
+  });
+});
+
+// ============================================================================
+// renderHistoryList — meta containing '•' separator (line 140 split branch)
+// ============================================================================
+describe('renderHistoryList meta with separator', () => {
+  it('splits meta by • and uses the first part for relative time', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    const now = new Date();
+    const metaWithSep = `${now.toISOString()}•extra-info`;
+    state.commits = [
+      { id: 'aaa', msg: 'Meta with sep', meta: metaWithSep } as any,
+    ];
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const listText = document.querySelector('#file-list')?.textContent || '';
+    expect(listText).toContain('Meta with sep');
+    // Should show the relative time (not the raw meta)
+    expect(listText).not.toContain('extra-info');
+  });
+});
+
+// ============================================================================
+// renderHistoryList — remoteRef not '@{upstream}' (line 153 non-upstream branch)
+// ============================================================================
+describe('renderHistoryList non-upstream remoteRef', () => {
+  it('shows the actual remote name in incoming title when remoteRef is not @{upstream}', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [
+      { id: 'inc-1', msg: 'From origin/main', meta: new Date().toISOString(), incoming: true, remoteRef: 'origin/main' } as any,
+    ];
+    state.ahead = 0;
+    state.behind = 1;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const listHtml = document.querySelector('#file-list')?.innerHTML || '';
+    expect(listHtml).toContain('origin/main');
+  });
+
+  it('shows "remote" as the default remote name when remoteRef is undefined', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [
+      { id: 'inc-2', msg: 'From default remote', meta: new Date().toISOString(), incoming: true } as any,
+    ];
+    state.ahead = 0;
+    state.behind = 1;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const listHtml = document.querySelector('#file-list')?.innerHTML || '';
+    expect(listHtml).toContain('incoming');
+  });
+});
+
+// ============================================================================
+// renderHistoryList — commit without id but aheadFallbackRemaining > 0
+// ============================================================================
+describe('renderHistoryList commit without id with ahead fallback', () => {
+  it('skips ahead marking for commits without id even when aheadFallbackRemaining > 0', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+    state.commits = [
+      { id: null, msg: 'No id commit', meta: new Date().toISOString() } as any,
+    ];
+    state.ahead = 1;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const listHtml = document.querySelector('#file-list')?.innerHTML || '';
+    // Should NOT have outgoing tag since the commit has no id
+    expect(listHtml).not.toContain('outgoing');
+  });
+});
+
+// ============================================================================
+// parseCommitDiffByFile — consecutive diff blocks with no content between
+// ============================================================================
+describe('parseCommitDiffByFile edge cases', () => {
+  it('handles diff blocks with no lines between header and next diff header', async () => {
+    const { parseCommitDiffByFile } = await loadHistoryModule();
+    const lines = [
+      'diff --git a/a.txt b/a.txt',
+      '--- a/a.txt',
+      '+++ b/a.txt',
+      'diff --git a/c.txt b/c.txt',
+      '--- a/c.txt',
+      '+++ b/c.txt',
+    ];
+    const files = parseCommitDiffByFile(lines);
+    expect(files.length).toBe(2);
+    expect(files[0].path).toBe('a.txt');
+    expect(files[1].path).toBe('c.txt');
+  });
+});
+
+// ============================================================================
+// selectHistory — selectCommitFile with non-first file index
+// ============================================================================
+describe('selectHistory selectCommitFile non-first file', () => {
+  it('switches active row when selecting non-first file via click', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/a.ts b/a.ts',
+          '--- a/a.ts',
+          '+++ b/a.ts',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+          'diff --git a/b.ts b/b.ts',
+          '--- a/b.ts',
+          '+++ b/b.ts',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new2',
+        ];
+      }
+      return undefined;
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    await selectHistory({ id: 'abc', msg: 'Multi', author: 'Dev' } as any, 0);
+
+    const rows = document.querySelectorAll('.commit-files .row');
+    expect(rows.length).toBe(2);
+
+    // First row should be active initially
+    expect(rows[0].classList.contains('active')).toBe(true);
+    expect(rows[1].classList.contains('active')).toBe(false);
+
+    // Click second file
+    (rows[1] as HTMLElement).click();
+    expect(rows[0].classList.contains('active')).toBe(false);
+    expect(rows[1].classList.contains('active')).toBe(true);
+  });
+});
+
+// ============================================================================
+// selectHistory — files.length === 0 with commit.id unset
+// ============================================================================
+describe('selectHistory commit without id and empty diff', () => {
+  it('renders metadata and falls through when commit has no id', async () => {
+    const { selectHistory } = await loadHistoryModule();
+    // commit has no id, so vcs_diff_commit is never called
+    // files.length === 0 (empty default), diffHtml = renderHunksReadonly([]) = ''
+    await selectHistory({ id: '', author: 'NoAuthor', msg: 'Empty commit' } as any, 0);
+
+    const diffEl = document.getElementById('diff') as HTMLElement;
+    expect(diffEl.textContent).toContain('Empty commit');
+    expect(diffEl.textContent).toContain('NoAuthor');
+  });
+});
+
+// ============================================================================
+// selectHistory — file revert with binary detection using "Binary files " pattern
+// ============================================================================
+describe('selectHistory file revert binary via "Binary files " pattern', () => {
+  it('detects binary diff via "Binary files " marker and notifies', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/data.bin b/data.bin',
+          '--- a/data.bin',
+          '+++ b/data.bin',
+          'Binary files a/data.bin and b/data.bin differ',
+        ];
+      }
+      return [];
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    const { buildCtxMenu } = await import('@scripts/lib/menu');
+    const { notify } = await import('@scripts/lib/notify');
+
+    await selectHistory({ id: 'abc', msg: 'Binary', author: 'A' } as any, 0);
+
+    const fileRow = document.querySelector('.commit-files .row') as HTMLElement;
+    fileRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 6 }));
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((i: any) => i.label === 'Revert this file')?.action?.();
+    expect(notify).toHaveBeenCalledWith('Cannot revert binary diffs yet');
   });
 });

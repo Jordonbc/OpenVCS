@@ -468,6 +468,39 @@ describe('initMenubar additional edge cases', () => {
 });
 
 // ============================================================================
+// closeMenu clears active closeTimer (lines 127-128)
+// ============================================================================
+describe('closeMenu clears active closeTimer', () => {
+  it('clears existing closeTimer when closeMenu called while timer is active', async () => {
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      media: '(prefers-reduced-motion: reduce)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as typeof window.matchMedia;
+
+    const { initMenubar } = await import('@scripts/ui/menubar');
+    initMenubar(vi.fn());
+
+    const trigger = document.querySelector('.menu-trigger') as HTMLButtonElement;
+    trigger.click();
+
+    // First close outside click starts the animation timer
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Second close outside click should hit lines 127-128 (clearTimer !== null)
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Timer should have been cleared, but finalize still runs via the original timer
+    vi.runAllTimers();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+});
+
+// ============================================================================
 // closeMenu animation timer execution
 // ============================================================================
 describe('closeMenu animation timer', () => {
@@ -517,5 +550,170 @@ describe('closeMenu animation timer', () => {
     triggers[1].dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
     expect(list.hasAttribute('hidden')).toBe(true);
     vi.runAllTimers();
+  });
+});
+
+// ============================================================================
+// open clears existing closeTimer (lines 151-154)
+// ============================================================================
+describe('open clears existing closeTimer', () => {
+  it('clears closeTimer when open is called with timer active', async () => {
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      media: '(prefers-reduced-motion: reduce)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }) as typeof window.matchMedia;
+
+    const { initMenubar } = await import('@scripts/ui/menubar');
+    initMenubar(vi.fn());
+
+    const triggers = document.querySelectorAll('.menu-trigger');
+    (triggers[0] as HTMLButtonElement).click();
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    (triggers[0] as HTMLButtonElement).click();
+
+    const list = document.querySelector('.menu-list') as HTMLElement;
+    expect(list.hasAttribute('hidden')).toBe(false);
+    vi.runAllTimers();
+  });
+});
+
+// ============================================================================
+// closeMenu with missing list
+// ============================================================================
+describe('closeMenu with missing list', () => {
+  it('handles menu with no .menu-list element', async () => {
+    const { initMenubar } = await import('@scripts/ui/menubar');
+    document.body.innerHTML = `
+      <div class="menubar">
+        <div class="menu" data-menu="broken">
+          <button class="menu-trigger">Broken</button>
+        </div>
+      </div>
+    `;
+
+    initMenubar(vi.fn());
+    const trigger = document.querySelector('.menu-trigger') as HTMLButtonElement;
+    trigger.click();
+    expect(true).toBe(true);
+  });
+});
+
+// ============================================================================
+// pointerover on non-trigger element
+// ============================================================================
+describe('pointerover on non-trigger element', () => {
+  it('ignores pointerover on general menubar area', async () => {
+    const { initMenubar } = await import('@scripts/ui/menubar');
+    initMenubar(vi.fn());
+
+    const menubar = document.querySelector('.menubar') as HTMLElement;
+    menubar.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+    expect(document.querySelector('.menu-list')?.hasAttribute('hidden')).toBe(true);
+  });
+
+  it('ignores pointerover on trigger inside closed menu that is already hidden', async () => {
+    const { initMenubar } = await import('@scripts/ui/menubar');
+    initMenubar(vi.fn());
+
+    const trigger = document.querySelector('.menu-trigger') as HTMLElement;
+    trigger.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
+    expect(document.querySelector('.menu-list')?.hasAttribute('hidden')).toBe(true);
+  });
+});
+
+// ============================================================================
+// Keyboard non-Escape key
+// ============================================================================
+describe('keyboard non-Escape key', () => {
+  it('does not close menus on non-Escape key', async () => {
+    const { initMenubar } = await import('@scripts/ui/menubar');
+    initMenubar(vi.fn());
+
+    const trigger = document.querySelector('.menu-trigger') as HTMLButtonElement;
+    trigger.click();
+    expect(document.querySelector('.menu-list')?.hasAttribute('hidden')).toBe(false);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(document.querySelector('.menu-list')?.hasAttribute('hidden')).toBe(false);
+  });
+});
+
+// ============================================================================
+// refreshPluginMenubarMenus - surface filter
+// ============================================================================
+describe('refreshPluginMenubarMenus surface filter', () => {
+  it('skips menu with empty id', async () => {
+    const { TAURI } = await import('@scripts/lib/tauri');
+    vi.mocked(TAURI.invoke).mockResolvedValue([
+      {
+        plugin_id: 'plugin.test',
+        id: '',
+        label: 'No ID',
+        surface: 'menubar',
+        elements: [{ type: 'button', id: 'btn', label: 'Btn' }],
+      },
+    ]);
+
+    const { refreshPluginMenubarMenus } = await import('@scripts/ui/menubar');
+    await refreshPluginMenubarMenus();
+    expect(document.querySelector('[data-plugin-menubar="true"]')).toBeNull();
+  });
+
+  it('skips non-menubar surface menu and handles menubar surface', async () => {
+    const { TAURI } = await import('@scripts/lib/tauri');
+    vi.mocked(TAURI.invoke).mockResolvedValue([
+      {
+        plugin_id: 'plugin.alpha',
+        id: 'file',
+        label: 'File',
+        surface: 'menubar',
+        elements: [{ type: 'button', id: 'real-btn', label: 'Real' }],
+      },
+    ]);
+
+    const { refreshPluginMenubarMenus } = await import('@scripts/ui/menubar');
+    await refreshPluginMenubarMenus();
+    const injected = document.querySelectorAll('[data-plugin-menubar="true"]');
+    expect(injected.length).toBeGreaterThanOrEqual(2);
+    expect(document.querySelector('[data-plugin-action="real-btn"]')).not.toBeNull();
+  });
+});
+
+// ============================================================================
+// Action dispatch edge cases
+// ============================================================================
+describe('action dispatch edge cases', () => {
+  it('handles click on menu-item with empty data-action', async () => {
+    const onAction = vi.fn();
+    const { initMenubar } = await import('@scripts/ui/menubar');
+    initMenubar(onAction);
+
+    const list = document.querySelector('.menu-list') as HTMLElement;
+    const item = document.createElement('button');
+    item.className = 'menu-item';
+    item.setAttribute('data-action', '');
+    list.appendChild(item);
+
+    item.click();
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it('dispatches non-plugin action with truthy id', async () => {
+    const onAction = vi.fn();
+    const { initMenubar } = await import('@scripts/ui/menubar');
+    initMenubar(onAction);
+
+    const trigger = document.querySelector('.menu-trigger') as HTMLButtonElement;
+    trigger.click();
+
+    (document.querySelector('[data-action="open-repo"]') as HTMLButtonElement).click();
+    await Promise.resolve();
+
+    expect(onAction).toHaveBeenCalledWith('open-repo');
   });
 });

@@ -218,6 +218,45 @@ describe('refreshRepoActions', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// ensureSystemSyncListener - systemSyncActive false branch (lines 21-26)
+// ---------------------------------------------------------------------------
+
+describe('ensureSystemSyncListener systemSyncActive false', () => {
+  let _changeListener: (() => void) | null;
+
+  beforeEach(() => {
+    vi.resetModules();
+    _changeListener = null;
+    Object.defineProperty(globalThis, 'matchMedia', {
+      value: (query: string) => ({
+        matches: query === '(prefers-color-scheme: dark)',
+        media: query,
+        addEventListener: (_event: string, cb: () => void) => {
+          if (_event === 'change') _changeListener = cb;
+        },
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      }),
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it('returns early from change listener when systemSyncActive is false', async () => {
+    const { setTheme } = await import('@scripts/ui/layout');
+
+    setTheme('light');
+    expect(_changeListener).not.toBeNull();
+
+    document.documentElement.setAttribute('data-theme', 'light');
+
+    _changeListener!();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
+});
+
 describe('setTheme', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -851,5 +890,247 @@ describe('renderAheadBehind with missing element', () => {
   it('does not crash when ahead-behind element is missing', async () => {
     const { bindLayoutActionState } = await import('@scripts/ui/layout');
     expect(() => bindLayoutActionState()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ensureSystemSyncListener - systemSyncActive true (lines 21-26)
+// ---------------------------------------------------------------------------
+
+describe('ensureSystemSyncListener systemSyncActive true', () => {
+  let _changeListener: ((this: MediaQueryList, ev: MediaQueryListEvent) => void) | null;
+
+  beforeEach(() => {
+    vi.resetModules();
+    _changeListener = null;
+    Object.defineProperty(globalThis, 'matchMedia', {
+      value: (query: string) => ({
+        matches: query === '(prefers-color-scheme: dark)',
+        media: query,
+        addEventListener: (_event: string, cb: (this: MediaQueryList, ev: MediaQueryListEvent) => void) => {
+          if (_event === 'change') _changeListener = cb;
+        },
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      }),
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it('does not update data-theme when systemSyncActive is false', async () => {
+    const { setTheme } = await import('@scripts/ui/layout');
+    setTheme('light');
+    expect(_changeListener).not.toBeNull();
+
+    document.documentElement.setAttribute('data-theme', 'light');
+    const prev = document.documentElement.getAttribute('data-theme');
+    _changeListener!({ matches: true } as MediaQueryListEvent);
+    expect(document.documentElement.getAttribute('data-theme')).toBe(prev);
+  });
+
+  it('follows SYSTEM_DARK_MQ.matches after setTheme system', async () => {
+    const { setTheme } = await import('@scripts/ui/layout');
+    setTheme('system');
+    expect(_changeListener).not.toBeNull();
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('deactivates sync when switching from system to explicit theme', async () => {
+    const { setTheme } = await import('@scripts/ui/layout');
+    setTheme('system');
+    setTheme('light');
+
+    document.documentElement.setAttribute('data-theme', 'light');
+    _changeListener!({ matches: true } as MediaQueryListEvent);
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setTab - animation timer edge cases
+// ---------------------------------------------------------------------------
+
+describe('setTab animation timer', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = `
+      <div class="work"></div>
+      <button class="tab" data-tab="changes">Changes</button>
+      <button class="tab" data-tab="history">History</button>
+      <button class="tab" data-tab="stash">Stash</button>
+      <div id="commit"></div>
+      <div id="diff-path"></div>
+    `;
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('clears existing tabSwitchAnimTimer on subsequent tab switch', async () => {
+    const { setTab } = await import('@scripts/ui/layout');
+    setTab('history');
+    // First switch sets timer
+    setTab('changes');
+    // Second switch should clear previous timer before it fires
+    vi.runAllTimers();
+    const workGrid = document.querySelector('.work') as HTMLElement;
+    expect(workGrid.classList.contains('is-tab-switching')).toBe(false);
+  });
+
+  it('handles missing work grid gracefully when workGrid is null', async () => {
+    document.body.innerHTML = `
+      <button class="tab" data-tab="changes">Changes</button>
+      <button class="tab" data-tab="history">History</button>
+      <div id="commit"></div>
+      <div id="diff-path"></div>
+    `;
+    const { setTab } = await import('@scripts/ui/layout');
+    expect(() => setTab('history')).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// refreshRepoActions - element missing edge cases
+// ---------------------------------------------------------------------------
+
+describe('refreshRepoActions missing elements', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    Object.defineProperty(globalThis, 'matchMedia', {
+      value: () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn() }),
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it('does not crash when most DOM elements are missing', async () => {
+    document.body.innerHTML = '<div class="work"></div>';
+    const { refreshRepoActions } = await import('@scripts/ui/layout');
+    expect(() => refreshRepoActions()).not.toThrow();
+  });
+
+  it('handles missing undo left button gracefully', async () => {
+    document.body.innerHTML = `
+      <div class="work"></div>
+      <button id="fetch-btn"></button>
+      <button id="push-btn"><span class="btn-label"></span></button>
+      <button id="branch-switch"></button>
+      <input id="commit-summary" />
+      <textarea id="commit-desc"></textarea>
+      <button id="commit-btn"></button>
+    `;
+    const { refreshRepoActions } = await import('@scripts/ui/layout');
+    expect(() => refreshRepoActions()).not.toThrow();
+  });
+
+  it('shows undo button when repo has ahead and on changes tab', async () => {
+    document.body.innerHTML = `
+      <div class="work"></div>
+      <button id="fetch-btn"></button>
+      <button id="push-btn"><span class="btn-label"></span></button>
+      <button id="branch-switch"></button>
+      <input id="commit-summary" />
+      <textarea id="commit-desc"></textarea>
+      <button id="commit-btn"></button>
+      <div id="left-foot" data-mode=""></div>
+      <button id="undo-left-btn"></button>
+    `;
+    const { refreshRepoActions } = await import('@scripts/ui/layout');
+    const { state } = await import('@scripts/state/state');
+    const { prefs } = await import('@scripts/state/state');
+
+    state.hasRepo = true;
+    state.ahead = 3;
+    prefs.tab = 'changes';
+
+    refreshRepoActions();
+
+    const undoLeftWrap = document.getElementById('left-foot') as HTMLElement;
+    expect(undoLeftWrap.classList.contains('show')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderAheadBehind - edge cases
+// ---------------------------------------------------------------------------
+
+describe('renderAheadBehind edge cases', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    Object.defineProperty(globalThis, 'matchMedia', {
+      value: () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn(), addListener: vi.fn(), removeListener: vi.fn() }),
+      configurable: true,
+      writable: true,
+    });
+    document.body.innerHTML = '<div id="ahead-behind"></div>';
+  });
+
+  it('shows only behind count when ahead is 0', async () => {
+    const { bindLayoutActionState } = await import('@scripts/ui/layout');
+    const { state } = await import('@scripts/state/state');
+    state.hasRepo = true;
+    state.ahead = 0;
+    state.behind = 5;
+    bindLayoutActionState();
+    await new Promise((r) => setTimeout(r, 0));
+    const el = document.getElementById('ahead-behind') as HTMLElement;
+    expect(el.textContent).toContain('↓5');
+    expect(el.textContent).not.toContain('↑');
+  });
+
+  it('removes hidden attribute when counts exist', async () => {
+    const { bindLayoutActionState } = await import('@scripts/ui/layout');
+    const { state } = await import('@scripts/state/state');
+    const el = document.getElementById('ahead-behind') as HTMLElement;
+    el.setAttribute('hidden', '');
+    state.hasRepo = true;
+    state.ahead = 2;
+    state.behind = 1;
+    bindLayoutActionState();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(el.hasAttribute('hidden')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyCommitSummaryRestriction - counter with input event
+// ---------------------------------------------------------------------------
+
+describe('applyCommitSummaryRestriction counter', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = `
+      <div id="commit-summary-wrap">
+        <input id="commit-summary" />
+      </div>
+    `;
+  });
+
+  it('updates counter on input event when restriction is enabled', async () => {
+    const { applyCommitSummaryRestriction } = await import('@scripts/ui/layout');
+    const input = document.getElementById('commit-summary') as HTMLInputElement;
+    input.value = 'Hello';
+
+    applyCommitSummaryRestriction(true);
+    let counter = input.parentElement?.querySelector('.summary-counter');
+    expect(counter?.textContent).toBe('5/72');
+
+    input.value = 'Hello World';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    counter = input.parentElement?.querySelector('.summary-counter');
+    expect(counter?.textContent).toBe('11/72');
+  });
+
+  it('truncates value when it exceeds 72 characters on enable', async () => {
+    const { applyCommitSummaryRestriction } = await import('@scripts/ui/layout');
+    const input = document.getElementById('commit-summary') as HTMLInputElement;
+    input.value = 'x'.repeat(100);
+
+    applyCommitSummaryRestriction(true);
+    expect(input.value.length).toBe(72);
   });
 });

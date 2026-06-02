@@ -549,6 +549,61 @@ describe('applyMenubarMenu with before positioning', () => {
   });
 });
 
+describe('registerPlugin null/undefined reg', () => {
+  beforeEach(async () => {
+    setupTauri();
+    vi.resetModules();
+    mountFullDom();
+  });
+
+  it('returns early when reg.id is empty and no context id available', async () => {
+    const { registerPlugin } = await import('@scripts/plugins/registration');
+    (window as any).__openvcsPluginContext = null;
+    // pluginId will be null, function returns early
+    expect(() => registerPlugin({ id: '' } as any)).not.toThrow();
+  });
+
+  it('handles null reg gracefully', async () => {
+    const { registerPlugin } = await import('@scripts/plugins/registration');
+    (window as any).__openvcsPluginContext = null;
+    expect(() => registerPlugin(null as any)).not.toThrow();
+  });
+});
+
+describe('registerPlugin menubarMenus empty id edge case', () => {
+  beforeEach(async () => {
+    setupTauri();
+    vi.resetModules();
+    mountFullDom();
+    const { _setApplyPluginSectionsFallback } = await import('@scripts/plugins/registration');
+    const { applyPluginSettingsSections } = await import('@scripts/plugins/runtime');
+    _setApplyPluginSectionsFallback(applyPluginSettingsSections);
+  });
+
+  it('handles menubar menu with empty id', async () => {
+    const { registerPlugin } = await import('@scripts/plugins/registration');
+    expect(() => registerPlugin({
+      id: 'empty-id-menu',
+      menubarMenus: [
+        { id: '', html: '<div class="menu" data-menu="empty"><button>E</button></div>' },
+      ],
+    })).not.toThrow();
+    // Sanitized empty id goes through but applyMenubarMenu checks empty id and returns early
+    expect(document.querySelector('.menu[data-menu="empty"]')).toBeNull();
+  });
+
+  it('handles menubar menu with whitespace-only id', async () => {
+    const { registerPlugin } = await import('@scripts/plugins/registration');
+    expect(() => registerPlugin({
+      id: 'ws-id-menu',
+      menubarMenus: [
+        { id: '  ', html: '<div class="menu" data-menu="ws"><button>W</button></div>' },
+      ],
+    })).not.toThrow();
+    expect(document.querySelector('.menu[data-menu="ws"]')).toBeNull();
+  });
+});
+
 describe('registerPlugin context menus coverage', () => {
   beforeEach(async () => {
     setupTauri();

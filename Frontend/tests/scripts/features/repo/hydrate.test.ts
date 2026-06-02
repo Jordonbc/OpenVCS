@@ -639,6 +639,22 @@ describe('hydrateCommits aheadIds', () => {
     await hydrateCommits();
     expect(Array.from((state as any).aheadIds)).toEqual([]);
   });
+
+  it('handles aheadList entries without id property', async () => {
+    const invoke = vi.fn(async (cmd: string, args?: any) => {
+      if (cmd === 'vcs_log' && !args?.rev) return [{ id: 'base', message: 'local' }];
+      if (cmd === 'vcs_log' && args?.rev === '@{upstream}..HEAD') return [{ no_id: true }, { id: 'valid-id' }, null];
+      return [];
+    });
+    (window as any).__TAURI__ = { core: { invoke }, event: { listen: vi.fn() } };
+
+    const { hydrateCommits } = await import('@scripts/features/repo/hydrate');
+    const { state } = await import('@scripts/state/state');
+    (state as any).ahead = 2;
+
+    await hydrateCommits();
+    expect(Array.from((state as any).aheadIds)).toEqual(['valid-id']);
+  });
 });
 
 describe('hydrateBranches hasRepo', () => {
@@ -1168,6 +1184,23 @@ describe('hydrateStatus edge cases', () => {
     await hydrateStatus();
     expect(state.files).toEqual([]);
   });
+
+  it('prunes diffSelectedFiles when undefined', async () => {
+    installTauriMock(async (cmd) => {
+      if (cmd === 'vcs_status') return { files: [{ path: 'keep.txt', status: 'M' }] };
+      if (cmd === 'vcs_merge_context') return { in_progress: false };
+      if (cmd === 'vcs_diff_file') return ['diff'];
+      return [];
+    });
+
+    const { hydrateStatus } = await import('@scripts/features/repo/hydrate');
+    const { state } = await import('@scripts/state/state');
+    state.defaultSelectAll = false;
+    state.selectedFiles = new Set(['keep.txt']);
+    (state as any).diffSelectedFiles = undefined;
+
+    await expect(hydrateStatus()).resolves.toBeUndefined();
+  });
 });
 
 describe('hydrateCommits edge cases', () => {
@@ -1235,5 +1268,96 @@ describe('hydrateVcsActionLabels edge cases', () => {
 
     await hydrateVcsActionLabels();
     expect(state.vcsActionLabels).toEqual({});
+  });
+});
+
+// ===========================================================================
+// Branch coverage: hydrateBranches snapshot path with hasRepo=false (line 195)
+// ===========================================================================
+describe('hydrateBranches snapshot hasRepo false', () => {
+  it('returns false when snapshot says hasRepo is false', async () => {
+    installTauriMock(async (cmd) => {
+      if (cmd === 'get_repo_snapshot') {
+        return {
+          revision: 'r1', has_repo: false, repo_path: '/repo',
+          branch: '', branch_label: '',
+          branches: [], files: [], commits: [], stash: [],
+          ahead: 0, behind: 0, branch_on_remote: false, merge_in_progress: false,
+          seen_conflicts: [], conflict_statuses: [], vcs_action_labels: {}, ahead_ids: [],
+        };
+      }
+      return [];
+    });
+
+    const { hydrateBranches } = await import('@scripts/features/repo/hydrate');
+    const result = await hydrateBranches();
+    expect(result).toBe(false);
+  });
+});
+
+// ===========================================================================
+// Branch coverage: ensureConflictStatusesLoaded with no-op when already loaded
+// ===========================================================================
+describe('ensureConflictStatusesLoaded early return', () => {
+  it('returns early when conflictStatuses is already populated', async () => {
+    const { ensureConflictStatusesLoaded } = await import('@scripts/features/repo/hydrate');
+    const { state } = await import('@scripts/state/state');
+    state.conflictStatuses = new Set(['U', 'UU']);
+
+    const invokeSpy = vi.fn();
+    (window as any).__TAURI__ = { core: { invoke: invokeSpy }, event: { listen: vi.fn() } };
+
+    await ensureConflictStatusesLoaded();
+    // invoke should NOT be called because conflictStatuses already has items
+    expect(invokeSpy).not.toHaveBeenCalled();
+    expect(state.conflictStatuses.size).toBe(2);
+  });
+});
+
+// ===========================================================================
+// Branch coverage: hydrateStash when Tauri runtime unavailable
+// ===========================================================================
+describe('hydrateStash no Tauri', () => {
+  it('returns early when Tauri runtime is not available', async () => {
+    delete (window as any).__TAURI__;
+    const { hydrateStash } = await import('@scripts/features/repo/hydrate');
+    await expect(hydrateStash()).resolves.toBeUndefined();
+  });
+});
+
+// ===========================================================================
+// Branch coverage: hydrateCommits with both behind=0 and ahead=0
+// ===========================================================================
+describe('hydrateCommits zero counts', () => {
+  it('handles behind=0 and ahead=0 without errors', async () => {
+    installTauriMock(async (cmd) => {
+      if (cmd === 'vcs_log') return [{ id: 'c1', message: 'only commit' }];
+      return [];
+    });
+
+    const { hydrateCommits } = await import('@scripts/features/repo/hydrate');
+    const { state } = await import('@scripts/state/state');
+    (state as any).behind = 0;
+    (state as any).ahead = 0;
+
+    await hydrateCommits();
+    expect(state.commits.length).toBe(1);
+    expect(state.commits[0].id).toBe('c1');
+  });
+});
+
+// ===========================================================================
+// Branch coverage: yieldToPaint when document visibility is unset
+// ===========================================================================
+describe('yieldToPaint visibility edge case', () => {
+  it('resolves via setTimeout when visibilityState is undefined', async () => {
+    const originalDef = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState');
+    // Set visibilityState to an unexpected value that is not 'visible'
+    Object.defineProperty(document, 'visibilityState', { value: '', configurable: true });
+    const { yieldToPaint } = await import('@scripts/features/repo/hydrate');
+    const spy = vi.spyOn(window, 'setTimeout');
+    await yieldToPaint();
+    expect(spy).toHaveBeenCalled();
+    if (originalDef) Object.defineProperty(document, 'visibilityState', originalDef);
   });
 });

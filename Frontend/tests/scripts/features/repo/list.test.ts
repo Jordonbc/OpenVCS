@@ -434,6 +434,69 @@ describe('renderChangesList display edge cases', () => {
     const row = document.querySelector('li.row') as HTMLElement;
     expect(row.classList.contains('resolved')).toBe(true);
   });
+
+  // --------------------------------------------------------------------------
+  // displayPath false branch: status R or C with empty old_path
+  // --------------------------------------------------------------------------
+  it('displays path directly when status R has no old_path', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'renamed.txt', status: 'R' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const fileDiv = document.querySelector('.file') as HTMLElement;
+    expect(fileDiv.textContent).toBe('renamed.txt');
+  });
+
+  it('displays path directly when status C has no old_path', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'copy.txt', status: 'C' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const fileDiv = document.querySelector('.file') as HTMLElement;
+    expect(fileDiv.textContent).toBe('copy.txt');
+  });
+
+  it('displays path directly when status R has empty string old_path', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'renamed2.txt', status: 'R', old_path: '' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const fileDiv = document.querySelector('.file') as HTMLElement;
+    expect(fileDiv.textContent).toBe('renamed2.txt');
+  });
+
+  it('displays path directly when status C has empty string old_path', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'copy2.txt', status: 'C', old_path: '' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const fileDiv = document.querySelector('.file') as HTMLElement;
+    expect(fileDiv.textContent).toBe('copy2.txt');
+  });
 });
 
 // ============================================================================
@@ -511,5 +574,339 @@ describe('renderChangesList status marks', () => {
     expect(rowMarks).not.toBeNull();
     const conflictMark = rowMarks.querySelector('.conflict-mark') as HTMLElement;
     expect(conflictMark).not.toBeNull();
+  });
+});
+
+// ============================================================================
+// renderList - mouseenter edge cases (isDragSelecting false branch)
+// ============================================================================
+describe('renderList mouseenter edge cases', () => {
+  it('does not fire drag actions when isDragSelecting returns false', async () => {
+    const interactions = await import('@scripts/features/repo/interactions');
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'nodrag.txt', status: 'M' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    // Ensure isDragSelecting starts returning false
+    (interactions.isDragSelecting as Mock).mockReturnValue(false);
+    (interactions.setDragCurrentIndex as Mock).mockClear();
+    (interactions.updateDragRange as Mock).mockClear();
+
+    renderList();
+
+    // The row was created, but isDragSelecting returns false,
+    // so mouseenter should NOT trigger setDragCurrentIndex
+    const row = document.querySelector('li.row') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+
+    expect((interactions.isDragSelecting as Mock)).toHaveBeenCalled();
+    expect(interactions.setDragCurrentIndex as Mock).not.toHaveBeenCalled();
+    expect(interactions.updateDragRange as Mock).not.toHaveBeenCalled();
+  });
+
+  it('handles mouseenter after isDragSelecting toggles from true to false', async () => {
+    const interactions = await import('@scripts/features/repo/interactions');
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [
+      { path: 'a.txt', status: 'M' },
+      { path: 'b.txt', status: 'A' },
+    ] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    vi.mocked(interactions.isDragSelecting).mockReturnValueOnce(true).mockReturnValueOnce(false);
+
+    renderList();
+    const rows = document.querySelectorAll('li.row');
+
+    // First row: isDragSelecting returns true
+    rows[0].dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    expect(vi.mocked(interactions.setDragCurrentIndex)).toHaveBeenCalledWith(0);
+
+    // Second row: isDragSelecting returns false
+    vi.mocked(interactions.setDragCurrentIndex).mockClear();
+    rows[1].dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+    expect(vi.mocked(interactions.setDragCurrentIndex)).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// renderChangesList - file path edge cases (null, undefined, spaces)
+// ============================================================================
+describe('renderChangesList path edge cases', () => {
+  it('handles file with null path gracefully', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: null, status: 'M' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const row = document.querySelector('li.row') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.getAttribute('data-path')).toBe('');
+  });
+
+  it('handles file with undefined path gracefully', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: undefined, status: 'M' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const row = document.querySelector('li.row') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row.getAttribute('data-path')).toBe('');
+  });
+
+  it('handles file with path containing leading/trailing whitespace', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: '  spaced.txt  ', status: 'M' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const fileDiv = document.querySelector('.file') as HTMLElement;
+    // displayPath uses String(f.path || '') without trim — path preserved as-is
+    expect(fileDiv.textContent).toBe('  spaced.txt  ');
+  });
+});
+
+// ============================================================================
+// renderChangesList - null DOM elements on empty files (lines 71-72)
+// ============================================================================
+describe('renderChangesList null DOM on empty files', () => {
+  it('does not crash when diffHeadPath is null and files is empty', async () => {
+    (document.getElementById('diff-path') as HTMLElement)?.remove();
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.hasRepo = true;
+    state.files = [];
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+
+    expect(() => renderList()).not.toThrow();
+  });
+
+  it('does not crash when diffEl is null and files is empty', async () => {
+    (document.getElementById('diff') as HTMLElement)?.remove();
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.hasRepo = true;
+    state.files = [];
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+
+    expect(() => renderList()).not.toThrow();
+  });
+});
+
+// ============================================================================
+// renderChangesList - status normalization (line 88)
+// ============================================================================
+describe('renderChangesList status normalization', () => {
+  it('handles file with null status via toUpperCase fallback', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'nostatus.txt', status: null }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const statusDot = document.querySelector('.status-dot') as HTMLElement;
+    expect(statusDot).not.toBeNull();
+    // Null status becomes '' after toUpperCase fallback; statusClass('') defaults to 'mod'
+    expect(statusDot.classList.contains('mod')).toBe(true);
+  });
+
+  it('handles file with undefined status via toUpperCase fallback', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'undefstatus.txt' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const statusDot = document.querySelector('.status-dot') as HTMLElement;
+    expect(statusDot).not.toBeNull();
+    // Undefined status falls to '' then 'mod' default
+    expect(statusDot.classList.contains('mod')).toBe(true);
+  });
+
+  it('converts lowercase status to uppercase', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: 'lower.txt', status: 'm' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const statusDot = document.querySelector('.status-dot') as HTMLElement;
+    expect(statusDot).not.toBeNull();
+    // Lowercase 'm' → toUpperCase 'M' → statusClass('M') returns 'mod'
+    expect(statusDot.classList.contains('mod')).toBe(true);
+  });
+});
+
+// ============================================================================
+// displayPath - whitespace trim for R/C paths (line 95)
+// ============================================================================
+describe('displayPath trim edge cases', () => {
+  it('trims whitespace from path in renamed display', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: '  new.txt  ', status: 'R', old_path: 'old.txt' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const fileDiv = document.querySelector('.file') as HTMLElement;
+    expect(fileDiv.textContent).toContain('old.txt → new.txt');
+    expect(fileDiv.textContent).not.toContain('  new.txt  ');
+  });
+
+  it('trims whitespace from path in copy display', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: '  copy-target.txt  ', status: 'C', old_path: 'source.txt' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const fileDiv = document.querySelector('.file') as HTMLElement;
+    expect(fileDiv.textContent).toContain('source.txt → copy-target.txt');
+    expect(fileDiv.textContent).not.toContain('  copy-target.txt  ');
+  });
+});
+
+// ============================================================================
+// renderList - early return on missing specific DOM elements (line 25)
+// ============================================================================
+describe('renderList early return specific elements', () => {
+  it('returns early when listEl is missing', async () => {
+    (document.getElementById('file-list') as HTMLElement)?.remove();
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    expect(() => renderList()).not.toThrow();
+  });
+
+  it('returns early when countEl is missing', async () => {
+    (document.getElementById('changes-count') as HTMLElement)?.remove();
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    expect(() => renderList()).not.toThrow();
+  });
+});
+
+// ============================================================================
+// Checkbox dataset.path for null/undefined path (line 119)
+// ============================================================================
+describe('checkbox dataset.path for edge case paths', () => {
+  it('sets empty dataset.path when f.path is null', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: null, status: 'M' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const cb = document.querySelector('input.pick') as HTMLInputElement;
+    expect(cb).not.toBeNull();
+    expect(cb.dataset.path).toBe('');
+  });
+
+  it('sets empty dataset.path when f.path is undefined', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.files = [{ path: undefined, status: 'M' }] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const cb = document.querySelector('input.pick') as HTMLInputElement;
+    expect(cb).not.toBeNull();
+    expect(cb.dataset.path).toBe('');
+  });
+});
+
+// ============================================================================
+// resolvedConflict via resolved_conflict on staged non-conflict file during merge
+// ============================================================================
+describe('renderChangesList resolvedConflict edge cases', () => {
+  it('marks resolved when resolved_conflict is true on staged file during merge', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.mergeInProgress = true;
+    state.seenConflicts = new Set(['conflict.txt']);
+    state.files = [
+      { path: 'conflict.txt', status: 'M', staged: true },
+    ] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const row = document.querySelector('li.row') as HTMLElement;
+    expect(row.classList.contains('resolved')).toBe(true);
+  });
+
+  it('does not mark resolved when staged but not in seenConflicts', async () => {
+    const { renderList } = await import('@scripts/features/repo/list');
+    const { prefs, state } = await import('@scripts/state/state');
+    prefs.tab = 'changes';
+    state.mergeInProgress = true;
+    state.seenConflicts = new Set(['other.txt']);
+    state.files = [
+      { path: 'clean.txt', status: 'M', staged: true },
+    ] as any;
+    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
+    state.currentFile = '';
+    state.currentDiff = [];
+
+    renderList();
+    const row = document.querySelector('li.row') as HTMLElement;
+    expect(row.classList.contains('resolved')).toBe(false);
   });
 });

@@ -776,3 +776,553 @@ describe('selectFile binary diff edge cases', () => {
     expect(state.currentDiffHunkNodes.size).toBe(0);
   });
 });
+
+describe('updateDiffHeaderMeta - missing DOM elements', () => {
+  it('handles missing diffLineEndingEl (line 41)', async () => {
+    const el = document.getElementById('diff-line-ending')!;
+    el.remove();
+
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    expect(() => updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'LF', bom: false, binary: false }, false)).not.toThrow();
+  });
+
+  it('handles missing diffEncodingEl', async () => {
+    const el = document.getElementById('diff-encoding')!;
+    el.remove();
+
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    expect(() => updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'LF', bom: false, binary: false }, false)).not.toThrow();
+  });
+
+  it('handles missing diffBomEl', async () => {
+    const el = document.getElementById('diff-bom')!;
+    el.remove();
+
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    expect(() => updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'LF', bom: false, binary: false }, false)).not.toThrow();
+  });
+
+  it('sets hidden on diffEncodingEl when forceBinary is true', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'LF', bom: false, binary: false }, true);
+    expect(document.getElementById('diff-encoding')!.hidden).toBe(true);
+  });
+
+  it('handles null meta', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    expect(() => updateDiffHeaderMeta(null, false)).not.toThrow();
+    expect(document.getElementById('diff-line-ending')?.textContent).toBe('\u2014');
+    expect(document.getElementById('diff-encoding')?.textContent).toBe('\u2014');
+  });
+});
+
+describe('renderCombinedDiff - pick-line with missing data attrs (lines 355-357)', () => {
+  it('skips pick-line when data-hunk is missing', async () => {
+    (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return ['diff --git a/a.txt b/a.txt', '@@ -1 +2 @@', '-old', '+new1', '+new2'];
+      }
+      return [];
+    });
+
+    const { renderCombinedDiff } = await import('@scripts/features/repo/diffView');
+    await renderCombinedDiff(['a.txt']);
+
+    const diff = document.getElementById('diff')!;
+    expect(diff.querySelector('.multi-hunk')).not.toBeNull();
+  });
+
+  it('handles pick-line without data-hunk attribute', async () => {
+    (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return ['diff --git a/a.txt b/a.txt', '@@ -1 +2 @@', '-old', '+new1', '+new2'];
+      }
+      return [];
+    });
+
+    const { state } = await import('@scripts/state/state');
+    (state as any).selectedLinesByFile = { 'a.txt': {} };
+    (state as any).selectedHunksByFile = {};
+
+    const { renderCombinedDiff } = await import('@scripts/features/repo/diffView');
+    await renderCombinedDiff(['a.txt']);
+
+    const lineCbs = document.querySelectorAll<HTMLInputElement>('#diff .multi-hunk[data-file="a.txt"] .pick-line');
+    expect(lineCbs.length).toBeGreaterThan(0);
+    lineCbs.forEach((cb) => {
+      expect(cb.dataset.hunk).toBeDefined();
+      expect(cb.dataset.line).toBeDefined();
+    });
+  });
+});
+
+describe('clearDiffSelection - null state.diffSelectedFiles (line 368)', () => {
+  it('handles null diffSelectedFiles', async () => {
+    const { clearDiffSelection } = await import('@scripts/features/repo/diffView');
+    const { state } = await import('@scripts/state/state');
+    (state as any).diffSelectedFiles = null;
+
+    expect(() => clearDiffSelection()).not.toThrow();
+  });
+
+  it('handles undefined diffSelectedFiles', async () => {
+    const { clearDiffSelection } = await import('@scripts/features/repo/diffView');
+    const { state } = await import('@scripts/state/state');
+    delete (state as any).diffSelectedFiles;
+
+    expect(() => clearDiffSelection()).not.toThrow();
+  });
+});
+
+describe('selectStashDiff - empty selector with DOM', () => {
+  it('renders empty diff when selector is empty', async () => {
+    const { selectStashDiff } = await import('@scripts/features/repo/diffView');
+    await selectStashDiff('');
+    const diffText = document.querySelector('#diff')?.textContent || '';
+    expect(diffText).not.toContain('Loading');
+  });
+});
+
+describe('highlightRow - history and changes tab coverage', () => {
+  it('highlights row with history selector and existing rows', async () => {
+    const { prefs } = await import('@scripts/state/state');
+    prefs.tab = 'history';
+    document.querySelector('#file-list')!.innerHTML = '<li class="row commit">a</li><li class="row commit">b</li><li class="row commit">c</li>';
+
+    const { highlightRow } = await import('@scripts/features/repo/diffView');
+    highlightRow(2);
+    const rows = document.querySelectorAll<HTMLElement>('#file-list .row.commit');
+    expect(rows[0].classList.contains('active')).toBe(false);
+    expect(rows[1].classList.contains('active')).toBe(false);
+    expect(rows[2].classList.contains('active')).toBe(true);
+  });
+
+  it('handles null listEl in highlightRow', async () => {
+    document.body.innerHTML = '';
+    const { highlightRow } = await import('@scripts/features/repo/diffView');
+    expect(() => highlightRow(0)).not.toThrow();
+  });
+});
+
+describe('selectFile - selectStashDiff edge cases', () => {
+  it('handles selectStashDiff with fully empty invoke result', async () => {
+    (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_stash_show') return [];
+      return [];
+    });
+
+    const { selectStashDiff } = await import('@scripts/features/repo/diffView');
+    await selectStashDiff('stash@{0}');
+    const diffText = document.querySelector('#diff')?.textContent || '';
+    expect(diffText).not.toContain('Loading');
+  });
+});
+
+// ============================================================================
+// formatLineEnding — all branches via updateDiffHeaderMeta
+// ============================================================================
+describe('formatLineEnding variants', () => {
+  it('formats MIXED line ending', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'MIXED', bom: false, binary: false }, false);
+    expect(document.getElementById('diff-line-ending')?.textContent).toBe('LF \u2194 CRLF');
+  });
+
+  it('formats NONE line ending as em dash', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'NONE', bom: false, binary: false }, false);
+    expect(document.getElementById('diff-line-ending')?.textContent).toBe('\u2014');
+  });
+
+  it('formats BINARY line ending', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'BINARY', bom: false, binary: false }, false);
+    expect(document.getElementById('diff-line-ending')?.textContent).toBe('Binary');
+  });
+
+  it('formats empty line ending as em dash', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: '', bom: false, binary: false }, false);
+    expect(document.getElementById('diff-line-ending')?.textContent).toBe('\u2014');
+  });
+
+  it('formats custom line ending as-is', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'CR', bom: false, binary: false }, false);
+    // 'CR'.trim().toUpperCase() = 'CR' → no match → return 'CR'
+    expect(document.getElementById('diff-line-ending')?.textContent).toBe('CR');
+  });
+
+  it('formats lowercase mixed line ending', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'mixed', bom: false, binary: false }, false);
+    expect(document.getElementById('diff-line-ending')?.textContent).toBe('LF \u2194 CRLF');
+  });
+});
+
+// ============================================================================
+// formatEncoding — all branches via updateDiffHeaderMeta
+// ============================================================================
+describe('formatEncoding variants', () => {
+  it('formats UTF-16BE encoding', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'UTF-16BE', line_ending: 'LF', bom: false, binary: false }, false);
+    expect(document.getElementById('diff-encoding')?.textContent).toBe('UTF-16 BE');
+  });
+
+  it('formats BINARY encoding', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'BINARY', line_ending: 'LF', bom: false, binary: false }, false);
+    expect(document.getElementById('diff-encoding')?.textContent).toBe('Binary');
+  });
+
+  it('formats empty encoding as em dash', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: '', line_ending: 'LF', bom: false, binary: false }, false);
+    expect(document.getElementById('diff-encoding')?.textContent).toBe('\u2014');
+  });
+
+  it('formats custom encoding as-is', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'ISO-8859-1', line_ending: 'LF', bom: false, binary: false }, false);
+    expect(document.getElementById('diff-encoding')?.textContent).toBe('ISO-8859-1');
+  });
+
+  it('formats lowercase utf-16le encoding', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'utf-16le', line_ending: 'LF', bom: false, binary: false }, false);
+    expect(document.getElementById('diff-encoding')?.textContent).toBe('UTF-16 LE');
+  });
+});
+
+// ============================================================================
+// renderCombinedDiff — single file success and mixed pass/fail
+// ============================================================================
+describe('renderCombinedDiff - file pass/fail combos', () => {
+  it('handles one file succeeding and one failing', async () => {
+    (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string, args?: any) => {
+      if (cmd === 'vcs_diff_file' && args?.path === 'good.txt') {
+        return ['diff --git a/good.txt b/good.txt', '@@ -1 +1 @@', '-old', '+new'];
+      }
+      if (cmd === 'vcs_diff_file' && args?.path === 'bad.txt') {
+        throw new Error('fail');
+      }
+      return [];
+    });
+
+    const { renderCombinedDiff } = await import('@scripts/features/repo/diffView');
+    await renderCombinedDiff(['good.txt', 'bad.txt']);
+
+    const html = document.querySelector('#diff')?.innerHTML || '';
+    expect(html).toContain('good.txt');
+    expect(html).toContain('bad.txt (failed to load diff)');
+    expect(html).toContain('data-file="good.txt"');
+  });
+
+  it('shows "No diffs" when all files are filtered out by empty paths', async () => {
+    const { renderCombinedDiff } = await import('@scripts/features/repo/diffView');
+    await renderCombinedDiff(['', null as any, undefined as any]);
+
+    const html = document.querySelector('#diff')?.innerHTML || '';
+    expect(html).toContain('No diffs');
+  });
+
+  it('deduplicates files and trims whitespace-only paths', async () => {
+    const { renderCombinedDiff } = await import('@scripts/features/repo/diffView');
+    await renderCombinedDiff(['a.txt', '', 'a.txt']);
+
+    const html = document.querySelector('#diff')?.innerHTML || '';
+    // Only 'a.txt' should render (deduplicated, empty filtered)
+    expect(html).toContain('a.txt');
+    expect(html).not.toContain('No diffs');
+    const header = document.getElementById('diff-path') as HTMLElement;
+    expect(header?.textContent).toContain('Multiple files (1)');
+  });
+});
+
+// ============================================================================
+// selectFile — conflict status with missing DOM elements
+// ============================================================================
+describe('selectFile - conflict status missing DOM', () => {
+  it('handles conflict status when diff-line-ending element is missing', async () => {
+    const { state } = await import('@scripts/state/state');
+    state.conflictStatuses = new Set(['U', 'UU']);
+    const el = document.getElementById('diff-line-ending')!;
+    el.remove();
+
+    const { selectFile } = await import('@scripts/features/repo/diffView');
+    await selectFile({ path: 'conflict.txt', status: 'U' } as any, 0);
+
+    const headPath = document.getElementById('diff-path') as HTMLElement;
+    expect(headPath?.textContent).toContain('conflicted');
+  });
+
+  it('handles conflict status when diff-encoding element is missing', async () => {
+    const { state } = await import('@scripts/state/state');
+    state.conflictStatuses = new Set(['UU']);
+    const el = document.getElementById('diff-encoding')!;
+    el.remove();
+
+    const { selectFile } = await import('@scripts/features/repo/diffView');
+    await selectFile({ path: 'conflict.txt', status: 'UU' } as any, 0);
+
+    expect(document.getElementById('diff-path')?.textContent).toContain('conflicted');
+  });
+
+  it('handles conflict status when diff-bom element is missing', async () => {
+    const { state } = await import('@scripts/state/state');
+    state.conflictStatuses = new Set(['AA']);
+    const el = document.getElementById('diff-bom')!;
+    el.remove();
+
+    const { selectFile } = await import('@scripts/features/repo/diffView');
+    await selectFile({ path: 'conflict.txt', status: 'AA' } as any, 0);
+
+    expect(document.getElementById('diff-path')?.textContent).toContain('conflicted');
+  });
+});
+
+// ============================================================================
+// updateDiffHeaderMeta — forceBinary hides encoding
+// ============================================================================
+describe('updateDiffHeaderMeta - forceBinary effects', () => {
+  it('hides diff-encoding and sets line-ending to Binary when forceBinary=true', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'LF', bom: true, binary: false }, true);
+    expect(document.getElementById('diff-line-ending')?.textContent).toBe('Binary');
+    expect(document.getElementById('diff-encoding')?.hidden).toBe(true);
+    expect(document.getElementById('diff-bom')?.hidden).toBe(true);
+  });
+
+  it('shows BOM when bom is true and not forced binary', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'LF', bom: true, binary: false }, false);
+    expect(document.getElementById('diff-bom')?.hidden).toBe(false);
+  });
+
+  it('hides BOM when bom is false', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'LF', bom: false, binary: false }, false);
+    expect(document.getElementById('diff-bom')?.hidden).toBe(true);
+  });
+});
+
+// ============================================================================
+// updateDiffHeaderMeta — aria-label when displayMeta is null or present
+// ============================================================================
+describe('updateDiffHeaderMeta - aria-label coverage', () => {
+  it('sets aria-label to "No file metadata available" when displayMeta is null', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    const metaEl = document.getElementById('diff-meta')!;
+    updateDiffHeaderMeta(null, false);
+    expect(metaEl.getAttribute('aria-label')).toBe('No file metadata available');
+  });
+
+  it('sets aria-label to "Selected file metadata" when displayMeta is present', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    const metaEl = document.getElementById('diff-meta')!;
+    updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'LF', bom: false, binary: false }, false);
+    expect(metaEl.getAttribute('aria-label')).toBe('Selected file metadata');
+  });
+
+  it('sets aria-label to "Selected file metadata" when forceBinary converts meta', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    const metaEl = document.getElementById('diff-meta')!;
+    updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'LF', bom: false, binary: false }, true);
+    expect(metaEl.getAttribute('aria-label')).toBe('Selected file metadata');
+  });
+});
+
+// ============================================================================
+// formatLineEnding — BINARY
+// ============================================================================
+describe('formatLineEnding BINARY', () => {
+  it('formats BINARY line ending via updateDiffHeaderMeta', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'UTF-8', line_ending: 'BINARY', bom: false, binary: true }, false);
+    expect(document.getElementById('diff-line-ending')?.textContent).toBe('Binary');
+  });
+});
+
+// ============================================================================
+// formatEncoding — UTF-16LE
+// ============================================================================
+describe('formatEncoding UTF-16LE', () => {
+  it('formats UTF-16LE encoding via updateDiffHeaderMeta', async () => {
+    const { updateDiffHeaderMeta } = await import('@scripts/features/repo/diffView');
+    updateDiffHeaderMeta({ encoding: 'UTF-16LE', line_ending: 'LF', bom: false, binary: false }, false);
+    expect(document.getElementById('diff-encoding')?.textContent).toBe('UTF-16 LE');
+  });
+});
+
+// ============================================================================
+// selectFile — file.path null/undefined/empty (line 109 false branch)
+// ============================================================================
+describe('selectFile with null/undefined/empty file.path', () => {
+  it('handles null file.path (line 109 false branch for metaPromise)', async () => {
+    const { selectFile } = await import('@scripts/features/repo/diffView');
+    const invokeSpy = (window as any).__TAURI__.core.invoke;
+
+    await selectFile({ path: null, status: 'M' } as any, 0);
+
+    // metaPromise resolved to null (no invoke call), vcs_diff_file not called either
+    expect(invokeSpy).not.toHaveBeenCalledWith('read_repo_file_meta', { path: null });
+    expect(invokeSpy).not.toHaveBeenCalledWith('vcs_diff_file', { path: null });
+    const diffText = document.querySelector('#diff')?.textContent || '';
+    expect(diffText).toContain('No textual hunks to display');
+  });
+
+  it('handles undefined file.path (line 109 false branch)', async () => {
+    const { selectFile } = await import('@scripts/features/repo/diffView');
+    const invokeSpy = (window as any).__TAURI__.core.invoke;
+
+    await selectFile({ status: 'M' } as any, 0);
+
+    expect(invokeSpy).not.toHaveBeenCalledWith('read_repo_file_meta');
+    expect(invokeSpy).not.toHaveBeenCalledWith('vcs_diff_file');
+    const diffText = document.querySelector('#diff')?.textContent || '';
+    expect(diffText).toContain('No textual hunks to display');
+  });
+
+  it('handles empty string file.path', async () => {
+    const { selectFile } = await import('@scripts/features/repo/diffView');
+    const invokeSpy = (window as any).__TAURI__.core.invoke;
+
+    await selectFile({ path: '', status: 'M' } as any, 0);
+
+    expect(invokeSpy).not.toHaveBeenCalledWith('read_repo_file_meta', { path: '' });
+    expect(invokeSpy).not.toHaveBeenCalledWith('vcs_diff_file', { path: '' });
+    const headPath = document.getElementById('diff-path') as HTMLElement;
+    expect(headPath?.textContent).toContain('(unknown file)');
+  });
+});
+
+// ============================================================================
+// selectFile — conflict status with null file.path
+// ============================================================================
+describe('selectFile conflict with null path', () => {
+  it('shows "(unknown file) (conflicted)" for conflict status with null path', async () => {
+    const { state } = await import('@scripts/state/state');
+    state.conflictStatuses = new Set(['U']);
+    const { selectFile } = await import('@scripts/features/repo/diffView');
+    const invokeSpy = (window as any).__TAURI__.core.invoke;
+
+    await selectFile({ path: null, status: 'U' } as any, 0);
+
+    const headPath = document.getElementById('diff-path') as HTMLElement;
+    expect(headPath?.textContent).toContain('(unknown file) (conflicted)');
+  });
+});
+
+// ============================================================================
+// selectFile — conflict with missing diffHeadPath/diffEl (early return)
+// ============================================================================
+describe('selectFile early return with missing DOM elements', () => {
+  it('returns early when diffHeadPath/diffEl are null even for conflict status', async () => {
+    document.body.innerHTML = '';
+    const { state } = await import('@scripts/state/state');
+    state.conflictStatuses = new Set(['U']);
+    const { selectFile } = await import('@scripts/features/repo/diffView');
+    const invokeSpy = (window as any).__TAURI__.core.invoke;
+
+    await expect(selectFile({ path: 'conflict.txt', status: 'U' } as any, 0)).resolves.toBeUndefined();
+    expect(invokeSpy).not.toHaveBeenCalledWith('vcs_diff_file', { path: 'conflict.txt' });
+  });
+});
+
+// ============================================================================
+// selectStashDiff — empty selector with invoke tracking
+// ============================================================================
+describe('selectStashDiff empty selector', () => {
+  it('skips vcs_stash_show when selector is empty string', async () => {
+    const invokeSpy = (window as any).__TAURI__.core.invoke;
+    const { selectStashDiff } = await import('@scripts/features/repo/diffView');
+
+    await selectStashDiff('');
+
+    expect(invokeSpy).not.toHaveBeenCalledWith('vcs_stash_show', { selector: '' });
+    const diffText = document.querySelector('#diff')?.textContent || '';
+    expect(diffText).not.toContain('Loading');
+  });
+});
+
+// ============================================================================
+// selectStashDiff — missing DOM elements (early return)
+// ============================================================================
+describe('selectStashDiff missing DOM', () => {
+  it('returns early when diffHeadPath is missing', async () => {
+    const el = document.getElementById('diff-path')!;
+    el.remove();
+    const invokeSpy = (window as any).__TAURI__.core.invoke;
+    const { selectStashDiff } = await import('@scripts/features/repo/diffView');
+
+    await selectStashDiff('stash@{0}');
+    expect(invokeSpy).not.toHaveBeenCalledWith('vcs_stash_show', { selector: 'stash@{0}' });
+  });
+
+  it('returns early when diffEl is missing', async () => {
+    const el = document.getElementById('diff')!;
+    el.remove();
+    const invokeSpy = (window as any).__TAURI__.core.invoke;
+    const { selectStashDiff } = await import('@scripts/features/repo/diffView');
+
+    await selectStashDiff('stash@{0}');
+    expect(invokeSpy).not.toHaveBeenCalledWith('vcs_stash_show', { selector: 'stash@{0}' });
+  });
+});
+
+// ============================================================================
+// renderCombinedDiff — duplicate path filtering via Set (line 304)
+// ============================================================================
+describe('renderCombinedDiff duplicate path filtering', () => {
+  it('deduplicates paths via Set preserving only unique entries', async () => {
+    const { renderCombinedDiff } = await import('@scripts/features/repo/diffView');
+    await renderCombinedDiff(['a.txt', 'a.txt', 'a.txt']);
+    const header = document.getElementById('diff-path') as HTMLElement;
+    expect(header?.textContent).toContain('Multiple files (1)');
+    const html = document.querySelector('#diff')?.innerHTML || '';
+    expect(html).toContain('-old');
+  });
+
+  it('filters out null and undefined paths then deduplicates', async () => {
+    const { renderCombinedDiff } = await import('@scripts/features/repo/diffView');
+    await renderCombinedDiff(['a.txt', null as any, undefined as any, 'b.txt', 'a.txt']);
+    const header = document.getElementById('diff-path') as HTMLElement;
+    expect(header?.textContent).toContain('Multiple files (2)');
+  });
+});
+
+// ============================================================================
+// clearDiffSelection — null listEl edge cases
+// ============================================================================
+describe('clearDiffSelection null listEl', () => {
+  it('returns early when listEl is null without clearing diffSelectedFiles', async () => {
+    const ul = document.getElementById('file-list')!;
+    ul.remove();
+    const { clearDiffSelection } = await import('@scripts/features/repo/diffView');
+    const { state } = await import('@scripts/state/state');
+    state.diffSelectedFiles = new Set(['keep.txt']);
+
+    clearDiffSelection();
+    expect(state.diffSelectedFiles.has('keep.txt')).toBe(true);
+  });
+
+  it('handles listEl present but diffSelectedFiles is null', async () => {
+    const { clearDiffSelection } = await import('@scripts/features/repo/diffView');
+    const { state } = await import('@scripts/state/state');
+    (state as any).diffSelectedFiles = null;
+
+    expect(() => clearDiffSelection()).not.toThrow();
+  });
+});
+
+// ============================================================================
+// clearActiveRows — null listEl edge case
+// ============================================================================
+describe('clearActiveRows null listEl', () => {
+  it('returns early when listEl is null', async () => {
+    document.body.innerHTML = '';
+    const { clearActiveRows } = await import('@scripts/features/repo/diffView');
+    expect(() => clearActiveRows()).not.toThrow();
+  });
+});

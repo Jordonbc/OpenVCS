@@ -769,8 +769,6 @@ describe('launchExternalMergeTool with tool enabled', () => {
   });
 
   it('reports "not configured" when hasExternalMergeTool returns false on second call too', async () => {
-    // First call to hasExternalMergeTool (via openConflictsSummary) returns false
-    // But if launchExternalMergeTool is called directly when not configured
     mockInvoke.mockResolvedValue({ diff: { external_merge: { enabled: false, path: '' } } });
 
     const { notify } = await import('@scripts/lib/notify');
@@ -779,5 +777,269 @@ describe('launchExternalMergeTool with tool enabled', () => {
     await launchExternalMergeTool('/path/to/file.txt');
 
     expect(notify).toHaveBeenCalledWith('No custom merge tool configured');
+  });
+});
+
+// ============================================================================
+// Branch coverage: tool button click when canUseExternal is false (lines 185-186)
+// ============================================================================
+describe('tool button click with canUseExternal false', () => {
+  it('notifies "not configured" when disabled tool button is clicked programmatically', async () => {
+    mountConflictsSummaryModal();
+    const { notify } = await import('@scripts/lib/notify');
+    mockInvoke
+      .mockResolvedValueOnce({ in_progress: false })
+      .mockResolvedValueOnce(null);
+
+    const { openConflictsSummary } = await import('@scripts/features/conflicts');
+    await openConflictsSummary([{ path: 'f.txt', status: 'U' }]);
+
+    const listEl = document.getElementById('conflicts-summary-list') as HTMLElement;
+    const buttons = listEl.querySelectorAll('button');
+    const toolBtn = buttons[1] as HTMLButtonElement;
+    expect(toolBtn.disabled).toBe(true);
+
+    // Dispatch click directly (jsdom .click() on disabled buttons doesn't fire listeners)
+    toolBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(notify).toHaveBeenCalledWith('No custom merge tool configured');
+  });
+});
+
+// ============================================================================
+// Branch coverage: openConflictsSummary with missing listEl
+// ============================================================================
+describe('openConflictsSummary missing listEl', () => {
+  it('completes without error when list container is missing', async () => {
+    const modal = document.createElement('div');
+    modal.id = 'conflicts-summary-modal';
+    modal.innerHTML = '<span id="conflicts-summary-count"></span>';
+    document.body.appendChild(modal);
+
+    mockInvoke.mockResolvedValue({ in_progress: false });
+
+    const { openConflictsSummary } = await import('@scripts/features/conflicts');
+    await expect(openConflictsSummary([{ path: 'f.txt', status: 'U' }])).resolves.toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Branch coverage: autoOpenFirstConflict dedup signature
+// ============================================================================
+describe('autoOpenFirstConflict signature dedup', () => {
+  it('skips opening when signature matches previous call', async () => {
+    mountConflictsSummaryModal();
+    mockInvoke.mockResolvedValue({ in_progress: false });
+
+    const { autoOpenFirstConflict } = await import('@scripts/features/conflicts');
+    // First call opens the summary
+    await autoOpenFirstConflict([{ path: 'f1.txt', status: 'U' }]);
+    const countEl = document.getElementById('conflicts-summary-count') as HTMLElement;
+    expect(countEl.textContent).toBe('1 conflicted file');
+
+    // Second call with same paths should skip (signature match)
+    countEl.textContent = 'unchanged';
+    await autoOpenFirstConflict([{ path: 'f1.txt', status: 'U' }]);
+    expect(countEl.textContent).toBe('unchanged');
+  });
+
+  it('opens again when signature changes', async () => {
+    mountConflictsSummaryModal();
+    mockInvoke.mockResolvedValue({ in_progress: false });
+
+    const { autoOpenFirstConflict } = await import('@scripts/features/conflicts');
+    await autoOpenFirstConflict([{ path: 'a.txt', status: 'U' }]);
+    let countEl = document.getElementById('conflicts-summary-count') as HTMLElement;
+    expect(countEl.textContent).toBe('1 conflicted file');
+
+    // Different path should open again
+    await autoOpenFirstConflict([{ path: 'b.txt', status: 'U' }]);
+    countEl = document.getElementById('conflicts-summary-count') as HTMLElement;
+    expect(countEl.textContent).toBe('1 conflicted file');
+  });
+
+  it('resets signature when no conflicted files remain', async () => {
+    mountConflictsSummaryModal();
+    mockInvoke.mockResolvedValue({ in_progress: false });
+
+    const { autoOpenFirstConflict } = await import('@scripts/features/conflicts');
+    // First call with a conflict
+    await autoOpenFirstConflict([{ path: 'f.txt', status: 'U' }]);
+    let countEl = document.getElementById('conflicts-summary-count') as HTMLElement;
+    expect(countEl.textContent).toBe('1 conflicted file');
+
+    // Second call with no conflicts should reset the signature
+    countEl.textContent = 'reset-check';
+    await autoOpenFirstConflict([{ path: 'clean.txt', status: 'M' }]);
+    expect(countEl.textContent).toBe('reset-check');
+  });
+});
+
+// ============================================================================
+// Branch coverage: ensureMergeModal early returns when modal missing
+// ============================================================================
+describe('ensureMergeModal with missing modal', () => {
+  it('handles missing merge-modal gracefully', async () => {
+    const { openMergeModal } = await import('@scripts/features/conflicts');
+    await expect(
+      openMergeModal(
+        { path: 'f.txt', status: 'U' },
+        { path: 'f.txt', ours: 'a', theirs: 'b' },
+      ),
+    ).resolves.toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Branch coverage: ensureSummaryModal early returns
+// ============================================================================
+describe('ensureSummaryModal early returns', () => {
+  it('handles missing summary modal gracefully', async () => {
+    const { openConflictsSummary } = await import('@scripts/features/conflicts');
+    await expect(
+      openConflictsSummary([{ path: 'f.txt', status: 'U' }]),
+    ).resolves.toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Branch coverage: ensureMergeModal apply with no currentConflict
+// ============================================================================
+describe('ensureMergeModal no currentConflict', () => {
+  it('notifies when apply clicked without active conflict', async () => {
+    mountMergeModal();
+    const { notify } = await import('@scripts/lib/notify');
+    const { openMergeModal } = await import('@scripts/features/conflicts');
+
+    await openMergeModal(
+      { path: 'f.txt', status: 'U' },
+      { path: 'f.txt', ours: 'a', theirs: 'b' },
+    );
+
+    const applyBtn = document.getElementById('merge-apply') as HTMLButtonElement;
+    applyBtn.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+});
+
+// ============================================================================
+// Branch coverage: openConflictsSummary with canUseExternal catch
+// ============================================================================
+describe('openConflictsSummary hasExternalMergeTool catch', () => {
+  it('handles hasExternalMergeTool rejection gracefully', async () => {
+    mountConflictsSummaryModal();
+    mockInvoke
+      .mockResolvedValueOnce({ in_progress: false })
+      .mockRejectedValueOnce(new Error('settings fail'));
+
+    const { notify } = await import('@scripts/lib/notify');
+
+    const { openConflictsSummary } = await import('@scripts/features/conflicts');
+    await openConflictsSummary([{ path: 'f.txt', status: 'U' }]);
+
+    const listEl = document.getElementById('conflicts-summary-list') as HTMLElement;
+    const buttons = listEl.querySelectorAll('button');
+    const toolBtn = buttons[1] as HTMLButtonElement;
+    expect(toolBtn.disabled).toBe(true);
+  });
+});
+
+// ============================================================================
+// Branch coverage: openConflictsSummary tool button with external tool, but invoke fails
+// ============================================================================
+describe('openConflictsSummary tool button invoke failure', () => {
+  it('handles vcs_launch_merge_tool rejection', async () => {
+    mountConflictsSummaryModal();
+    mockInvoke
+      .mockResolvedValueOnce({ in_progress: false })
+      .mockResolvedValueOnce({
+        diff: { external_merge: { enabled: true, path: '/usr/bin/meld', args: '' } },
+      })
+      .mockRejectedValueOnce(new Error('launch error'));
+
+    const { notify } = await import('@scripts/lib/notify');
+
+    const { openConflictsSummary } = await import('@scripts/features/conflicts');
+    await openConflictsSummary([{ path: 'f.txt', status: 'U' }]);
+
+    const listEl = document.getElementById('conflicts-summary-list') as HTMLElement;
+    const buttons = listEl.querySelectorAll('button');
+    const toolBtn = buttons[1] as HTMLButtonElement;
+    expect(toolBtn.disabled).toBe(false);
+    toolBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(notify).toHaveBeenCalledWith('Failed to open merge tool');
+  });
+});
+
+// ============================================================================
+// Branch coverage: autoOpenFirstConflict - early return for empty conflicted
+// ============================================================================
+describe('autoOpenFirstConflict early returns', () => {
+  it('returns when conflicted paths list becomes empty after filter', async () => {
+    mountConflictsSummaryModal();
+    mockInvoke.mockResolvedValue({ in_progress: false });
+
+    const { autoOpenFirstConflict } = await import('@scripts/features/conflicts');
+    await autoOpenFirstConflict([{ path: 'clean.txt', status: 'M' }]);
+    const listEl = document.getElementById('conflicts-summary-list') as HTMLElement;
+    expect(listEl.children.length).toBe(0);
+  });
+
+  it('opens modal again when signature changes after reset', async () => {
+    mountConflictsSummaryModal();
+    mockInvoke.mockResolvedValue({ in_progress: false });
+
+    const { autoOpenFirstConflict } = await import('@scripts/features/conflicts');
+    await autoOpenFirstConflict([{ path: 'f1.txt', status: 'U' }]);
+    let countEl = document.getElementById('conflicts-summary-count') as HTMLElement;
+    expect(countEl.textContent).toBe('1 conflicted file');
+
+    await autoOpenFirstConflict([{ path: 'clean.txt', status: 'M' }]);
+
+    countEl.textContent = 'old-count';
+    await autoOpenFirstConflict([{ path: 'new.txt', status: 'U' }]);
+    countEl = document.getElementById('conflicts-summary-count') as HTMLElement;
+    expect(countEl.textContent).toBe('1 conflicted file');
+  });
+});
+
+// ============================================================================
+// Branch coverage: ensureMergeModal - missing textarea
+// ============================================================================
+describe('ensureMergeModal missing textarea', () => {
+  it('handles missing merge-result textarea gracefully', async () => {
+    mountMergeModal();
+    document.getElementById('merge-result')?.remove();
+
+    const { openMergeModal } = await import('@scripts/features/conflicts');
+    await openMergeModal(
+      { path: 'f.txt', status: 'U' },
+      { path: 'f.txt', ours: 'a', theirs: 'b' },
+    );
+
+    const applyBtn = document.getElementById('merge-apply') as HTMLButtonElement;
+    expect(() => applyBtn.click()).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+});
+
+// ============================================================================
+// Branch coverage: openMergeModal - missing path label
+// ============================================================================
+describe('openMergeModal missing path label', () => {
+  it('handles missing merge-path element gracefully', async () => {
+    mountMergeModal();
+    document.getElementById('merge-path')?.remove();
+
+    const { openMergeModal } = await import('@scripts/features/conflicts');
+    await expect(
+      openMergeModal(
+        { path: 'f.txt', status: 'U' },
+        { path: 'f.txt', ours: 'a', theirs: 'b' },
+      ),
+    ).resolves.toBeUndefined();
   });
 });
