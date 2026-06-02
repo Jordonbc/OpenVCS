@@ -234,19 +234,25 @@ export function toggleSelectAll(on: boolean, visible: FileStatus[]) {
 export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
     ev.preventDefault();
     const x = ev.clientX, y = ev.clientY;
-    const selectedPaths = Array.from(state.selectedFiles || [])
-        .map((path) => path.trim())
+    const diffPaths = Array.from(state.diffSelectedFiles || [])
+        .map((p) => p.trim())
         .filter(Boolean);
+    const stagingPaths = Array.from(state.selectedFiles || [])
+        .map((p) => p.trim())
+        .filter(Boolean);
+    const hasMultiStaging = stagingPaths.length > 1 && !state.selectionImplicitAll;
+    const hasMultiDiff = diffPaths.length > 1;
+    const useDiffSelection = hasMultiDiff && !hasMultiStaging;
+    const selectedPaths = useDiffSelection ? diffPaths : stagingPaths;
     const clickedPath = (f.path || '').trim();
-    const clickedInSelection = !!clickedPath && (state.selectedFiles?.has(clickedPath) ?? false);
-    const explicitMultiSelection =
-        clickedInSelection &&
-        selectedPaths.length > 1 &&
-        !state.selectionImplicitAll;
-    const hasSingleSelection =
-        clickedInSelection &&
-        selectedPaths.length === 1 &&
-        !state.selectionImplicitAll;
+    const clickedInSelection = useDiffSelection
+        ? diffPaths.includes(clickedPath)
+        : stagingPaths.includes(clickedPath);
+    const explicitMultiSelection = useDiffSelection
+        ? hasMultiDiff && clickedInSelection
+        : hasMultiStaging && clickedInSelection;
+    const hasSingleSelection = !useDiffSelection && clickedInSelection && stagingPaths.length === 1 && !state.selectionImplicitAll;
+    const singleTarget = (hasSingleSelection ? selectedPaths[0] : clickedPath) || '';
     const items: CtxItem[] = [];
     /** Opens the stash modal pre-filled for the provided paths. */
     const openStashForPaths = (paths: string[], defaultMessage: string) => {
@@ -278,9 +284,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         items.push({ label: 'Create stash from selection…', action: () => {
             openStashForPaths(selectedPaths.slice(), 'WIP selection');
         }});
-    }
-    const singleTarget = (hasSingleSelection ? selectedPaths[0] : clickedPath) || '';
-    if (singleTarget) {
+    } else if (singleTarget) {
         const defaultMsg = `WIP ${singleTarget}`;
         items.push({ label: 'Create stash for this file…', action: () => {
             openStashForPaths([singleTarget], defaultMsg);
@@ -310,13 +314,14 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             try { await TAURI.invoke('vcs_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
             catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
         }});
+    } else {
+        items.push({ label: 'Discard changes', action: async () => {
+            const ok = await confirmBool(`Discard all changes in \n${f.path}? This cannot be undone.`);
+            if (!ok) return;
+            try { await TAURI.invoke('vcs_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
+            catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
+        }});
     }
-    items.push({ label: 'Discard changes', action: async () => {
-        const ok = await confirmBool(`Discard all changes in \n${f.path}? This cannot be undone.`);
-        if (!ok) return;
-        try { await TAURI.invoke('vcs_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
-        catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
-    }});
 
     const pluginTargets = (explicitMultiSelection ? selectedPaths.slice() : [singleTarget]).filter(Boolean);
     const pluginItems = getPluginContextMenuItems('files');

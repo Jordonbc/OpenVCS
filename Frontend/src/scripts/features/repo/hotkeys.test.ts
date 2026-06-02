@@ -13,10 +13,12 @@ vi.mock('./context', () => ({
   filterInput: mockFilterInput,
 }));
 
+const mockState = {
+  selectedFiles: new Set<string>(),
+  diffSelectedFiles: new Set<string>(),
+};
 vi.mock('../../state/state', () => ({
-  state: {
-    selectedFiles: new Set<string>(),
-  },
+  state: mockState,
   prefs: { tab: 'changes' },
   disableDefaultSelectAll: vi.fn(),
 }));
@@ -258,6 +260,59 @@ describe('bindRepoHotkeys', () => {
     fireKeydown('a', { ctrlKey: true });
 
     expect(mockToggleSelectAll).not.toHaveBeenCalled();
+  });
+
+  it('selects all files for diff viewing on Shift+A', async () => {
+    mockState.diffSelectedFiles = new Set();
+    const visibleFiles = [{ path: 'a.js' as string }, { path: 'b.js' as string }];
+    mockGetVisibleFiles.mockReturnValue(visibleFiles);
+
+    const mod = await loadHotkeys();
+    mod.bindRepoHotkeys(null, vi.fn());
+
+    const event = fireKeydown('a', { shiftKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(mockRenderList).toHaveBeenCalled();
+  });
+
+  it('deselects all diff-selected files on Shift+A when all are selected', async () => {
+    mockState.diffSelectedFiles = new Set(['a.js', 'b.js']);
+    const visibleFiles = [{ path: 'a.js' as string }, { path: 'b.js' as string }];
+    mockGetVisibleFiles.mockReturnValue(visibleFiles);
+
+    const mod = await loadHotkeys();
+    mod.bindRepoHotkeys(null, vi.fn());
+
+    const event = fireKeydown('a', { shiftKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(mockRenderList).toHaveBeenCalled();
+  });
+
+  it('does nothing on Shift+A when tab is not changes', async () => {
+    const { prefs } = await import('../../state/state');
+    prefs.tab = 'history';
+
+    const mod = await loadHotkeys();
+    mod.bindRepoHotkeys(null, vi.fn());
+
+    fireKeydown('a', { shiftKey: true });
+
+    expect(mockRenderList).not.toHaveBeenCalled();
+  });
+
+  it('does nothing on Shift+A when no visible files', async () => {
+    const { prefs } = await import('../../state/state');
+    prefs.tab = 'changes';
+    mockGetVisibleFiles.mockReturnValue([]);
+
+    const mod = await loadHotkeys();
+    mod.bindRepoHotkeys(null, vi.fn());
+
+    fireKeydown('a', { shiftKey: true });
+
+    expect(mockRenderList).not.toHaveBeenCalled();
   });
 
   it('dismisses about-modal on Escape', async () => {

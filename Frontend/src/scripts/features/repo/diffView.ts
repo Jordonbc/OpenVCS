@@ -311,7 +311,7 @@ export async function renderCombinedDiff(paths: string[]) {
             const diff = normalizeDiffResult(
                 await TAURI.invoke<VcsDiffResult | string[]>('vcs_diff_file', { path: p })
             );
-            html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)}</div></div></div>`;
+            html += `<div class="diff-multi-header">${escapeHtml(p)}</div>`;
             const fileLines = diff.lines;
             const isBinary = (typeof diff.binary === 'boolean' ? diff.binary : undefined) ?? detectBinaryDiff(fileLines);
             html += `<div class="multi-hunk" data-file="${escapeHtml(p)}">`;

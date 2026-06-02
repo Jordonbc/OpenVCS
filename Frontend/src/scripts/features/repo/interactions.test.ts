@@ -827,6 +827,8 @@ describe('onFileContextMenu', () => {
     expect(items.length).toBeGreaterThan(0);
     const stashItem = items.find((i: any) => String(i.label).includes('Create stash from selection'));
     expect(stashItem).toBeDefined();
+    const singleStash = items.find((i: any) => i.label?.includes('Create stash for this file'));
+    expect(singleStash).toBeUndefined();
   });
 
   it('includes single file stash option for single selection', async () => {
@@ -895,6 +897,8 @@ describe('onFileContextMenu', () => {
     const items = vi.mocked(buildCtxMenu).mock.lastCall![0];
     const discardAllItem = items.find((i: any) => i.label?.includes('Discard all selected'));
     expect(discardAllItem).toBeDefined();
+    const singleDiscard = items.find((i: any) => i.label === 'Discard changes');
+    expect(singleDiscard).toBeUndefined();
   });
 
   it('includes plugin context menu items when available', async () => {
@@ -1156,5 +1160,26 @@ describe('onFileContextMenu - rejection paths', () => {
     const discardItem = items.find((i: any) => i.label === 'Discard changes');
     await discardItem!.action!();
     expect(TAURI.invoke).not.toHaveBeenCalledWith('vcs_discard_paths');
+  });
+
+  it('context menu uses diffSelectedFiles for multi-file actions when no staging multi-selection', async () => {
+    const { onFileContextMenu, setRenderListCallback } = await import('./interactions');
+    const { state } = await import('../../state/state');
+    const { buildCtxMenu } = await import('../../lib/menu');
+
+    const rerender = vi.fn();
+    setRenderListCallback(rerender);
+    state.selectedFiles = new Set();
+    state.selectionImplicitAll = false;
+    state.diffSelectedFiles = new Set(['x.txt', 'y.txt', 'z.txt']);
+
+    await onFileContextMenu(
+      { preventDefault: vi.fn(), clientX: 10, clientY: 20 } as any,
+      { path: 'y.txt', status: 'M' } as any,
+    );
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const discardAll = items.find((i: any) => i.label === 'Discard all selected');
+    expect(discardAll).toBeDefined();
   });
 });

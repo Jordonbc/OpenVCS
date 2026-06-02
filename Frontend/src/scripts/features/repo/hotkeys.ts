@@ -44,6 +44,24 @@ export function bindRepoHotkeys(
             renderList();
         }
 
+        if (key === 'a' && e.shiftKey && !chord && !e.altKey && !inEditable) {
+            e.preventDefault();
+            if (modalOpen) return;
+            if (prefs.tab !== 'changes') return;
+            const visible = getVisibleFiles();
+            if (visible.length === 0) return;
+            const diffSelected = visible.filter((f) => f.path && state.diffSelectedFiles.has(f.path)).length;
+            const allDiffSelected = diffSelected === visible.length;
+            if (allDiffSelected) {
+                state.diffSelectedFiles.clear();
+            } else {
+                state.diffSelectedFiles = new Set(
+                    visible.filter((f) => f.path).map((f) => f.path!)
+                );
+            }
+            renderList();
+        }
+
         if (e.key === 'Escape') {
             const about = document.getElementById('about-modal');
             if (about?.classList.contains('show')) about.classList.remove('show');

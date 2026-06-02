@@ -326,6 +326,19 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
     border-bottom:1px solid color-mix(in oklab, var(--border) 48%, transparent);
 }
 .hunk:last-child{ border-bottom:0; }
+/* Multi-file diff header — larger file path separator */
+.diff-multi-header{
+    padding: .6rem .8rem;
+    font-size: .9375rem;
+    font-weight: 700;
+    background: color-mix(in oklab, var(--bg) 96%, var(--text) 4%);
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 48%, transparent);
+    color: var(--text);
+    user-select: none;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
 /* Picked hunk body (included in commit) — accent tint */
 .hunk.picked .hunk-selection-body{
     background:color-mix(in oklab, var(--accent) 8%, transparent);
