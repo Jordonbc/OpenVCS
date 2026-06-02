@@ -72,6 +72,11 @@ Selected-file commit flows stage repository-relative paths into the index with
 `vcs.stage_paths` before issuing `vcs.commit`. Plugins implementing selected-path
 commits should therefore support both RPCs consistently.
 
+`vcs.get_status_payload` file entries may include optional `binary` metadata.
+`vcs.diff_file` may return either a legacy `string[]` line array or a structured
+`{ lines, binary }` payload. The host prefers explicit binary metadata and falls
+back to diff-marker heuristics only when plugins omit it.
+
 Clone flows resolve the final target directory in the host and then invoke the
 selected backend plugin's `vcs.clone_repo` method with `{ url, dest }`, where
 `dest` is the full repository destination path.

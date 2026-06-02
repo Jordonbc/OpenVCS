@@ -7,7 +7,8 @@
 
 use super::NodePluginRuntimeInstance;
 use crate::core::models::{
-    BranchItem, CommitItem, ConflictDetails, ConflictSide, LogQuery, StashItem, StatusPayload,
+    BranchItem, CommitItem, ConflictDetails, ConflictSide, DiffFileResult, LogQuery, StashItem,
+    StatusPayload,
 };
 use crate::plugin_runtime::protocol::Methods;
 use base64::Engine;
@@ -37,6 +38,29 @@ struct RemoteEntry {
     name: String,
     /// Remote URL.
     url: String,
+}
+
+/// Parsed `vcs.diff-file` response payload.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum DiffFileResponse {
+    /// Structured diff payload with metadata.
+    Structured(DiffFileResult),
+    /// Legacy line-only diff payload.
+    Legacy(Vec<String>),
+}
+
+impl DiffFileResponse {
+    /// Normalizes structured and legacy payloads into one backend model.
+    fn into_result(self) -> DiffFileResult {
+        match self {
+            Self::Structured(result) => result,
+            Self::Legacy(lines) => DiffFileResult {
+                lines,
+                binary: None,
+            },
+        }
+    }
 }
 
 impl NodePluginRuntimeInstance {
@@ -176,9 +200,10 @@ impl NodePluginRuntimeInstance {
     }
 
     /// Calls `vcs.diff-file`.
-    pub fn vcs_diff_file(&self, path: &str) -> Result<Vec<String>, String> {
+    pub fn vcs_diff_file(&self, path: &str) -> Result<DiffFileResult, String> {
         let params = self.session_params(json!({ "path": path }))?;
-        self.rpc_call(Methods::VCS_DIFF_FILE, params)
+        let result: DiffFileResponse = self.rpc_call(Methods::VCS_DIFF_FILE, params)?;
+        Ok(result.into_result())
     }
 
     /// Calls `vcs.diff-commit`.

@@ -49,7 +49,9 @@ impl Vcs for DummyVcs {
     fn commit_index(&self, _message: &str, _name: &str, _email: &str) -> crate::core::Result<String> { self.unsupported() }
     fn status_payload(&self) -> crate::core::Result<models::StatusPayload> { self.unsupported() }
     fn log_commits(&self, _query: &models::LogQuery) -> crate::core::Result<Vec<models::CommitItem>> { self.unsupported() }
-    fn diff_file(&self, _path: &Path) -> crate::core::Result<Vec<String>> { self.unsupported() }
+    fn diff_file(&self, _path: &Path) -> crate::core::Result<crate::core::models::DiffFileResult> {
+        self.unsupported()
+    }
     fn diff_commit(&self, _rev: &str) -> crate::core::Result<Vec<String>> { self.unsupported() }
     fn stage_patch(&self, _patch: &str) -> crate::core::Result<()> { self.unsupported() }
     fn stage_paths(&self, _paths: &[PathBuf]) -> crate::core::Result<()> { self.unsupported() }

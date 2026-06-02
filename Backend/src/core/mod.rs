@@ -77,8 +77,8 @@ pub trait Vcs: Send + Sync {
     fn status_payload(&self) -> Result<models::StatusPayload>;
     /// Returns commits matching the provided query.
     fn log_commits(&self, query: &models::LogQuery) -> Result<Vec<models::CommitItem>>;
-    /// Returns line-oriented diff output for a single file.
-    fn diff_file(&self, path: &Path) -> Result<Vec<String>>;
+    /// Returns structured diff output for a single file.
+    fn diff_file(&self, path: &Path) -> Result<models::DiffFileResult>;
     /// Returns line-oriented diff output for a commit.
     fn diff_commit(&self, rev: &str) -> Result<Vec<String>>;
 

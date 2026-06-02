@@ -64,7 +64,9 @@ fn dummy_repo(path: &Path) -> Arc<Repo> {
         fn commit_index(&self, _: &str, _: &str, _: &str) -> VcsResult<String> { Ok("def".into()) }
         fn status_payload(&self) -> VcsResult<StatusPayload> { Ok(StatusPayload::default()) }
         fn log_commits(&self, _: &LogQuery) -> VcsResult<Vec<CommitItem>> { Ok(vec![]) }
-        fn diff_file(&self, _: &Path) -> VcsResult<Vec<String>> { Ok(vec![]) }
+    fn diff_file(&self, _: &Path) -> VcsResult<crate::core::models::DiffFileResult> {
+        Ok(crate::core::models::DiffFileResult::default())
+    }
         fn diff_commit(&self, _: &str) -> VcsResult<Vec<String>> { Ok(vec![]) }
         fn stage_patch(&self, _: &str) -> VcsResult<()> { Ok(()) }
         fn stage_paths(&self, _: &[PathBuf]) -> VcsResult<()> { Ok(()) }

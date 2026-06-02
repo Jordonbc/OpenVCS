@@ -45,7 +45,7 @@ struct TestVcs {
     id: BackendId,
     workdir: PathBuf,
     log_commits: Vec<models::CommitItem>,
-    diff_lines: Vec<String>,
+    diff_result: models::DiffFileResult,
 }
 
 impl TestVcs {
@@ -61,7 +61,10 @@ impl TestVcs {
                     author: "test".into(),
                 },
             ],
-            diff_lines: vec!["@@ -1,3 +1,4 @@".into(), " line".into()],
+            diff_result: models::DiffFileResult {
+                lines: vec!["@@ -1,3 +1,4 @@".into(), " line".into()],
+                binary: Some(false),
+            },
         }
     }
 
@@ -92,12 +95,12 @@ impl Vcs for TestVcs {
         Ok(self.log_commits.clone())
     }
 
-    fn diff_file(&self, _path: &Path) -> Result<Vec<String>, VcsError> {
-        Ok(self.diff_lines.clone())
+    fn diff_file(&self, _path: &Path) -> Result<models::DiffFileResult, VcsError> {
+        Ok(self.diff_result.clone())
     }
 
     fn diff_commit(&self, _rev: &str) -> Result<Vec<String>, VcsError> {
-        Ok(self.diff_lines.clone())
+        Ok(self.diff_result.lines.clone())
     }
 
     fn stage_patch(&self, _patch: &str) -> Result<(), VcsError> { self.unsupported() }

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::core::models::{
-    BranchItem, CommitItem, ConflictDetails, ConflictSide, LogQuery, OnEvent, StashItem,
-    StatusPayload,
+    BranchItem, CommitItem, ConflictDetails, ConflictSide, DiffFileResult, LogQuery, OnEvent,
+    StashItem, StatusPayload,
 };
 use crate::core::{BackendId, Result as VcsResult, Vcs, VcsError};
 use crate::logging::LogTimer;
@@ -205,7 +205,7 @@ impl Vcs for PluginVcsProxy {
             .map_err(|e| self.map_runtime_error(e))
     }
 
-    fn diff_file(&self, path: &Path) -> VcsResult<Vec<String>> {
+    fn diff_file(&self, path: &Path) -> VcsResult<DiffFileResult> {
         self.runtime
             .vcs_diff_file(path_to_utf8(path)?.as_str())
             .map_err(|e| self.map_runtime_error(e))

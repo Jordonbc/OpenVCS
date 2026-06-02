@@ -24,6 +24,13 @@ export interface FileStatus {
     staged?: boolean;
     resolved_conflict?: boolean;
     hunks?: string[];
+    binary?: boolean | null;
+}
+
+/** Represents structured diff payload data returned by the backend. */
+export interface VcsDiffResult {
+    lines: string[];
+    binary?: boolean | null;
 }
 
 /** Represents merge conflict payload data for a file. */

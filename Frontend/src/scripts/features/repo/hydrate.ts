@@ -141,6 +141,7 @@ function buildStatusSignature(input: {
         status: String((f as any)?.status || '').toUpperCase(),
         staged: !!(f as any)?.staged,
         resolvedConflict: !!(f as any)?.resolved_conflict,
+        binary: typeof (f as any)?.binary === 'boolean' ? (f as any).binary : null,
     }));
     const conflicts = Array.from(input.seenConflicts).sort();
     return JSON.stringify({

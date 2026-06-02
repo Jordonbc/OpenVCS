@@ -345,8 +345,9 @@ fn vcs_diff_file_returns_diff_lines() {
     let rt = test_runtime();
     *rt.vcs_session_id.lock() = Some("s".into());
     mock_response(&rt, json!(["+new line", "-old line"]));
-    let lines = rt.vcs_diff_file("file.rs").unwrap();
-    assert_eq!(lines, vec!["+new line", "-old line"]);
+    let diff = rt.vcs_diff_file("file.rs").unwrap();
+    assert_eq!(diff.lines, vec!["+new line", "-old line"]);
+    assert_eq!(diff.binary, None);
 }
 
 #[test]
@@ -520,14 +521,51 @@ fn vcs_get_status_payload_returns_status() {
     let rt = test_runtime();
     *rt.vcs_session_id.lock() = Some("s".into());
     mock_response(&rt, json!({
-        "files": [],
+        "files": [{
+            "path": "img.png",
+            "old_path": null,
+            "status": "M",
+            "staged": false,
+            "resolved_conflict": false,
+            "hunks": [],
+            "binary": true
+        }],
         "ahead": 0,
         "behind": 0,
         "branch_on_remote": true
     }));
     let payload = rt.vcs_get_status_payload().unwrap();
-    assert!(payload.files.is_empty());
+    assert_eq!(payload.files.len(), 1);
+    assert_eq!(payload.files[0].path, "img.png");
+    assert_eq!(payload.files[0].binary, Some(true));
     assert!(payload.branch_on_remote);
+}
+
+#[test]
+fn vcs_diff_file_accepts_structured_binary_payloads() {
+    let rt = test_runtime();
+    *rt.vcs_session_id.lock() = Some("s".into());
+    mock_response(&rt, json!({
+        "lines": ["Binary files a/img.png and b/img.png differ"],
+        "binary": true
+    }));
+
+    let diff = rt.vcs_diff_file("img.png").unwrap();
+
+    assert_eq!(diff.lines.len(), 1);
+    assert_eq!(diff.binary, Some(true));
+}
+
+#[test]
+fn vcs_diff_file_accepts_legacy_line_arrays() {
+    let rt = test_runtime();
+    *rt.vcs_session_id.lock() = Some("s".into());
+    mock_response(&rt, json!(["@@ -1 +1 @@", "-old", "+new"]));
+
+    let diff = rt.vcs_diff_file("file.txt").unwrap();
+
+    assert_eq!(diff.lines, vec!["@@ -1 +1 @@", "-old", "+new"]);
+    assert_eq!(diff.binary, None);
 }
 
 // --- Error paths ---

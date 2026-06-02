@@ -7,7 +7,7 @@ import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
 import { isConflictStatus, state, prefs } from '../../state/state';
 import type { FileStatus } from '../../types';
-import type { RepoFileMeta } from '../../types';
+import type { RepoFileMeta, VcsDiffResult } from '../../types';
 import { buildPatchForSelectedHunks } from '../diff';
 import { diffEl, diffHeadPath, diffHeadMeta, diffLineEndingEl, diffEncodingEl, diffBomEl, listEl } from './context';
 import { updateCommitButton } from './commit';
@@ -15,6 +15,7 @@ import { ensureConflictStatusesLoaded, hydrateStatus } from './hydrate';
 import {
     scrollDiffToTop,
     detectBinaryDiff,
+    normalizeDiffResult,
     renderBinaryDiffPlaceholder,
     buildUntrackedTextPatch,
     isUntrackedStatus,
@@ -24,19 +25,28 @@ import { buildDiffFragment, allHunkIndices, renderHunksReadonly } from './diffFr
 import { bindHunkToggles, updateHunkCheckboxes, syncFileCheckboxWithHunks } from './diffSelection';
 
 /** Updates the diff header metadata chips for the selected file. */
-export function updateDiffHeaderMeta(meta: RepoFileMeta | null) {
+export function updateDiffHeaderMeta(meta: RepoFileMeta | null, forceBinary = false) {
     state.currentFileMeta = meta;
+    const displayMeta = forceBinary
+        ? {
+            encoding: 'Binary',
+            line_ending: 'Binary',
+            bom: false,
+            binary: true,
+        }
+        : meta;
     if (diffHeadMeta) {
-        diffHeadMeta.setAttribute('aria-label', meta ? 'Selected file metadata' : 'No file metadata available');
+        diffHeadMeta.setAttribute('aria-label', displayMeta ? 'Selected file metadata' : 'No file metadata available');
     }
     if (diffLineEndingEl) {
-        diffLineEndingEl.textContent = meta ? formatLineEnding(meta.line_ending) : '—';
+        diffLineEndingEl.textContent = displayMeta ? formatLineEnding(displayMeta.line_ending) : '—';
     }
     if (diffEncodingEl) {
-        diffEncodingEl.textContent = meta ? formatEncoding(meta.encoding) : '—';
+        diffEncodingEl.textContent = displayMeta ? formatEncoding(displayMeta.encoding) : '—';
+        diffEncodingEl.hidden = Boolean(forceBinary);
     }
     if (diffBomEl) {
-        diffBomEl.hidden = !meta?.bom;
+        diffBomEl.hidden = !displayMeta?.bom;
     }
 }
 
@@ -99,14 +109,24 @@ export async function selectFile(file: FileStatus, index: number) {
         const metaPromise = file.path
             ? TAURI.invoke<RepoFileMeta>('read_repo_file_meta', { path: file.path }).catch(() => null)
             : Promise.resolve(null);
-        let lines: string[] = [];
+        let diffResult: VcsDiffResult = { lines: [] };
         if (file.path) {
-            lines = await TAURI.invoke<string[]>('vcs_diff_file', { path: file.path });
+            diffResult = normalizeDiffResult(
+                await TAURI.invoke<VcsDiffResult | string[]>('vcs_diff_file', { path: file.path })
+            );
         }
-        if (isUntrackedStatus(status) && file.path && (!Array.isArray(lines) || lines.length === 0)) {
+        let lines = diffResult.lines;
+        const explicitBinary = typeof file.binary === 'boolean' ? file.binary : undefined;
+        const payloadBinary = typeof diffResult.binary === 'boolean' ? diffResult.binary : undefined;
+        const metaForFallback = isUntrackedStatus(status) && file.path && lines.length === 0
+            ? await metaPromise
+            : null;
+        const knownBinary = explicitBinary ?? payloadBinary ?? (metaForFallback?.binary ? true : undefined);
+        if (isUntrackedStatus(status) && file.path && lines.length === 0 && knownBinary !== true) {
             try {
                 const text = await TAURI.invoke<string>('read_repo_file_text', { path: file.path });
                 lines = buildUntrackedTextPatch(file.path, text || '');
+                diffResult = { lines, binary: false };
             } catch {
                 lines = [
                     `diff --git a/${file.path} b/${file.path}`,
@@ -115,13 +135,15 @@ export async function selectFile(file: FileStatus, index: number) {
                     `+++ b/${file.path}`,
                     '@@ -0,0 +1,0 @@',
                 ];
+                diffResult = { lines, binary: false };
             }
         }
         state.currentFile = file.path;
         state.currentDiff = lines || [];
-        state.currentFileMeta = await metaPromise;
-        updateDiffHeaderMeta(state.currentFileMeta);
-        const isBinary = detectBinaryDiff(state.currentDiff);
+        state.currentFileMeta = metaForFallback ?? await metaPromise;
+        const metaBinary = state.currentFileMeta?.binary ? true : undefined;
+        const isBinary = knownBinary ?? metaBinary ?? detectBinaryDiff(state.currentDiff);
+        updateDiffHeaderMeta(state.currentFileMeta, isBinary);
         state.currentDiffBinary = isBinary;
         if (isBinary) {
             state.currentDiffMeta = null;
@@ -181,8 +203,12 @@ export async function selectFile(file: FileStatus, index: number) {
                         let patch = '';
                         for (const p of filesWithSel) {
                             let lines: string[] = [];
-                            try { lines = await TAURI.invoke<string[]>('vcs_diff_file', { path: p }); } catch {}
-                            if (!Array.isArray(lines) || lines.length === 0) continue;
+                            try {
+                                lines = normalizeDiffResult(
+                                    await TAURI.invoke<VcsDiffResult | string[]>('vcs_diff_file', { path: p })
+                                ).lines;
+                            } catch {}
+                            if (lines.length === 0) continue;
                             patch += buildPatchForSelectedHunks(p, lines, hunksMap[p]) + '\n';
                         }
                         if (patch.trim()) {
@@ -282,10 +308,13 @@ export async function renderCombinedDiff(paths: string[]) {
     let html = '';
     for (const p of files) {
         try {
-            const lines = await TAURI.invoke<string[]>('vcs_diff_file', { path: p });
+            const diff = normalizeDiffResult(
+                await TAURI.invoke<VcsDiffResult | string[]>('vcs_diff_file', { path: p })
+            );
             html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)}</div></div></div>`;
-            const fileLines = Array.isArray(lines) ? lines : [];
-            if (detectBinaryDiff(fileLines)) {
+            const fileLines = diff.lines;
+            const isBinary = (typeof diff.binary === 'boolean' ? diff.binary : undefined) ?? detectBinaryDiff(fileLines);
+            if (isBinary) {
                 html += renderBinaryDiffPlaceholder(p);
             } else {
                 html += renderHunksReadonly(fileLines);

@@ -3,7 +3,9 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::core::models::{BranchItem, CommitItem, ConflictSide, LogQuery, OnEvent, StatusPayload};
+use crate::core::models::{
+    BranchItem, CommitItem, ConflictSide, DiffFileResult, LogQuery, OnEvent, StatusPayload,
+};
 use crate::core::{BackendId, Result as VcsResult, Vcs, VcsError};
 
 /// Minimal Vcs implementation used to test trait default methods.
@@ -86,8 +88,8 @@ impl Vcs for DummyVcs {
         Ok(vec![])
     }
 
-    fn diff_file(&self, _path: &Path) -> VcsResult<Vec<String>> {
-        Ok(vec![])
+    fn diff_file(&self, _path: &Path) -> VcsResult<DiffFileResult> {
+        Ok(DiffFileResult::default())
     }
 
     fn diff_commit(&self, _rev: &str) -> VcsResult<Vec<String>> {

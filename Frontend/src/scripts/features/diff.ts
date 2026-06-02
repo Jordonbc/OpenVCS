@@ -7,6 +7,8 @@ import { state } from '../state/state';
 import { hydrateStatus, hydrateCommits } from './repo';
 import { runHook } from '../plugins';
 import { getCommitSummaryHint } from './repo/commit';
+import type { VcsDiffResult } from '../types';
+import { normalizeDiffResult } from './repo/diffBinary';
 import { yieldToPaint } from './repo';
 
 export function bindCommit() {
@@ -55,7 +57,9 @@ export function bindCommit() {
             for (const path of partialFiles) {
                 let lines: string[] = [];
                 try {
-                    lines = await TAURI.invoke<string[]>('vcs_diff_file', { path });
+                    lines = normalizeDiffResult(
+                        await TAURI.invoke<VcsDiffResult | string[]>('vcs_diff_file', { path })
+                    ).lines;
                 } catch (error) {
                     partialLoadFailed = true;
                     console.error('Failed to load diff for selected file:', path, error);

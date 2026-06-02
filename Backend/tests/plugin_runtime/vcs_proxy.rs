@@ -363,9 +363,23 @@ fn proxy_commit_index_returns_oid() {
 fn proxy_status_payload_returns_status() {
     let (proxy, rt) = mock_proxy();
     rt.set_session_id(Some("s".into()));
-    set_response(&rt, json!({"files": [], "ahead": 0, "behind": 0, "branch_on_remote": true}));
+    set_response(&rt, json!({
+        "files": [{
+            "path": "img.png",
+            "old_path": null,
+            "status": "M",
+            "staged": false,
+            "resolved_conflict": false,
+            "hunks": [],
+            "binary": true
+        }],
+        "ahead": 0,
+        "behind": 0,
+        "branch_on_remote": true
+    }));
     let status = proxy.status_payload().unwrap();
-    assert!(status.files.is_empty());
+    assert_eq!(status.files.len(), 1);
+    assert_eq!(status.files[0].binary, Some(true));
     assert!(status.branch_on_remote);
 }
 
@@ -384,9 +398,20 @@ fn proxy_log_commits_returns_list() {
 fn proxy_diff_file_returns_lines() {
     let (proxy, rt) = mock_proxy();
     rt.set_session_id(Some("s".into()));
+    set_response(&rt, json!({"lines": ["-old", "+new"], "binary": false}));
+    let diff = proxy.diff_file(PathBuf::from("file.rs").as_path()).unwrap();
+    assert_eq!(diff.lines, vec!["-old", "+new"]);
+    assert_eq!(diff.binary, Some(false));
+}
+
+#[test]
+fn proxy_diff_file_accepts_legacy_line_arrays() {
+    let (proxy, rt) = mock_proxy();
+    rt.set_session_id(Some("s".into()));
     set_response(&rt, json!(["-old", "+new"]));
-    let lines = proxy.diff_file(PathBuf::from("file.rs").as_path()).unwrap();
-    assert_eq!(lines, vec!["-old", "+new"]);
+    let diff = proxy.diff_file(PathBuf::from("file.rs").as_path()).unwrap();
+    assert_eq!(diff.lines, vec!["-old", "+new"]);
+    assert_eq!(diff.binary, None);
 }
 
 #[test]

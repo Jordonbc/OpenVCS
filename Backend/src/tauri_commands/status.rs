@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use log::{debug, error, info};
 use tauri::State;
 
-use crate::core::models::{CommitItem, LogQuery, StatusPayload};
+use crate::core::models::{CommitItem, DiffFileResult, LogQuery, StatusPayload};
 use crate::state::AppState;
 
 use super::{current_repo_or_err, run_repo_task};
@@ -92,19 +92,19 @@ mod tests {
 }
 
 #[tauri::command]
-/// Returns diff lines for a single file.
+/// Returns structured diff output for a single file.
 ///
 /// # Parameters
 /// - `state`: Shared application state.
 /// - `path`: Repository-relative file path.
 ///
 /// # Returns
-/// - `Ok(Vec<String>)` diff lines.
+/// - `Ok(DiffFileResult)` diff lines and optional binary metadata.
 /// - `Err(String)` on backend failure.
 pub async fn vcs_diff_file(
     state: State<'_, AppState>,
     path: String,
-) -> Result<Vec<String>, String> {
+) -> Result<DiffFileResult, String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("vcs_diff_file", repo, move |repo| {
         repo.inner()

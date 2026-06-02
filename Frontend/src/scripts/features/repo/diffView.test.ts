@@ -237,6 +237,21 @@ describe('selectFile', () => {
     expect(diffText).toContain('Diff not supported on this file type');
   });
 
+  it('renders binary placeholder from explicit diff metadata without marker heuristics', async () => {
+    (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return { lines: [], binary: true };
+      }
+      return [];
+    });
+
+    const { selectFile } = await import('./diffView');
+    await selectFile({ path: 'img.png', status: 'M' } as FileStatus, 0);
+
+    const diffText = document.querySelector('#diff')?.textContent || '';
+    expect(diffText).toContain('Diff not supported on this file type');
+  });
+
   it('renders file metadata chips for text files', async () => {
     (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'vcs_diff_file') {
@@ -256,6 +271,42 @@ describe('selectFile', () => {
     expect(document.getElementById('diff-bom')?.hidden).toBe(false);
   });
 
+  it('forces binary header chips when diff metadata says binary', async () => {
+    (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return { lines: [], binary: true };
+      }
+      if (cmd === 'read_repo_file_meta') {
+        return { encoding: 'UTF-16LE', line_ending: 'MIXED', bom: true, binary: false };
+      }
+      return [];
+    });
+
+    const { selectFile } = await import('./diffView');
+    await selectFile({ path: 'img.png', status: 'M' } as FileStatus, 0);
+
+    expect(document.getElementById('diff-line-ending')?.textContent).toBe('Binary');
+    expect(document.getElementById('diff-encoding')?.hidden).toBe(true);
+    expect(document.getElementById('diff-bom')?.hidden).toBe(true);
+  });
+
+  it('forces binary header chips when status metadata says binary', async () => {
+    (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') return [];
+      if (cmd === 'read_repo_file_meta') {
+        return { encoding: 'UTF-16LE', line_ending: 'MIXED', bom: true, binary: false };
+      }
+      return [];
+    });
+
+    const { selectFile } = await import('./diffView');
+    await selectFile({ path: 'img.png', status: '??', binary: true } as FileStatus, 0);
+
+    expect(document.getElementById('diff-line-ending')?.textContent).toBe('Binary');
+    expect(document.getElementById('diff-encoding')?.hidden).toBe(true);
+    expect(document.getElementById('diff-bom')?.hidden).toBe(true);
+  });
+
   it('handles read_repo_file_text failure for untracked', async () => {
     (window as any).__TAURI__.core.invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'vcs_diff_file') return [];
@@ -267,6 +318,25 @@ describe('selectFile', () => {
     await selectFile({ path: 'untracked.txt', status: '??' } as FileStatus, 0);
     const diffText = document.querySelector('#diff')?.textContent || '';
     expect(diffText).toContain('@@ -0,0 +1,0 @@');
+  });
+
+  it('skips text fallback for untracked files already marked binary in status metadata', async () => {
+    const invokeSpy = (window as any).__TAURI__.core.invoke;
+    invokeSpy.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') return [];
+      if (cmd === 'read_repo_file_meta') {
+        return { encoding: 'BINARY', line_ending: 'BINARY', bom: false, binary: true };
+      }
+      if (cmd === 'read_repo_file_text') return 'should not be read';
+      return [];
+    });
+
+    const { selectFile } = await import('./diffView');
+    await selectFile({ path: 'img.png', status: '??', binary: true } as FileStatus, 0);
+
+    const diffText = document.querySelector('#diff')?.textContent || '';
+    expect(diffText).toContain('Diff not supported on this file type');
+    expect(invokeSpy).not.toHaveBeenCalledWith('read_repo_file_text', { path: 'img.png' });
   });
 
   it('handles invoke failure in selectFile gracefully', async () => {

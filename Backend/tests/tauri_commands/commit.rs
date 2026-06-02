@@ -112,7 +112,7 @@ impl Vcs for TestVcs {
     }
     fn status_payload(&self) -> Result<models::StatusPayload, VcsError> { self.unsupported() }
     fn log_commits(&self, _query: &models::LogQuery) -> Result<Vec<models::CommitItem>, VcsError> { self.unsupported() }
-    fn diff_file(&self, _path: &Path) -> Result<Vec<String>, VcsError> { self.unsupported() }
+    fn diff_file(&self, _path: &Path) -> Result<models::DiffFileResult, VcsError> { self.unsupported() }
     fn diff_commit(&self, _rev: &str) -> Result<Vec<String>, VcsError> { self.unsupported() }
     fn stage_patch(&self, _patch: &str) -> Result<(), VcsError> { self.unsupported() }
     fn stage_paths(&self, _paths: &[PathBuf]) -> Result<(), VcsError> { self.unsupported() }

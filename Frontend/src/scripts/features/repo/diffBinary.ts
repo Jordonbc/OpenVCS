@@ -1,6 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { escapeHtml } from '../../lib/dom';
+import type { VcsDiffResult } from '../../types';
 import { diffEl } from './context';
 
 /** Scrolls the current diff viewport back to the origin. */
@@ -36,6 +37,21 @@ export function detectBinaryDiff(lines: string[] = []) {
     return lines.some((line) =>
         BINARY_DIFF_INDICATORS.some((rx) => rx.test(String(line || '')))
     );
+}
+
+/** Normalizes legacy line arrays and structured diff payloads into one shape. */
+export function normalizeDiffResult(payload: VcsDiffResult | string[] | null | undefined): VcsDiffResult {
+    if (Array.isArray(payload)) {
+        return { lines: payload };
+    }
+    if (!payload || typeof payload !== 'object') {
+        return { lines: [] };
+    }
+
+    return {
+        lines: Array.isArray(payload.lines) ? payload.lines : [],
+        binary: typeof payload.binary === 'boolean' ? payload.binary : undefined,
+    };
 }
 
 /** Renders a placeholder hunk for binary or unsupported file types. */

@@ -56,6 +56,20 @@ pub struct FileEntry {
     pub resolved_conflict: bool,
     /// Diff hunks for the file.
     pub hunks: Vec<String>,
+    /// Whether the file content should be treated as binary when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binary: Option<bool>,
+}
+
+/// Structured diff payload for one file.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub struct DiffFileResult {
+    /// Line-oriented diff output.
+    #[serde(default)]
+    pub lines: Vec<String>,
+    /// Whether the diff target should be treated as binary when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binary: Option<bool>,
 }
 
 /// Details about a merge conflict in a file.
