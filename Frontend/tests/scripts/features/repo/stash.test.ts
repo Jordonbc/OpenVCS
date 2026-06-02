@@ -7,7 +7,7 @@ import type { StashItem } from '@scripts/types';
 // ---------------------------------------------------------------------------
 // DOM element references that stay stable across resets
 // ---------------------------------------------------------------------------
-const mockListEl = document.createElement('div');
+let mockListEl = document.createElement('div');
 mockListEl.id = 'file-list';
 const mockCountEl = document.createElement('div');
 mockCountEl.id = 'changes-count';
@@ -107,7 +107,7 @@ beforeEach(() => {
   }));
 
   // Reset DOM elements
-  mockListEl.innerHTML = '';
+  if (mockListEl) mockListEl.innerHTML = '';
   mockCountEl.textContent = '';
   mockDiffHeadPath.textContent = '';
   mockDiffEl.innerHTML = '';
@@ -122,6 +122,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  mockListEl = document.createElement('div');
+  mockListEl.id = 'file-list';
   vi.resetAllMocks();
 });
 
@@ -942,14 +944,8 @@ describe('stash drop confirmation cancellation', () => {
 // ---------------------------------------------------------------------------
 describe('renderStashList early return with null DOM', () => {
   it('returns false when listEl is null in mock', async () => {
-    vi.doMock('@scripts/features/repo/context', () => ({
-      listEl: null,
-      countEl: mockCountEl,
-      diffHeadPath: mockDiffHeadPath,
-      diffEl: mockDiffEl,
-      leftFootEl: mockLeftFootEl,
-      undoLeftBtn: mockUndoLeftBtn,
-    }));
+    mockListEl = null as any;
+    vi.resetModules();
 
     const mod = await loadStash();
     const result = mod.renderStashList('');
