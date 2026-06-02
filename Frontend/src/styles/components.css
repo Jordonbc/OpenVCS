@@ -266,10 +266,13 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
 .diff-head .path{
     /* Prevent long paths from wrapping and shifting the layout when switching files */
     flex:1 1 auto;
+    display:block;
     min-width:0;
     overflow:hidden;
     white-space:nowrap;
     text-overflow:ellipsis;
+    line-height:1.3;
+    padding-block-end:.06rem;
 }
 .path{ font-weight:600; }
 .diff-head .path .commit-hash{
@@ -433,7 +436,12 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
     background:color-mix(in oklab, var(--accent) 92%, transparent);
     color:color-mix(in oklab, white 88%, var(--surface));
 }
-.binary-placeholder{ color:var(--muted); font-style:italic; }
+.binary-placeholder{
+    color:var(--muted);
+    font-style:italic;
+    line-height:1.58;
+    padding-block-end:.06rem;
+}
 
 /* GitHub Desktop-style selection gutter: state lives in the gutter, not a box. */
 .row input.pick,
