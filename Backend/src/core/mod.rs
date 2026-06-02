@@ -35,6 +35,22 @@ pub enum VcsError {
     },
 }
 
+impl VcsError {
+    /// Returns a user-facing message suitable for display in the UI.
+    ///
+    /// Unlike the `Display` impl (which includes the backend identifier — e.g.
+    /// `"git: …"`), this returns just the meaningful error content without any
+    /// internal routing prefixes.
+    pub fn user_message(&self) -> String {
+        match self {
+            VcsError::NoUpstream => "no upstream configured".to_string(),
+            VcsError::Unsupported(backend) => format!("unsupported backend: {backend}"),
+            VcsError::Io(e) => e.to_string(),
+            VcsError::Backend { msg, .. } => msg.clone(),
+        }
+    }
+}
+
 /// Convenience result type used by the `Vcs` trait.
 pub type Result<T> = std::result::Result<T, VcsError>;
 

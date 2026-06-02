@@ -32,6 +32,7 @@ import mergeHtml from "@modals/merge.html?raw";
 import conflictsSummaryHtml from "@modals/conflicts-summary.html?raw";
 import { wireSshKeys } from "../features/sshKeys";
 import repoSwitchDrawerHtml from "@modals/repoSwitchDrawer.html?raw";
+import errorHtml from "@modals/error.html?raw";
 
 // Lazy fragments (only those NOT present at load)
 const FRAGMENTS: Record<string, string> = {
@@ -53,6 +54,7 @@ const FRAGMENTS: Record<string, string> = {
     "stash-confirm-modal": stashConfirmHtml,
     "merge-modal": mergeHtml,
     "conflicts-summary-modal": conflictsSummaryHtml,
+    "error-modal": errorHtml,
 };
 
 const loaded = new Set<string>();

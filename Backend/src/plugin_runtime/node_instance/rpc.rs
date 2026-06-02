@@ -152,6 +152,10 @@ impl NodeRpcProcess {
 }
 
 /// Formats an RPC error payload into a user-facing message.
+///
+/// Returns the meaningful error detail (plugin's `data.message` or RPC `error.message`)
+/// and logs the verbose wrapper at debug level so the full context is still
+/// available in diagnostic logs without leaking protocol internals to the user.
 fn format_rpc_error(plugin_id: &str, method: &str, error: &RpcError) -> String {
     let detail = error
         .data
@@ -160,11 +164,18 @@ fn format_rpc_error(plugin_id: &str, method: &str, error: &RpcError) -> String {
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| error.message.trim());
-    format!(
+        .unwrap_or_else(|| error.message.trim())
+        .to_string();
+
+    log::debug!(
         "plugin '{}' rpc '{}' failed (code {}): {}",
-        plugin_id, method, error.code, detail
-    )
+        plugin_id,
+        method,
+        error.code,
+        detail
+    );
+
+    detail
 }
 
 #[cfg(test)]

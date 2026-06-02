@@ -33,7 +33,7 @@ fn formats_rpc_errors_with_nested_message() {
     };
     assert_eq!(
         format_rpc_error("demo.plugin", "vcs.open", &error),
-        "plugin 'demo.plugin' rpc 'vcs.open' failed (code 42): inner"
+        "inner"
     );
 }
 
@@ -46,7 +46,7 @@ fn formats_rpc_errors_with_fallback_message() {
     };
     assert_eq!(
         format_rpc_error("demo.plugin", "vcs.open", &error),
-        "plugin 'demo.plugin' rpc 'vcs.open' failed (code 7): fallback"
+        "fallback"
     );
 }
 

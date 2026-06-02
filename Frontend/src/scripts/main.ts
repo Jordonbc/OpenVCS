@@ -15,6 +15,7 @@ import {
 } from './ui/layout';
 import { clearPluginMenubarMenus, initMenubar, refreshPluginMenubarMenus } from './ui/menubar';
 import { closeAllModals } from './ui/modals';
+import { showError } from './features/errorModal';
 import { bindCommandSheet, openSheet, closeSheet } from './features/commandSheet';
 import { bindRepoHotkeys, bindFilter, renderList, wireRenderListCallbacks, yieldToPaint } from './features/repo';
 import { bindBranchUI } from './features/branches';
@@ -205,8 +206,9 @@ async function boot() {
                 }
                 success = true;
             } catch (error) {
-                console.error('Fetch failed:', error);
-                notify('Fetch failed');
+                const msg = String(error || '').trim();
+                console.error('Fetch failed:', msg);
+                showError('Fetch failed', msg || 'Could not fetch from remote. Check your network connection and remote URL.');
             } finally {
                 if (!keepBusy) ctl.clearBusy();
             }
@@ -230,8 +232,9 @@ async function boot() {
                 }
                 success = true;
             } catch (error) {
-                console.error('Fetch all failed:', error);
-                notify('Fetch all failed');
+                const msg = String(error || '').trim();
+                console.error('Fetch all failed:', msg);
+                showError('Fetch all failed', msg || 'Could not fetch from remotes. Check your network connection and remote URLs.');
             } finally {
                 if (!keepBusy) ctl.clearBusy();
             }
@@ -304,7 +307,7 @@ async function boot() {
             }
         } catch (e) {
             const msg = String(e || '').trim();
-            notify(msg ? `Pull failed: ${msg}` : 'Pull failed');
+            showError('Pull failed', msg || 'Could not pull changes from remote.');
         } finally {
             ctl.clearBusy();
         }
@@ -358,7 +361,11 @@ async function boot() {
             notify('Pushed');
             await hydrateSnapshot(true);
             await runHook('postPush', hookData);
-        } catch (e) { console.error('Push failed:', e); notify('Push failed'); } finally { clearBusy(); }
+        } catch (e) {
+            const msg = String(e || '').trim();
+            console.error('Push failed:', msg);
+            showError('Push failed', msg || 'Could not push to remote. Check your network connection and remote URL.');
+        } finally { clearBusy(); }
     }
 
     async function openDocs() {

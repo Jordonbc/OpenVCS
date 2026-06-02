@@ -279,10 +279,10 @@ pub async fn vcs_fetch<R: Runtime>(
 
         info!("Fetching '{refspec}' from remote '{remote}' (current branch '{current}')");
         if let Err(e) = repo.inner().fetch(&remote, &refspec, on) {
-            let msg = e.to_string();
+            let msg = e.user_message();
             let url = remote_url_for(repo.inner(), &remote).unwrap_or_default();
             emit_ssh_prompt(&app, &remote, &url, &msg);
-            error!("Fetch failed for branch '{current}': {msg}");
+            error!("Fetch failed for branch '{current}': {e}");
             return Err(msg);
         }
 
@@ -339,9 +339,9 @@ pub async fn vcs_fetch_all<R: Runtime>(
             if let Err(e) = repo.inner().fetch(&r, &refspec_force, on.clone()) {
                 warn!("Fetch (force refspec) failed for remote '{r}': {e}; retrying without '+'");
                 if let Err(e2) = repo.inner().fetch(&r, &refspec, on.clone()) {
-                    let msg = e2.to_string();
+                    let msg = e2.user_message();
                     emit_ssh_prompt(&app, &r, &url, &msg);
-                    error!("Fetch failed for remote '{r}': {msg}");
+                    error!("Fetch failed for remote '{r}': {e2}");
                     failures.push(format!("{r}: {msg}"));
                     continue;
                 }
@@ -471,9 +471,9 @@ pub async fn vcs_pull<R: Runtime>(
                 })
             }
             Err(e) => {
-                let msg = e.to_string();
+                let msg = e.user_message();
                 if looks_like_ff_only_divergence(&msg) {
-                    info!("Pull skipped for branch '{current}': {msg}");
+                    info!("Pull skipped for branch '{current}': {e}");
                     return Ok(PullResult {
                         pulled: false,
                         branch: current.clone(),
@@ -485,7 +485,7 @@ pub async fn vcs_pull<R: Runtime>(
 
                 let url = remote_url_for(repo.inner(), remote).unwrap_or_default();
                 emit_ssh_prompt(&app, remote, &url, &msg);
-                error!("Pull failed for branch '{current}': {msg}");
+                error!("Pull failed for branch '{current}': {e}");
                 Err(msg)
             }
         }
@@ -552,8 +552,9 @@ pub async fn vcs_push<R: Runtime>(
         info!("Pushing branch '{current}' with refspec '{refspec}'");
 
         repo.inner().push("origin", &refspec, on).map_err(|e| {
+            let msg = e.user_message();
             error!("Push failed for branch '{current}': {e}");
-            e.to_string()
+            msg
         })?;
 
         // Pushing does not update local remote-tracking refs (refs/remotes/origin/*),
