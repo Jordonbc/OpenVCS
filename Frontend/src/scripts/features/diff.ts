@@ -112,7 +112,10 @@ export function bindCommit() {
                 return;
             }
             notify(`Committed to ${state.branch}: ${summary}`);
-            if (commitSummary) commitSummary.value = '';
+            if (commitSummary) {
+                commitSummary.value = '';
+                commitSummary.dispatchEvent(new Event('input', { bubbles: true }));
+            }
             if (commitDesc)    commitDesc.value = '';
             // Clear selection state
             state.selectedFiles.clear();

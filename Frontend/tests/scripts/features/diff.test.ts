@@ -871,6 +871,44 @@ describe('bindCommit - description handling', () => {
       expect(commitDesc.value).toBe('');
     }, { timeout: 3000, interval: 20 });
   });
+
+  it('updates the x/72 counter when commit clears the summary', async () => {
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedHunksByFile = {};
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      return [];
+    });
+
+    // Set up the character counter via the layout module
+    const { applyCommitSummaryRestriction } = await import('@scripts/ui/layout');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitDesc = document.getElementById('commit-desc') as HTMLTextAreaElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'Summary';
+    commitDesc.value = 'Desc';
+
+    applyCommitSummaryRestriction(true);
+
+    // Verify the counter reflects the current value
+    const counter = commitSummary.parentElement?.querySelector('.summary-counter');
+    expect(counter?.textContent).toBe('7/72');
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      expect(commitSummary.value).toBe('');
+      // The counter should have been updated via the dispatched input event
+      expect(counter?.textContent).toBe('0/72');
+    }, { timeout: 3000, interval: 20 });
+  });
 });
 
 // ---------------------------------------------------------------------------
