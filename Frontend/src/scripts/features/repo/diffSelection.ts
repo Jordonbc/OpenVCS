@@ -347,11 +347,13 @@ function handleMultiLineToggle(input: HTMLInputElement, file: string) {
     updateCommitButton();
 }
 
-/** Updates a list row checkbox for a specific file path. */
+/** Updates a list row checkbox and picked class for a specific file path. */
 export function updateListCheckboxForPath(path: string, checked: boolean, indeterminate: boolean) {
     if (!listEl || !path) return;
-    const selector = `li.row[data-path="${path.replace(/(["\\])/g, '\\$1')}"] input.pick`;
-    const cb = listEl.querySelector<HTMLInputElement>(selector);
+    const rowSel = `li.row[data-path="${path.replace(/(["\\])/g, '\\$1')}"]`;
+    const row = listEl.querySelector<HTMLElement>(rowSel);
+    if (row) row.classList.toggle('picked', checked && !indeterminate);
+    const cb = row?.querySelector<HTMLInputElement>('input.pick');
     if (cb) {
         cb.checked = checked;
         (cb as any).indeterminate = indeterminate;

@@ -365,13 +365,11 @@ export async function renderCombinedDiff(paths: string[]) {
 /** Clears multi-file diff selection state from the list. */
 export function clearDiffSelection() {
     if (!listEl) return;
-    if (state.diffSelectedFiles && state.diffSelectedFiles.size > 0) {
-        state.diffSelectedFiles.clear();
-        const rows = listEl.querySelectorAll<HTMLElement>('li.row.diffsel');
-        rows.forEach((r) => {
-            r.classList.remove('diffsel');
-        });
-    }
+    if (state.diffSelectedFiles) state.diffSelectedFiles.clear();
+    const rows = listEl.querySelectorAll<HTMLElement>('li.row.diffsel');
+    rows.forEach((r) => {
+        r.classList.remove('diffsel');
+    });
 }
 
 /** Removes active styling from all rows in the file list. */

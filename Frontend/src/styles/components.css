@@ -201,13 +201,13 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
     border-color:color-mix(in oklab, var(--success) 42%, transparent);
     box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--success) 16%, transparent), inset 3px 0 0 var(--accent);
 }
-/* Diff-selected (included in viewer) uses a subtle accent tint distinct from picked */
+/* Diff-selected (included in viewer) uses a warm amber tint distinct from picked (green) */
 .row.diffsel{
-    background:color-mix(in oklab, var(--accent) 10%, var(--surface));
-    border-color:color-mix(in oklab, var(--accent) 32%, transparent);
-    box-shadow:inset 0 0 0 1px color-mix(in oklab, var(--accent) 14%, transparent);
+    background:color-mix(in oklab, #e9a820 10%, var(--surface));
+    border-color:color-mix(in oklab, #e9a820 38%, transparent);
+    box-shadow:inset 3px 0 0 color-mix(in oklab, #e9a820 55%, transparent);
 }
-.row.active.diffsel::before{ background:var(--accent); }
+.row.active.diffsel::before{ background:#e9a820; }
 .file{ flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .empty-state-message{
     min-height:100%;

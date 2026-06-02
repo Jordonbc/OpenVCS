@@ -96,7 +96,14 @@ export function onFileMouseDown(e: MouseEvent, file: FileStatus, index: number, 
         dragState.dragStartIndex = index; dragState.dragCurrentIndex = index;
         dragState.dragPreDiff = new Set(state.diffSelectedFiles);
     } else if (dragState.dragMode === 'commit') {
-        disableDefaultSelectAll(true);
+        const clearedImplicit = disableDefaultSelectAll(true);
+        if (clearedImplicit && listEl) {
+            listEl.querySelectorAll<HTMLElement>('li.row.picked').forEach((row) => {
+                row.classList.remove('picked');
+                const cb = row.querySelector<HTMLInputElement>('input.pick');
+                if (cb) { cb.checked = false; (cb as any).indeterminate = false; }
+            });
+        }
         const currentlyOn = state.selectedFiles.has(file.path);
         dragState.dragTargetState = !currentlyOn;
         dragState.dragStartIndex = index; dragState.dragCurrentIndex = index;

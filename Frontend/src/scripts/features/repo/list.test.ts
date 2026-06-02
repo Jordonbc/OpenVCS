@@ -361,6 +361,11 @@ describe('renderChangesList', () => {
     state.selectedFiles = new Set();
     state.diffSelectedFiles = new Set();
 
+    (diffView.toggleFilePick as vi.Mock).mockImplementation((path: string, on: boolean) => {
+      if (on) state.selectedFiles.add(path);
+      else state.selectedFiles.delete(path);
+    });
+
     renderList();
     const checkbox = document.querySelector('input.pick') as HTMLInputElement;
     checkbox.checked = true;
@@ -368,6 +373,7 @@ describe('renderChangesList', () => {
 
     expect(vi.mocked(diffView.toggleFilePick)).toHaveBeenCalledWith('pick.txt', true);
     expect(updateSelectAllSpy).toHaveBeenCalled();
+    expect(Array.from(state.selectedFiles)).toEqual(['pick.txt']);
     expect(document.querySelector('li.row')?.classList.contains('picked')).toBe(true);
   });
 });

@@ -196,6 +196,22 @@ describe('renderCombinedDiff', () => {
     expect(hunkCb?.checked).toBe(false);
   });
 
+  it('shows hunk indeterminate when partial line selections exist', async () => {
+    const { renderCombinedDiff } = await import('./diffView');
+    const { state } = await import('../../state/state');
+    (state as any).selectedHunksByFile = {};
+    (state as any).selectedLinesByFile = { 'a.txt': { 0: [1] } };
+    state.selectedFiles = new Set();
+    state.defaultSelectAll = false;
+    state.selectionImplicitAll = false;
+
+    await renderCombinedDiff(['a.txt']);
+
+    const hunkCb = document.querySelector<HTMLInputElement>('#diff .multi-hunk[data-file="a.txt"] .pick-hunk');
+    expect(hunkCb?.checked).toBe(false);
+    expect((hunkCb as any)?.indeterminate).toBe(true);
+  });
+
   it('handles empty and null file paths', async () => {
     const { renderCombinedDiff } = await import('./diffView');
     await renderCombinedDiff([]);
@@ -732,12 +748,12 @@ describe('clearActiveRows', () => {
 });
 
 describe('clearDiffSelection with no diff selected files', () => {
-  it('does nothing when diffSelectedFiles is empty', async () => {
+  it('clears stale diffsel classes even when diffSelectedFiles is already empty', async () => {
     document.querySelector('#file-list')!.innerHTML = '<li class="row diffsel">x</li>';
     const { clearDiffSelection } = await import('./diffView');
     clearDiffSelection();
     const remaining = document.querySelectorAll<HTMLElement>('#file-list .diffsel');
-    expect(remaining.length).toBe(1);
+    expect(remaining.length).toBe(0);
   });
 });
 

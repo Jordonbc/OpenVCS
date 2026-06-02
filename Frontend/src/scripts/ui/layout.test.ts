@@ -107,6 +107,22 @@ describe('applyCommitSummaryRestriction', () => {
     applyCommitSummaryRestriction(false);
     expect(input.parentElement?.querySelector('.summary-counter')).toBeNull();
   });
+
+  it('recreates counter when restriction re-enabled after disable', async () => {
+    const { applyCommitSummaryRestriction } = await import('./layout');
+    const input = document.getElementById('commit-summary') as HTMLInputElement;
+    input.value = 'test';
+
+    applyCommitSummaryRestriction(true);
+    applyCommitSummaryRestriction(false);
+    expect(input.parentElement?.querySelector('.summary-counter')).toBeNull();
+    expect(input.parentElement?.classList.contains('summary-wrap')).toBe(false);
+
+    applyCommitSummaryRestriction(true);
+    const counter = input.parentElement?.querySelector('.summary-counter');
+    expect(counter).not.toBeNull();
+    expect(counter?.textContent).toBe('4/72');
+  });
 });
 
 describe('applyGpuAccelerationPreference', () => {

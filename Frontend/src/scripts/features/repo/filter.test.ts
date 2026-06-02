@@ -36,8 +36,10 @@ vi.mock('./list', () => ({
 vi.mock('./selectionState', () => ({
   get getVisibleFiles() { return _getVisibleFiles; },
 }));
+const _isDragSelecting = vi.fn(() => false);
 vi.mock('./interactions', () => ({
   get toggleSelectAll() { return _toggleSelectAll; },
+  get isDragSelecting() { return _isDragSelecting; },
 }));
 vi.mock('../../state/state', () => ({
   state: { defaultSelectAll: true, selectionImplicitAll: true },

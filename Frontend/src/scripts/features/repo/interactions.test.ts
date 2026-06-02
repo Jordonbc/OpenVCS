@@ -1182,4 +1182,42 @@ describe('onFileContextMenu - rejection paths', () => {
     const discardAll = items.find((i: any) => i.label === 'Discard all selected');
     expect(discardAll).toBeDefined();
   });
+
+  it('gitignore failure notifies without throwing', async () => {
+    const { onFileContextMenu } = await import('./interactions');
+    const { state } = await import('../../state/state');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { TAURI } = await import('../../lib/tauri');
+    const { confirmBool } = await import('../../lib/confirm');
+    vi.mocked(confirmBool).mockResolvedValue(true);
+    vi.mocked(TAURI.invoke as any).mockRejectedValue(new Error('boom'));
+    state.selectedFiles = new Set(['a.txt']);
+    state.selectionImplicitAll = false;
+
+    await onFileContextMenu({ preventDefault: vi.fn(), clientX: 1, clientY: 2 } as any, { path: 'a.txt', status: 'M' } as any);
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const addItem = items.find((i: any) => i.label === 'Add to .gitignore');
+    expect(addItem).toBeDefined();
+    await addItem!.action!();
+    expect(TAURI.invoke).toHaveBeenCalledWith('vcs_add_to_gitignore_paths', { paths: ['a.txt'] });
+  });
+
+  it('discard changes invoke failure notifies and does not throw', async () => {
+    const { onFileContextMenu } = await import('./interactions');
+    const { state } = await import('../../state/state');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { TAURI } = await import('../../lib/tauri');
+    const { confirmBool } = await import('../../lib/confirm');
+    vi.mocked(confirmBool).mockResolvedValue(true);
+    vi.mocked(TAURI.invoke).mockRejectedValue(new Error('boom'));
+    state.selectedFiles = new Set(['a.txt']);
+    state.selectionImplicitAll = false;
+
+    await onFileContextMenu({ preventDefault: vi.fn(), clientX: 1, clientY: 2 } as any, { path: 'a.txt', status: 'M' } as any);
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const discardItem = items.find((i: any) => i.label === 'Discard changes');
+    expect(discardItem).toBeDefined();
+    await discardItem!.action!();
+    expect(TAURI.invoke).toHaveBeenCalledWith('vcs_discard_paths', { paths: ['a.txt'] });
+  });
 });

@@ -121,7 +121,7 @@ function renderChangesList(query: string) {
             ev.stopPropagation();
             toggleFilePick(f.path, !!cb?.checked);
             updateSelectAllState(files);
-            li.classList.toggle('picked', !!cb?.checked && !(cb as any).indeterminate);
+            li.classList.toggle('picked', state.selectedFiles.has(f.path));
         });
         list.appendChild(li);
     });
