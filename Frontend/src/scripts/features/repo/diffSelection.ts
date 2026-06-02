@@ -114,6 +114,17 @@ export { bindHunkToggles };
 function handleDiffInputChange(ev: Event) {
     const target = ev.target as HTMLInputElement | null;
     if (!target || !(target instanceof HTMLInputElement)) return;
+    const fileContainer = target.closest<HTMLElement>('[data-file]');
+    if (fileContainer) {
+        const file = fileContainer.dataset.file || '';
+        if (!file) return;
+        if (target.classList.contains('pick-hunk')) {
+            handleMultiHunkToggle(target, file);
+        } else if (target.classList.contains('pick-line')) {
+            handleMultiLineToggle(target, file);
+        }
+        return;
+    }
     if (target.classList.contains('pick-hunk')) {
         handleHunkToggle(target);
     } else if (target.classList.contains('pick-line')) {
@@ -241,6 +252,99 @@ export function syncFileCheckboxWithHunks() {
         updateListCheckboxForPath(state.currentFile, false, true);
         state.selectedFiles.delete(state.currentFile);
     }
+}
+
+function handleMultiHunkToggle(input: HTMLInputElement, file: string) {
+    const idx = Number(input.dataset.hunk || -1);
+    if (!file || idx < 0) return;
+    const checked = input.checked;
+    const hunkContainer = input.closest('[data-hunk-index]') as HTMLElement | null;
+    if (!hunkContainer) return;
+    const hunks: number[] = (state as any).selectedHunksByFile[file] || [];
+    if (checked) {
+        if (!hunks.includes(idx)) hunks.push(idx);
+    } else {
+        const pos = hunks.indexOf(idx);
+        if (pos >= 0) hunks.splice(pos, 1);
+    }
+    (state as any).selectedHunksByFile[file] = hunks;
+    const lineCbs = hunkContainer.querySelectorAll<HTMLInputElement>('.pick-line');
+    const linesRec: Record<number, number[]> = { ...((state as any).selectedLinesByFile[file] || {}) };
+    if (checked && lineCbs.length > 0) {
+        const lineIndices: number[] = [];
+        lineCbs.forEach((cb) => {
+            const li = Number(cb.dataset.line || -1);
+            if (li >= 0) {
+                cb.checked = true;
+                lineIndices.push(li);
+            }
+        });
+        if (lineIndices.length > 0) linesRec[idx] = Array.from(new Set(lineIndices)).sort((a, b) => a - b);
+    } else {
+        delete linesRec[idx];
+        lineCbs.forEach((cb) => { cb.checked = false; });
+    }
+    (state as any).selectedLinesByFile[file] = linesRec;
+    hunkContainer.querySelectorAll<HTMLInputElement>('.pick-hunk').forEach((cb) => {
+        cb.indeterminate = false;
+        cb.checked = checked;
+    });
+    const allHunkCbs = hunkContainer.closest('[data-file]')?.querySelectorAll<HTMLInputElement>('.pick-hunk') || [];
+    const allChecked = Array.from(allHunkCbs).every((cb) => cb.checked);
+    updateListCheckboxForPath(file, allChecked, false);
+    if (allChecked) state.selectedFiles.add(file);
+    else state.selectedFiles.delete(file);
+    updateSelectAllState(getVisibleFiles());
+    updateCommitButton();
+}
+
+function handleMultiLineToggle(input: HTMLInputElement, file: string) {
+    const hunk = Number(input.dataset.hunk || -1);
+    const line = Number(input.dataset.line || -1);
+    if (!file || hunk < 0 || line < 0) return;
+    const checked = input.checked;
+    const hunkContainer = input.closest('[data-hunk-index]') as HTMLElement | null;
+    if (!hunkContainer) return;
+    const linesRec: Record<number, number[]> = { ...((state as any).selectedLinesByFile[file] || {}) };
+    const oldLines = new Set(linesRec[hunk] || []);
+    if (checked) oldLines.add(line);
+    else oldLines.delete(line);
+    const next = Array.from(oldLines).sort((a, b) => a - b);
+    if (next.length > 0) linesRec[hunk] = next;
+    else delete linesRec[hunk];
+    (state as any).selectedLinesByFile[file] = linesRec;
+    const totalLines = hunkContainer.querySelectorAll('.pick-line').length || 0;
+    const hunks: number[] = (state as any).selectedHunksByFile[file] || [];
+    if (next.length === totalLines) {
+        hunkContainer.querySelectorAll<HTMLInputElement>('.pick-hunk').forEach((cb) => {
+            cb.checked = true;
+            cb.indeterminate = false;
+        });
+        if (!hunks.includes(hunk)) hunks.push(hunk);
+    } else if (next.length === 0) {
+        hunkContainer.querySelectorAll<HTMLInputElement>('.pick-hunk').forEach((cb) => {
+            cb.checked = false;
+            cb.indeterminate = false;
+        });
+        const pos = hunks.indexOf(hunk);
+        if (pos >= 0) hunks.splice(pos, 1);
+    } else {
+        hunkContainer.querySelectorAll<HTMLInputElement>('.pick-hunk').forEach((cb) => {
+            cb.checked = false;
+            cb.indeterminate = true;
+        });
+        const pos = hunks.indexOf(hunk);
+        if (pos >= 0) hunks.splice(pos, 1);
+    }
+    (state as any).selectedHunksByFile[file] = hunks;
+    const allHunkCbs = hunkContainer.closest('[data-file]')?.querySelectorAll<HTMLInputElement>('.pick-hunk') || [];
+    const allChecked = Array.from(allHunkCbs).every((cb) => cb.checked);
+    const anyChecked = Array.from(allHunkCbs).some((cb) => cb.checked || cb.indeterminate);
+    updateListCheckboxForPath(file, allChecked, !allChecked && anyChecked);
+    if (allChecked) state.selectedFiles.add(file);
+    else state.selectedFiles.delete(file);
+    updateSelectAllState(getVisibleFiles());
+    updateCommitButton();
 }
 
 /** Updates a list row checkbox for a specific file path. */

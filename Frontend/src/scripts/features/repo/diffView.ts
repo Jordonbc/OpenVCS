@@ -21,7 +21,7 @@ import {
     isUntrackedStatus,
 } from './diffBinary';
 import { renderConflictView } from './diffConflicts';
-import { buildDiffFragment, allHunkIndices, renderHunksReadonly } from './diffFragment';
+import { buildDiffFragment, allHunkIndices, renderHunksReadonly, renderHunksWithSelection } from './diffFragment';
 import { bindHunkToggles, updateHunkCheckboxes, syncFileCheckboxWithHunks } from './diffSelection';
 
 /** Updates the diff header metadata chips for the selected file. */
@@ -314,16 +314,51 @@ export async function renderCombinedDiff(paths: string[]) {
             html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)}</div></div></div>`;
             const fileLines = diff.lines;
             const isBinary = (typeof diff.binary === 'boolean' ? diff.binary : undefined) ?? detectBinaryDiff(fileLines);
+            html += `<div class="multi-hunk" data-file="${escapeHtml(p)}">`;
             if (isBinary) {
                 html += renderBinaryDiffPlaceholder(p);
             } else {
-                html += renderHunksReadonly(fileLines);
+                html += renderHunksWithSelection(fileLines);
             }
+            html += `</div>`;
         } catch {
             html += `<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">${escapeHtml(p)} (failed to load diff)</div></div></div>`;
         }
     }
     diffEl.innerHTML = html || '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">No diffs</div></div></div>';
+    bindHunkToggles(diffEl);
+    diffEl.querySelectorAll<HTMLElement>('.multi-hunk[data-file]').forEach((container) => {
+        const file = container.dataset.file || '';
+        if (!file) return;
+        const hunks: number[] = (state as any).selectedHunksByFile?.[file] || [];
+        const lines: Record<number, number[]> = (state as any).selectedLinesByFile?.[file] || {};
+        const fileStaged = state.selectedFiles.has(file) && !(state.defaultSelectAll && state.selectionImplicitAll);
+        container.querySelectorAll<HTMLInputElement>('.pick-hunk').forEach((cb) => {
+            const h = Number(cb.dataset.hunk || -1);
+            if (h < 0) return;
+            const isSelected = hunks.includes(h);
+            const lineIndices = lines[h] || [];
+            const totalLines = cb.closest('[data-hunk-index]')?.querySelectorAll('.pick-line').length || 0;
+            const allLinesOn = totalLines > 0 && lineIndices.length === totalLines;
+            if (isSelected || allLinesOn || (fileStaged && !hunks.length && lineIndices.length === 0)) {
+                cb.checked = true;
+                cb.indeterminate = false;
+            } else if (lineIndices.length > 0) {
+                cb.checked = false;
+                cb.indeterminate = true;
+            } else {
+                cb.checked = false;
+                cb.indeterminate = false;
+            }
+        });
+        container.querySelectorAll<HTMLInputElement>('.pick-line').forEach((cb) => {
+            const h = Number(cb.dataset.hunk || -1);
+            const l = Number(cb.dataset.line || -1);
+            if (h < 0 || l < 0) return;
+            const lineIndices = lines[h] || [];
+            cb.checked = lineIndices.includes(l) || (fileStaged && !lineIndices.length);
+        });
+    });
     scrollDiffToTop();
 }
 

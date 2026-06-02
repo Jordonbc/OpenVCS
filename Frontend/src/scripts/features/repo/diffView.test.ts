@@ -89,14 +89,16 @@ describe('highlightRow', () => {
 });
 
 describe('renderCombinedDiff', () => {
-  it('renders read-only hunks without stale selection checkboxes', async () => {
+  it('renders hunks with selection checkboxes in multi-file view', async () => {
     const { renderCombinedDiff } = await import('./diffView');
 
     await renderCombinedDiff(['a.txt']);
 
-    expect(document.querySelector('#diff')?.innerHTML).toContain('-old');
-    expect(document.querySelector('#diff .pick-hunk')).toBeNull();
-    expect(document.querySelector('#diff .pick-line')).toBeNull();
+    const html = document.querySelector('#diff')?.innerHTML || '';
+    expect(html).toContain('-old');
+    expect(html).toContain('data-file="a.txt"');
+    expect(document.querySelector('#diff .pick-hunk')).not.toBeNull();
+    expect(document.querySelector('#diff .pick-line')).not.toBeNull();
   });
 
   it('handles missing diffEl gracefully', async () => {
@@ -144,6 +146,54 @@ describe('renderCombinedDiff', () => {
     expect(html).toContain('failed to load diff');
     expect(html).toContain('a.txt');
     expect(html).toContain('b.txt');
+  });
+
+  it('restores checkbox states from selectedHunksByFile and selectedLinesByFile', async () => {
+    const { renderCombinedDiff } = await import('./diffView');
+    const { state } = await import('../../state/state');
+    (state as any).selectedHunksByFile = { 'a.txt': [0] };
+    (state as any).selectedLinesByFile = { 'a.txt': { 0: [1, 2] } };
+
+    await renderCombinedDiff(['a.txt']);
+
+    const hunkCb = document.querySelector<HTMLInputElement>('#diff .multi-hunk[data-file="a.txt"] .pick-hunk');
+    expect(hunkCb?.checked).toBe(true);
+    expect((hunkCb as any)?.indeterminate).toBe(false);
+    const lineCbs = document.querySelectorAll<HTMLInputElement>('#diff .multi-hunk[data-file="a.txt"] .pick-line');
+    expect(Array.from(lineCbs).every((cb) => cb.checked)).toBe(true);
+  });
+
+  it('shows all hunks checked when file is explicitly in selectedFiles without hunk state', async () => {
+    const { renderCombinedDiff } = await import('./diffView');
+    const { state } = await import('../../state/state');
+    (state as any).selectedHunksByFile = {};
+    (state as any).selectedLinesByFile = {};
+    state.defaultSelectAll = false;
+    state.selectionImplicitAll = false;
+    state.selectedFiles = new Set(['a.txt']);
+
+    await renderCombinedDiff(['a.txt']);
+
+    const hunkCb = document.querySelector<HTMLInputElement>('#diff .multi-hunk[data-file="a.txt"] .pick-hunk');
+    expect(hunkCb?.checked).toBe(true);
+    expect((hunkCb as any)?.indeterminate).toBe(false);
+    const lineCbs = document.querySelectorAll<HTMLInputElement>('#diff .multi-hunk[data-file="a.txt"] .pick-line');
+    expect(Array.from(lineCbs).every((cb) => cb.checked)).toBe(true);
+  });
+
+  it('shows hunks unchecked when file only in implicit select-all', async () => {
+    const { renderCombinedDiff } = await import('./diffView');
+    const { state } = await import('../../state/state');
+    (state as any).selectedHunksByFile = {};
+    (state as any).selectedLinesByFile = {};
+    state.defaultSelectAll = true;
+    state.selectionImplicitAll = true;
+    state.selectedFiles = new Set(['a.txt']);
+
+    await renderCombinedDiff(['a.txt']);
+
+    const hunkCb = document.querySelector<HTMLInputElement>('#diff .multi-hunk[data-file="a.txt"] .pick-hunk');
+    expect(hunkCb?.checked).toBe(false);
   });
 
   it('handles empty and null file paths', async () => {

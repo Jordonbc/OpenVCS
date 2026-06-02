@@ -765,3 +765,149 @@ describe('handleLineToggle additional paths', () => {
     expect(state.selectedHunks).toContain(0);
   });
 });
+
+describe('multi-file hunk toggles (data-file routing)', () => {
+  it('handleMultiHunkToggle selects all lines in the hunk and updates file checkbox', async () => {
+    const { state } = await import('../../state/state');
+    const ul = document.getElementById('file-list')!;
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.setAttribute('data-path', 'multi.txt');
+    const pickCb = document.createElement('input');
+    pickCb.type = 'checkbox';
+    pickCb.className = 'pick';
+    li.appendChild(pickCb);
+    ul.appendChild(li);
+
+    (state as any).selectedHunksByFile = {};
+    (state as any).selectedLinesByFile = {};
+    state.selectedFiles = new Set();
+
+    const diff = document.getElementById('diff')!;
+    diff.innerHTML = '<div class="multi-hunk" data-file="multi.txt">'
+      + '<div class="hunk" data-hunk-index="0">'
+      + '<input type="checkbox" class="pick-hunk" data-hunk="0" />'
+      + '<input type="checkbox" class="pick-line" data-hunk="0" data-line="0" />'
+      + '<input type="checkbox" class="pick-line" data-hunk="0" data-line="1" />'
+      + '</div></div>';
+
+    const { bindHunkToggles } = await import('./diffSelection');
+    bindHunkToggles(diff);
+
+    const hunkCb = diff.querySelector<HTMLInputElement>('.pick-hunk')!;
+    hunkCb.checked = true;
+    hunkCb.dispatchEvent(new Event('change', { bubbles: true }));
+
+    expect((state as any).selectedHunksByFile['multi.txt']).toEqual([0]);
+    const lines = (state as any).selectedLinesByFile['multi.txt']?.[0] || [];
+    expect(lines.sort()).toEqual([0, 1]);
+    expect(state.selectedFiles.has('multi.txt')).toBe(true);
+    expect(pickCb.checked).toBe(true);
+  });
+
+  it('handleMultiHunkToggle deselects lines when unchecked', async () => {
+    const { state } = await import('../../state/state');
+    const ul = document.getElementById('file-list')!;
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.setAttribute('data-path', 'multi.txt');
+    const pickCb = document.createElement('input');
+    pickCb.type = 'checkbox';
+    pickCb.className = 'pick';
+    pickCb.checked = true;
+    li.appendChild(pickCb);
+    ul.appendChild(li);
+
+    (state as any).selectedHunksByFile = { 'multi.txt': [0] };
+    (state as any).selectedLinesByFile = { 'multi.txt': { 0: [0, 1] } };
+    state.selectedFiles = new Set(['multi.txt']);
+
+    const diff = document.getElementById('diff')!;
+    diff.innerHTML = '<div class="multi-hunk" data-file="multi.txt">'
+      + '<div class="hunk" data-hunk-index="0">'
+      + '<input type="checkbox" class="pick-hunk" data-hunk="0" checked />'
+      + '</div></div>';
+
+    const { bindHunkToggles } = await import('./diffSelection');
+    bindHunkToggles(diff);
+
+    const hunkCb = diff.querySelector<HTMLInputElement>('.pick-hunk')!;
+    hunkCb.checked = false;
+    hunkCb.dispatchEvent(new Event('change', { bubbles: true }));
+
+    expect((state as any).selectedHunksByFile['multi.txt']?.length ?? 0).toBe(0);
+    expect(state.selectedFiles.has('multi.txt')).toBe(false);
+    expect(pickCb.checked).toBe(false);
+  });
+
+  it('handleMultiLineToggle toggles a single line in multi-file view', async () => {
+    const { state } = await import('../../state/state');
+    const ul = document.getElementById('file-list')!;
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.setAttribute('data-path', 'multi.txt');
+    const pickCb = document.createElement('input');
+    pickCb.type = 'checkbox';
+    pickCb.className = 'pick';
+    li.appendChild(pickCb);
+    ul.appendChild(li);
+
+    (state as any).selectedHunksByFile = {};
+    (state as any).selectedLinesByFile = {};
+    state.selectedFiles = new Set();
+
+    const diff = document.getElementById('diff')!;
+    diff.innerHTML = '<div class="multi-hunk" data-file="multi.txt">'
+      + '<div class="hunk" data-hunk-index="0">'
+      + '<input type="checkbox" class="pick-hunk" data-hunk="0" />'
+      + '<input type="checkbox" class="pick-line" data-hunk="0" data-line="0" />'
+      + '<input type="checkbox" class="pick-line" data-hunk="0" data-line="1" />'
+      + '</div></div>';
+
+    const { bindHunkToggles } = await import('./diffSelection');
+    bindHunkToggles(diff);
+
+    const lineCb = diff.querySelector<HTMLInputElement>('.pick-line[data-line="1"]')!;
+    lineCb.checked = true;
+    lineCb.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const lines = (state as any).selectedLinesByFile['multi.txt']?.[0] || [];
+    expect(lines).toContain(1);
+    expect(diff.querySelector<HTMLInputElement>('.pick-hunk')?.checked).toBe(false);
+    expect((diff.querySelector<HTMLInputElement>('.pick-hunk') as any).indeterminate).toBe(true);
+  });
+
+  it('checkboxes outside data-file container use single-file handlers', async () => {
+    const diff = document.getElementById('diff')!;
+    const { bindHunkToggles } = await import('./diffSelection');
+    const { state } = await import('../../state/state');
+    state.currentFile = 'single.txt';
+    state.currentDiff = ['@@ -1 +1 @@', '-old', '+new'];
+    state.currentDiffHunkNodes = new Map();
+    state.selectedHunks = [];
+    (state as any).selectedLinesByFile = {};
+    state.currentDiffMeta = { offset: 0, rest: [], starts: [], changeCounts: [2], totalHunks: 1 };
+
+    const hunkCb = document.createElement('input');
+    hunkCb.type = 'checkbox';
+    hunkCb.className = 'pick-hunk';
+    hunkCb.dataset.hunk = '0';
+    const lineCb = document.createElement('input');
+    lineCb.type = 'checkbox';
+    lineCb.className = 'pick-line';
+    lineCb.dataset.hunk = '0';
+    lineCb.dataset.line = '0';
+    state.currentDiffHunkNodes.set(0, {
+      hunkEls: [document.createElement('div')],
+      hunkCheckboxes: [hunkCb],
+      lineCheckboxes: { 0: lineCb },
+    });
+
+    diff.appendChild(hunkCb);
+    bindHunkToggles(diff);
+
+    hunkCb.checked = true;
+    hunkCb.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(state.selectedHunks).toContain(0);
+  });
+});
