@@ -1566,7 +1566,7 @@ describe('ensurePluginSettingsLoaded - no loading element', () => {
         await vi.waitFor(() => {
             const input = modal.querySelector('[data-setting-id="x"]');
             expect(input).not.toBeNull();
-            expect(input!.value).toBe('works');
+            expect((input as HTMLInputElement).value).toBe('works');
         });
         document.body.removeChild(modal);
     });

@@ -898,7 +898,7 @@ describe('renderAheadBehind with missing element', () => {
 // ---------------------------------------------------------------------------
 
 describe('ensureSystemSyncListener systemSyncActive true', () => {
-  let _changeListener: ((this: MediaQueryList, ev: MediaQueryListEvent) => void) | null;
+  let _changeListener: ((ev: MediaQueryListEvent) => void) | null;
 
   beforeEach(() => {
     vi.resetModules();

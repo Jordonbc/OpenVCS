@@ -1096,7 +1096,7 @@ describe('renderStashList query matching multiple fields', () => {
     mod.renderStashList('refs/');
     const rows = mockListEl.querySelectorAll('li.row.commit');
     expect(rows.length).toBe(1);
-    expect(rows[0].dataset.selector).toBe('refs/stash@{1}');
+    expect((rows[0] as HTMLElement).dataset.selector).toBe('refs/stash@{1}');
   });
 });
 
