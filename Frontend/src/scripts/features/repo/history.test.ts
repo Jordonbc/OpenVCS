@@ -59,6 +59,7 @@ async function loadStateModule() {
 (globalThis as any).matchMedia = createMatchMediaMock
 
 beforeEach(() => {
+  vi.clearAllMocks()
   vi.resetModules()
   mountHistoryDom()
 })
@@ -781,5 +782,425 @@ describe('selectHistory - revert binary file', () => {
     const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
     await items.find((i: any) => i.label === 'Revert this file')?.action?.();
     expect(notify).toHaveBeenCalledWith('Cannot revert binary diffs yet');
+  });
+});
+
+// ============================================================================
+// formatTimeAgo - month (mon===1)
+// ============================================================================
+describe('formatTimeAgo - month', () => {
+  it('formats 1 month ago', async () => {
+    const { formatTimeAgo } = await loadHistoryModule();
+    const now = Date.now();
+    expect(formatTimeAgo(new Date(now - 32 * 24 * 60 * 60 * 1000).toISOString())).toBe('1 month ago');
+  });
+});
+
+// ============================================================================
+// openCommitActionsMenu without commit id
+// ============================================================================
+describe('openCommitActionsMenu - missing commit id', () => {
+  it('omits cherry-pick and revert when commit has no id', async () => {
+    installTauriMock();
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state, prefs } = await loadStateModule();
+    const { buildCtxMenu } = await import('../../lib/menu');
+
+    prefs.tab = 'history';
+    state.commits = [{ id: '', msg: 'No id commit', meta: new Date().toISOString() }] as any;
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const row = document.querySelector('#file-list li.row.commit') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 }));
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    const labels = items.map((i: any) => i.label);
+    expect(labels).toContain('Copy hash');
+    expect(labels).not.toContain('Cherry-pick to branch');
+    expect(labels).not.toContain('Revert commit');
+    expect(labels).not.toContain('Undo to this commit');
+  });
+});
+
+// ============================================================================
+// Revert confirmation cancellation
+// ============================================================================
+describe('revert confirmation', () => {
+  it('cancels and does not invoke vcs_revert_commit when confirmBool returns false', async () => {
+    installTauriMock();
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state, prefs } = await loadStateModule();
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { confirmBool } = await import('../../lib/confirm');
+    const { notify } = await import('../../lib/notify');
+
+    vi.mocked(confirmBool).mockResolvedValue(false);
+    vi.mocked(notify).mockClear();
+    prefs.tab = 'history';
+    state.commits = [{ id: 'abc123', msg: 'Test', meta: new Date().toISOString() }] as any;
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+    const row = document.querySelector('#file-list li.row.commit') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 }));
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((i: any) => i.label === 'Revert commit')?.action?.();
+    expect((window as any).__TAURI__.core.invoke).not.toHaveBeenCalledWith('vcs_revert_commit', expect.anything());
+    expect(notify).not.toHaveBeenCalledWith('Revert complete');
+  });
+});
+
+// ============================================================================
+// Undo action failure
+// ============================================================================
+describe('undo action failure', () => {
+  it('notifies on undo to commit failure', async () => {
+    installTauriMock();
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_undo_to_commit') throw new Error('undo fail');
+      if (cmd === 'vcs_diff_commit') return [];
+      return undefined;
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state, prefs } = await loadStateModule();
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { notify } = await import('../../lib/notify');
+
+    prefs.tab = 'history';
+    state.commits = [{ id: 'abc123', msg: 'Test', meta: new Date().toISOString() }] as any;
+    state.ahead = 1;
+    state.behind = 0;
+    state.aheadIds = new Set<string>(['abc123']);
+
+    renderHistoryList('');
+    const row = document.querySelector('#file-list li.row.commit') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 }));
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((i: any) => i.label === 'Undo to this commit')?.action?.();
+    expect(notify).toHaveBeenCalledWith('Undo failed');
+    errorSpy.mockRestore();
+  });
+});
+
+// ============================================================================
+// renderHistoryList - commit without id
+// ============================================================================
+describe('renderHistoryList - commit without id', () => {
+  it('renders commits without id without crashing', async () => {
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state } = await loadStateModule();
+
+    state.commits = [{ id: '', msg: 'No id', meta: new Date().toISOString() }] as any;
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    expect(renderHistoryList('')).toBe(true);
+    const listText = document.querySelector('#file-list')?.textContent || '';
+    expect(listText).toContain('No id');
+  });
+});
+
+// ============================================================================
+// diffEl contextmenu handler (module-level)
+// ============================================================================
+describe('diffEl contextmenu handler', () => {
+  it('opens commit actions menu when tab=history and commit selected', async () => {
+    installTauriMock();
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') return [];
+      return undefined;
+    });
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state, prefs } = await loadStateModule();
+    const { buildCtxMenu } = await import('../../lib/menu');
+
+    prefs.tab = 'history';
+    state.commits = [{ id: 'abc123', msg: 'Test Commit', meta: new Date().toISOString(), author: 'Dev' }] as any;
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+
+    renderHistoryList('');
+
+    const diff = document.getElementById('diff') as HTMLElement;
+    diff.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 15, clientY: 25 }));
+
+    expect(vi.mocked(buildCtxMenu)).toHaveBeenCalled();
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    expect(items.map((i: any) => i.label)).toContain('Copy hash');
+  });
+});
+
+// ============================================================================
+// selectHistory - file revert failure
+// ============================================================================
+describe('selectHistory - file revert failure', () => {
+  it('notifies on vcs_discard_patch failure', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/a.ts b/a.ts',
+          '--- a/a.ts',
+          '+++ b/a.ts',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+        ];
+      }
+      if (cmd === 'vcs_discard_patch') throw new Error('discard fail');
+      return [];
+    });
+    const { selectHistory } = await loadHistoryModule();
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { confirmBool } = await import('../../lib/confirm');
+    const { notify } = await import('../../lib/notify');
+
+    vi.mocked(confirmBool).mockReset().mockResolvedValue(true);
+
+    await selectHistory({ id: 'abc', msg: 'Test', author: 'A' } as any, 0);
+
+    const fileRow = document.querySelector('.commit-files .row') as HTMLElement;
+    vi.mocked(buildCtxMenu).mockClear();
+    fileRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 6 }));
+
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((i: any) => i.label === 'Revert this file')?.action?.();
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining('Revert failed'));
+  });
+});
+
+// ============================================================================
+// selectCommitFile invalid index
+// ============================================================================
+describe('selectCommitFile - invalid index', () => {
+  it('handles invalid data-idx gracefully', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/a.ts b/a.ts',
+          '--- a/a.ts',
+          '+++ b/a.ts',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+          'diff --git a/b.ts b/b.ts',
+          '--- a/b.ts',
+          '+++ b/b.ts',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new2',
+        ];
+      }
+      return [];
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    await selectHistory({ id: 'abc123', msg: 'Multi', author: 'Dev' } as any, 0);
+
+    const rows = document.querySelectorAll('.commit-files .row');
+    rows.forEach((r) => { r.setAttribute('data-idx', '-1'); });
+    (rows[0] as HTMLElement).click();
+  });
+});
+
+// ============================================================================
+// selectHistory - missing side/content elements
+// ============================================================================
+describe('selectHistory - missing side/content elements', () => {
+  it('skips file sidebar setup when commit-files or commit-content is missing', async () => {
+    installTauriMock();
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return [
+          'diff --git a/a.ts b/a.ts',
+          '--- a/a.ts',
+          '+++ b/a.ts',
+          '@@ -1 +1 @@',
+          '-old',
+          '+new',
+        ];
+      }
+      return [];
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    const diff = document.getElementById('diff') as HTMLElement;
+    const origQuery = diff.querySelector.bind(diff);
+    vi.spyOn(diff, 'querySelector').mockImplementation((sel: string) => {
+      if (sel === '.commit-files' || sel === '.commit-content') return null;
+      return origQuery(sel);
+    });
+
+    await expect(selectHistory({ id: 'abc', msg: 'Test', author: 'A' } as any, 0)).resolves.toBeUndefined();
+  });
+});
+
+// ============================================================================
+// diffEl contextmenu - early return conditions
+// ============================================================================
+describe('diffEl contextmenu - early returns', () => {
+  it('does not open menu when tab is not history', async () => {
+    installTauriMock();
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state, prefs } = await loadStateModule();
+    const { buildCtxMenu } = await import('../../lib/menu');
+
+    prefs.tab = 'changes';
+    state.commits = [{ id: 'abc123', msg: 'Test', meta: new Date().toISOString(), author: 'Dev' }] as any;
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+    renderHistoryList('');
+
+    const diff = document.getElementById('diff') as HTMLElement;
+    diff.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 10 }));
+    expect(buildCtxMenu).not.toHaveBeenCalled();
+  });
+
+  it('does not open menu when no commit is selected', async () => {
+    installTauriMock();
+    const { renderHistoryList } = await loadHistoryModule();
+    const { state, prefs } = await loadStateModule();
+    const { buildCtxMenu } = await import('../../lib/menu');
+
+    prefs.tab = 'history';
+    state.commits = [{ id: 'abc123', msg: 'Test', meta: new Date().toISOString(), author: 'Dev' }] as any;
+    state.ahead = 0;
+    state.behind = 0;
+    state.aheadIds = new Set<string>();
+    renderHistoryList('');
+    // renderHistoryList sets selectedCommit, reset it to test early return
+    (state as any).selectedCommit = null;
+
+    const diff = document.getElementById('diff') as HTMLElement;
+    diff.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 10 }));
+    expect(buildCtxMenu).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// selectHistory - copy path clipboard failure
+// ============================================================================
+describe('selectHistory - copy path failure', () => {
+  it('handles clipboard write failure silently', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockRejectedValue(new Error('clipboard error')) };
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return ['diff --git a/a.ts b/a.ts', '--- a/a.ts', '+++ b/a.ts', '@@ -1 +1 @@', '-old', '+new'];
+      }
+      return [];
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { notify } = await import('../../lib/notify');
+
+    await selectHistory({ id: 'abc', msg: 'Test', author: 'A' } as any, 0);
+
+    const fileRow = document.querySelector('.commit-files .row') as HTMLElement;
+    fileRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 6 }));
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+
+    // Copy path should not throw and should silently ignore the clipboard error
+    await expect(items.find((i: any) => i.label === 'Copy path')?.action?.()).resolves.toBeUndefined();
+    expect(notify).not.toHaveBeenCalledWith('Path copied');
+  });
+});
+
+// ============================================================================
+// selectHistory - file revert confirmation cancellation
+// ============================================================================
+describe('selectHistory - file revert confirmation cancellation', () => {
+  it('does not revert when confirmBool returns false', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return ['diff --git a/a.ts b/a.ts', '--- a/a.ts', '+++ b/a.ts', '@@ -1 +1 @@', '-old', '+new'];
+      }
+      return [];
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    const { buildCtxMenu } = await import('../../lib/menu');
+    const { confirmBool } = await import('../../lib/confirm');
+    const { notify } = await import('../../lib/notify');
+
+    vi.mocked(confirmBool).mockResolvedValue(false);
+    vi.mocked(notify).mockClear();
+    vi.mocked(buildCtxMenu).mockClear();
+
+    await selectHistory({ id: 'abc', msg: 'Test', author: 'A' } as any, 0);
+
+    const fileRow = document.querySelector('.commit-files .row') as HTMLElement;
+    fileRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 6 }));
+    const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
+    await items.find((i: any) => i.label === 'Revert this file')?.action?.();
+    expect((window as any).__TAURI__.core.invoke).not.toHaveBeenCalledWith('vcs_discard_patch', expect.anything());
+    expect(notify).not.toHaveBeenCalledWith(expect.stringContaining('Revert'));
+  });
+});
+
+// ============================================================================
+// selectHistory - file contextmenu invalid idx
+// ============================================================================
+describe('selectHistory - file contextmenu invalid idx', () => {
+  it('early returns when data-idx is invalid', async () => {
+    installTauriMock();
+    (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return ['diff --git a/a.ts b/a.ts', '--- a/a.ts', '+++ b/a.ts', '@@ -1 +1 @@', '-old', '+new'];
+      }
+      return [];
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    const { buildCtxMenu } = await import('../../lib/menu');
+
+    await selectHistory({ id: 'abc', msg: 'Test', author: 'A' } as any, 0);
+
+    const fileRow = document.querySelector('.commit-files .row') as HTMLElement;
+    fileRow.setAttribute('data-idx', '-1');
+    vi.mocked(buildCtxMenu).mockClear();
+    fileRow.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 6 }));
+    expect(buildCtxMenu).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// selectHistory - diffHtml truthy when files.length === 0
+// ============================================================================
+describe('selectHistory - files.length === 0 with renderable diff', () => {
+  it('renders hunks label when diff has no git diff separators but has hunk content', async () => {
+    installTauriMock();
+    (window as any).__TAURI__.core.invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'vcs_diff_commit') {
+        return ['@@ -1 +1 @@', '-old', '+new'];
+      }
+      return [];
+    });
+
+    const { selectHistory } = await loadHistoryModule();
+    await selectHistory({ id: 'abc', msg: 'Test', author: 'A' } as any, 0);
+
+    const diffEl = document.getElementById('diff') as HTMLElement;
+    // Should show the "Changes" header because diffHtml is truthy
+    expect(diffEl.innerHTML).toContain('Changes');
+    // Should contain the diff content rendered by renderHunksReadonly
+    expect(diffEl.textContent).toContain('-old');
+    expect(diffEl.textContent).toContain('+new');
   });
 });

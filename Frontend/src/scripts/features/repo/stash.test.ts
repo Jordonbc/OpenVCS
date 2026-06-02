@@ -97,6 +97,14 @@ function makeStash(overrides: Partial<StashItem> = {}): StashItem {
 beforeEach(() => {
   vi.resetAllMocks();
   vi.resetModules();
+  vi.doMock('./context', () => ({
+    listEl: mockListEl,
+    countEl: mockCountEl,
+    diffHeadPath: mockDiffHeadPath,
+    diffEl: mockDiffEl,
+    leftFootEl: mockLeftFootEl,
+    undoLeftBtn: mockUndoLeftBtn,
+  }));
 
   // Reset DOM elements
   mockListEl.innerHTML = '';
@@ -737,5 +745,328 @@ describe('stash footer button actions', () => {
 
     expect(TAURI.invoke).toHaveBeenCalledWith('vcs_stash_drop', { selector: 'stash@{0}' });
     expect(notify).toHaveBeenCalledWith('Failed to drop stash');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: context menu apply with renderListRef set (line 84)
+// ---------------------------------------------------------------------------
+describe('context menu apply with renderListRef', () => {
+  it('calls renderListRef after apply', async () => {
+    mockState.stash = [makeStash({ selector: 'stash@{0}', msg: 'WIP' })];
+    const { TAURI } = await import('../../lib/tauri');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    vi.mocked(TAURI.invoke).mockResolvedValue(undefined);
+
+    const mod = await loadStash();
+    const fn = vi.fn();
+    mod.setRenderListRef(fn);
+    mod.renderStashList('');
+
+    const row = mockListEl.querySelector('li.row.commit') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { clientX: 100, clientY: 200, buttons: 2 }));
+
+    const ctxItems = vi.mocked(buildCtxMenu).mock.calls[0][0] as any[];
+    const applyItem = ctxItems.find((i: any) => i.label === 'Apply stash');
+    await applyItem.action();
+
+    expect(TAURI.invoke).toHaveBeenCalledWith('vcs_stash_apply', { selector: 'stash@{0}' });
+    expect(fn).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: delete stash where currentStash !== target (line 93)
+// ---------------------------------------------------------------------------
+describe('context menu delete with mismatched currentStash', () => {
+  it('does not clear currentStash when it differs from target', async () => {
+    mockState.stash = [makeStash({ selector: 'stash@{0}', msg: 'WIP' })];
+    const { TAURI } = await import('../../lib/tauri');
+    const { confirmBool } = await import('../../lib/confirm');
+    const { buildCtxMenu } = await import('../../lib/menu');
+    vi.mocked(confirmBool).mockResolvedValue(true);
+    vi.mocked(TAURI.invoke).mockResolvedValue(undefined);
+
+    const mod = await loadStash();
+    mod.renderStashList('');
+
+    const row = mockListEl.querySelector('li.row.commit') as HTMLElement;
+    row.dispatchEvent(new MouseEvent('contextmenu', { clientX: 100, clientY: 200, buttons: 2 }));
+
+    // Override currentStash before the async delete action resumes
+    mockState.currentStash = 'stash@{999}';
+
+    const ctxItems = vi.mocked(buildCtxMenu).mock.calls[0][0] as any[];
+    const deleteItem = ctxItems.find((i: any) => i.label === 'Delete stash');
+    await deleteItem.action();
+
+    expect(TAURI.invoke).toHaveBeenCalledWith('vcs_stash_drop', { selector: 'stash@{0}' });
+    // currentStash must NOT be cleared (it differs from target)
+    expect(mockState.currentStash).toBe('stash@{999}');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: selectStash with missing diffEl/diffHeadPath (line 108)
+// ---------------------------------------------------------------------------
+describe('selectStash with missing DOM elements', () => {
+  it('returns early when diffHeadPath or diffEl is null', async () => {
+    vi.doMock('./context', () => ({
+      listEl: mockListEl,
+      countEl: mockCountEl,
+      diffHeadPath: null,
+      diffEl: null,
+      leftFootEl: mockLeftFootEl,
+      undoLeftBtn: mockUndoLeftBtn,
+    }));
+
+    const mod = await loadStash();
+    await expect(mod.selectStash({ selector: 'stash@{0}' }, 0)).resolves.toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: hideStashFooter when undoLeftBtn is null (line 143)
+// ---------------------------------------------------------------------------
+describe('hideStashFooter with missing undoLeftBtn', () => {
+  it('does not crash when undoLeftBtn is null', async () => {
+    vi.doMock('./context', () => ({
+      listEl: mockListEl,
+      countEl: mockCountEl,
+      diffHeadPath: mockDiffHeadPath,
+      diffEl: mockDiffEl,
+      leftFootEl: mockLeftFootEl,
+      undoLeftBtn: null,
+    }));
+
+    const mod = await loadStash();
+    mod.showStashFooter();
+    expect(() => mod.hideStashFooter()).not.toThrow();
+    expect(mockLeftFootEl.classList.contains('show')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: ensureStashFooterControls when leftFootEl is null (line 158)
+// ---------------------------------------------------------------------------
+describe('ensureStashFooterControls with missing leftFootEl', () => {
+  it('showStashFooter returns early when leftFootEl is null', async () => {
+    vi.doMock('./context', () => ({
+      listEl: mockListEl,
+      countEl: mockCountEl,
+      diffHeadPath: mockDiffHeadPath,
+      diffEl: mockDiffEl,
+      leftFootEl: null,
+      undoLeftBtn: null,
+    }));
+
+    const mod = await loadStash();
+    expect(() => mod.showStashFooter()).not.toThrow();
+  });
+
+  it('hideStashFooter returns early when leftFootEl is null', async () => {
+    vi.doMock('./context', () => ({
+      listEl: mockListEl,
+      countEl: mockCountEl,
+      diffHeadPath: mockDiffHeadPath,
+      diffEl: mockDiffEl,
+      leftFootEl: null,
+      undoLeftBtn: null,
+    }));
+
+    const mod = await loadStash();
+    expect(() => mod.hideStashFooter()).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: pop/drop with empty selector (lines 205, 217)
+// ---------------------------------------------------------------------------
+describe('stash footer pop/drop with empty selector', () => {
+  it('pop button returns early when selector is empty', async () => {
+    mockState.currentStash = '';
+    const { TAURI } = await import('../../lib/tauri');
+
+    const mod = await loadStash();
+    mod.showStashFooter();
+
+    const popBtn = mockLeftFootEl.querySelector<HTMLButtonElement>('#stash-pop-btn')!;
+    popBtn.disabled = false;
+    popBtn.click();
+    await flush();
+
+    expect(TAURI.invoke).not.toHaveBeenCalled();
+  });
+
+  it('drop button returns early when selector is empty', async () => {
+    mockState.currentStash = '';
+    const { TAURI } = await import('../../lib/tauri');
+
+    const mod = await loadStash();
+    mod.showStashFooter();
+
+    const dropBtn = mockLeftFootEl.querySelector<HTMLButtonElement>('#stash-drop-btn')!;
+    dropBtn.disabled = false;
+    dropBtn.click();
+    await flush();
+
+    expect(TAURI.invoke).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: stash drop confirmation cancellation
+// ---------------------------------------------------------------------------
+describe('stash drop confirmation cancellation', () => {
+  it('does not call TAURI or clear state when user cancels', async () => {
+    mockState.currentStash = 'stash@{0}';
+    const { TAURI } = await import('../../lib/tauri');
+    const { confirmBool } = await import('../../lib/confirm');
+    vi.mocked(confirmBool).mockResolvedValue(false);
+
+    const mod = await loadStash();
+    mod.showStashFooter();
+
+    const dropBtn = mockLeftFootEl.querySelector<HTMLButtonElement>('#stash-drop-btn')!;
+    dropBtn.disabled = false;
+    dropBtn.click();
+    await flush();
+
+    expect(TAURI.invoke).not.toHaveBeenCalled();
+    expect(mockState.currentStash).toBe('stash@{0}');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: renderStashList early return on null listEl (line 39)
+// ---------------------------------------------------------------------------
+describe('renderStashList early return with null DOM', () => {
+  it('returns false when listEl is null in mock', async () => {
+    vi.doMock('./context', () => ({
+      listEl: null,
+      countEl: mockCountEl,
+      diffHeadPath: mockDiffHeadPath,
+      diffEl: mockDiffEl,
+      leftFootEl: mockLeftFootEl,
+      undoLeftBtn: mockUndoLeftBtn,
+    }));
+
+    const mod = await loadStash();
+    const result = mod.renderStashList('');
+    expect(result).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: stash items with empty/missing fields (lines 42, 64, 65)
+// ---------------------------------------------------------------------------
+describe('renderStashList with empty fields', () => {
+  it('renders items when selector or meta are empty', async () => {
+    mockState.stash = [
+      { selector: '', msg: '', meta: '' },
+      makeStash({ selector: 'stash@{0}', msg: 'WIP on main' }),
+    ];
+    const mod = await loadStash();
+    mod.renderStashList('');
+
+    const rows = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows.length).toBe(2);
+    expect(rows[0].textContent).toContain('(no message)');
+    expect(rows[1].textContent).toContain('WIP on main');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: state.stash is null/undefined (line 41 || [])
+// ---------------------------------------------------------------------------
+describe('renderStashList with null stash', () => {
+  it('handles state.stash being null via || [] fallback', async () => {
+    mockState.stash = null;
+    const mod = await loadStash();
+    const result = mod.renderStashList('');
+    expect(result).toBe(true);
+    expect(mockListEl.innerHTML).toContain('No stashes.');
+  });
+
+  it('handles state.stash being undefined via || [] fallback', async () => {
+    mockState.stash = undefined;
+    const mod = await loadStash();
+    const result = mod.renderStashList('');
+    expect(result).toBe(true);
+    expect(mockListEl.innerHTML).toContain('No stashes.');
+  });
+
+  it('covers filter predicate returning false for non-matching item', async () => {
+    mockState.stash = [
+      { selector: 'stash@{0}', msg: 'WIP on main', meta: '' },
+    ];
+    const mod = await loadStash();
+    mod.renderStashList('zzzzz_nonexistent');
+    const rows = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: selectStash with diffEl null but diffHeadPath set (line 108)
+// ---------------------------------------------------------------------------
+describe('selectStash with only diffEl missing', () => {
+  it('returns early when only diffEl is null', async () => {
+    vi.doMock('./context', () => ({
+      listEl: mockListEl,
+      countEl: mockCountEl,
+      diffHeadPath: mockDiffHeadPath,
+      diffEl: null,
+      leftFootEl: mockLeftFootEl,
+      undoLeftBtn: mockUndoLeftBtn,
+    }));
+
+    const mod = await loadStash();
+    await expect(mod.selectStash({ selector: 'stash@{0}', msg: 'test' }, 0)).resolves.toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Branch coverage: filter predicate || '' fallback with non-empty query (line 42)
+// ---------------------------------------------------------------------------
+describe('renderStashList filter predicate edge cases', () => {
+  it('handles undefined msg with non-empty query via || "" fallback', async () => {
+    mockState.stash = [
+      { selector: 'stash@{0}', msg: undefined as any, meta: '' },
+    ];
+    const mod = await loadStash();
+    mod.renderStashList('nonexistent');
+    const rows = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows.length).toBe(0);
+  });
+
+  it('handles null msg with non-empty query via || "" fallback', async () => {
+    mockState.stash = [
+      { selector: 'stash@{0}', msg: null as any, meta: '' },
+    ];
+    const mod = await loadStash();
+    mod.renderStashList('nonexistent');
+    const rows = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows.length).toBe(0);
+  });
+
+  it('handles empty selector with non-empty query via || "" fallback', async () => {
+    mockState.stash = [
+      { selector: '', msg: 'message only', meta: '' },
+    ];
+    const mod = await loadStash();
+    mod.renderStashList('message');
+    const rows = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows.length).toBe(1);
+  });
+
+  it('handles undefined selector with query matching msg', async () => {
+    mockState.stash = [
+      { selector: undefined as any, msg: 'title hit', meta: '' },
+    ];
+    const mod = await loadStash();
+    mod.renderStashList('title');
+    const rows = mockListEl.querySelectorAll('li.row.commit');
+    expect(rows.length).toBe(1);
   });
 });
