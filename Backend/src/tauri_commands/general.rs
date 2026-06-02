@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use log::{error, info, warn};
+use log::{info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window, async_runtime};
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
@@ -195,7 +195,7 @@ pub async fn add_repo_internal<R: Runtime>(
 
     if !Path::new(&path).exists() {
         let m = format!("Path does not exist: {}", path);
-        error!("{m}");
+        warn!("{m}");
         return Err(m);
     }
 
@@ -216,7 +216,7 @@ pub async fn add_repo_internal<R: Runtime>(
     .map_err(|e| format!("add_repo task failed: {e}"))?
     .map_err(|e| {
         let m = format!("Failed to open repo with backend `{backend_label}`: {e}");
-        error!("{m}");
+        warn!("{m}");
         m
     })?;
 

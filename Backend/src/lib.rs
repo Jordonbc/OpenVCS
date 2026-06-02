@@ -159,10 +159,6 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
                     }
                 }
                 Err(error) => {
-                    crate::monitoring::capture_startup_error(
-                        "reopen_last_repo",
-                        &error.to_string(),
-                    );
                     log::warn!("startup reopen: failed to open repo: {}", error)
                 }
             }
@@ -308,10 +304,6 @@ pub fn run() {
             let state = app.state::<state::AppState>();
             crate::config_watcher::start_config_watcher(app.handle().clone());
             if let Err(err) = crate::plugin_sources::sync_configured_plugins(&state.config()) {
-                crate::monitoring::capture_startup_error(
-                    "sync_configured_plugins",
-                    &err.to_string(),
-                );
                 warn!("plugins: failed to sync configured plugins: {}", err);
             }
             if let Err(err) = state.plugin_runtime().sync_plugin_runtime() {
