@@ -68,6 +68,45 @@ describe('applyCommitSummaryRestriction', () => {
 
     expect(input.hasAttribute('maxlength')).toBe(false);
   });
+
+  it('adds a live character counter when restriction enabled', async () => {
+    const { applyCommitSummaryRestriction } = await import('./layout');
+    const input = document.getElementById('commit-summary') as HTMLInputElement;
+    input.value = 'Hello, World!';
+
+    applyCommitSummaryRestriction(true);
+
+    const counter = input.parentElement?.querySelector('.summary-counter');
+    expect(counter).not.toBeNull();
+    expect(counter?.textContent).toBe('13/72');
+  });
+
+  it('updates counter text on input', async () => {
+    const { applyCommitSummaryRestriction } = await import('./layout');
+    const input = document.getElementById('commit-summary') as HTMLInputElement;
+    input.value = 'Hi';
+
+    applyCommitSummaryRestriction(true);
+
+    const counter = input.parentElement?.querySelector('.summary-counter');
+    expect(counter?.textContent).toBe('2/72');
+
+    input.value = 'Hello';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(counter?.textContent).toBe('5/72');
+  });
+
+  it('removes counter element when restriction disabled', async () => {
+    const { applyCommitSummaryRestriction } = await import('./layout');
+    const input = document.getElementById('commit-summary') as HTMLInputElement;
+    input.value = 'test';
+
+    applyCommitSummaryRestriction(true);
+    expect(input.parentElement?.querySelector('.summary-counter')).not.toBeNull();
+
+    applyCommitSummaryRestriction(false);
+    expect(input.parentElement?.querySelector('.summary-counter')).toBeNull();
+  });
 });
 
 describe('applyGpuAccelerationPreference', () => {

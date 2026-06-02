@@ -560,6 +560,18 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
     border-radius:var(--r-sm); padding:.55rem .65rem;
 }
 .commit textarea{ min-height:64px; resize:vertical; }
+/* Character counter for the commit summary when restriction is enabled */
+.summary-wrap{ position:relative; }
+.summary-counter{
+    position:absolute;
+    right:.65rem;
+    top:50%;
+    transform:translateY(-50%);
+    font-size:.72rem;
+    color:var(--muted);
+    pointer-events:none;
+    user-select:none;
+}
 .kbd{
     border:1px solid var(--border); border-bottom-width:2px;
     border-radius:6px; padding:.05rem .32rem; color:var(--muted); font-size:.8rem;

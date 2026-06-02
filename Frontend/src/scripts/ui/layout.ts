@@ -257,10 +257,19 @@ export function refreshRepoActions() {
     }
 }
 
-/** Applies or clears the commit-summary 72-character cap. */
+/** Applies or clears the commit-summary 72-character cap with live counter. */
 export function applyCommitSummaryRestriction(enabled: boolean) {
     const summary = qs<HTMLInputElement>('#commit-summary');
     if (!summary) return;
+
+    let wrap = summary.parentElement?.classList.contains('summary-wrap')
+        ? summary.parentElement
+        : null;
+    let counter = wrap?.querySelector<HTMLElement>('.summary-counter') ?? null;
+    const updateCounter = () => {
+        if (!counter) return;
+        counter.textContent = `${summary.value.length}/72`;
+    };
 
     if (enabled) {
         summary.setAttribute('maxlength', '72');
@@ -268,9 +277,31 @@ export function applyCommitSummaryRestriction(enabled: boolean) {
         if (summary.value.length > 72) {
             summary.value = summary.value.slice(0, 72);
         }
+        if (!wrap) {
+            wrap = document.createElement('div');
+            wrap.className = 'summary-wrap';
+            (summary.parentElement as HTMLElement)?.insertBefore(wrap, summary);
+            wrap.appendChild(summary);
+        }
+        if (!counter) {
+            counter = document.createElement('span');
+            counter.className = 'summary-counter';
+            wrap.appendChild(counter);
+        }
+        summary.removeEventListener('input', updateCounter);
+        summary.addEventListener('input', updateCounter);
+        updateCounter();
     } else {
         summary.removeAttribute('maxlength');
         summary.removeAttribute('title');
+        if (counter) counter.remove();
+        if (wrap) {
+            const parent = wrap.parentElement;
+            if (parent) {
+                parent.insertBefore(summary, wrap);
+                wrap.remove();
+            }
+        }
     }
 }
 
