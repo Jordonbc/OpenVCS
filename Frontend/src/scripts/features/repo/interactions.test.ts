@@ -970,7 +970,15 @@ describe('onFileClick - range and diff toggle coverage', () => {
     setRenderListCallback(callback);
 
     onFileClick({ shiftKey: true, ctrlKey: false, metaKey: false } as MouseEvent, visible[2], 2, visible);
-    expect(callback).toHaveBeenCalled();
+    expect(state.diffSelectedFiles.has('c.txt')).toBe(true);
+    expect(ul.querySelector<HTMLElement>('li.row[data-path="c.txt"]')?.classList.contains('diffsel')).toBe(true);
+    expect(dragState.lastClickedIndex).toBe(2);
+    expect(callback).not.toHaveBeenCalled();
+
+    // Second click toggles off
+    onFileClick({ shiftKey: true, ctrlKey: false, metaKey: false } as MouseEvent, visible[2], 2, visible);
+    expect(state.diffSelectedFiles.has('c.txt')).toBe(false);
+    expect(ul.querySelector<HTMLElement>('li.row[data-path="c.txt"]')?.classList.contains('diffsel')).toBe(false);
   });
 
   it('toggle with diffSelectedFiles > 1', async () => {
