@@ -54,9 +54,9 @@ afterEach(() => {
 });
 
 describe('onFileClick', () => {
-  it('selects every file in a shift-click range without toggling selected files off', async () => {
+  it('shift+click toggles file in diff selection and updates row class', async () => {
     const { onFileClick } = await import('./interactions');
-    const { dragState } = await import('./context');
+    const { dragState, listEl } = await import('./context');
     const { state } = await import('../../state/state');
     const visible = [
       { path: 'a.txt', status: 'M' },
@@ -65,35 +65,24 @@ describe('onFileClick', () => {
     ];
 
     state.files = [];
-    state.selectedFiles = new Set(['b.txt']);
+    state.diffSelectedFiles = new Set();
     dragState.lastClickedIndex = 0;
 
-    onFileClick({ shiftKey: true, ctrlKey: false, metaKey: false } as MouseEvent, visible[2] as any, 2, visible as any);
-
-    expect(Array.from(state.selectedFiles).sort()).toEqual(['a.txt', 'b.txt', 'c.txt']);
-  });
-
-  it('clears implicit select-all before shift-range commit selection', async () => {
-    const { onFileClick } = await import('./interactions');
-    const { dragState } = await import('./context');
-    const { state } = await import('../../state/state');
-    const visible = [
-      { path: 'a.txt', status: 'M' },
-      { path: 'b.txt', status: 'M' },
-      { path: 'c.txt', status: 'M' },
-    ];
-
-    state.files = [];
-    state.defaultSelectAll = true;
-    state.selectionImplicitAll = true;
-    state.selectedFiles = new Set(['hidden.txt']);
-    dragState.lastClickedIndex = 0;
+    const ul = document.getElementById('file-list')!;
+    visible.forEach((f: any) => {
+      const li = document.createElement('li');
+      li.className = 'row';
+      li.setAttribute('data-path', f.path);
+      ul.appendChild(li);
+    });
 
     onFileClick({ shiftKey: true, ctrlKey: false, metaKey: false } as MouseEvent, visible[2] as any, 2, visible as any);
+    expect(state.diffSelectedFiles.has('c.txt')).toBe(true);
+    expect(state.selectedFiles.size).toBe(0);
+    expect(dragState.lastClickedIndex).toBe(2);
 
-    expect(Array.from(state.selectedFiles).sort()).toEqual(['a.txt', 'b.txt', 'c.txt']);
-    expect(state.defaultSelectAll).toBe(false);
-    expect(state.selectionImplicitAll).toBe(false);
+    onFileClick({ shiftKey: true, ctrlKey: false, metaKey: false } as MouseEvent, visible[2] as any, 2, visible as any);
+    expect(state.diffSelectedFiles.has('c.txt')).toBe(false);
   });
 });
 
@@ -141,6 +130,7 @@ describe('updateDragRange', () => {
     state.diffSelectedFiles = new Set();
     dragState.isDragSelecting = true;
     dragState.dragMode = 'diff';
+    dragState.dragTargetState = true;
     dragState.dragStartIndex = 0;
     dragState.dragCurrentIndex = 1;
     dragState.dragPreDiff = new Set();
@@ -152,6 +142,39 @@ describe('updateDragRange', () => {
     const rows = ul.querySelectorAll<HTMLElement>('li.row');
     expect(rows[0].classList.contains('diffsel')).toBe(true);
     expect(rows[1].classList.contains('diffsel')).toBe(true);
+  });
+
+  it('diff drag range with dragTargetState false deselects files in range', async () => {
+    const { updateDragRange } = await import('./interactions');
+    const { dragState } = await import('./context');
+    const { state } = await import('../../state/state');
+    const visible = [
+      { path: 'a.txt', status: 'M' },
+      { path: 'b.txt', status: 'M' },
+    ];
+
+    const ul = document.getElementById('file-list')!;
+    visible.forEach((f) => {
+      const li = document.createElement('li');
+      li.className = 'row';
+      li.setAttribute('data-path', f.path);
+      ul.appendChild(li);
+    });
+
+    state.diffSelectedFiles = new Set(['a.txt', 'b.txt']);
+    dragState.isDragSelecting = true;
+    dragState.dragMode = 'diff';
+    dragState.dragTargetState = false;
+    dragState.dragStartIndex = 0;
+    dragState.dragCurrentIndex = 1;
+    dragState.dragPreDiff = new Set(['a.txt', 'b.txt']);
+
+    updateDragRange(visible as any);
+
+    expect(state.diffSelectedFiles.size).toBe(0);
+    const rows = ul.querySelectorAll<HTMLElement>('li.row');
+    expect(rows[0].classList.contains('diffsel')).toBe(false);
+    expect(rows[1].classList.contains('diffsel')).toBe(false);
   });
 
   it('returns early when isDragSelecting is false', async () => {
@@ -202,6 +225,64 @@ describe('updateDragRange', () => {
     updateDragRange(visible as any);
 
     expect(state.selectedFiles.has('a.txt')).toBe(true);
+    expect((state as any).selectedHunksByFile['a.txt']).toEqual([0]);
+  });
+
+  it('commit drag syncs selectedLinesByFile for current file hunks', async () => {
+    const { updateDragRange } = await import('./interactions');
+    const { dragState } = await import('./context');
+    const { state } = await import('../../state/state');
+    const visible = [{ path: 'a.txt', status: 'M' }];
+
+    const ul = document.getElementById('file-list')!;
+    const li = document.createElement('li');
+    li.className = 'row';
+    li.setAttribute('data-path', 'a.txt');
+    const pickCb = document.createElement('input');
+    pickCb.className = 'pick';
+    pickCb.type = 'checkbox';
+    li.appendChild(pickCb);
+    ul.appendChild(li);
+
+    const makeLineCb = (line: string) => {
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'pick-line';
+      cb.dataset.hunk = '0';
+      cb.dataset.line = line;
+      return cb;
+    };
+    const hunkLineCheckboxes: Record<number, HTMLInputElement> = {
+      0: makeLineCb('0'),
+      1: makeLineCb('1'),
+    };
+    state.currentDiffHunkNodes = new Map([
+      [0, {
+        hunkCheckboxes: [document.createElement('input')],
+        hunkEls: [document.createElement('div')],
+        lineCheckboxes: hunkLineCheckboxes,
+      }],
+    ]);
+    state.selectedFiles = new Set();
+    state.currentFile = 'a.txt';
+    state.currentDiff = ['@@ -1 +1 @@', '-old', '+new'];
+    state.selectedHunks = [];
+    state.selectedLinesByFile = {};
+
+    dragState.isDragSelecting = true;
+    dragState.dragMode = 'commit';
+    dragState.dragTargetState = true;
+    dragState.dragStartIndex = 0;
+    dragState.dragCurrentIndex = 0;
+    dragState.dragPrePicked = new Set();
+
+    updateDragRange(visible as any);
+
+    expect(state.selectedFiles.has('a.txt')).toBe(true);
+    expect((state as any).selectedHunksByFile['a.txt']).toEqual([0]);
+    const linesByFile: Record<string, Record<number, number[]>> = (state as any).selectedLinesByFile || {};
+    const lines = linesByFile['a.txt']?.[0] || [];
+    expect(lines.sort()).toEqual([0, 1]);
   });
 });
 
@@ -340,11 +421,29 @@ describe('onFileMouseDown', () => {
     onFileMouseDown({ button: 0, shiftKey: true, ctrlKey: false, metaKey: false, clientX: 0, clientY: 0, preventDefault } as any, visible[0] as any, 0, visible as any, li);
 
     expect(dragState.dragMode).toBe('diff');
+    expect(dragState.dragTargetState).toBe(true);  // file not in diffSelectedFiles → toggle on
     expect(dragState.isDragSelecting).toBe(true);
     expect(dragState.dragStartIndex).toBe(0);
     expect(dragState.dragCurrentIndex).toBe(0);
     expect(document.body.classList.contains('drag-selecting')).toBe(true);
     expect(preventDefault).toHaveBeenCalled();
+  });
+
+  it('shift+mousedown on already-selected file sets dragTargetState to false (toggle off)', async () => {
+    const { onFileMouseDown } = await import('./interactions');
+    const { dragState } = await import('./context');
+    const { state } = await import('../../state/state');
+    const visible = [{ path: 'a.txt', status: 'M' }];
+    state.diffSelectedFiles = new Set(['a.txt']);  // already selected
+    state.selectedFiles = new Set();
+    const li = document.createElement('li');
+    li.setAttribute('data-path', 'a.txt');
+    document.getElementById('file-list')!.appendChild(li);
+
+    onFileMouseDown({ button: 0, shiftKey: true, ctrlKey: false, metaKey: false, clientX: 0, clientY: 0, preventDefault: vi.fn() } as any, visible[0] as any, 0, visible as any, li);
+
+    expect(dragState.dragMode).toBe('diff');
+    expect(dragState.dragTargetState).toBe(false);  // file already selected → toggle off
   });
 
   it('initiates commit drag selection with ctrl+mousedown', async () => {
@@ -381,7 +480,7 @@ describe('onFileMouseDown', () => {
 
     onFileMouseDown({ button: 0, shiftKey: false, ctrlKey: true, metaKey: false, clientX: 0, clientY: 0, preventDefault: vi.fn() } as any, visible[0] as any, 0, visible as any, li);
 
-    expect(Array.from(state.selectedFiles)).toEqual(['a.txt']);
+    expect(state.selectedFiles.size).toBe(0);
     expect(state.defaultSelectAll).toBe(false);
     expect(state.selectionImplicitAll).toBe(false);
     expect(dragState.dragMode).toBe('commit');
@@ -398,12 +497,32 @@ describe('onFileMouseDown', () => {
     li.setAttribute('data-path', 'a.txt');
     dragState.dragMode = 'diff' as any;
     dragState.isDragSelecting = true;
+    dragState.suppressNextClick = true;
 
     onFileMouseDown({ button: 0, shiftKey: false, ctrlKey: false, metaKey: false, clientX: 0, clientY: 0, preventDefault: vi.fn() } as any, visible[0] as any, 0, visible as any, li);
 
     expect(dragState.dragMode).toBeNull();
     expect(dragState.isDragSelecting).toBe(false);
     expect(dragState.dragMoved).toBe(false);
+    expect(dragState.suppressNextClick).toBe(false);
+  });
+
+  it('suppressNextClick cleared on mousedown when entering drag mode', async () => {
+    const { onFileMouseDown } = await import('./interactions');
+    const { dragState } = await import('./context');
+    const { state } = await import('../../state/state');
+    const visible = [{ path: 'a.txt', status: 'M' }];
+    state.diffSelectedFiles = new Set();
+    state.selectedFiles = new Set();
+    const li = document.createElement('li');
+    li.setAttribute('data-path', 'a.txt');
+    document.getElementById('file-list')!.appendChild(li);
+    dragState.suppressNextClick = true;
+
+    onFileMouseDown({ button: 0, shiftKey: true, ctrlKey: false, metaKey: false, clientX: 0, clientY: 0, preventDefault: vi.fn() } as any, visible[0] as any, 0, visible as any, li);
+
+    expect(dragState.suppressNextClick).toBe(false);
+    expect(dragState.dragMode).toBe('diff');
   });
 
   it('registers mousemove and mouseup handlers and cleans up on mouseup', async () => {
@@ -826,7 +945,7 @@ describe('setRenderListCallback / isDragSelecting / setDragCurrentIndex', () => 
 });
 
 describe('onFileClick - range and diff toggle coverage', () => {
-  it('shift+click range calls renderListAfterRangeSelect callback', async () => {
+  it('shift+click toggles diff selection, updates DOM class, does not trigger render callback', async () => {
     const { onFileClick, setRenderListCallback } = await import('./interactions');
     const { dragState } = await import('./context');
     const { state, prefs } = await import('../../state/state');
@@ -836,7 +955,7 @@ describe('onFileClick - range and diff toggle coverage', () => {
       { path: 'c.txt', status: 'M' },
     ] as any;
     state.files = visible;
-    state.selectedFiles = new Set();
+    state.diffSelectedFiles = new Set();
     prefs.tab = 'changes';
     dragState.lastClickedIndex = 0;
 

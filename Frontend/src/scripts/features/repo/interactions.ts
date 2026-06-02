@@ -27,20 +27,25 @@ export function onFileClick(e: MouseEvent, file: FileStatus, index: number, visi
         }
         return;
     }
+    const isDiffToggle = e.shiftKey;
     const isToggle = e.ctrlKey || e.metaKey;
-    const isRange = e.shiftKey && dragState.lastClickedIndex >= 0;
 
-    if (isRange) {
-        disableDefaultSelectAll(true);
-        const a = Math.min(dragState.lastClickedIndex, index);
-        const b = Math.max(dragState.lastClickedIndex, index);
-        for (let i = a; i <= b; i++) {
-            const p = visible[i]?.path; if (!p) continue;
-            state.selectedFiles.add(p);
+    if (isDiffToggle) {
+        const on = !state.diffSelectedFiles.has(file.path);
+        if (on) state.diffSelectedFiles.add(file.path);
+        else state.diffSelectedFiles.delete(file.path);
+        if (listEl) {
+            const sel = `li.row[data-path="${(file.path || '').replace(/([\"\\])/g, '\\$1')}"]`;
+            const row = listEl.querySelector<HTMLElement>(sel);
+            if (row) row.classList.toggle('diffsel', on);
         }
-        disableDefaultSelectAll();
-        updateSelectAllState(visible);
-        renderListAfterRangeSelect(file);
+        if (state.diffSelectedFiles.size > 1) {
+            renderCombinedDiff(Array.from(state.diffSelectedFiles));
+        } else if (state.diffSelectedFiles.size === 1) {
+            const p = state.diffSelectedFiles.values().next().value;
+            const idx = visible.findIndex((v) => v.path === p);
+            if (idx >= 0) selectFile(visible[idx], idx);
+        }
     } else if (isToggle) {
         const on = !state.selectedFiles.has(file.path);
         toggleFilePick(file.path, on);
@@ -68,6 +73,7 @@ export function onFileClick(e: MouseEvent, file: FileStatus, index: number, visi
 /** Starts drag-selection for diff or commit selection gestures. */
 export function onFileMouseDown(e: MouseEvent, file: FileStatus, index: number, visible: FileStatus[], _li: HTMLElement) {
     if (e.button !== 0) return;
+    dragState.suppressNextClick = false;
     const mode = e.shiftKey ? 'diff' : (e.ctrlKey || e.metaKey) ? 'commit' : null;
     if (mode === null) {
         dragState.dragMode = null;
@@ -85,22 +91,24 @@ export function onFileMouseDown(e: MouseEvent, file: FileStatus, index: number, 
     try { const sel = window.getSelection?.(); sel && sel.removeAllRanges(); } catch {}
     if (dragState.dragMode === 'diff') {
         clearActiveRows();
-        dragState.dragTargetState = true;
+        const currentlyOn = state.diffSelectedFiles.has(file.path);
+        dragState.dragTargetState = !currentlyOn;
         dragState.dragStartIndex = index; dragState.dragCurrentIndex = index;
         dragState.dragPreDiff = new Set(state.diffSelectedFiles);
-        updateDragRange(visible);
     } else if (dragState.dragMode === 'commit') {
         disableDefaultSelectAll(true);
         const currentlyOn = state.selectedFiles.has(file.path);
         dragState.dragTargetState = !currentlyOn;
         dragState.dragStartIndex = index; dragState.dragCurrentIndex = index;
         dragState.dragPrePicked = new Set(state.selectedFiles);
-        updateDragRange(visible);
     }
 
     const startX = e.clientX, startY = e.clientY;
     const onMove = (mv: MouseEvent) => {
-        if (!dragState.dragMoved && (Math.abs(mv.clientX - startX) + Math.abs(mv.clientY - startY) > 3)) dragState.dragMoved = true;
+        if (!dragState.dragMoved && (Math.abs(mv.clientX - startX) + Math.abs(mv.clientY - startY) > 3)) {
+            dragState.dragMoved = true;
+            updateDragRange(visible);
+        }
         const el = document.elementFromPoint(mv.clientX, mv.clientY) as HTMLElement | null;
         const row = el ? el.closest('li.row[data-path]') as HTMLElement | null : null;
         if (row) {
@@ -155,7 +163,9 @@ export function updateDragRange(visible: FileStatus[]) {
         const next = new Set(dragState.dragPreDiff);
         for (let i = 0; i < visible.length; i++) {
             const p = visible[i]?.path; if (!p) continue;
-            if (i >= a && i <= b) next.add(p); else if (!dragState.dragPreDiff.has(p)) next.delete(p);
+            const inRange = i >= a && i <= b;
+            const on = inRange ? dragState.dragTargetState : dragState.dragPreDiff.has(p);
+            if (on) next.add(p); else next.delete(p);
         }
         state.diffSelectedFiles = next;
         if (list) {
@@ -181,9 +191,28 @@ export function updateDragRange(visible: FileStatus[]) {
                 if (on) {
                     state.selectedHunks = allHunkIndices(state.currentDiff);
                     (state as any).selectedHunksByFile[state.currentFile] = state.selectedHunks.slice();
+                    const hunkNodes = state.currentDiffHunkNodes;
+                    const recExisting: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
+                    const rec: Record<number, number[]> = { ...recExisting };
+                    state.selectedHunks.forEach((h) => {
+                        if (rec[h] && rec[h].length > 0) return;
+                        const picked: number[] = [];
+                        const refs = hunkNodes.get(h);
+                        Object.keys(refs?.lineCheckboxes || {}).forEach((ln) => {
+                            const idx = Number(ln);
+                            if (idx < 0) return;
+                            const box = refs?.lineCheckboxes[idx];
+                            if (!box) return;
+                            box.checked = true;
+                            picked.push(idx);
+                        });
+                        if (picked.length > 0) rec[h] = Array.from(new Set(picked)).sort((a, b) => a - b);
+                    });
+                    (state as any).selectedLinesByFile[state.currentFile] = rec;
                 } else {
                     state.selectedHunks = [];
                     delete (state as any).selectedHunksByFile[state.currentFile];
+                    delete (state as any).selectedLinesByFile[state.currentFile];
                 }
                 updateHunkCheckboxes();
             }
@@ -321,15 +350,6 @@ export function isDragSelecting() {
 /** Stores the latest drag cursor index for range updates. */
 export function setDragCurrentIndex(index: number) {
     dragState.dragCurrentIndex = index;
-}
-
-/** Re-renders list state after shift-range toggling and reselects target row. */
-function renderListAfterRangeSelect(file: FileStatus) {
-    renderListCallback?.();
-    const refreshed = getVisibleFiles();
-    const nextIndex = refreshed.findIndex((v) => v.path === file.path);
-    if (nextIndex >= 0) selectFile(refreshed[nextIndex], nextIndex);
-    updateCommitButton();
 }
 
 /** Applies active-row styling by index in the current list. */
