@@ -15,14 +15,15 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['./src/setupTests.ts'],
+    setupFiles: ['./tests/setupTests.ts'],
+    include: ['tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       exclude: [
-        'src/scripts/**/*.test.ts',
+        'tests/**',
         'src/modals/**',
         'src/styles/**',
-        'tests/**',
+        'src/scripts/**/*.test.ts',
       ],
       thresholds: {
         statements: 95,

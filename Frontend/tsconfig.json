@@ -13,6 +13,6 @@
     "types": ["vite/client", "vitest/globals"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
   },
-  "include": ["src"],
+  "include": ["src", "tests"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -4,7 +4,7 @@
 
 - `Backend/`: Rust + Tauri backend (`src/`), commands (`src/tauri_commands/`), plugin runtime (`src/plugin_runtime/`), and config-driven plugin sync support (`scripts/`).
 - `openvcs.plugins.json`: built-in plugin source list used to materialize shipped plugins during client builds.
-- `Frontend/`: TypeScript + Vite UI code (`src/scripts/`, `src/styles/`, `src/modals/`), with Vitest tests colocated as `*.test.ts` files.
+- `Frontend/`: TypeScript + Vite UI code (`src/scripts/`, `src/styles/`, `src/modals/`), with Vitest tests in `tests/` mirroring the `src/` structure.
 - OpenVCS is desktop-only: there is no web app, no standalone browser mode, and no supported web browser/WebView deployment target.
 - `docs/`: UX docs, plugin architecture notes, and plugin/theme packaging guides referenced by contributors.
 - Flatpak packaging is maintained in the sibling [`Open-VCS/flathub`](https://github.com/Open-VCS/flathub) repository.
@@ -25,7 +25,7 @@
 - `npm --prefix Frontend test`: run all tests
 - `npm --prefix Frontend test run`: run tests once (non-watch mode)
 - `npm --prefix Frontend test -- --run`: explicit non-watch mode
-- `npm --prefix Frontend test -- src/scripts/lib/dom.test.ts`: run single test file
+- `npm --prefix Frontend test -- tests/scripts/lib/dom.test.ts`: run single test file
 - `npm --prefix Frontend test -- --run -t "qs and qsa"`: run single test by name pattern
 - `npm --prefix Frontend test -- --watch`: watch mode for development
 
@@ -151,7 +151,7 @@
 - Use `qsa('.class')` for multiple elements
 - Use event delegation for list items
 - Keep feature modules focused and small (<200 lines when possible)
-- Colocate tests as `*.test.ts` next to the source file
+- Tests live in `tests/` mirroring the `src/` structure; use `@scripts/` aliases for source imports
 
 ### Testing
 
