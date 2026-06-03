@@ -247,13 +247,16 @@ function buildPatchForSelected(path: string, lines: string[], hunkIndices: numbe
         const pickSet = new Set<number>(picksAdj || []);
         if (pickSet.size === 0) continue;
 
-        // prefix counts to compute old/new positions
+        // prefix counts to compute old/new positions.
+        // `\` lines (e.g. "\ No newline at end of file") are metadata —
+        // they don't correspond to file lines so they must not advance either counter.
         const prefOld: number[] = new Array(content.length + 1).fill(0);
         const prefNew: number[] = new Array(content.length + 1).fill(0);
         for (let i = 0; i < content.length; i++) {
             const ch = (content[i] || '')[0] || ' ';
-            prefOld[i+1] = prefOld[i] + (ch === '+' ? 0 : 1); // old advances on ' ' or '-'
-            prefNew[i+1] = prefNew[i] + (ch === '-' ? 0 : 1); // new advances on ' ' or '+'
+            const isMeta = ch === '\\';
+            prefOld[i+1] = prefOld[i] + (isMeta ? 0 : (ch === '+' ? 0 : 1));
+            prefNew[i+1] = prefNew[i] + (isMeta ? 0 : (ch === '-' ? 0 : 1));
         }
 
         // group consecutive selected lines into mini-hunks
@@ -265,10 +268,19 @@ function buildPatchForSelected(path: string, lines: string[], hunkIndices: numbe
             const old_start = aStart + prefOld[i0];
             const new_start = cStart + prefNew[i0];
             const slice = group.map(i => content[i]);
-            const old_count = slice.filter(l => (l||'')[0] === '-').length;
-            const new_count = slice.filter(l => (l||'')[0] === '+').length;
+            // Separate content lines from metadata lines (e.g. "\ No newline").
+            // Metadata lines must not be counted in the hunk range or git apply
+            // will reject the hunk header as "corrupt patch".
+            const contentLines = slice.filter(l => (l||'')[0] !== '\\');
+            const metaLines = slice.filter(l => (l||'')[0] === '\\');
+            // In unified-diff format, old_count includes context + removed lines
+            // and new_count includes context + added lines.
+            const old_count = contentLines.filter(l => { const c = (l||'')[0]; return c !== '+'; }).length;
+            const new_count = contentLines.filter(l => { const c = (l||'')[0]; return c !== '-'; }).length;
+            if (old_count === 0 && new_count === 0) { group = []; return; }
             out += `@@ -${old_start},${old_count} +${new_start},${new_count} @@\n`;
-            out += slice.join('\n') + '\n';
+            out += contentLines.join('\n') + '\n';
+            if (metaLines.length) out += metaLines.join('\n') + '\n';
             group = [];
         };
         for (let i = 0; i < sorted.length; i++) {
