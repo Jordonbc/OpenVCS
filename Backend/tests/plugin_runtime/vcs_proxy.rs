@@ -142,6 +142,24 @@ fn proxy_stage_patch_delegates() {
 }
 
 #[test]
+fn proxy_stage_selections_delegates() {
+    let (proxy, rt) = mock_proxy();
+    rt.set_session_id(Some("s".into()));
+    set_unit_response(&rt);
+
+    use std::collections::HashMap;
+    let mut partial = HashMap::new();
+    partial.insert(0usize, vec![2usize, 4usize]);
+    let sel = crate::core::models::HunkSelection {
+        path: "src/main.rs".into(),
+        whole_hunks: vec![1],
+        partial_hunks: partial,
+    };
+
+    assert!(proxy.stage_selections(&[sel]).is_ok());
+}
+
+#[test]
 fn proxy_stage_paths_delegates() {
     let (proxy, rt) = mock_proxy();
     rt.set_session_id(Some("s".into()));

@@ -115,7 +115,8 @@ impl Vcs for TestVcs {
     fn diff_file(&self, _path: &Path) -> Result<models::DiffFileResult, VcsError> { self.unsupported() }
     fn diff_commit(&self, _rev: &str) -> Result<Vec<String>, VcsError> { self.unsupported() }
     fn stage_patch(&self, _patch: &str) -> Result<(), VcsError> { self.unsupported() }
-    fn stage_paths(&self, _paths: &[PathBuf]) -> Result<(), VcsError> { self.unsupported() }
+    fn stage_selections(&self, _selections: &[models::HunkSelection]) -> Result<(), VcsError> { Ok(()) }
+    fn stage_paths(&self, _paths: &[PathBuf]) -> Result<(), VcsError> { Ok(()) }
     fn discard_paths(&self, _paths: &[PathBuf]) -> Result<(), VcsError> { self.unsupported() }
     fn apply_reverse_patch(&self, _patch: &str) -> Result<(), VcsError> { self.unsupported() }
     fn delete_branch(&self, _name: &str, _force: bool) -> Result<(), VcsError> { self.unsupported() }
@@ -155,6 +156,7 @@ fn build_app_with_repo() -> (tauri::App<tauri::test::MockRuntime>, Arc<TestVcs>)
             super::commit_selected,
             super::commit_patch,
             super::commit_patch_and_files,
+            super::commit_selection,
             super::vcs_cherry_pick_to_branch,
             super::vcs_revert_commit,
         ])
@@ -176,6 +178,7 @@ fn build_app_no_repo() -> tauri::App<tauri::test::MockRuntime> {
             super::commit_selected,
             super::commit_patch,
             super::commit_patch_and_files,
+            super::commit_selection,
             super::vcs_cherry_pick_to_branch,
             super::vcs_revert_commit,
         ])
@@ -349,4 +352,102 @@ fn commit_changes_succeeds_with_valid_input() {
     assert!(res.is_ok(), "commit_changes should succeed: {:?}", res);
     let commit_id: String = res.unwrap().deserialize().unwrap();
     assert_eq!(commit_id, "abc123def");
+}
+
+// ── commit_selection IPC tests ──
+
+#[test]
+fn commit_selection_fails_without_repo() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "test",
+        "description": null,
+        "selections": [],
+        "stagePaths": [],
+    }));
+    let res = invoke_cmd(&wv, "commit_selection", body);
+    assert!(res.is_err(), "commit_selection needs a repo: {:?}", res);
+}
+
+#[test]
+fn commit_selection_fails_without_identity() {
+    register_test_backend("test-vcs");
+    let (app, _vcs) = build_app_with_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "test",
+        "description": null,
+        "selections": [{
+            "path": "file.rs",
+            "whole_hunks": [0],
+            "partial_hunks": {}
+        }],
+        "stagePaths": [],
+    }));
+    let res = invoke_cmd(&wv, "commit_selection", body);
+    assert!(res.is_err(), "no identity should fail: {:?}", res);
+}
+
+#[test]
+fn commit_selection_fails_with_no_paths() {
+    register_test_backend("test-vcs");
+    let (app, vcs) = build_app_with_repo();
+    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "test",
+        "description": null,
+        "selections": [],
+        "stagePaths": [],
+    }));
+    let res = invoke_cmd(&wv, "commit_selection", body);
+    assert!(res.is_err(), "empty selections+stage_paths should fail: {:?}", res);
+}
+
+#[test]
+fn commit_selection_succeeds_with_hunk_selections() {
+    register_test_backend("test-vcs");
+    let (app, vcs) = build_app_with_repo();
+    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
+    *vcs.commit_result.lock().unwrap() = Some("oid-456".into());
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "partial commit",
+        "description": "via selections",
+        "selections": [{
+            "path": "src/lib.rs",
+            "whole_hunks": [0, 1],
+            "partial_hunks": { "2": [1, 3] }
+        }],
+        "stagePaths": [],
+    }));
+    let res = invoke_cmd(&wv, "commit_selection", body);
+    assert!(res.is_ok(), "commit_selection with hunks should succeed: {:?}", res);
+    let commit_id: String = res.unwrap().deserialize().unwrap();
+    assert_eq!(commit_id, "oid-456");
+}
+
+#[test]
+fn commit_selection_succeeds_with_stage_paths() {
+    register_test_backend("test-vcs");
+    let (app, vcs) = build_app_with_repo();
+    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
+    *vcs.commit_result.lock().unwrap() = Some("oid-789".into());
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "full file commit",
+        "description": "",
+        "selections": [],
+        "stagePaths": ["src/main.rs", "src/utils.rs"],
+    }));
+    let res = invoke_cmd(&wv, "commit_selection", body);
+    assert!(res.is_ok(), "commit_selection with stage_paths should succeed: {:?}", res);
+    let commit_id: String = res.unwrap().deserialize().unwrap();
+    assert_eq!(commit_id, "oid-789");
 }

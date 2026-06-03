@@ -1,6 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::collections::HashMap;
 use super::*;
 
 #[test]
@@ -90,4 +91,41 @@ fn vcs_event_roundtrips_via_json() {
         let back: VcsEvent = serde_json::from_value(value).expect("deserialize");
         assert_eq!(format!("{event:?}"), format!("{back:?}"));
     }
+}
+
+#[test]
+fn hunk_selection_roundtrips_via_json() {
+    let mut partial = HashMap::new();
+    partial.insert(0usize, vec![1usize, 3usize]);
+    partial.insert(2usize, vec![2usize]);
+
+    let sel = HunkSelection {
+        path: "src/lib.rs".into(),
+        whole_hunks: vec![0, 1],
+        partial_hunks: partial,
+    };
+
+    let value = serde_json::to_value(&sel).expect("serialize");
+    assert_eq!(value["path"], "src/lib.rs");
+    assert_eq!(value["whole_hunks"], serde_json::json!([0, 1]));
+    assert_eq!(value["partial_hunks"]["0"], serde_json::json!([1, 3]));
+    assert_eq!(value["partial_hunks"]["2"], serde_json::json!([2]));
+
+    let back: HunkSelection = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(back.path, "src/lib.rs");
+    assert_eq!(back.whole_hunks, vec![0, 1]);
+    assert_eq!(back.partial_hunks.get(&0), Some(&vec![1, 3]));
+    assert_eq!(back.partial_hunks.get(&2), Some(&vec![2]));
+    assert!(back.partial_hunks.get(&1).is_none());
+}
+
+#[test]
+fn hunk_selection_serializes_empty_partial_as_empty_object() {
+    let sel = HunkSelection {
+        path: "file.txt".into(),
+        whole_hunks: vec![],
+        partial_hunks: HashMap::new(),
+    };
+    let value = serde_json::to_value(&sel).expect("serialize");
+    assert_eq!(value["partial_hunks"], serde_json::json!({}));
 }
