@@ -220,6 +220,22 @@ pub enum VcsEvent {
     },
 }
 
+/// Structured selection of hunks/lines for a single file during partial commit.
+///
+/// This is VCS-agnostic — each plugin interprets the indices against its own
+/// diff output rather than requiring the frontend to parse VCS-specific formats
+/// (e.g. `diff --git` for Git, `Index:` for SVN).
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct HunkSelection {
+    /// Repository-relative file path.
+    pub path: String,
+    /// Indices of whole hunks to include in the commit.
+    pub whole_hunks: Vec<usize>,
+    /// Per-hunk line selections: maps hunk index → list of 1-based line offsets
+    /// within that hunk (same numbering the UI uses).
+    pub partial_hunks: std::collections::HashMap<usize, Vec<usize>>,
+}
+
 /// Callback function type for handling VCS events.
 pub type OnEvent = Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>;
 

@@ -113,6 +113,19 @@ pub trait Vcs: Send + Sync {
 
     /// Stages changes represented by a textual patch.
     fn stage_patch(&self, patch: &str) -> Result<()>;
+    /// Stages structured hunk/line selections for multiple files (batch).
+    ///
+    /// This is the VCS-agnostic alternative to `stage_patch` — each VCS plugin
+    /// interprets the selection indices against its own diff output internally,
+    /// removing the need for the frontend to parse VCS-specific diff formats
+    /// (e.g. `diff --git` for Git, `Index:` for SVN).
+    ///
+    /// The plugin MUST build a single combined patch from all selections and
+    /// apply it atomically, so that a failure in any one file leaves the index
+    /// unchanged.
+    fn stage_selections(&self, _selections: &[models::HunkSelection]) -> Result<()> {
+        Err(VcsError::Unsupported(self.id()))
+    }
     /// Stages explicit paths to the index.
     fn stage_paths(&self, paths: &[PathBuf]) -> Result<()>;
     /// Discards changes for the provided repository-relative paths.

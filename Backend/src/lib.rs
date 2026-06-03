@@ -430,6 +430,7 @@ fn build_invoke_handler<R: tauri::Runtime>()
         tauri_commands::commit_selected,
         tauri_commands::commit_patch,
         tauri_commands::commit_patch_and_files,
+        tauri_commands::commit_selection,
         tauri_commands::vcs_discard_paths,
         tauri_commands::vcs_discard_patch,
         tauri_commands::vcs_set_remote_url,

@@ -240,6 +240,13 @@ impl NodePluginRuntimeInstance {
         self.rpc_call_unit(Methods::VCS_STAGE_PATCH, params)
     }
 
+    /// Calls `vcs.stage-selections` with structured hunk/line data.
+    pub fn vcs_stage_selections(&self, selections: &[crate::core::models::HunkSelection]) -> Result<(), String> {
+        let selections_val = serde_json::to_value(selections).map_err(|e| e.to_string())?;
+        let params = self.session_params(json!({ "selections": selections_val }))?;
+        self.rpc_call_unit(Methods::VCS_STAGE_SELECTIONS, params)
+    }
+
     /// Calls `vcs.stage-paths`.
     pub fn vcs_stage_paths(&self, paths: &[String]) -> Result<(), String> {
         let params = self.session_params(json!({ "paths": paths }))?;

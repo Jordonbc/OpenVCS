@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use log::{error, info};
 use tauri::{Manager, Runtime, State, Window, async_runtime};
 
-use crate::core::models::VcsEvent;
+use crate::core::models::{HunkSelection, VcsEvent};
 use crate::repo::Repo;
 use crate::state::AppState;
 
@@ -160,7 +160,7 @@ pub async fn commit_selected<R: Runtime>(
         });
         let oid = repo
             .inner()
-            .commit(&message, &name, &email, &paths)
+            .commit_index(&message, &name, &email)
             .map_err(|e| {
                 error!("Commit (selected) failed: {e}");
                 e.to_string()
@@ -300,10 +300,9 @@ pub async fn commit_patch_and_files<R: Runtime>(
             return Err("No commit paths provided".into());
         }
 
-        let all_paths: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
         let oid = repo
             .inner()
-            .commit(&message, &name, &email, &all_paths)
+            .commit_index(&message, &name, &email)
             .map_err(|e| e.to_string())?;
         on(VcsEvent::Info {
             msg: "Commit complete".into(),
@@ -312,6 +311,79 @@ pub async fn commit_patch_and_files<R: Runtime>(
     })
     .await
     .map_err(|e| format!("commit_patch_and_files task failed: {e}"))?
+}
+
+#[tauri::command]
+/// Commits structured hunk/line selections (VCS-agnostic).
+///
+/// The frontend sends selection indices instead of a pre-built patch,
+/// so each VCS plugin can handle its own diff format internally.
+pub async fn commit_selection<R: Runtime>(
+    window: Window<R>,
+    state: State<'_, AppState>,
+    summary: String,
+    description: String,
+    selections: Vec<HunkSelection>,
+    stage_paths: Vec<String>,
+) -> Result<String, String> {
+    info!(
+        "commit_selection called (selections={}, stage_paths={})",
+        selections.len(),
+        stage_paths.len(),
+    );
+
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let repo = repo.clone();
+    let app = window.app_handle().clone();
+
+    let message = build_commit_message(&summary, &description);
+
+    async_runtime::spawn_blocking(move || {
+        let on = progress_bridge(app);
+        on(VcsEvent::Info {
+            msg: "Staging selected hunks…".into(),
+        });
+
+        if !selections.is_empty() {
+            repo.inner().stage_selections(&selections).map_err(|e| {
+                error!("stage_selections failed: {e}");
+                e.to_string()
+            })?;
+        }
+
+        let (name, email) = commit_identity(repo.as_ref())?;
+
+        let stage_paths: Vec<PathBuf> = stage_paths.iter().map(PathBuf::from).collect();
+        if !stage_paths.is_empty() {
+            on(VcsEvent::Info {
+                msg: "Staging selected files…".into(),
+            });
+            repo.inner().stage_paths(&stage_paths).map_err(|e| {
+                error!("stage_paths failed: {e}");
+                e.to_string()
+            })?;
+        }
+
+        if selections.is_empty() && stage_paths.is_empty() {
+            return Err("No commit paths provided".into());
+        }
+
+        on(VcsEvent::Info {
+            msg: "Writing commit…".into(),
+        });
+        let oid = repo
+            .inner()
+            .commit_index(&message, &name, &email)
+            .map_err(|e| e.to_string())?;
+        on(VcsEvent::Info {
+            msg: "Commit complete".into(),
+        });
+        Ok(oid)
+    })
+    .await
+    .map_err(|e| format!("commit_selection task failed: {e}"))?
 }
 
 #[tauri::command]

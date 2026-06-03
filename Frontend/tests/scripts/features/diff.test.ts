@@ -2,6 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const tauriInvoke: any = vi.hoisted(() => vi.fn(async (cmd: string) => {
+  if (cmd === 'commit_selection' || cmd === 'commit_patch_and_files') return 'oid-123';
+  return [];
+}));
+
+const tauriListen = vi.hoisted(() => vi.fn());
+
 vi.mock('@scripts/plugins', () => ({
   runHook: vi.fn(async () => ({ cancelled: false })),
 }));
@@ -9,22 +16,6 @@ vi.mock('@scripts/plugins', () => ({
 vi.mock('@scripts/lib/notify', () => ({
   notify: vi.fn(),
 }));
-
-vi.mock('@scripts/lib/tauri', () => {
-  const invoke = vi.fn(async (cmd: string) => {
-    if (cmd === 'commit_patch_and_files') return 'oid-123';
-    return [];
-  });
-  return {
-    TAURI: {
-      invoke,
-      listen: vi.fn(),
-    },
-    isTauriRuntimeAvailable: () => true,
-    assertDesktopRuntime: () => {},
-    __invoke: invoke,
-  };
-});
 
 vi.mock('@scripts/features/errorModal', () => ({
   showError: vi.fn(),
@@ -40,7 +31,18 @@ vi.mock('@scripts/features/repo/commit', () => ({
   getCommitSummaryHint: vi.fn(() => ''),
 }));
 
+vi.mock('@scripts/lib/tauri', () => ({
+  TAURI: {
+    invoke: tauriInvoke,
+    listen: tauriListen,
+  },
+  isTauriRuntimeAvailable: () => true,
+  assertDesktopRuntime: () => {},
+  __invoke: tauriInvoke,
+}));
+
 let state: typeof import('@scripts/state/state').state;
+let bindCommitFn: typeof import('@scripts/features/diff').bindCommit;
 
 /** Mounts the minimal DOM needed for commit binding. */
 function mountCommitDom() {
@@ -54,8 +56,26 @@ function mountCommitDom() {
 
 beforeEach(async () => {
   vi.resetModules();
+  // Provide a matchMedia shim (needed by state.ts at module load time).
+  (globalThis as any).matchMedia = (query: string) => ({
+    matches: false, media: query,
+    addListener: () => {}, removeListener: () => {},
+  });
+
   mountCommitDom();
+
+  tauriInvoke.mockClear();
+
   state = (await import('@scripts/state/state')).state;
+  ({ bindCommit: bindCommitFn } = await import('@scripts/features/diff'));
+  const { runHook } = await import('@scripts/plugins');
+  const repo = await import('@scripts/features/repo');
+  const { getCommitSummaryHint } = await import('@scripts/features/repo/commit');
+  vi.mocked(runHook).mockResolvedValue({ cancelled: false } as any);
+  vi.mocked(repo.hydrateStatus).mockResolvedValue();
+  vi.mocked(repo.hydrateCommits).mockResolvedValue();
+  vi.mocked(repo.yieldToPaint).mockResolvedValue();
+  vi.mocked(getCommitSummaryHint).mockReturnValue('');
   state.files = [{ path: 'content/posts/2026/05/openvcs-announcement.md', status: '??' }] as any;
   state.selectedFiles = new Set(['content/posts/2026/05/openvcs-announcement.md']);
   state.selectedHunksByFile = {
@@ -69,44 +89,44 @@ beforeEach(async () => {
 
 afterEach(() => {
   document.body.innerHTML = '';
-  vi.restoreAllMocks();
+  // restoreAllMocks conflicts with vi.mock factory caching; resetModules handles isolation.
+  // vi.restoreAllMocks();
 });
 
 describe('bindCommit', () => {
   it('keeps untracked selected files in stage_paths', async () => {
-    const { bindCommit } = await import('@scripts/features/diff');
+    state.selectedHunksByFile = {} as any;
     const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
     const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
 
     commitSummary.value = 'Add post';
     commitBtn.disabled = false;
 
-    bindCommit();
+    bindCommitFn();
     commitBtn.click();
 
     await Promise.resolve();
+    await new Promise(r => setTimeout(r, 0));
 
     const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
-    const call = (invoke as ReturnType<typeof vi.fn>).mock.calls.find((args: unknown[]) => args[0] === 'commit_patch_and_files');
+    const call = (invoke as ReturnType<typeof vi.fn>).mock.calls.find((args: unknown[]) => args[0] === 'commit_selection');
     expect(call).toBeTruthy();
     expect(call?.[1]).toMatchObject({
       summary: 'Add post',
-      patch: '',
-      files: ['content/posts/2026/05/openvcs-announcement.md'],
+      selections: [],
       stagePaths: ['content/posts/2026/05/openvcs-announcement.md'],
     });
   });
 
   it('yields to paint before committing', async () => {
     const repo = await import('@scripts/features/repo');
-    const { bindCommit } = await import('@scripts/features/diff');
     const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
     const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
 
     commitSummary.value = 'Add post';
     commitBtn.disabled = false;
 
-    bindCommit();
+    bindCommitFn();
     commitBtn.click();
 
     await Promise.resolve();
@@ -118,11 +138,10 @@ describe('bindCommit', () => {
     state.selectedHunksByFile = {};
     state.files = [];
 
-    const { bindCommit } = await import('@scripts/features/diff');
     const { notify } = await import('@scripts/lib/notify');
     const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
 
-    bindCommit();
+    bindCommitFn();
     commitBtn.click();
 
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -170,29 +189,18 @@ describe('bindCommit', () => {
     expect(notify).toHaveBeenCalledWith('Cancelled by plugin');
   });
 
-  it('builds combined patch for partial files with hunk selections', async () => {
+  it('sends structured selections for partial files with hunk selections', async () => {
     state.selectedFiles = new Set(['file1.txt']);
     state.selectedHunksByFile = { 'file1.txt': [0] };
     state.selectedLinesByFile = {};
+    state.selectedHunks = [];
+    state.diffSelectedFiles = new Set();
     state.files = [{ path: 'file1.txt', status: 'M' }] as any;
-
-    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
-    invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'vcs_diff_file') {
-        return [
-          'diff --git a/file1.txt b/file1.txt',
-          'index abc..def 100644',
-          '--- a/file1.txt',
-          '+++ b/file1.txt',
-          '@@ -1 +1 @@',
-          '-old',
-          '+new',
-        ];
-      }
-      if (cmd === 'commit_patch_and_files') return 'oid-123';
+    tauriInvoke.mockClear();
+    tauriInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'commit_selection') return 'oid-123';
       return [];
     });
-
     const { bindCommit } = await import('@scripts/features/diff');
     const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
     const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
@@ -201,40 +209,45 @@ describe('bindCommit', () => {
     bindCommit();
     commitBtn.click();
 
-    // The async handler runs and should eventually call commit_patch_and_files.
-    // Instead of waiting for the full chain, verify the vcs_diff_file calls
-    // which happen before commit_patch_and_files.
     await vi.waitFor(() => {
-      const diffCalls = invoke.mock.calls.filter(
-        (args: unknown[]) => args[0] === 'vcs_diff_file'
-      );
-      expect(diffCalls.length).toBeGreaterThan(0);
+      const commitCall = tauriInvoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_selection',
+      ) as any;
+      expect(commitCall).toBeTruthy();
+      const selections = commitCall?.[1].selections as any[];
+      expect(selections).toBeDefined();
+      expect(selections.length).toBe(1);
+      expect(selections[0].path).toBe('file1.txt');
+      expect(selections[0].whole_hunks).toContain(0);
     }, { timeout: 3000, interval: 20 });
   });
 
-  it('handles partial load failure gracefully', async () => {
-    state.selectedFiles = new Set(['broken.txt']);
-    state.selectedHunksByFile = { 'broken.txt': [0] };
-    state.files = [{ path: 'broken.txt', status: 'M' }] as any;
-
-    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
-    invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'vcs_diff_file') throw new Error('load error');
+  it('sends full-file selections as stage_paths not selections', async () => {
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedHunksByFile = {};
+    state.selectedHunks = [];
+    state.diffSelectedFiles = new Set();
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+    tauriInvoke.mockClear();
+    tauriInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'commit_selection') return 'oid-123';
       return [];
     });
-
     const { bindCommit } = await import('@scripts/features/diff');
-    const { notify } = await import('@scripts/lib/notify');
+
     const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
     const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
 
-    commitSummary.value = 'Broken commit';
+    commitSummary.value = 'Full file commit';
     bindCommit();
     commitBtn.click();
-    // After yieldToPaint, the handler attempts vcs_diff_file which throws.
-    // notify should be called with the error message.
     await vi.waitFor(() => {
-      expect(notify).toHaveBeenCalledWith('Failed to read one or more selected diffs');
+      const commitCall = tauriInvoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_selection',
+      ) as any;
+      expect(commitCall).toBeTruthy();
+      expect(commitCall?.[1].stagePaths).toContain('file.txt');
+      expect(commitCall?.[1].selections).toEqual([]);
     }, { timeout: 3000, interval: 20 });
   });
 
@@ -260,15 +273,14 @@ describe('bindCommit', () => {
   it('truncates summary to 72 chars when maxLength attribute is set', async () => {
     state.selectedFiles = new Set(['file.txt']);
     state.selectedHunksByFile = {};
+    state.selectedHunks = [];
+    state.diffSelectedFiles = new Set();
     state.files = [{ path: 'file.txt', status: 'M' }] as any;
-
-    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
-    invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'vcs_diff_file') return [];
-      if (cmd === 'commit_patch_and_files') return 'oid-789';
+    tauriInvoke.mockClear();
+    tauriInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'commit_selection') return 'oid-789';
       return [];
     });
-
     const { bindCommit } = await import('@scripts/features/diff');
     const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
     const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
@@ -280,9 +292,9 @@ describe('bindCommit', () => {
     commitBtn.click();
 
     await vi.waitFor(() => {
-      const calls = invoke.mock.calls.filter(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
-      );
+      const calls = tauriInvoke.mock.calls.filter(
+        (args: unknown[]) => args[0] === 'commit_selection'
+      ) as any[];
       expect(calls.length).toBeGreaterThan(0);
       expect(calls[0][1].summary.length).toBeLessThanOrEqual(72);
     }, { timeout: 3000, interval: 20 });
@@ -306,7 +318,7 @@ describe('bindCommit', () => {
     });
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -321,7 +333,7 @@ describe('bindCommit', () => {
     commitBtn.click();
 
     await vi.waitFor(() => {
-      const commitCall = invoke.mock.calls.find((args: unknown[]) => args[0] === 'commit_patch_and_files');
+      const commitCall = invoke.mock.calls.find((args: unknown[]) => args[0] === 'commit_selection');
       expect(commitCall?.[1]).toMatchObject({
         summary: 'Updated summary',
         description: 'Updated description',
@@ -351,7 +363,7 @@ describe('bindCommit', () => {
     (document.getElementById('commit-btn') as HTMLButtonElement).click();
 
     await vi.waitFor(() => {
-      const commitCall = invoke.mock.calls.find((args: unknown[]) => args[0] === 'commit_patch_and_files');
+      const commitCall = invoke.mock.calls.find((args: unknown[]) => args[0] === 'commit_selection');
       expect(commitCall?.[1]).toMatchObject({ summary: 'Hint summary' });
     });
   });
@@ -376,7 +388,7 @@ describe('bindCommit', () => {
           '+new',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-456';
+      if (cmd === 'commit_selection') return 'oid-456';
       return [];
     });
 
@@ -387,10 +399,12 @@ describe('bindCommit', () => {
     (document.getElementById('commit-btn') as HTMLButtonElement).click();
 
     await vi.waitFor(() => {
-      const commitCall = invoke.mock.calls.find((args: unknown[]) => args[0] === 'commit_patch_and_files');
-      expect(commitCall?.[1].patch).toContain('@@ -1,1 +1,1 @@');
-      expect(commitCall?.[1].patch).toContain('-old');
-      expect(commitCall?.[1].patch).toContain('+new');
+      const commitCall = invoke.mock.calls.find((args: unknown[]) => args[0] === 'commit_selection');
+      const sel = commitCall?.[1].selections as any[];
+      expect(sel).toBeDefined();
+      expect(sel.length).toBeGreaterThan(0);
+      expect(sel[0].path).toBe('file1.txt');
+      expect(sel[0].partial_hunks).toBeDefined();
     });
   });
 });
@@ -640,7 +654,7 @@ describe('bindCommit error handling and buildPatchForSelected edge cases', () =>
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'vcs_diff_file') return [];
-      if (cmd === 'commit_patch_and_files') throw new Error('commit error');
+      if (cmd === 'commit_selection') throw new Error('commit error');
       return [];
     });
 
@@ -682,7 +696,7 @@ describe('bindCommit error handling and buildPatchForSelected edge cases', () =>
           '+new3',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -696,14 +710,16 @@ describe('bindCommit error handling and buildPatchForSelected edge cases', () =>
 
     await vi.waitFor(() => {
       const commitCall = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(commitCall).toBeTruthy();
-      const patch = commitCall?.[1].patch as string;
-      expect(patch).toContain('@@ -1,0 +1,1 @@');
-      expect(patch).toContain('+new1');
-      expect(patch).toContain('@@ -2,0 +3,1 @@');
-      expect(patch).toContain('+new3');
+      const sel = commitCall?.[1].selections as any[];
+      expect(sel).toBeDefined();
+      expect(sel.length).toBeGreaterThan(0);
+      // Verify non-contiguous line selections are sent as partial_hunks
+      const fileSel = sel.find((s: any) => s.path === 'file1.txt');
+      expect(fileSel).toBeDefined();
+      expect(fileSel.partial_hunks).toMatchObject({ 0: [1, 3] });
     }, { timeout: 3000, interval: 20 });
   });
 
@@ -715,7 +731,7 @@ describe('bindCommit error handling and buildPatchForSelected edge cases', () =>
     const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -826,7 +842,7 @@ describe('bindCommit - description handling', () => {
     const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -842,7 +858,7 @@ describe('bindCommit - description handling', () => {
 
     await vi.waitFor(() => {
       const commitCall = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(commitCall?.[1].description).toBe('Description body');
     }, { timeout: 3000, interval: 20 });
@@ -856,7 +872,7 @@ describe('bindCommit - description handling', () => {
     const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -884,7 +900,7 @@ describe('bindCommit - description handling', () => {
     const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1005,7 +1021,7 @@ describe('diff.ts additional branch coverage', () => {
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'vcs_diff_file') return [];
-      if (cmd === 'commit_patch_and_files') return 'oid-789';
+      if (cmd === 'commit_selection') return 'oid-789';
       return [];
     });
 
@@ -1020,7 +1036,7 @@ describe('diff.ts additional branch coverage', () => {
 
     await vi.waitFor(() => {
       const calls = invoke.mock.calls.filter(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(calls.length).toBeGreaterThan(0);
       expect(calls[0][1].summary.length).toBeLessThanOrEqual(72);
@@ -1039,7 +1055,7 @@ describe('diff.ts additional branch coverage', () => {
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'vcs_diff_file') return [];
-      if (cmd === 'commit_patch_and_files') return 'oid-789';
+      if (cmd === 'commit_selection') return 'oid-789';
       return [];
     });
 
@@ -1055,7 +1071,7 @@ describe('diff.ts additional branch coverage', () => {
 
     await vi.waitFor(() => {
       const calls = invoke.mock.calls.filter(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(calls.length).toBeGreaterThan(0);
       expect(calls[0][1].summary).toBe(longSummary);
@@ -1074,7 +1090,7 @@ describe('diff.ts additional branch coverage', () => {
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'vcs_diff_file') return [];
-      if (cmd === 'commit_patch_and_files') return 'oid-789';
+      if (cmd === 'commit_selection') return 'oid-789';
       return [];
     });
 
@@ -1089,7 +1105,7 @@ describe('diff.ts additional branch coverage', () => {
 
     await vi.waitFor(() => {
       const calls = invoke.mock.calls.filter(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(calls.length).toBeGreaterThan(0);
       expect(calls[0][1].summary).toBe('Short summary');
@@ -1110,7 +1126,7 @@ describe('diff.ts additional branch coverage', () => {
     const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'commit_patch_and_files') return 'oid-789';
+      if (cmd === 'commit_selection') return 'oid-789';
       return [];
     });
 
@@ -1125,7 +1141,7 @@ describe('diff.ts additional branch coverage', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(call?.[1].summary).toBe('Original summary');
     }, { timeout: 3000, interval: 20 });
@@ -1141,7 +1157,7 @@ describe('diff.ts additional branch coverage', () => {
     const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'commit_patch_and_files') return 'oid-789';
+      if (cmd === 'commit_selection') return 'oid-789';
       return [];
     });
 
@@ -1155,7 +1171,7 @@ describe('diff.ts additional branch coverage', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(call?.[1].summary).toBe('Test commit');
     }, { timeout: 3000, interval: 20 });
@@ -1171,7 +1187,7 @@ describe('diff.ts additional branch coverage', () => {
     const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'commit_patch_and_files') return 'oid-789';
+      if (cmd === 'commit_selection') return 'oid-789';
       return [];
     });
 
@@ -1185,7 +1201,7 @@ describe('diff.ts additional branch coverage', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(call?.[1].description).toBe('');
     }, { timeout: 3000, interval: 20 });
@@ -1199,7 +1215,7 @@ describe('diff.ts additional branch coverage', () => {
     const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'commit_patch_and_files') return 'oid-789';
+      if (cmd === 'commit_selection') return 'oid-789';
       return [];
     });
 
@@ -1213,7 +1229,7 @@ describe('diff.ts additional branch coverage', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(call?.[1].summary).toBe('Test commit');
     }, { timeout: 3000, interval: 20 });
@@ -1250,7 +1266,7 @@ describe('buildPatchForSelected coverage', () => {
           '+line2',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1264,11 +1280,13 @@ describe('buildPatchForSelected coverage', () => {
 
     await vi.waitFor(() => {
       const commitCall = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files',
+        (args: unknown[]) => args[0] === 'commit_selection',
       );
       expect(commitCall).toBeTruthy();
-      expect(commitCall?.[1].patch).toContain('--- /dev/null');
-      expect(commitCall?.[1].patch).toContain('+++ b/newfile.txt');
+      const sel = commitCall?.[1].selections as any[];
+      expect(sel).toBeDefined();
+      expect(sel.length).toBeGreaterThan(0);
+      expect(sel[0].path).toBe('newfile.txt');
     }, { timeout: 3000, interval: 20 });
   });
 
@@ -1292,7 +1310,7 @@ describe('buildPatchForSelected coverage', () => {
           '-line2',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1306,11 +1324,13 @@ describe('buildPatchForSelected coverage', () => {
 
     await vi.waitFor(() => {
       const commitCall = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files',
+        (args: unknown[]) => args[0] === 'commit_selection',
       );
       expect(commitCall).toBeTruthy();
-      expect(commitCall?.[1].patch).toContain('+++ /dev/null');
-      expect(commitCall?.[1].patch).toContain('--- a/oldfile.txt');
+      const sel2 = commitCall?.[1].selections as any[];
+      expect(sel2).toBeDefined();
+      expect(sel2.length).toBeGreaterThan(0);
+      expect(sel2[0].path).toBe('oldfile.txt');
     }, { timeout: 3000, interval: 20 });
   });
 
@@ -1337,7 +1357,7 @@ describe('buildPatchForSelected coverage', () => {
           '+new2',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1351,13 +1371,14 @@ describe('buildPatchForSelected coverage', () => {
 
     await vi.waitFor(() => {
       const commitCall = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files',
+        (args: unknown[]) => args[0] === 'commit_selection',
       );
       expect(commitCall).toBeTruthy();
-      expect(commitCall?.[1].patch).toContain('-old1');
-      expect(commitCall?.[1].patch).toContain('+new1');
-      expect(commitCall?.[1].patch).not.toContain('-old2');
-      expect(commitCall?.[1].patch).not.toContain('+new2');
+      const sel3 = commitCall?.[1].selections as any[];
+      expect(sel3).toBeDefined();
+      expect(sel3.length).toBeGreaterThan(0);
+      expect(sel3[0].path).toBe('multi.txt');
+      expect(sel3[0].whole_hunks).toContain(0);
     }, { timeout: 3000, interval: 20 });
   });
 
@@ -1381,7 +1402,7 @@ describe('buildPatchForSelected coverage', () => {
           '+line3',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1395,10 +1416,10 @@ describe('buildPatchForSelected coverage', () => {
 
     await vi.waitFor(() => {
       const commitCall = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files',
+        (args: unknown[]) => args[0] === 'commit_selection',
       );
       expect(commitCall).toBeTruthy();
-      expect(commitCall?.[1].patch).toContain('@@');
+      expect(commitCall?.[1].selections).toBeDefined();
     }, { timeout: 3000, interval: 20 });
   });
 
@@ -1418,7 +1439,7 @@ describe('buildPatchForSelected coverage', () => {
           '+++ b/nohunks.txt',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1432,7 +1453,7 @@ describe('buildPatchForSelected coverage', () => {
 
     await vi.waitFor(() => {
       const commitCall = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files',
+        (args: unknown[]) => args[0] === 'commit_selection',
       );
       expect(commitCall).toBeTruthy();
       expect(commitCall?.[1].summary).toBe('No hunks');
@@ -1458,7 +1479,7 @@ describe('buildPatchForSelected coverage', () => {
           '+new',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1472,10 +1493,10 @@ describe('buildPatchForSelected coverage', () => {
 
     await vi.waitFor(() => {
       const commitCall = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files',
+        (args: unknown[]) => args[0] === 'commit_selection',
       );
       expect(commitCall).toBeTruthy();
-      expect(commitCall?.[1].patch).toContain('-old');
+      expect(commitCall?.[1].selections).toBeDefined();
     }, { timeout: 3000, interval: 20 });
   });
 
@@ -1496,7 +1517,7 @@ describe('buildPatchForSelected coverage', () => {
           '@@ -notanumber +notanumber @@',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1510,7 +1531,7 @@ describe('buildPatchForSelected coverage', () => {
 
     await vi.waitFor(() => {
       const commitCall = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files',
+        (args: unknown[]) => args[0] === 'commit_selection',
       );
       expect(commitCall).toBeTruthy();
     }, { timeout: 3000, interval: 20 });
@@ -1563,7 +1584,7 @@ describe('buildPatchForSelected selLines edge cases', () => {
           '+new',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1577,7 +1598,7 @@ describe('buildPatchForSelected selLines edge cases', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(call?.[1].summary).toBe('Null selLines');
     }, { timeout: 3000, interval: 20 });
@@ -1602,7 +1623,7 @@ describe('buildPatchForSelected selLines edge cases', () => {
           '+new',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1616,7 +1637,7 @@ describe('buildPatchForSelected selLines edge cases', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(call?.[1].summary).toBe('Non-array selLines');
     }, { timeout: 3000, interval: 20 });
@@ -1641,7 +1662,7 @@ describe('buildPatchForSelected selLines edge cases', () => {
           '+new',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1655,7 +1676,7 @@ describe('buildPatchForSelected selLines edge cases', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(call?.[1].summary).toBe('Missing hunk index');
     }, { timeout: 3000, interval: 20 });
@@ -1686,7 +1707,7 @@ describe('buildPatchForSelected flush function edge cases', () => {
           '+new1',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1700,10 +1721,11 @@ describe('buildPatchForSelected flush function edge cases', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       // Single selected deletion line produces mini-hunk with old_count=1 new_count=0
-      expect(call?.[1].patch).toContain('@@ -1,1 +1,0 @@');
+      expect(call?.[1].selections).toBeDefined();
+      expect(call?.[1].selections.length).toBeGreaterThan(0);
     }, { timeout: 3000, interval: 20 });
   });
 
@@ -1728,7 +1750,7 @@ describe('buildPatchForSelected flush function edge cases', () => {
           ' context',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1742,9 +1764,9 @@ describe('buildPatchForSelected flush function edge cases', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
-      expect(call?.[1].patch).toContain('@@');
+      expect(call?.[1].selections).toBeDefined();
     }, { timeout: 3000, interval: 20 });
   });
 
@@ -1769,7 +1791,7 @@ describe('buildPatchForSelected flush function edge cases', () => {
           ' context',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1783,9 +1805,9 @@ describe('buildPatchForSelected flush function edge cases', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
-      expect(call?.[1].patch).toContain('@@');
+      expect(call?.[1].selections).toBeDefined();
     }, { timeout: 3000, interval: 20 });
   });
 });
@@ -1809,7 +1831,7 @@ describe('bindCommit summary truncation with hook data', () => {
     const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'commit_patch_and_files') return 'oid-789';
+      if (cmd === 'commit_selection') return 'oid-789';
       return [];
     });
 
@@ -1824,7 +1846,7 @@ describe('bindCommit summary truncation with hook data', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(call?.[1].summary.length).toBeLessThanOrEqual(72);
     }, { timeout: 3000, interval: 20 });
@@ -1844,7 +1866,7 @@ describe('bindCommit summary truncation with hook data', () => {
     const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'commit_patch_and_files') return 'oid-789';
+      if (cmd === 'commit_selection') return 'oid-789';
       return [];
     });
 
@@ -1859,7 +1881,7 @@ describe('bindCommit summary truncation with hook data', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(call?.[1].summary).toBe('Hook modified summary');
     }, { timeout: 3000, interval: 20 });
@@ -1879,7 +1901,7 @@ describe('bindCommit summary truncation with hook data', () => {
     const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
     invoke.mockClear();
     invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'commit_patch_and_files') return 'oid-789';
+      if (cmd === 'commit_selection') return 'oid-789';
       return [];
     });
 
@@ -1894,7 +1916,7 @@ describe('bindCommit summary truncation with hook data', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(call?.[1].summary).toBe('Fallback summary');
     }, { timeout: 3000, interval: 20 });
@@ -1925,7 +1947,7 @@ describe('buildPatchForSelected picksRaw and prefix calc', () => {
           '+new',
         ];
       }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      if (cmd === 'commit_selection') return 'oid-999';
       return [];
     });
 
@@ -1939,7 +1961,7 @@ describe('buildPatchForSelected picksRaw and prefix calc', () => {
 
     await vi.waitFor(() => {
       const call = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files'
+        (args: unknown[]) => args[0] === 'commit_selection'
       );
       expect(call?.[1].summary).toBe('Missing hunk in selLines');
     }, { timeout: 3000, interval: 20 });
@@ -1949,159 +1971,3 @@ describe('buildPatchForSelected picksRaw and prefix calc', () => {
 // ---------------------------------------------------------------------------
 // Regression: corrupt-patch prevention in mini-hunk header counts
 // ---------------------------------------------------------------------------
-
-describe('buildPatchForSelected corrupt-patch regression fixes', () => {
-  it('includes context lines in old_count/new_count to prevent corrupt-patch header', async () => {
-    state.selectedFiles = new Set(['file.txt']);
-    state.selectedHunksByFile = {} as any;
-    // Select context line (UI index 1) and removed line (UI index 2).
-    // These are consecutive in content → one mini-hunk group.
-    // OLD code: old_count=1 (only '-'), new_count=0 → header @@ -5,1 +5,0 @@
-    //           with 2 content lines → git apply rejects as "corrupt patch"
-    // NEW code: old_count=2 (context + removed), new_count=1 (context)
-    state.selectedLinesByFile = { 'file.txt': { 0: [1, 2] } } as any;
-    state.files = [{ path: 'file.txt', status: 'M' }] as any;
-
-    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
-    invoke.mockClear();
-    invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'vcs_diff_file') {
-        return [
-          'diff --git a/file.txt b/file.txt',
-          '--- a/file.txt',
-          '+++ b/file.txt',
-          '@@ -5,3 +5,2 @@',
-          ' context',
-          '-removed',
-          '+added',
-        ];
-      }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
-      return [];
-    });
-
-    const { bindCommit } = await import('@scripts/features/diff');
-    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
-    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
-
-    commitSummary.value = 'Context line in mini-hunk';
-    bindCommit();
-    commitBtn.click();
-
-    await vi.waitFor(() => {
-      const commitCall = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files',
-      );
-      expect(commitCall).toBeTruthy();
-      const patch = commitCall?.[1].patch as string;
-      // The mini-hunk groups context + removed together (consecutive indices).
-      // old_count: context (1) + removed (1) = 2, not just removed (1)
-      expect(patch).toContain('@@ -5,2');
-      // new_count: context (1) = 1, not 0
-      expect(patch).toContain('+5,1');
-      expect(patch).toContain(' context');
-      expect(patch).toContain('-removed');
-      // '+added' is not selected (only indices [1,2] / content [0,1])
-    }, { timeout: 3000, interval: 20 });
-  });
-
-  it('handles \\ No newline metadata lines without corrupting hunk counts', async () => {
-    state.selectedFiles = new Set(['file.txt']);
-    state.selectedHunksByFile = {} as any;
-    // Select all 3 lines: '-old', '+new', and '\\ No newline...' metadata
-    state.selectedLinesByFile = { 'file.txt': { 0: [1, 2, 3] } } as any;
-    state.files = [{ path: 'file.txt', status: 'M' }] as any;
-
-    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
-    invoke.mockClear();
-    invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'vcs_diff_file') {
-        return [
-          'diff --git a/file.txt b/file.txt',
-          '--- a/file.txt',
-          '+++ b/file.txt',
-          '@@ -1,2 +1,2 @@',
-          '-old',
-          '+new',
-          '\\ No newline at end of file',
-        ];
-      }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
-      return [];
-    });
-
-    const { bindCommit } = await import('@scripts/features/diff');
-    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
-    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
-
-    commitSummary.value = 'No newline metadata';
-    bindCommit();
-    commitBtn.click();
-
-    await vi.waitFor(() => {
-      const commitCall = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files',
-      );
-      expect(commitCall).toBeTruthy();
-      const patch = commitCall?.[1].patch as string;
-      // The mini-hunk groups -old + +new together (consecutive).
-      // old_count should be 1 (-old only), new_count should be 1 (+new only).
-      // The \\ metadata line is separated and placed after content.
-      expect(patch).toContain('@@ -1,1 +1,1 @@');
-      expect(patch).toContain('-old');
-      expect(patch).toContain('+new');
-      // \\ line should be emitted after the content lines
-      expect(patch).toContain('\\ No newline at end of file');
-    }, { timeout: 3000, interval: 20 });
-  });
-
-  it('produces valid hunk when context lines surround changed lines in mini-hunk', async () => {
-    state.selectedFiles = new Set(['file.txt']);
-    state.selectedHunksByFile = {} as any;
-    // Select content indices [0,1,2] (context, removed, context) via UI indices [1,2,3]
-    state.selectedLinesByFile = { 'file.txt': { 0: [1, 2, 3] } } as any;
-    state.files = [{ path: 'file.txt', status: 'M' }] as any;
-
-    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
-    invoke.mockClear();
-    invoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'vcs_diff_file') {
-        return [
-          'diff --git a/file.txt b/file.txt',
-          '--- a/file.txt',
-          '+++ b/file.txt',
-          '@@ -10,4 +10,3 @@',
-          ' context_top',
-          '-removed',
-          ' context_bottom',
-          '+added_bottom',
-        ];
-      }
-      if (cmd === 'commit_patch_and_files') return 'oid-999';
-      return [];
-    });
-
-    const { bindCommit } = await import('@scripts/features/diff');
-    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
-    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
-
-    commitSummary.value = 'Context surrounding removal';
-    bindCommit();
-    commitBtn.click();
-
-    await vi.waitFor(() => {
-      const commitCall = invoke.mock.calls.find(
-        (args: unknown[]) => args[0] === 'commit_patch_and_files',
-      );
-      expect(commitCall).toBeTruthy();
-      const patch = commitCall?.[1].patch as string;
-      // Three consecutive selected lines (context, -removed, context) → one group.
-      // old_count = context_top(1) + removed(1) + context_bottom(1) = 3
-      expect(patch).toContain('@@ -10,3');
-      // new_count = context_top(1) + context_bottom(1) = 2
-      expect(patch).toContain('+10,2');
-      // The +added_bottom line (content[3]) is NOT selected — not in output
-      expect(patch).not.toContain('+added_bottom');
-    }, { timeout: 3000, interval: 20 });
-  });
-});

@@ -8,8 +8,6 @@ import { state } from '../state/state';
 import { hydrateStatus, hydrateCommits } from './repo';
 import { runHook } from '../plugins';
 import { getCommitSummaryHint } from './repo/commit';
-import type { VcsDiffResult } from '../types';
-import { normalizeDiffResult } from './repo/diffBinary';
 import { yieldToPaint } from './repo';
 
 export function bindCommit() {
@@ -36,7 +34,9 @@ export function bindCommit() {
             await yieldToPaint();
             let description = commitDesc?.value || '';
 
-            // Build a combined patch when any file has partial hunks/lines selected.
+            // Build structured selections when any file has partial hunks/lines selected.
+            // The plugin handles diff format parsing internally — the frontend only
+            // sends which hunks/lines the user selected.
             const partialFiles = Array.from(new Set([
                 ...Object.keys(hunksMap).filter(p => Array.isArray(hunksMap[p]) && hunksMap[p].length > 0),
                 ...Object.keys(linesMap).filter(p => linesMap[p] && Object.keys(linesMap[p] || {}).length > 0),
@@ -49,35 +49,19 @@ export function bindCommit() {
                     .filter(Boolean),
             );
 
-            // Full-file selections are staged directly; partial selections are staged via patch.
+            // Full-file selections are staged directly; partial selections go through the plugin.
             // Untracked files still need to be staged even if the UI has synthetic hunk state.
             const stagePaths = selectedFiles.filter(f => !partialFiles.includes(f) || selectedUntrackedFiles.has(f));
 
-            // Build patch only from hunk and line selections.
-            let combinedPatch = '';
-            let partialLoadFailed = false;
+            // Build structured selection objects — NO diff format parsing in the frontend.
+            const selections: Array<{ path: string; whole_hunks: number[]; partial_hunks: Record<number, number[]> }> = [];
             for (const path of partialFiles) {
-                let lines: string[] = [];
-                try {
-                    lines = normalizeDiffResult(
-                        await TAURI.invoke<VcsDiffResult | string[]>('vcs_diff_file', { path })
-                    ).lines;
-                } catch (error) {
-                    partialLoadFailed = true;
-                    console.error('Failed to load diff for selected file:', path, error);
-                    break;
-                }
-                if (!Array.isArray(lines) || lines.length === 0) continue;
                 const selHunks = hunksMap[path] || [];
                 const selLines = linesMap[path] || {};
-                combinedPatch += buildPatchForSelected(path, lines, selHunks, selLines) + '\n';
+                selections.push({ path, whole_hunks: selHunks, partial_hunks: selLines });
             }
-            if (partialLoadFailed) {
-                commitBtn?.classList.remove('committing');
-                notify('Failed to read one or more selected diffs');
-                return;
-            }
-            if (combinedPatch.trim().length > 0 || selectedFiles.length > 0) {
+
+            if (selectedFiles.length > 0) {
                 const hookData = {
                     summary,
                     description,
@@ -85,7 +69,7 @@ export function bindCommit() {
                     files: selectedFiles,
                     stagedFiles: stagePaths,
                     partialFiles,
-                    patch: combinedPatch,
+                    selections,
                 };
                 const pre = await runHook('preCommit', hookData);
                 if (pre.cancelled) {
@@ -102,11 +86,10 @@ export function bindCommit() {
                 }
                 hookData.summary = summary;
                 description = String(hookData.description || '');
-                await TAURI.invoke('commit_patch_and_files', {
+                await TAURI.invoke('commit_selection', {
                     summary,
                     description,
-                    patch: combinedPatch,
-                    files: selectedFiles,
+                    selections,
                     stagePaths,
                 });
                 await runHook('onCommit', hookData);
@@ -203,97 +186,4 @@ export function buildPatchForSelectedHunks(path: string, lines: string[], hunkIn
     return out.trimEnd() + '\n';
 }
 
-// Build a patch combining whole selected hunks and per-line selections (unidiff-zero mini-hunks).
-function buildPatchForSelected(path: string, lines: string[], hunkIndices: number[] = [], selLines: Record<number, number[]> = {}): string {
-    const normPath = String(path).replace(/\\/g, '/');
-    const firstHunk = lines.findIndex(l => (l || '').startsWith('@@'));
-    const prelude = firstHunk >= 0 ? lines.slice(0, firstHunk) : [];
-    const rest = firstHunk >= 0 ? lines.slice(firstHunk) : [];
 
-    let starts: number[] = [];
-    for (let i = 0; i < rest.length; i++) { if ((rest[i] || '').startsWith('@@')) starts.push(i); }
-    if (starts.length === 0) return '';
-    starts.push(rest.length);
-
-    const isAdd = prelude.some(l => l.startsWith('--- /dev/null'));
-    const isDel = prelude.some(l => l.startsWith('+++ /dev/null'));
-    const headerExtras = prelude.filter((l) =>
-        !!l &&
-        !l.startsWith('diff --git') &&
-        !l.startsWith('--- ') &&
-        !l.startsWith('+++ ')
-    );
-
-    let out = `diff --git a/${normPath} b/${normPath}\n`;
-    if (headerExtras.length) out += headerExtras.join('\n') + '\n';
-    if (isAdd) out += `--- /dev/null\n+++ b/${normPath}\n`;
-    else if (isDel) out += `--- a/${normPath}\n+++ /dev/null\n`;
-    else out += `--- a/${normPath}\n+++ b/${normPath}\n`;
-
-    const wantWhole = new Set<number>((hunkIndices || []).filter((n) => Number.isFinite(n)));
-    for (let h = 0; h < starts.length - 1; h++) {
-        const s = starts[h];
-        const e = starts[h+1];
-        const block = rest.slice(s, e);
-        const header = block[0] || '';
-        const m = /@@\s*-([0-9]+),?([0-9]*)\s*\+([0-9]+),?([0-9]*)\s*@@/.exec(header);
-        if (!m) continue;
-        const aStart = parseInt(m[1] || '0', 10) || 0;
-        const cStart = parseInt(m[3] || '0', 10) || 0;
-        const content = block.slice(1);
-
-        if (wantWhole.has(h)) {
-            out += header + '\n' + content.join('\n') + '\n';
-            continue;
-        }
-        const picksRaw = (selLines && Array.isArray(selLines[h])) ? selLines[h] : (selLines && selLines[h] ? selLines[h] : []);
-        // Adjust indices: UI stores data-line relative to the full block (including header at 0)
-        const picksAdj = Array.isArray(picksRaw) ? picksRaw.map((i) => i - 1).filter((i) => i >= 0 && i < content.length) : [];
-        const pickSet = new Set<number>(picksAdj || []);
-        if (pickSet.size === 0) continue;
-
-        // prefix counts to compute old/new positions.
-        // `\` lines (e.g. "\ No newline at end of file") are metadata —
-        // they don't correspond to file lines so they must not advance either counter.
-        const prefOld: number[] = new Array(content.length + 1).fill(0);
-        const prefNew: number[] = new Array(content.length + 1).fill(0);
-        for (let i = 0; i < content.length; i++) {
-            const ch = (content[i] || '')[0] || ' ';
-            const isMeta = ch === '\\';
-            prefOld[i+1] = prefOld[i] + (isMeta ? 0 : (ch === '+' ? 0 : 1));
-            prefNew[i+1] = prefNew[i] + (isMeta ? 0 : (ch === '-' ? 0 : 1));
-        }
-
-        // group consecutive selected lines into mini-hunks
-        const sorted = Array.from(pickSet).sort((x,y)=>x-y);
-        let group: number[] = [];
-        const flush = () => {
-            if (group.length === 0) return;
-            const i0 = group[0];
-            const old_start = aStart + prefOld[i0];
-            const new_start = cStart + prefNew[i0];
-            const slice = group.map(i => content[i]);
-            // Separate content lines from metadata lines (e.g. "\ No newline").
-            // Metadata lines must not be counted in the hunk range or git apply
-            // will reject the hunk header as "corrupt patch".
-            const contentLines = slice.filter(l => (l||'')[0] !== '\\');
-            const metaLines = slice.filter(l => (l||'')[0] === '\\');
-            // In unified-diff format, old_count includes context + removed lines
-            // and new_count includes context + added lines.
-            const old_count = contentLines.filter(l => { const c = (l||'')[0]; return c !== '+'; }).length;
-            const new_count = contentLines.filter(l => { const c = (l||'')[0]; return c !== '-'; }).length;
-            if (old_count === 0 && new_count === 0) { group = []; return; }
-            out += `@@ -${old_start},${old_count} +${new_start},${new_count} @@\n`;
-            out += contentLines.join('\n') + '\n';
-            if (metaLines.length) out += metaLines.join('\n') + '\n';
-            group = [];
-        };
-        for (let i = 0; i < sorted.length; i++) {
-            if (group.length === 0) { group.push(sorted[i]); continue; }
-            if (sorted[i] === group[group.length - 1] + 1) group.push(sorted[i]);
-            else { flush(); group.push(sorted[i]); }
-        }
-        flush();
-    }
-    return out.trimEnd() + '\n';
-}

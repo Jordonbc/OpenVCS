@@ -241,6 +241,12 @@ impl Vcs for PluginVcsProxy {
             .map_err(|e| self.map_runtime_error(e))
     }
 
+    fn stage_selections(&self, selections: &[crate::core::models::HunkSelection]) -> VcsResult<()> {
+        self.runtime
+            .vcs_stage_selections(selections)
+            .map_err(|e| self.map_runtime_error(e))
+    }
+
     fn stage_paths(&self, paths: &[PathBuf]) -> VcsResult<()> {
         let paths = paths
             .iter()

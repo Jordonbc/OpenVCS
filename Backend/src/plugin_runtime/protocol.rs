@@ -99,6 +99,8 @@ impl Methods {
     pub const VCS_WRITE_MERGE_RESULT: &'static str = "vcs.write_merge_result";
     /// Stages a text patch.
     pub const VCS_STAGE_PATCH: &'static str = "vcs.stage_patch";
+    /// Stages structured hunk/line selections (VCS-agnostic).
+    pub const VCS_STAGE_SELECTIONS: &'static str = "vcs.stage_selections";
     /// Stages explicit paths to the index.
     pub const VCS_STAGE_PATHS: &'static str = "vcs.stage_paths";
     /// Discards path changes.
