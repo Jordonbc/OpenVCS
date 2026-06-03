@@ -129,3 +129,42 @@ fn hunk_selection_serializes_empty_partial_as_empty_object() {
     let value = serde_json::to_value(&sel).expect("serialize");
     assert_eq!(value["partial_hunks"], serde_json::json!({}));
 }
+
+#[test]
+fn hunk_selection_handles_large_hunk_indices() {
+    let mut partial = HashMap::new();
+    partial.insert(256usize, vec![1usize, 500usize]);
+    let sel = HunkSelection {
+        path: "big.rs".into(),
+        whole_hunks: vec![100, 200],
+        partial_hunks: partial,
+    };
+    let value = serde_json::to_value(&sel).expect("serialize");
+    let back: HunkSelection = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(back.whole_hunks, vec![100, 200]);
+    assert_eq!(back.partial_hunks.get(&256), Some(&vec![1, 500]));
+}
+
+#[test]
+fn hunk_selection_accepts_partial_hunks_as_object_or_empty_object() {
+    let with_empty = serde_json::json!({
+        "path": "a.rs",
+        "whole_hunks": [],
+        "partial_hunks": {}
+    });
+    let sel: HunkSelection = serde_json::from_value(with_empty).expect("deserialize with {}");
+    assert_eq!(sel.path, "a.rs");
+    assert!(sel.whole_hunks.is_empty());
+    assert!(sel.partial_hunks.is_empty());
+
+    let with_entries = serde_json::json!({
+        "path": "b.rs",
+        "whole_hunks": [0, 2],
+        "partial_hunks": { "0": [1, 2], "2": [3] }
+    });
+    let sel2: HunkSelection = serde_json::from_value(with_entries).expect("deserialize with entries");
+    assert_eq!(sel2.path, "b.rs");
+    assert_eq!(sel2.whole_hunks, vec![0, 2]);
+    assert_eq!(sel2.partial_hunks.get(&0), Some(&vec![1, 2]));
+    assert_eq!(sel2.partial_hunks.get(&2), Some(&vec![3]));
+}

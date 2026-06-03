@@ -73,6 +73,7 @@ struct TestVcs {
     workdir: PathBuf,
     identity: Mutex<Option<(String, String)>>,
     commit_result: Mutex<Option<String>>,
+    stage_sel_fail: Mutex<bool>,
 }
 
 impl TestVcs {
@@ -82,6 +83,7 @@ impl TestVcs {
             workdir,
             identity: Mutex::new(None),
             commit_result: Mutex::new(None),
+            stage_sel_fail: Mutex::new(false),
         }
     }
 
@@ -115,7 +117,12 @@ impl Vcs for TestVcs {
     fn diff_file(&self, _path: &Path) -> Result<models::DiffFileResult, VcsError> { self.unsupported() }
     fn diff_commit(&self, _rev: &str) -> Result<Vec<String>, VcsError> { self.unsupported() }
     fn stage_patch(&self, _patch: &str) -> Result<(), VcsError> { self.unsupported() }
-    fn stage_selections(&self, _selections: &[models::HunkSelection]) -> Result<(), VcsError> { Ok(()) }
+    fn stage_selections(&self, _selections: &[models::HunkSelection]) -> Result<(), VcsError> {
+        if *self.stage_sel_fail.lock().unwrap() {
+            return Err(VcsError::Unsupported(self.id.clone()));
+        }
+        Ok(())
+    }
     fn stage_paths(&self, _paths: &[PathBuf]) -> Result<(), VcsError> { Ok(()) }
     fn discard_paths(&self, _paths: &[PathBuf]) -> Result<(), VcsError> { self.unsupported() }
     fn apply_reverse_patch(&self, _patch: &str) -> Result<(), VcsError> { self.unsupported() }
@@ -450,4 +457,50 @@ fn commit_selection_succeeds_with_stage_paths() {
     assert!(res.is_ok(), "commit_selection with stage_paths should succeed: {:?}", res);
     let commit_id: String = res.unwrap().deserialize().unwrap();
     assert_eq!(commit_id, "oid-789");
+}
+
+#[test]
+fn commit_selection_succeeds_with_combined_selections_and_stage_paths() {
+    register_test_backend("test-vcs");
+    let (app, vcs) = build_app_with_repo();
+    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
+    *vcs.commit_result.lock().unwrap() = Some("combined-oid".into());
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "combined commit",
+        "description": "",
+        "selections": [{
+            "path": "partial.rs",
+            "whole_hunks": [0],
+            "partial_hunks": {}
+        }],
+        "stagePaths": ["full.rs"],
+    }));
+    let res = invoke_cmd(&wv, "commit_selection", body);
+    assert!(res.is_ok(), "commit_selection combined should succeed: {:?}", res);
+    let commit_id: String = res.unwrap().deserialize().unwrap();
+    assert_eq!(commit_id, "combined-oid");
+}
+
+#[test]
+fn commit_selection_fails_when_stage_selections_fails() {
+    register_test_backend("test-vcs");
+    let (app, vcs) = build_app_with_repo();
+    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
+    *vcs.stage_sel_fail.lock().unwrap() = true;
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "failing selection",
+        "description": null,
+        "selections": [{
+            "path": "broken.rs",
+            "whole_hunks": [0],
+            "partial_hunks": {}
+        }],
+        "stagePaths": [],
+    }));
+    let res = invoke_cmd(&wv, "commit_selection", body);
+    assert!(res.is_err(), "stage_selections error should propagate: {:?}", res);
 }
