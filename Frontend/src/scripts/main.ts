@@ -217,34 +217,44 @@ async function boot() {
     }
 
     async function fetchAllRemotesOnly(options: { hydrate?: boolean; status?: ReturnType<typeof statusController>; keepBusy?: boolean } = {}) {
-        if (!isTauriRuntimeAvailable()) return false;
-        return runFetch(async () => {
-            const { hydrate = true, status, keepBusy = false } = options;
-            const ctl = status ?? statusController();
-            let success = false;
-            try {
-                ctl.setBusy('Fetching all…');
-                await TAURI.invoke('vcs_fetch_all', {});
-                notify('Fetched all remotes');
-                if (hydrate) {
-                    await yieldToPaint();
-                    void hydrateSnapshot(true);
+        fetchBtn?.classList.add('fetching');
+        try {
+            if (!isTauriRuntimeAvailable()) return false;
+            return await runFetch(async () => {
+                const { hydrate = true, status, keepBusy = false } = options;
+                const ctl = status ?? statusController();
+                let success = false;
+                try {
+                    ctl.setBusy('Fetching all…');
+                    await TAURI.invoke('vcs_fetch_all', {});
+                    notify('Fetched all remotes');
+                    if (hydrate) {
+                        await yieldToPaint();
+                        void hydrateSnapshot(true);
+                    }
+                    success = true;
+                } catch (error) {
+                    const msg = String(error || '').trim();
+                    console.error('Fetch all failed:', msg);
+                    showError('Fetch all failed', msg || 'Could not fetch from remotes. Check your network connection and remote URLs.');
+                } finally {
+                    if (!keepBusy) ctl.clearBusy();
                 }
-                success = true;
-            } catch (error) {
-                const msg = String(error || '').trim();
-                console.error('Fetch all failed:', msg);
-                showError('Fetch all failed', msg || 'Could not fetch from remotes. Check your network connection and remote URLs.');
-            } finally {
-                if (!keepBusy) ctl.clearBusy();
-            }
-            return success;
-        });
+                return success;
+            });
+        } finally {
+            fetchBtn?.classList.remove('fetching');
+        }
     }
 
     async function fetchOnly() {
-        const ctl = statusController();
-        await fetchCurrentRemoteOnly({ status: ctl });
+        fetchBtn?.classList.add('fetching');
+        try {
+            const ctl = statusController();
+            await fetchCurrentRemoteOnly({ status: ctl });
+        } finally {
+            fetchBtn?.classList.remove('fetching');
+        }
     }
 
     function getBehindCount(): number {
@@ -293,26 +303,31 @@ async function boot() {
     }
 
     async function fetchAndPull() {
-        const ctl = statusController();
-        const fetched = await fetchCurrentRemoteOnly({ hydrate: false, status: ctl, keepBusy: true });
-        if (!fetched) { ctl.clearBusy(); return; }
-
+        fetchBtn?.classList.add('fetching');
         try {
-            ctl.setBusy(`${resolveVcsActionLabel('VCS.Pull', 'Pull')}ing…`);
-            const res = await TAURI.invoke<{ pulled: boolean; branch: string; reason?: string | null }>('vcs_pull', {});
-            if (res?.pulled) {
-                notify('Pulled latest changes');
-            } else {
-                notify((res?.reason ?? 'No upstream configured for this branch; pull skipped') as string);
+            const ctl = statusController();
+            const fetched = await fetchCurrentRemoteOnly({ hydrate: false, status: ctl, keepBusy: true });
+            if (!fetched) { ctl.clearBusy(); return; }
+
+            try {
+                ctl.setBusy(`${resolveVcsActionLabel('VCS.Pull', 'Pull')}ing…`);
+                const res = await TAURI.invoke<{ pulled: boolean; branch: string; reason?: string | null }>('vcs_pull', {});
+                if (res?.pulled) {
+                    notify('Pulled latest changes');
+                } else {
+                    notify((res?.reason ?? 'No upstream configured for this branch; pull skipped') as string);
+                }
+            } catch (e) {
+                const msg = String(e || '').trim();
+                showError('Pull failed', msg || 'Could not pull changes from remote.');
+            } finally {
+                ctl.clearBusy();
             }
-        } catch (e) {
-            const msg = String(e || '').trim();
-            showError('Pull failed', msg || 'Could not pull changes from remote.');
-        } finally {
-            ctl.clearBusy();
-        }
 
             await hydrateSnapshot(true);
+        } finally {
+            fetchBtn?.classList.remove('fetching');
+        }
     }
 
     async function defaultFetchAction() {
@@ -342,6 +357,7 @@ async function boot() {
     }
 
     async function pushChanges() {
+        pushBtn?.classList.add('pushing');
         const statusEl = document.getElementById('status');
         const setBusy = (msg: string) => {
             if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
@@ -365,7 +381,7 @@ async function boot() {
             const msg = String(e || '').trim();
             console.error('Push failed:', msg);
             showError('Push failed', msg || 'Could not push to remote. Check your network connection and remote URL.');
-        } finally { clearBusy(); }
+        } finally { pushBtn?.classList.remove('pushing'); clearBusy(); }
     }
 
     async function openDocs() {

@@ -17,8 +17,9 @@ export function bindCommit() {
     const commitDesc    = qs<HTMLTextAreaElement>('#commit-desc');
 
     commitBtn?.addEventListener('click', async () => {
+        commitBtn?.classList.add('committing');
         let summary = commitSummary?.value.trim() || getCommitSummaryHint() || '';
-        if (!summary) { commitSummary?.focus(); notify('Summary is required'); return; }
+        if (!summary) { commitBtn?.classList.remove('committing'); commitSummary?.focus(); notify('Summary is required'); return; }
         const hunksMap = state.selectedHunksByFile || {};
         const linesMap = state.selectedLinesByFile || {};
         const selectedFiles = Array.from(state.selectedFiles);
@@ -71,6 +72,7 @@ export function bindCommit() {
                 combinedPatch += buildPatchForSelected(path, lines, selHunks, selLines) + '\n';
             }
             if (partialLoadFailed) {
+                commitBtn?.classList.remove('committing');
                 notify('Failed to read one or more selected diffs');
                 return;
             }
@@ -88,6 +90,7 @@ export function bindCommit() {
                 if (pre.cancelled) {
                     notify(pre.reason || 'Commit cancelled');
                     clearBusy('Ready');
+                    commitBtn?.classList.remove('committing');
                     return;
                 }
                 if (commitSummary?.maxLength === 72 && String(hookData.summary || '').length > 72) {
@@ -108,6 +111,7 @@ export function bindCommit() {
                 await runHook('onCommit', hookData);
             }
             else {
+                commitBtn?.classList.remove('committing');
                 notify('Select files or hunks to commit');
                 return;
             }
@@ -138,6 +142,7 @@ export function bindCommit() {
             clearBusy('Ready');
         } catch (e) { console.error('Commit failed:', e); notify('Commit failed'); }
         finally {
+            commitBtn?.classList.remove('committing');
             clearBusy('Ready');
         }
     });

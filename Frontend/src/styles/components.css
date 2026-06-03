@@ -577,6 +577,41 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
     border-radius:6px; padding:.05rem .32rem; color:var(--muted); font-size:.8rem;
 }
 
+/* Push / Fetch rotating border animation */
+@keyframes border-spin{
+    to{ transform:rotate(360deg); }
+}
+.btn.pushing,
+.btn.fetching,
+.btn.committing{
+    position:relative;
+    overflow:hidden;
+    border-color:transparent !important;
+}
+/* Large rotating conic disc behind the button */
+.btn.pushing::before,
+.btn.fetching::before,
+.btn.committing::before{
+    content:'';
+    position:absolute;
+    top:-50%;left:-50%;
+    width:200%;height:200%;
+    background:conic-gradient(from 0deg,var(--accent),var(--accent) 12%,transparent 12%,transparent 50%,var(--accent) 50%,var(--accent) 62%,transparent 62%);
+    animation:border-spin 2s linear infinite;
+    pointer-events:none;
+}
+/* Inner cover masks the center so only a ring at the edge shows through */
+.btn.pushing::after,
+.btn.fetching::after,
+.btn.committing::after{
+    content:'';
+    position:absolute;
+    inset:2px;
+    border-radius:inherit;
+    background:inherit;
+    pointer-events:none;
+}
+
 /* Status bar spinner when busy (e.g., committing) */
 #status.busy::after{
     content:""; display:inline-block; width:12px; height:12px; margin-left:.5rem;
