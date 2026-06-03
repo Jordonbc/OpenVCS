@@ -3,6 +3,7 @@
 import { qs } from '../lib/dom';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
+import { showError } from './errorModal';
 import { state } from '../state/state';
 import { hydrateStatus, hydrateCommits } from './repo';
 import { runHook } from '../plugins';
@@ -140,7 +141,11 @@ export function bindCommit() {
                 partialFiles,
             });
             clearBusy('Ready');
-        } catch (e) { console.error('Commit failed:', e); notify('Commit failed'); }
+        } catch (e) {
+            const msg = String(e || '').trim();
+            console.error('Commit failed:', msg);
+            showError('Commit failed', msg || 'Could not complete commit.');
+        }
         finally {
             commitBtn?.classList.remove('committing');
             clearBusy('Ready');

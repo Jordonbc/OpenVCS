@@ -26,6 +26,10 @@ vi.mock('@scripts/lib/tauri', () => {
   };
 });
 
+vi.mock('@scripts/features/errorModal', () => ({
+  showError: vi.fn(),
+}));
+
 vi.mock('@scripts/features/repo', () => ({
   hydrateStatus: vi.fn(async () => {}),
   hydrateCommits: vi.fn(async () => {}),
@@ -641,7 +645,7 @@ describe('bindCommit error handling and buildPatchForSelected edge cases', () =>
     });
 
     const { bindCommit } = await import('@scripts/features/diff');
-    const { notify } = await import('@scripts/lib/notify');
+    const { showError } = await import('@scripts/features/errorModal');
     const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
     const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
 
@@ -650,7 +654,7 @@ describe('bindCommit error handling and buildPatchForSelected edge cases', () =>
     commitBtn.click();
 
     await vi.waitFor(() => {
-      expect(notify).toHaveBeenCalledWith('Commit failed');
+      expect(showError).toHaveBeenCalledWith('Commit failed', expect.stringContaining('commit error'));
     }, { timeout: 3000, interval: 20 });
   });
 
