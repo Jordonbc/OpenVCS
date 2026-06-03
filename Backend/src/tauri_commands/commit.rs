@@ -160,7 +160,7 @@ pub async fn commit_selected<R: Runtime>(
         });
         let oid = repo
             .inner()
-            .commit_index(&message, &name, &email)
+            .commit(&message, &name, &email, &paths)
             .map_err(|e| {
                 error!("Commit (selected) failed: {e}");
                 e.to_string()
@@ -300,9 +300,10 @@ pub async fn commit_patch_and_files<R: Runtime>(
             return Err("No commit paths provided".into());
         }
 
+        let all_paths: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
         let oid = repo
             .inner()
-            .commit_index(&message, &name, &email)
+            .commit(&message, &name, &email, &all_paths)
             .map_err(|e| e.to_string())?;
         on(VcsEvent::Info {
             msg: "Commit complete".into(),
