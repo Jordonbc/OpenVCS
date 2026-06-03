@@ -577,39 +577,36 @@ button.saved-state,.btn.saved-state,.tbtn.saved-state{
     border-radius:6px; padding:.05rem .32rem; color:var(--muted); font-size:.8rem;
 }
 
-/* Push / Fetch rotating border animation */
-@keyframes border-spin{
-    to{ transform:rotate(360deg); }
+@property --action-border-angle{
+    syntax:'<angle>';
+    inherits:false;
+    initial-value:0deg;
+}
+
+/* Push / Fetch / Commit travelling border highlight */
+@keyframes action-border-travel{
+    to{ --action-border-angle:360deg; }
 }
 .btn.pushing,
 .btn.fetching,
 .btn.committing{
-    position:relative;
-    overflow:hidden;
-    border-color:transparent !important;
+    --action-button-fill:var(--surface);
+    --action-border-angle:0deg;
+    border-color:transparent;
+    background:
+        linear-gradient(var(--action-button-fill),var(--action-button-fill)) padding-box,
+        conic-gradient(from var(--action-border-angle),transparent 0deg,transparent 190deg,var(--accent) 310deg,transparent 360deg) border-box;
+    animation:action-border-travel 1.15s linear infinite;
 }
-/* Large rotating conic disc behind the button */
-.btn.pushing::before,
-.btn.fetching::before,
-.btn.committing::before{
-    content:'';
-    position:absolute;
-    top:-50%;left:-50%;
-    width:200%;height:200%;
-    background:conic-gradient(from 0deg,var(--accent),var(--accent) 12%,transparent 12%,transparent 50%,var(--accent) 50%,var(--accent) 62%,transparent 62%);
-    animation:border-spin 2s linear infinite;
-    pointer-events:none;
+.btn.primary.committing,
+.btn.primary.fetching,
+.btn.primary.pushing{
+    --action-button-fill:var(--accent);
 }
-/* Inner cover masks the center so only a ring at the edge shows through */
-.btn.pushing::after,
-.btn.fetching::after,
-.btn.committing::after{
-    content:'';
-    position:absolute;
-    inset:2px;
-    border-radius:inherit;
-    background:inherit;
-    pointer-events:none;
+.btn.attention.pushing,
+.btn.attention.fetching,
+.btn.attention.committing{
+    --action-button-fill:color-mix(in oklab,var(--accent) 12%,var(--surface));
 }
 
 /* Status bar spinner when busy (e.g., committing) */
