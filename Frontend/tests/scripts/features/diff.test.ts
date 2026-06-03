@@ -1941,3 +1941,163 @@ describe('buildPatchForSelected picksRaw and prefix calc', () => {
     }, { timeout: 3000, interval: 20 });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: corrupt-patch prevention in mini-hunk header counts
+// ---------------------------------------------------------------------------
+
+describe('buildPatchForSelected corrupt-patch regression fixes', () => {
+  it('includes context lines in old_count/new_count to prevent corrupt-patch header', async () => {
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedHunksByFile = {} as any;
+    // Select context line (UI index 1) and removed line (UI index 2).
+    // These are consecutive in content → one mini-hunk group.
+    // OLD code: old_count=1 (only '-'), new_count=0 → header @@ -5,1 +5,0 @@
+    //           with 2 content lines → git apply rejects as "corrupt patch"
+    // NEW code: old_count=2 (context + removed), new_count=1 (context)
+    state.selectedLinesByFile = { 'file.txt': { 0: [1, 2] } } as any;
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return [
+          'diff --git a/file.txt b/file.txt',
+          '--- a/file.txt',
+          '+++ b/file.txt',
+          '@@ -5,3 +5,2 @@',
+          ' context',
+          '-removed',
+          '+added',
+        ];
+      }
+      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      return [];
+    });
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'Context line in mini-hunk';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const commitCall = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files',
+      );
+      expect(commitCall).toBeTruthy();
+      const patch = commitCall?.[1].patch as string;
+      // The mini-hunk groups context + removed together (consecutive indices).
+      // old_count: context (1) + removed (1) = 2, not just removed (1)
+      expect(patch).toContain('@@ -5,2');
+      // new_count: context (1) = 1, not 0
+      expect(patch).toContain('+5,1');
+      expect(patch).toContain(' context');
+      expect(patch).toContain('-removed');
+      // '+added' is not selected (only indices [1,2] / content [0,1])
+    }, { timeout: 3000, interval: 20 });
+  });
+
+  it('handles \\ No newline metadata lines without corrupting hunk counts', async () => {
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedHunksByFile = {} as any;
+    // Select all 3 lines: '-old', '+new', and '\\ No newline...' metadata
+    state.selectedLinesByFile = { 'file.txt': { 0: [1, 2, 3] } } as any;
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return [
+          'diff --git a/file.txt b/file.txt',
+          '--- a/file.txt',
+          '+++ b/file.txt',
+          '@@ -1,2 +1,2 @@',
+          '-old',
+          '+new',
+          '\\ No newline at end of file',
+        ];
+      }
+      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      return [];
+    });
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'No newline metadata';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const commitCall = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files',
+      );
+      expect(commitCall).toBeTruthy();
+      const patch = commitCall?.[1].patch as string;
+      // The mini-hunk groups -old + +new together (consecutive).
+      // old_count should be 1 (-old only), new_count should be 1 (+new only).
+      // The \\ metadata line is separated and placed after content.
+      expect(patch).toContain('@@ -1,1 +1,1 @@');
+      expect(patch).toContain('-old');
+      expect(patch).toContain('+new');
+      // \\ line should be emitted after the content lines
+      expect(patch).toContain('\\ No newline at end of file');
+    }, { timeout: 3000, interval: 20 });
+  });
+
+  it('produces valid hunk when context lines surround changed lines in mini-hunk', async () => {
+    state.selectedFiles = new Set(['file.txt']);
+    state.selectedHunksByFile = {} as any;
+    // Select content indices [0,1,2] (context, removed, context) via UI indices [1,2,3]
+    state.selectedLinesByFile = { 'file.txt': { 0: [1, 2, 3] } } as any;
+    state.files = [{ path: 'file.txt', status: 'M' }] as any;
+
+    const { __invoke: invoke } = await import('@scripts/lib/tauri') as any;
+    invoke.mockClear();
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'vcs_diff_file') {
+        return [
+          'diff --git a/file.txt b/file.txt',
+          '--- a/file.txt',
+          '+++ b/file.txt',
+          '@@ -10,4 +10,3 @@',
+          ' context_top',
+          '-removed',
+          ' context_bottom',
+          '+added_bottom',
+        ];
+      }
+      if (cmd === 'commit_patch_and_files') return 'oid-999';
+      return [];
+    });
+
+    const { bindCommit } = await import('@scripts/features/diff');
+    const commitSummary = document.getElementById('commit-summary') as HTMLInputElement;
+    const commitBtn = document.getElementById('commit-btn') as HTMLButtonElement;
+
+    commitSummary.value = 'Context surrounding removal';
+    bindCommit();
+    commitBtn.click();
+
+    await vi.waitFor(() => {
+      const commitCall = invoke.mock.calls.find(
+        (args: unknown[]) => args[0] === 'commit_patch_and_files',
+      );
+      expect(commitCall).toBeTruthy();
+      const patch = commitCall?.[1].patch as string;
+      // Three consecutive selected lines (context, -removed, context) → one group.
+      // old_count = context_top(1) + removed(1) + context_bottom(1) = 3
+      expect(patch).toContain('@@ -10,3');
+      // new_count = context_top(1) + context_bottom(1) = 2
+      expect(patch).toContain('+10,2');
+      // The +added_bottom line (content[3]) is NOT selected — not in output
+      expect(patch).not.toContain('+added_bottom');
+    }, { timeout: 3000, interval: 20 });
+  });
+});
