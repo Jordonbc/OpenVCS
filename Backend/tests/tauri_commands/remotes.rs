@@ -3,8 +3,10 @@
 
 use super::{
     host_from_remote_url, looks_like_ff_only_divergence, looks_like_ssh_auth_failure,
-    looks_like_unknown_host_key,
+    looks_like_unknown_host_key, remote_url_for, PullResult,
 };
+
+// ── host_from_remote_url ──
 
 #[test]
 fn parses_host_from_remote_urls() {
@@ -22,6 +24,85 @@ fn rejects_unparseable_remote_urls() {
 }
 
 #[test]
+fn host_from_remote_url_ssh_empty_host_after_at() {
+    // git@ with colon before host — empty host between @ and :
+    assert_eq!(host_from_remote_url("git@:org/repo"), None);
+}
+
+#[test]
+fn host_from_remote_url_ssh_protocol_no_host() {
+    // ssh:///path: rest="/path", trimmed→"path", no @→after_user="path", split('/')→"path"
+    // The function treats the first path segment as the host when there's no user@host
+    assert_eq!(host_from_remote_url("ssh:///path"), Some("path".into()));
+    // ssh:/// with trailing slash: rest="/", trimmed→"", empty host → None
+    assert_eq!(host_from_remote_url("ssh:///"), None);
+}
+
+#[test]
+fn host_from_remote_url_ssh_protocol_user_no_host() {
+    // ssh://user@ with nothing after @
+    assert_eq!(host_from_remote_url("ssh://user@"), None);
+    assert_eq!(host_from_remote_url("ssh://user@/"), None);
+}
+
+#[test]
+fn host_from_remote_url_http_trailing_slash() {
+    assert_eq!(host_from_remote_url("http://example.com/"), Some("example.com".into()));
+    assert_eq!(host_from_remote_url("https://example.com/"), Some("example.com".into()));
+}
+
+#[test]
+fn host_from_remote_url_with_port() {
+    assert_eq!(host_from_remote_url("https://example.com:8080/org/repo"), Some("example.com:8080".into()));
+    assert_eq!(host_from_remote_url("http://localhost:3000/repo"), Some("localhost:3000".into()));
+}
+
+#[test]
+fn host_from_remote_url_git_colon_no_path() {
+    assert_eq!(host_from_remote_url("git@github.com:"), Some("github.com".into()));
+}
+
+#[test]
+fn host_from_remote_url_ssh_user_at() {
+    assert_eq!(host_from_remote_url("ssh://git@github.com/org/repo"), Some("github.com".into()));
+    assert_eq!(host_from_remote_url("ssh://user@host.example.com/path"), Some("host.example.com".into()));
+}
+
+#[test]
+fn host_from_remote_url_empty_after_at() {
+    // Only the @ sign, nothing after
+    assert_eq!(host_from_remote_url("git@"), None);
+}
+
+#[test]
+fn host_from_remote_url_with_whitespace() {
+    assert_eq!(host_from_remote_url("  git@github.com:org/repo  "), Some("github.com".into()));
+    assert_eq!(host_from_remote_url("\t https://example.com/org/repo \t"), Some("example.com".into()));
+}
+
+#[test]
+fn host_from_remote_url_http_no_host() {
+    assert_eq!(host_from_remote_url("https://"), None);
+    assert_eq!(host_from_remote_url("http://"), None);
+}
+
+#[test]
+fn host_from_remote_url_just_at_sign() {
+    // "@" alone: find('@') at pos 0, rest is "", no colon → hits ssh:///https checks, both fail
+    assert_eq!(host_from_remote_url("@"), None);
+}
+
+#[test]
+fn host_from_remote_url_git_at_no_colon_but_slash() {
+    // "git@github.com/org/repo" — no colon, but has slash after @
+    // find('@') gives rest="github.com/org/repo", no colon → goes to ssh/https checks
+    // It won't match ssh:// or https:// prefix, returns None
+    assert_eq!(host_from_remote_url("git@github.com/org/repo"), None);
+}
+
+// ── looks_like_unknown_host_key ──
+
+#[test]
 fn detects_unknown_host_key_errors() {
     assert!(looks_like_unknown_host_key(
         "The authenticity of host 'github.com (140.82.121.4)' can't be established."
@@ -31,11 +112,65 @@ fn detects_unknown_host_key_errors() {
 }
 
 #[test]
+fn looks_like_unknown_host_key_all_phrases() {
+    assert!(looks_like_unknown_host_key("the authenticity of host 'server' is unknown"));
+    assert!(looks_like_unknown_host_key("THE AUTHENTICITY OF HOST can't be established"));
+    assert!(looks_like_unknown_host_key("Host key verification failed"));
+    assert!(looks_like_unknown_host_key("HOST KEY VERIFICATION FAILED"));
+    assert!(looks_like_unknown_host_key("no hostkey alg"));
+    assert!(looks_like_unknown_host_key("No Hostkey Alg available"));
+    assert!(looks_like_unknown_host_key("could not resolve hostname"));
+    assert!(looks_like_unknown_host_key("Could Not Resolve Hostname for server"));
+    assert!(looks_like_unknown_host_key("warning: known_hosts file is missing"));
+    assert!(looks_like_unknown_host_key("KNOWN_HOSTS verification"));
+    assert!(looks_like_unknown_host_key("strict host key checking is enabled"));
+}
+
+#[test]
+fn looks_like_unknown_host_key_non_matches() {
+    assert!(!looks_like_unknown_host_key(""));
+    assert!(!looks_like_unknown_host_key("host"));
+    assert!(!looks_like_unknown_host_key("key"));
+    assert!(!looks_like_unknown_host_key("verification"));
+    assert!(!looks_like_unknown_host_key("authenticity"));
+    assert!(!looks_like_unknown_host_key("hostname"));
+    assert!(!looks_like_unknown_host_key("could not resolve"));
+}
+
+// ── looks_like_ssh_auth_failure ──
+
+#[test]
 fn detects_ssh_authentication_failures() {
     assert!(looks_like_ssh_auth_failure("Permission denied (publickey)."));
     assert!(looks_like_ssh_auth_failure("Authentication failed for 'git'"));
     assert!(!looks_like_ssh_auth_failure("host key verification failed"));
 }
+
+#[test]
+fn looks_like_ssh_auth_failure_all_phrases() {
+    assert!(looks_like_ssh_auth_failure("permission denied"));
+    assert!(looks_like_ssh_auth_failure("PERMISSION DENIED (publickey)"));
+    assert!(looks_like_ssh_auth_failure("publickey authentication error"));
+    assert!(looks_like_ssh_auth_failure("PUBLICKEY"));
+    assert!(looks_like_ssh_auth_failure("could not read from remote repository"));
+    assert!(looks_like_ssh_auth_failure("Could Not Read From Remote Repository"));
+    assert!(looks_like_ssh_auth_failure("authentication failed"));
+    assert!(looks_like_ssh_auth_failure("Authentication Failed for user"));
+}
+
+#[test]
+fn looks_like_ssh_auth_failure_non_matches() {
+    assert!(!looks_like_ssh_auth_failure(""));
+    assert!(!looks_like_ssh_auth_failure("permission"));
+    assert!(!looks_like_ssh_auth_failure("denied"));
+    assert!(!looks_like_ssh_auth_failure("public"));
+    assert!(!looks_like_ssh_auth_failure("key"));
+    assert!(!looks_like_ssh_auth_failure("authentication"));
+    assert!(!looks_like_ssh_auth_failure("could not read from"));
+    assert!(!looks_like_ssh_auth_failure("read from remote repository"));
+}
+
+// ── looks_like_ff_only_divergence ──
 
 #[test]
 fn detects_fast_forward_only_divergence() {
@@ -44,6 +179,171 @@ fn detects_fast_forward_only_divergence() {
     ));
     assert!(looks_like_ff_only_divergence("Cannot be fast-forwarded because branches diverged"));
     assert!(!looks_like_ff_only_divergence("permission denied (publickey)"));
+}
+
+#[test]
+fn looks_like_ff_only_divergence_all_phrases() {
+    assert!(looks_like_ff_only_divergence("not possible to fast-forward"));
+    assert!(looks_like_ff_only_divergence("NOT POSSIBLE TO FAST-FORWARD"));
+    assert!(looks_like_ff_only_divergence("can't be fast-forwarded"));
+    assert!(looks_like_ff_only_divergence("Can't Be Fast-Forwarded"));
+    assert!(looks_like_ff_only_divergence("cannot be fast-forwarded"));
+    assert!(looks_like_ff_only_divergence("Cannot Be Fast-Forwarded"));
+    // Combined condition: both "fast-forward" and "diverg"
+    assert!(looks_like_ff_only_divergence("fast-forward failed: branches have diverged"));
+    assert!(looks_like_ff_only_divergence("diverged; cannot fast-forward"));
+}
+
+#[test]
+fn looks_like_ff_only_divergence_needs_both_keywords() {
+    // "fast-forward" alone without "diverg" should NOT match (the first 3 phrases
+    // already cover standalone patterns, but the 4th requires both)
+    assert!(!looks_like_ff_only_divergence("fast-forward only"));
+    // "diverg" alone without "fast-forward" should NOT match
+    assert!(!looks_like_ff_only_divergence("branches have diverged"));
+    // Neither keyword
+    assert!(!looks_like_ff_only_divergence(""));
+    assert!(!looks_like_ff_only_divergence("permission denied"));
+}
+
+#[test]
+fn looks_like_ff_only_divergence_boundary_cases() {
+    // "diverging" contains "diverg" → should match when combined with "fast-forward"
+    assert!(looks_like_ff_only_divergence("fast-forward failed: diverging branches"));
+    // "divergent" contains "diverg" → should match
+    assert!(looks_like_ff_only_divergence("divergent branches; cannot fast-forward"));
+}
+
+// ── remote_url_for ──
+
+use std::path::{Path, PathBuf};
+use crate::core::{BackendId, Vcs, VcsError, models};
+
+/// Minimal Vcs implementation used by `remote_url_for` tests.
+struct RemoteUrlTestVcs {
+    id: BackendId,
+    workdir: PathBuf,
+    remotes: Vec<(String, String)>,
+}
+
+impl RemoteUrlTestVcs {
+    fn new(remotes: Vec<(String, String)>) -> Self {
+        Self {
+            id: BackendId::from("test-remote-url"),
+            workdir: PathBuf::from("/tmp"),
+            remotes,
+        }
+    }
+}
+
+impl Vcs for RemoteUrlTestVcs {
+    fn id(&self) -> BackendId { self.id.clone() }
+    fn workdir(&self) -> &Path { &self.workdir }
+    fn current_branch(&self) -> crate::core::Result<Option<String>> { Ok(Some("main".into())) }
+    fn branches(&self) -> crate::core::Result<Vec<models::BranchItem>> { Ok(vec![]) }
+    fn create_branch(&self, _name: &str, _checkout: bool) -> crate::core::Result<()> { Ok(()) }
+    fn checkout_branch(&self, _name: &str) -> crate::core::Result<()> { Ok(()) }
+    fn ensure_remote(&self, _name: &str, _url: &str) -> crate::core::Result<()> { Ok(()) }
+    fn list_remotes(&self) -> crate::core::Result<Vec<(String, String)>> { Ok(self.remotes.clone()) }
+    fn remove_remote(&self, _name: &str) -> crate::core::Result<()> { Ok(()) }
+    fn fetch(&self, _remote: &str, _refspec: &str, _on: Option<models::OnEvent>) -> crate::core::Result<()> { Ok(()) }
+    fn push(&self, _remote: &str, _refspec: &str, _on: Option<models::OnEvent>) -> crate::core::Result<()> { Ok(()) }
+    fn pull_ff_only(&self, _remote: &str, _branch: &str, _on: Option<models::OnEvent>) -> crate::core::Result<()> { Ok(()) }
+    fn commit(&self, _message: &str, _name: &str, _email: &str, _paths: &[PathBuf]) -> crate::core::Result<String> { Ok("abc".into()) }
+    fn commit_index(&self, _message: &str, _name: &str, _email: &str) -> crate::core::Result<String> { Ok("abc".into()) }
+    fn status_payload(&self) -> crate::core::Result<models::StatusPayload> { Ok(models::StatusPayload::default()) }
+    fn log_commits(&self, _query: &models::LogQuery) -> crate::core::Result<Vec<models::CommitItem>> { Ok(vec![]) }
+    fn diff_file(&self, _path: &Path) -> crate::core::Result<models::DiffFileResult> { Ok(models::DiffFileResult::default()) }
+    fn diff_commit(&self, _rev: &str) -> crate::core::Result<Vec<String>> { Ok(vec![]) }
+    fn stage_patch(&self, _patch: &str) -> crate::core::Result<()> { Ok(()) }
+    fn stage_paths(&self, _paths: &[PathBuf]) -> crate::core::Result<()> { Ok(()) }
+    fn discard_paths(&self, _paths: &[PathBuf]) -> crate::core::Result<()> { Ok(()) }
+    fn apply_reverse_patch(&self, _patch: &str) -> crate::core::Result<()> { Ok(()) }
+    fn delete_branch(&self, _name: &str, _force: bool) -> crate::core::Result<()> { Ok(()) }
+    fn rename_branch(&self, _old: &str, _new: &str) -> crate::core::Result<()> { Ok(()) }
+    fn merge_into_current(&self, _name: &str) -> crate::core::Result<()> { Ok(()) }
+    fn get_identity(&self) -> crate::core::Result<Option<(String, String)>> { Ok(None) }
+    fn set_identity_local(&self, _name: &str, _email: &str) -> crate::core::Result<()> { Ok(()) }
+}
+
+#[test]
+fn remote_url_for_empty_remote() {
+    let vcs = RemoteUrlTestVcs::new(vec![("origin".into(), "https://example.com".into())]);
+    assert_eq!(remote_url_for(&vcs, ""), None);
+    assert_eq!(remote_url_for(&vcs, "  "), None);
+}
+
+#[test]
+fn remote_url_for_found() {
+    let vcs = RemoteUrlTestVcs::new(vec![
+        ("origin".into(), "https://example.com/repo.git".into()),
+        ("upstream".into(), "git@github.com:org/repo.git".into()),
+    ]);
+    assert_eq!(remote_url_for(&vcs, "origin"), Some("https://example.com/repo.git".into()));
+    assert_eq!(remote_url_for(&vcs, "upstream"), Some("git@github.com:org/repo.git".into()));
+}
+
+#[test]
+fn remote_url_for_not_found() {
+    let vcs = RemoteUrlTestVcs::new(vec![("origin".into(), "https://example.com".into())]);
+    assert_eq!(remote_url_for(&vcs, "nonexistent"), None);
+    assert_eq!(remote_url_for(&vcs, "origin2"), None);
+}
+
+#[test]
+fn remote_url_for_empty_list() {
+    let vcs = RemoteUrlTestVcs::new(vec![]);
+    assert_eq!(remote_url_for(&vcs, "origin"), None);
+}
+
+// ── PullResult struct ──
+
+#[test]
+fn pull_result_construction_pulled() {
+    let result = PullResult {
+        pulled: true,
+        branch: "main".into(),
+        reason: None,
+    };
+    assert!(result.pulled);
+    assert_eq!(result.branch, "main");
+    assert!(result.reason.is_none());
+}
+
+#[test]
+fn pull_result_construction_skipped() {
+    let result = PullResult {
+        pulled: false,
+        branch: "feature".into(),
+        reason: Some("no upstream".into()),
+    };
+    assert!(!result.pulled);
+    assert_eq!(result.branch, "feature");
+    assert_eq!(result.reason, Some("no upstream".into()));
+}
+
+#[test]
+fn pull_result_with_reason() {
+    let result = PullResult {
+        pulled: false,
+        branch: "dev".into(),
+        reason: Some("Branch diverged; fast-forward pull skipped".into()),
+    };
+    assert!(!result.pulled);
+    assert_eq!(result.reason.as_deref().unwrap(), "Branch diverged; fast-forward pull skipped");
+}
+
+// ── looks_like_unknown_host_key vs looks_like_ssh_auth_failure distinction ──
+
+#[test]
+fn host_key_vs_auth_failure_distinction() {
+    // A host-key message should NOT trigger auth failure
+    assert!(looks_like_unknown_host_key("host key verification failed"));
+    assert!(!looks_like_ssh_auth_failure("host key verification failed"));
+
+    // An auth failure should NOT trigger host-key detection
+    assert!(looks_like_ssh_auth_failure("permission denied (publickey)"));
+    assert!(!looks_like_unknown_host_key("permission denied (publickey)"));
 }
 
 // ── IPC command error path tests ──
@@ -159,4 +459,326 @@ fn vcs_push_fails_without_repo() {
     }));
     let res = invoke_cmd(&wv, "vcs_push", body);
     assert!(res.is_err(), "vcs_push needs a repo: {:?}", res);
+}
+
+#[test]
+fn vcs_undo_since_push_fails_without_repo() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "remote": "origin",
+    }));
+    let res = invoke_cmd(&wv, "vcs_undo_since_push", body);
+    assert!(res.is_err(), "vcs_undo_since_push needs a repo: {:?}", res);
+}
+
+#[test]
+fn vcs_undo_to_commit_fails_without_repo() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "id": "abc123",
+    }));
+    let res = invoke_cmd(&wv, "vcs_undo_to_commit", body);
+    assert!(res.is_err(), "vcs_undo_to_commit needs a repo: {:?}", res);
+}
+
+// ── IPC command tests with DummyVcs ──
+
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use crate::plugin_vcs_backends::{self, PluginBackendDescriptor};
+use crate::repo::Repo;
+
+/// Full-featured VCS mock for remote command tests.
+struct RemotesTestVcs {
+    id: BackendId,
+    workdir: PathBuf,
+    remotes: Vec<(String, String)>,
+    ahead: u32,
+    log_commits: Vec<models::CommitItem>,
+    current_branch: Option<String>,
+    /// Must be true when ensure_remote should succeed. Stored as bool since
+    /// VcsError does not implement Clone.
+    ensure_remote_ok: bool,
+}
+
+impl RemotesTestVcs {
+    fn new(id: &str, workdir: PathBuf) -> Self {
+        Self {
+            id: BackendId::from(id),
+            workdir,
+            remotes: vec![("origin".into(), "https://example.com/repo.git".into())],
+            ahead: 0,
+            log_commits: vec![],
+            current_branch: Some("main".into()),
+            ensure_remote_ok: true,
+        }
+    }
+
+    fn unsupported<T>(&self) -> std::result::Result<T, VcsError> {
+        Err(VcsError::Unsupported(self.id.clone()))
+    }
+}
+
+impl Vcs for RemotesTestVcs {
+    fn id(&self) -> BackendId { self.id.clone() }
+    fn workdir(&self) -> &Path { &self.workdir }
+
+    fn current_branch(&self) -> crate::core::Result<Option<String>> {
+        Ok(self.current_branch.clone())
+    }
+    fn branches(&self) -> crate::core::Result<Vec<models::BranchItem>> { self.unsupported() }
+    fn create_branch(&self, _: &str, _: bool) -> crate::core::Result<()> { self.unsupported() }
+    fn checkout_branch(&self, _: &str) -> crate::core::Result<()> { self.unsupported() }
+    fn ensure_remote(&self, _: &str, _: &str) -> crate::core::Result<()> {
+        if self.ensure_remote_ok { Ok(()) } else { Err(VcsError::Unsupported(self.id.clone())) }
+    }
+    fn list_remotes(&self) -> crate::core::Result<Vec<(String, String)>> { Ok(self.remotes.clone()) }
+    fn remove_remote(&self, _: &str) -> crate::core::Result<()> { self.unsupported() }
+    fn fetch(&self, _: &str, _: &str, _: Option<models::OnEvent>) -> crate::core::Result<()> { self.unsupported() }
+    fn push(&self, _: &str, _: &str, _: Option<models::OnEvent>) -> crate::core::Result<()> { self.unsupported() }
+    fn pull_ff_only(&self, _: &str, _: &str, _: Option<models::OnEvent>) -> crate::core::Result<()> { self.unsupported() }
+    fn commit(&self, _: &str, _: &str, _: &str, _: &[PathBuf]) -> crate::core::Result<String> { self.unsupported() }
+    fn commit_index(&self, _: &str, _: &str, _: &str) -> crate::core::Result<String> { self.unsupported() }
+
+    fn status_payload(&self) -> crate::core::Result<models::StatusPayload> {
+        Ok(models::StatusPayload {
+            ahead: self.ahead,
+            behind: 0,
+            files: vec![],
+            branch_on_remote: false,
+        })
+    }
+
+    fn log_commits(&self, _: &models::LogQuery) -> crate::core::Result<Vec<models::CommitItem>> {
+        Ok(self.log_commits.clone())
+    }
+
+    fn diff_file(&self, _: &Path) -> crate::core::Result<models::DiffFileResult> { self.unsupported() }
+    fn diff_commit(&self, _: &str) -> crate::core::Result<Vec<String>> { self.unsupported() }
+    fn stage_patch(&self, _: &str) -> crate::core::Result<()> { self.unsupported() }
+    fn stage_paths(&self, _: &[PathBuf]) -> crate::core::Result<()> { self.unsupported() }
+    fn discard_paths(&self, _: &[PathBuf]) -> crate::core::Result<()> { self.unsupported() }
+    fn apply_reverse_patch(&self, _: &str) -> crate::core::Result<()> { self.unsupported() }
+    fn delete_branch(&self, _: &str, _: bool) -> crate::core::Result<()> { self.unsupported() }
+    fn rename_branch(&self, _: &str, _: &str) -> crate::core::Result<()> { self.unsupported() }
+    fn merge_into_current(&self, _: &str) -> crate::core::Result<()> { self.unsupported() }
+    fn get_identity(&self) -> crate::core::Result<Option<(String, String)>> { Ok(None) }
+    fn set_identity_local(&self, _: &str, _: &str) -> crate::core::Result<()> { Ok(()) }
+}
+
+fn register_remotes_test_backend(backend_id: &str) {
+    let desc = PluginBackendDescriptor {
+        backend_id: BackendId::from(backend_id),
+        backend_name: Some("Remotes Test VCS".into()),
+        action_labels: BTreeMap::new(),
+        plugin_id: format!("test.{backend_id}"),
+        plugin_name: Some("Remotes Test Plugin".into()),
+    };
+    plugin_vcs_backends::store_backends(vec![desc]);
+}
+
+fn build_remotes_app(
+    vcs: std::sync::Arc<RemotesTestVcs>,
+) -> (tauri::App<tauri::test::MockRuntime>, std::sync::Arc<RemotesTestVcs>) {
+    crate::app_identity::setup_test_isolation();
+    let repo = Arc::new(Repo::new(vcs.clone() as Arc<dyn Vcs>));
+    let mut cfg = settings::AppConfig::default();
+    cfg.plugins.enabled = vec![format!("test.{}", vcs.id.as_ref())];
+    let app_state = AppState::new_with_config(cfg);
+    app_state.set_current_repo(repo);
+
+    let app = mock_builder()
+        .manage(app_state)
+        .invoke_handler(tauri::generate_handler![
+            super::vcs_set_remote_url,
+            super::vcs_fetch,
+            super::vcs_fetch_all,
+            super::vcs_pull,
+            super::vcs_push,
+            super::vcs_undo_since_push,
+            super::vcs_undo_to_commit,
+        ])
+        .build(mock_context(noop_assets()))
+        .expect("build remotes test app");
+
+    (app, vcs)
+}
+
+#[test]
+fn vcs_set_remote_url_empty_name() {
+    register_remotes_test_backend("remotes-test");
+    let vcs = Arc::new(RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    ));
+    let (app, _) = build_remotes_app(vcs);
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "name": "  ",
+        "url": "https://example.com/repo.git",
+    }));
+    let res = invoke_cmd(&wv, "vcs_set_remote_url", body);
+    assert!(res.is_err(), "empty name should fail: {:?}", res);
+}
+
+#[test]
+fn vcs_set_remote_url_empty_url() {
+    register_remotes_test_backend("remotes-test");
+    let vcs = Arc::new(RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    ));
+    let (app, _) = build_remotes_app(vcs);
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "name": "origin",
+        "url": "",
+    }));
+    let res = invoke_cmd(&wv, "vcs_set_remote_url", body);
+    assert!(res.is_err(), "empty url should fail: {:?}", res);
+}
+
+#[test]
+fn vcs_set_remote_url_valid() {
+    register_remotes_test_backend("remotes-test");
+    let vcs = Arc::new(RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    ));
+    let (app, _) = build_remotes_app(vcs);
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "name": "origin",
+        "url": "https://example.com/repo.git",
+    }));
+    let res = invoke_cmd(&wv, "vcs_set_remote_url", body);
+    assert!(res.is_ok(), "valid set_remote_url should succeed: {:?}", res);
+}
+
+#[test]
+fn vcs_undo_since_push_nothing_to_undo() {
+    register_remotes_test_backend("remotes-test");
+    let vcs = Arc::new(RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    ));
+    // ahead = 0 means "Nothing to undo"
+    let (app, _) = build_remotes_app(vcs);
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
+    let res = invoke_cmd(&wv, "vcs_undo_since_push", body);
+    assert!(res.is_err(), "undo with ahead=0 should fail: {:?}", res);
+}
+
+#[test]
+fn vcs_undo_to_commit_commit_not_in_ahead() {
+    register_remotes_test_backend("remotes-test");
+    let vcs = Arc::new(RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    ));
+    let (app, ref_vcs) = build_remotes_app(vcs.clone());
+    let wv = test_webview(&app);
+
+    // log_commits returns empty, so any commit id won't be found
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "id": "abc123",
+    }));
+    let res = invoke_cmd(&wv, "vcs_undo_to_commit", body);
+    // With empty ahead_list, the check is skipped. But the fallback query
+    // also returns empty, so the commit check is skipped too.
+    // The command then calls reset_soft_to which returns Unsupported.
+    assert!(res.is_err(), "undo_to_commit with unsupported reset should fail: {:?}", res);
+    let _ = ref_vcs; // keep alive
+}
+
+#[test]
+fn vcs_undo_to_commit_invalid_commit_in_ahead() {
+    register_remotes_test_backend("remotes-test");
+    let mut vcs = RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    );
+    vcs.ahead = 3; // has ahead commits
+    vcs.log_commits = vec![
+        models::CommitItem {
+            id: "def456".into(),
+            msg: "commit 3".into(),
+            meta: "".into(),
+            author: "test".into(),
+        },
+        models::CommitItem {
+            id: "ghi789".into(),
+            msg: "commit 4".into(),
+            meta: "".into(),
+            author: "test".into(),
+        },
+    ];
+    let vcs = Arc::new(vcs);
+    let (app, _) = build_remotes_app(vcs);
+    let wv = test_webview(&app);
+
+    // "xyz999" doesn't start any of the commit ids
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "id": "xyz999",
+    }));
+    let res = invoke_cmd(&wv, "vcs_undo_to_commit", body);
+    assert!(res.is_err(), "invalid commit in ahead should fail: {:?}", res);
+}
+
+#[test]
+fn vcs_fetch_fails_no_backend_support() {
+    register_remotes_test_backend("remotes-test");
+    let vcs = Arc::new(RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    ));
+    let (app, _) = build_remotes_app(vcs);
+    let wv = test_webview(&app);
+
+    // fetch() returns Unsupported → should fail
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
+    let res = invoke_cmd(&wv, "vcs_fetch", body);
+    assert!(res.is_err(), "fetch without implementation should fail: {:?}", res);
+}
+
+#[test]
+fn vcs_push_fails_no_backend_support() {
+    register_remotes_test_backend("remotes-test");
+    let vcs = Arc::new(RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    ));
+    let (app, _) = build_remotes_app(vcs);
+    let wv = test_webview(&app);
+
+    // push() returns Unsupported → should fail
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
+    let res = invoke_cmd(&wv, "vcs_push", body);
+    assert!(res.is_err(), "push without implementation should fail: {:?}", res);
+}
+
+#[test]
+fn vcs_fetch_all_fails_no_backend_support() {
+    register_remotes_test_backend("remotes-test");
+    let vcs = Arc::new(RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    ));
+    let (app, _) = build_remotes_app(vcs);
+    let wv = test_webview(&app);
+
+    // fetch(): list_remotes returns remotes, but fetch() returns Unsupported
+    // The fallback from force-refspec to non-force also fails → failures collected
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
+    let res = invoke_cmd(&wv, "vcs_fetch_all", body);
+    assert!(res.is_err(), "fetch_all with unsupported fetch should fail: {:?}", res);
 }

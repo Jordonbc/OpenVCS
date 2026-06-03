@@ -67,3 +67,73 @@ fn reset_settings_is_a_noop_for_missing_files() {
 
     clear_test_plugin_data_root();
 }
+
+#[test]
+fn load_settings_propagates_error_for_invalid_json() {
+    let _guard = test_lock();
+    let temp = tempdir().expect("tempdir");
+    set_test_plugin_data_root(temp.path().join("plugin-data"));
+
+    let settings_path = temp
+        .path()
+        .join("plugin-data")
+        .join("broken.plugin")
+        .join("settings.json");
+    fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+    fs::write(&settings_path, "not valid json at all").unwrap();
+
+    let err = load_settings("broken.plugin").expect_err("expected parse error");
+    assert!(err.contains("parse"), "unexpected error: {err}");
+
+    clear_test_plugin_data_root();
+}
+
+#[test]
+fn load_settings_returns_empty_map_for_non_object_json() {
+    let _guard = test_lock();
+    let temp = tempdir().expect("tempdir");
+    set_test_plugin_data_root(temp.path().join("plugin-data"));
+
+    let settings_path = temp
+        .path()
+        .join("plugin-data")
+        .join("string.plugin")
+        .join("settings.json");
+    fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+
+    // Write a JSON string (valid JSON, but not an object)
+    fs::write(&settings_path, "\"just a string\"").unwrap();
+
+    let loaded = load_settings("string.plugin").expect("load non-object settings");
+    assert!(loaded.is_empty());
+
+    // Write a JSON array (valid JSON, but not an object)
+    fs::write(&settings_path, "[1, 2, 3]").unwrap();
+
+    let loaded = load_settings("string.plugin").expect("load array settings");
+    assert!(loaded.is_empty());
+
+    clear_test_plugin_data_root();
+}
+
+#[test]
+fn save_settings_overwrites_existing_file() {
+    let _guard = test_lock();
+    let temp = tempdir().expect("tempdir");
+    set_test_plugin_data_root(temp.path().join("plugin-data"));
+
+    let mut settings = serde_json::Map::new();
+    settings.insert("key".into(), json!("first"));
+
+    save_settings("overwrite.test", &settings).expect("first save");
+
+    let mut settings2 = serde_json::Map::new();
+    settings2.insert("key".into(), json!("second"));
+
+    save_settings("overwrite.test", &settings2).expect("second save");
+
+    let loaded = load_settings("overwrite.test").expect("load overwritten");
+    assert_eq!(loaded.get("key"), Some(&json!("second")));
+
+    clear_test_plugin_data_root();
+}

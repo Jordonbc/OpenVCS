@@ -55,3 +55,44 @@ fn in_progress_reload_blocks_parallel_start_until_guard_drops() {
     let second_guard = begin_config_reload().expect("reload should restart after drop");
     drop(second_guard);
 }
+
+#[test]
+fn matches_config_by_filename_in_different_directory() {
+    let _lock = reload_lock();
+    let config = PathBuf::from("/tmp/openvcs/config.toml");
+    assert!(event_targets_config(
+        &[PathBuf::from("/other/path/config.toml")],
+        &config
+    ));
+    assert!(event_targets_config(
+        &[PathBuf::from("/other/config.toml.tmp")],
+        &config
+    ));
+}
+
+#[test]
+fn returns_false_for_empty_paths_list() {
+    let _lock = reload_lock();
+    let config = PathBuf::from("/tmp/openvcs/config.toml");
+    assert!(!event_targets_config(&[], &config));
+}
+
+#[test]
+fn returns_false_for_event_path_without_filename() {
+    let _lock = reload_lock();
+    let config = PathBuf::from("/tmp/openvcs/config.toml");
+    assert!(!event_targets_config(&[PathBuf::from("/")], &config));
+    assert!(!event_targets_config(&[PathBuf::from("..")], &config));
+}
+
+#[test]
+fn debounce_still_active_after_guard_release() {
+    let _lock = reload_lock();
+    thread::sleep(Duration::from_millis(260));
+    let guard = begin_config_reload().expect("first reload");
+    drop(guard);
+    // Guard dropped but last_started_at debounce timer is still running.
+    assert!(begin_config_reload().is_none());
+    thread::sleep(Duration::from_millis(260));
+    assert!(begin_config_reload().is_some());
+}

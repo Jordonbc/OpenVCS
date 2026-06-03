@@ -1,7 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::{decode_repo_text, inspect_repo_file_meta, normalize_gitignore_entry, safe_relative_path};
+use super::{decode_repo_text, detect_line_ending, inspect_repo_file_meta, normalize_gitignore_entry, safe_relative_path};
 
 #[test]
 fn validates_repo_relative_paths() {
@@ -114,6 +114,7 @@ fn build_app_no_repo() -> tauri::App<tauri::test::MockRuntime> {
             super::read_repo_file_text,
             super::read_repo_file_meta,
             super::open_repo_file,
+            super::vcs_add_to_gitignore_paths,
         ])
         .build(mock_context(noop_assets()))
         .expect("build repo_files test app")
@@ -204,4 +205,90 @@ fn open_repo_file_fails_with_empty_path() {
     let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"path": ""}));
     let res = invoke_cmd(&wv, "open_repo_file", body);
     assert!(res.is_err(), "empty path should fail: {:?}", res);
+}
+
+// ── Additional pure function edge‑case tests ──
+
+#[test]
+fn detect_line_ending_variants() {
+    assert_eq!(detect_line_ending(""), "None");
+    assert_eq!(detect_line_ending("hello\nworld\n"), "LF");
+    assert_eq!(detect_line_ending("hello\rworld\r"), "CR");
+    assert_eq!(detect_line_ending("hello\r\nworld\n"), "Mixed");
+}
+
+#[test]
+fn inspects_empty_bytes_meta() {
+    let meta = inspect_repo_file_meta(b"");
+    assert_eq!(meta.encoding, "UTF-8");
+    assert_eq!(meta.line_ending, "None");
+    assert!(!meta.bom);
+    assert!(!meta.binary);
+}
+
+#[test]
+fn inspects_utf8_bom_meta() {
+    let bytes: Vec<u8> = vec![0xEF, 0xBB, 0xBF, b'h', b'i'];
+    let meta = inspect_repo_file_meta(&bytes);
+    assert_eq!(meta.encoding, "UTF-8");
+    assert!(meta.bom);
+    assert!(!meta.binary);
+}
+
+#[test]
+fn inspects_utf8_text_with_lf_meta() {
+    let meta = inspect_repo_file_meta(b"hello\nworld\n");
+    assert_eq!(meta.encoding, "ASCII");
+    assert_eq!(meta.line_ending, "LF");
+    assert!(!meta.bom);
+    assert!(!meta.binary);
+}
+
+#[test]
+fn inspects_utf16be_bom_meta() {
+    let bytes: Vec<u8> = vec![0xFE, 0xFF, 0, b'h', 0, b'i'];
+    let meta = inspect_repo_file_meta(&bytes);
+    assert_eq!(meta.encoding, "UTF-16BE");
+    assert!(meta.bom);
+    assert!(!meta.binary);
+}
+
+#[test]
+fn inspects_utf16le_no_bom_meta() {
+    let bytes: Vec<u8> = vec![b'h', 0, b'i', 0];
+    let meta = inspect_repo_file_meta(&bytes);
+    assert_eq!(meta.encoding, "UTF-16LE");
+    assert!(!meta.bom);
+    assert!(!meta.binary);
+}
+
+#[test]
+fn inspects_utf16le_bom_meta() {
+    let bytes: Vec<u8> = vec![0xFF, 0xFE, b'h', 0, b'i', 0];
+    let meta = inspect_repo_file_meta(&bytes);
+    assert_eq!(meta.encoding, "UTF-16LE");
+    assert!(meta.bom);
+    assert!(!meta.binary);
+}
+
+// ── vcs_add_to_gitignore_paths IPC tests ──
+
+#[test]
+fn vcs_add_to_gitignore_paths_succeeds_with_empty_paths() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"paths": []}));
+    let res = invoke_cmd(&wv, "vcs_add_to_gitignore_paths", body);
+    assert!(res.is_ok(), "empty paths should succeed: {:?}", res);
+}
+
+#[test]
+fn vcs_add_to_gitignore_paths_fails_without_repo() {
+    let app = build_app_no_repo();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"paths": ["node_modules"]}));
+    let res = invoke_cmd(&wv, "vcs_add_to_gitignore_paths", body);
+    assert!(res.is_err(), "non-empty paths should fail without repo: {:?}", res);
 }

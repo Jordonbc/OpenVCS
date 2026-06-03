@@ -72,6 +72,7 @@ fn build_app() -> tauri::App<tauri::test::MockRuntime> {
             super::open_docs,
             super::exit_app,
             super::check_for_updates,
+            super::vcs_operation_active,
         ])
         .build(mock_context(noop_assets()))
         .expect("build test app")
@@ -220,4 +221,103 @@ fn open_repo_dotfile_fails_without_repo() {
     let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"name": ".gitignore"}));
     let res = invoke_cmd(&wv, "open_repo_dotfile", body);
     assert!(res.is_err(), "open_repo_dotfile needs a repo: {:?}", res);
+}
+
+// ── Additional pure function edge‑case tests ──
+
+#[test]
+fn infers_repo_directory_names_edge_cases() {
+    assert_eq!(infer_repo_dir_from_url(""), "");
+    assert_eq!(infer_repo_dir_from_url("https://example.com"), "example.com");
+    assert_eq!(infer_repo_dir_from_url("https://example.com/a/b/repo"), "repo");
+}
+
+#[test]
+fn resolves_default_backend_with_empty_config_and_empty_available() {
+    let available = vec![BackendId::from("zeta"), BackendId::from("alpha")];
+    let result = resolve_default_backend_id("", &available)
+        .map(|b| b.as_ref().to_string());
+    assert_eq!(result, Some("alpha".into()));
+    assert!(resolve_default_backend_id("anything", &[]).is_none());
+}
+
+#[test]
+fn derives_recent_repo_name_edge_cases() {
+    assert_eq!(recent_repo_name(Path::new("single")), Some("single".into()));
+    assert_eq!(recent_repo_name(Path::new("")), None);
+}
+
+#[test]
+fn browse_directory_title_unknown_and_empty() {
+    assert_eq!(browse_directory_title(Some("")), "Select a folder");
+    assert_eq!(browse_directory_title(Some("unknown")), "Select a folder");
+}
+
+// ── Additional validation direct‑call tests ──
+
+#[test]
+fn validate_vcs_url_accepts_ssh_and_rejects_empty() {
+    assert!(validate_vcs_url("git@github.com:user/repo.git".into()).ok);
+    assert!(!validate_vcs_url("".into()).ok);
+}
+
+#[test]
+fn validate_add_path_rejects_nonexistent() {
+    let result = validate_add_path("/tmp/definitely-nonexistent-test-path".into());
+    assert!(!result.ok);
+}
+
+#[test]
+fn validate_clone_input_rejects_empty_url_and_dest() {
+    assert!(!validate_clone_input("".into(), "/tmp".into()).ok);
+    assert!(!validate_clone_input("https://example.com/repo.git".into(), "".into()).ok);
+}
+
+// ── Additional IPC command tests ──
+
+#[test]
+fn vcs_operation_active_returns_false_by_default() {
+    let app = build_app();
+    let webview = test_webview(&app);
+    let res = invoke_cmd(&webview, "vcs_operation_active", tauri::ipc::InvokeBody::default());
+    assert!(res.is_ok(), "vcs_operation_active should succeed: {:?}", res);
+    let active: bool = res.unwrap().deserialize().unwrap();
+    assert!(!active, "should be false when no task is active");
+}
+
+#[test]
+fn add_repo_fails_with_nonexistent_path_and_valid_backend() {
+    let app = build_app();
+    let wv = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "path": "/tmp/nonexistent-openvcs-test-path",
+        "backend_id": "test-backend",
+    }));
+    let res = invoke_cmd(&wv, "add_repo", body);
+    assert!(res.is_err(), "add_repo should fail with nonexistent path: {:?}", res);
+}
+
+#[test]
+fn open_repo_fails_with_nonexistent_path_and_valid_backend() {
+    let app = build_app();
+    let wv = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "path": "/tmp/nonexistent-openvcs-test-path-2",
+        "backend_id": "test-backend",
+    }));
+    let res = invoke_cmd(&wv, "open_repo", body);
+    assert!(res.is_err(), "open_repo should fail with nonexistent path: {:?}", res);
+}
+
+#[test]
+fn clone_repo_fails_with_empty_url_and_valid_backend() {
+    let app = build_app();
+    let wv = test_webview(&app);
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "url": "",
+        "dest": "/tmp",
+        "backend_id": "test-backend",
+    }));
+    let res = invoke_cmd(&wv, "clone_repo", body);
+    assert!(res.is_err(), "clone_repo with empty URL should fail: {:?}", res);
 }

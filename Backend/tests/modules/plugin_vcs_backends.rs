@@ -86,3 +86,35 @@ fn reports_unknown_backend_descriptors() {
         .expect_err("missing backend should fail");
     assert!(err.contains("Unknown VCS backend: nonexistent-be"));
 }
+
+#[test]
+fn plugin_open_config_returns_empty_object_for_unknown_plugin() {
+    // plugin_open_config must return {} when no settings file exists for the plugin.
+    // The function calls settings_store::load_settings which returns Ok(empty map)
+    // when the settings file is absent.
+    let result = plugin_open_config("nonexistent.test.plugin");
+    assert_eq!(result, serde_json::json!({}));
+}
+
+#[test]
+fn plugin_open_config_returns_stored_settings() {
+    // plugin_open_config must return the JSON object previously persisted by
+    // the settings store for the given plugin_id.
+    use crate::plugin_runtime::settings_store;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    // Redirect the settings store file lookup to our temp directory.
+    settings_store::set_test_plugin_data_root(dir.path().to_path_buf());
+
+    let plugin_id = "test.settings-plugin";
+    let settings_path = dir.path().join(plugin_id).join("settings.json");
+    std::fs::create_dir_all(settings_path.parent().unwrap()).expect("create dir");
+
+    let settings = serde_json::json!({"key1": "value1", "number": 42});
+    std::fs::write(&settings_path, settings.to_string()).expect("write settings");
+
+    let result = plugin_open_config(plugin_id);
+    assert_eq!(result, settings);
+
+    settings_store::clear_test_plugin_data_root();
+}

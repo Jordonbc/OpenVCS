@@ -12,6 +12,8 @@ use crate::plugin_runtime::{PluginRuntimeManager, vcs_proxy::PluginVcsProxy};
 use crate::settings::AppConfig;
 use log::{debug, error, info, trace, warn};
 use std::collections::BTreeMap;
+#[cfg(test)]
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -31,6 +33,19 @@ std::thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
+// Process-wide test-only backend availability registry.
+// Populated by store_backends() for any backend whose plugin_id starts with
+// "test.".  Never cleared by invalidate_plugin_vcs_backend_cache(), so
+// has_plugin_vcs_backend() remains correct even when Tauri dispatches async
+// command handlers on tokio worker threads that lack the thread-local cache.
+#[cfg(test)]
+static TEST_BACKEND_IDS: OnceLock<RwLock<BTreeSet<String>>> = OnceLock::new();
+
+#[cfg(test)]
+fn test_backend_ids() -> &'static RwLock<BTreeSet<String>> {
+    TEST_BACKEND_IDS.get_or_init(|| RwLock::new(BTreeSet::new()))
+}
+
 fn cached_backends() -> Option<Vec<PluginBackendDescriptor>> {
     #[cfg(test)]
     if let Some(cached) = TEST_BACKEND_CACHE.with(|tls| tls.borrow().clone()) {
@@ -45,7 +60,15 @@ fn cached_backends() -> Option<Vec<PluginBackendDescriptor>> {
 
 pub(crate) fn store_backends(backends: Vec<PluginBackendDescriptor>) {
     #[cfg(test)]
-    TEST_BACKEND_CACHE.with(|tls| *tls.borrow_mut() = Some(backends.clone()));
+    {
+        TEST_BACKEND_CACHE.with(|tls| *tls.borrow_mut() = Some(backends.clone()));
+        let mut ids = test_backend_ids().write().unwrap_or_else(|p| p.into_inner());
+        for b in &backends {
+            if b.plugin_id.starts_with("test.") {
+                ids.insert(b.backend_id.as_ref().to_string());
+            }
+        }
+    }
 
     *backend_cache()
         .write()
@@ -211,6 +234,16 @@ fn discover_plugin_vcs_backends() -> Result<Vec<PluginBackendDescriptor>, String
 /// - `false` otherwise.
 pub fn has_plugin_vcs_backend(backend_id: &BackendId) -> bool {
     trace!("has_plugin_vcs_backend: checking for {}", backend_id);
+
+    #[cfg(test)]
+    if test_backend_ids()
+        .read()
+        .unwrap_or_else(|p| p.into_inner())
+        .contains(backend_id.as_ref())
+    {
+        return true;
+    }
+
     let result = list_plugin_vcs_backends().ok().is_some_and(|v| {
         v.iter()
             .any(|b| b.backend_id.as_ref() == backend_id.as_ref())

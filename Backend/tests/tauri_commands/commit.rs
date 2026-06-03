@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use super::{build_commit_message, has_commit_selection, trimmed_non_empty};
+use super::{build_commit_message, commit_identity, has_commit_selection, trimmed_non_empty};
 use crate::core::{BackendId, Vcs, VcsError, models};
 use crate::plugin_vcs_backends::{self, PluginBackendDescriptor};
 use crate::repo::Repo;
@@ -26,6 +26,7 @@ fn builds_commit_messages_with_optional_descriptions() {
         build_commit_message("Summary", "Body text"),
         "Summary\n\nBody text"
     );
+    assert_eq!(build_commit_message("", ""), "");
 }
 
 #[test]
@@ -42,6 +43,10 @@ fn trims_non_empty_inputs_or_reports_errors() {
     assert_eq!(trimmed_non_empty("  git  ", "bad").expect("trimmed"), "git");
     assert_eq!(trimmed_non_empty("git", "bad").expect("trimmed"), "git");
     assert_eq!(trimmed_non_empty("   ", "bad").expect_err("error"), "bad");
+    assert_eq!(
+        trimmed_non_empty("", "empty input").expect_err("empty_val"),
+        "empty input"
+    );
 }
 
 #[test]
@@ -66,7 +71,31 @@ fn returns_the_supplied_error_for_blank_inputs() {
     );
 }
 
-// ── Vcs-backed IPC command tests ──
+// ── commit_identity tests ──
+
+#[test]
+fn commit_identity_returns_identity_when_configured() {
+    let vcs = TestVcs::new("test-vcs", PathBuf::from("/tmp"));
+    *vcs.identity.lock().unwrap() = Some(("User".into(), "user@test.com".into()));
+    let vcs = Arc::new(vcs);
+    let repo = Repo::new(vcs as Arc<dyn Vcs>);
+    let result = commit_identity(&repo);
+    assert_eq!(
+        result.unwrap(),
+        ("User".to_string(), "user@test.com".to_string())
+    );
+}
+
+#[test]
+fn commit_identity_fails_when_identity_is_none() {
+    let vcs = TestVcs::new("test-vcs", PathBuf::from("/tmp"));
+    let vcs = Arc::new(vcs);
+    let repo = Repo::new(vcs as Arc<dyn Vcs>);
+    let result = commit_identity(&repo);
+    assert!(result.is_err());
+}
+
+// ── TestVcs: shared mock VCS implementation ──
 
 struct TestVcs {
     id: BackendId,
@@ -74,6 +103,10 @@ struct TestVcs {
     identity: Mutex<Option<(String, String)>>,
     commit_result: Mutex<Option<String>>,
     stage_sel_fail: Mutex<bool>,
+    stage_patch_fail: Mutex<bool>,
+    checkout_branch_fail: Mutex<bool>,
+    cherry_pick_fail: Mutex<bool>,
+    revert_commit_fail: Mutex<bool>,
 }
 
 impl TestVcs {
@@ -84,6 +117,10 @@ impl TestVcs {
             identity: Mutex::new(None),
             commit_result: Mutex::new(None),
             stage_sel_fail: Mutex::new(false),
+            stage_patch_fail: Mutex::new(false),
+            checkout_branch_fail: Mutex::new(false),
+            cherry_pick_fail: Mutex::new(false),
+            revert_commit_fail: Mutex::new(false),
         }
     }
 
@@ -93,48 +130,160 @@ impl TestVcs {
 }
 
 impl Vcs for TestVcs {
-    fn id(&self) -> BackendId { self.id.clone() }
-    fn workdir(&self) -> &Path { &self.workdir }
+    fn id(&self) -> BackendId {
+        self.id.clone()
+    }
+    fn workdir(&self) -> &Path {
+        &self.workdir
+    }
 
-    fn current_branch(&self) -> Result<Option<String>, VcsError> { Ok(Some("main".into())) }
-    fn branches(&self) -> Result<Vec<models::BranchItem>, VcsError> { self.unsupported() }
-    fn create_branch(&self, _name: &str, _checkout: bool) -> Result<(), VcsError> { self.unsupported() }
-    fn checkout_branch(&self, _name: &str) -> Result<(), VcsError> { self.unsupported() }
-    fn ensure_remote(&self, _name: &str, _url: &str) -> Result<(), VcsError> { self.unsupported() }
-    fn list_remotes(&self) -> Result<Vec<(String, String)>, VcsError> { self.unsupported() }
-    fn remove_remote(&self, _name: &str) -> Result<(), VcsError> { self.unsupported() }
-    fn fetch(&self, _remote: &str, _refspec: &str, _on: Option<models::OnEvent>) -> Result<(), VcsError> { self.unsupported() }
-    fn push(&self, _remote: &str, _refspec: &str, _on: Option<models::OnEvent>) -> Result<(), VcsError> { self.unsupported() }
-    fn pull_ff_only(&self, _remote: &str, _branch: &str, _on: Option<models::OnEvent>) -> Result<(), VcsError> { self.unsupported() }
-    fn commit(&self, _message: &str, _name: &str, _email: &str, _paths: &[PathBuf]) -> Result<String, VcsError> {
-        self.commit_result.lock().unwrap().clone().ok_or_else(|| VcsError::Unsupported(self.id.clone()))
+    fn current_branch(&self) -> Result<Option<String>, VcsError> {
+        Ok(Some("main".into()))
     }
-    fn commit_index(&self, _message: &str, _name: &str, _email: &str) -> Result<String, VcsError> {
-        self.commit_result.lock().unwrap().clone().ok_or_else(|| VcsError::Unsupported(self.id.clone()))
+    fn branches(&self) -> Result<Vec<models::BranchItem>, VcsError> {
+        self.unsupported()
     }
-    fn status_payload(&self) -> Result<models::StatusPayload, VcsError> { self.unsupported() }
-    fn log_commits(&self, _query: &models::LogQuery) -> Result<Vec<models::CommitItem>, VcsError> { self.unsupported() }
-    fn diff_file(&self, _path: &Path) -> Result<models::DiffFileResult, VcsError> { self.unsupported() }
-    fn diff_commit(&self, _rev: &str) -> Result<Vec<String>, VcsError> { self.unsupported() }
-    fn stage_patch(&self, _patch: &str) -> Result<(), VcsError> { self.unsupported() }
-    fn stage_selections(&self, _selections: &[models::HunkSelection]) -> Result<(), VcsError> {
+    fn create_branch(&self, _name: &str, _checkout: bool) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn checkout_branch(&self, _name: &str) -> Result<(), VcsError> {
+        if *self.checkout_branch_fail.lock().unwrap() {
+            Err(VcsError::Unsupported(self.id.clone()))
+        } else {
+            Ok(())
+        }
+    }
+    fn ensure_remote(&self, _name: &str, _url: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn list_remotes(&self) -> Result<Vec<(String, String)>, VcsError> {
+        self.unsupported()
+    }
+    fn remove_remote(&self, _name: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn fetch(
+        &self,
+        _remote: &str,
+        _refspec: &str,
+        _on: Option<models::OnEvent>,
+    ) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn push(
+        &self,
+        _remote: &str,
+        _refspec: &str,
+        _on: Option<models::OnEvent>,
+    ) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn pull_ff_only(
+        &self,
+        _remote: &str,
+        _branch: &str,
+        _on: Option<models::OnEvent>,
+    ) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn commit(
+        &self,
+        _message: &str,
+        _name: &str,
+        _email: &str,
+        _paths: &[PathBuf],
+    ) -> Result<String, VcsError> {
+        self.commit_result
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| VcsError::Unsupported(self.id.clone()))
+    }
+    fn commit_index(
+        &self,
+        _message: &str,
+        _name: &str,
+        _email: &str,
+    ) -> Result<String, VcsError> {
+        self.commit_result
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| VcsError::Unsupported(self.id.clone()))
+    }
+    fn status_payload(&self) -> Result<models::StatusPayload, VcsError> {
+        self.unsupported()
+    }
+    fn log_commits(
+        &self,
+        _query: &models::LogQuery,
+    ) -> Result<Vec<models::CommitItem>, VcsError> {
+        self.unsupported()
+    }
+    fn diff_file(&self, _path: &Path) -> Result<models::DiffFileResult, VcsError> {
+        self.unsupported()
+    }
+    fn diff_commit(&self, _rev: &str) -> Result<Vec<String>, VcsError> {
+        self.unsupported()
+    }
+    fn stage_patch(&self, _patch: &str) -> Result<(), VcsError> {
+        if *self.stage_patch_fail.lock().unwrap() {
+            Err(VcsError::Unsupported(self.id.clone()))
+        } else {
+            Ok(())
+        }
+    }
+    fn stage_selections(
+        &self,
+        _selections: &[models::HunkSelection],
+    ) -> Result<(), VcsError> {
         if *self.stage_sel_fail.lock().unwrap() {
             return Err(VcsError::Unsupported(self.id.clone()));
         }
         Ok(())
     }
-    fn stage_paths(&self, _paths: &[PathBuf]) -> Result<(), VcsError> { Ok(()) }
-    fn discard_paths(&self, _paths: &[PathBuf]) -> Result<(), VcsError> { self.unsupported() }
-    fn apply_reverse_patch(&self, _patch: &str) -> Result<(), VcsError> { self.unsupported() }
-    fn delete_branch(&self, _name: &str, _force: bool) -> Result<(), VcsError> { self.unsupported() }
-    fn rename_branch(&self, _old: &str, _new: &str) -> Result<(), VcsError> { self.unsupported() }
-    fn merge_into_current(&self, _name: &str) -> Result<(), VcsError> { self.unsupported() }
-    fn get_identity(&self) -> Result<Option<(String, String)>, VcsError> { Ok(self.identity.lock().unwrap().clone()) }
-    fn set_identity_local(&self, _name: &str, _email: &str) -> Result<(), VcsError> { self.unsupported() }
+    fn stage_paths(&self, _paths: &[PathBuf]) -> Result<(), VcsError> {
+        Ok(())
+    }
+    fn discard_paths(&self, _paths: &[PathBuf]) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn apply_reverse_patch(&self, _patch: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn delete_branch(&self, _name: &str, _force: bool) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn rename_branch(&self, _old: &str, _new: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn merge_into_current(&self, _name: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn get_identity(&self) -> Result<Option<(String, String)>, VcsError> {
+        Ok(self.identity.lock().unwrap().clone())
+    }
+    fn set_identity_local(&self, _name: &str, _email: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
 
-    fn cherry_pick(&self, _rev: &str) -> Result<(), VcsError> { self.unsupported() }
-    fn revert_commit(&self, _rev: &str, _no_edit: bool) -> Result<(), VcsError> { self.unsupported() }
+    fn cherry_pick(&self, _rev: &str) -> Result<(), VcsError> {
+        if *self.cherry_pick_fail.lock().unwrap() {
+            Err(VcsError::Unsupported(self.id.clone()))
+        } else {
+            Ok(())
+        }
+    }
+    fn revert_commit(&self, _rev: &str, _no_edit: bool) -> Result<(), VcsError> {
+        if *self.revert_commit_fail.lock().unwrap() {
+            Err(VcsError::Unsupported(self.id.clone()))
+        } else {
+            Ok(())
+        }
+    }
 }
+
+// ── Shared test helpers ──
 
 fn register_test_backend(backend_id: &str) {
     let desc = PluginBackendDescriptor {
@@ -149,7 +298,10 @@ fn register_test_backend(backend_id: &str) {
 
 fn build_app_with_repo() -> (tauri::App<tauri::test::MockRuntime>, Arc<TestVcs>) {
     crate::app_identity::setup_test_isolation();
-    let vcs = Arc::new(TestVcs::new("test-vcs", tempfile::tempdir().unwrap().keep()));
+    let vcs = Arc::new(TestVcs::new(
+        "test-vcs",
+        tempfile::tempdir().unwrap().keep(),
+    ));
     let repo = Arc::new(Repo::new(vcs.clone() as Arc<dyn Vcs>));
     let mut cfg = settings::AppConfig::default();
     cfg.plugins.enabled = vec!["test.test-vcs".into()];
@@ -193,7 +345,9 @@ fn build_app_no_repo() -> tauri::App<tauri::test::MockRuntime> {
         .expect("build commit test app")
 }
 
-fn test_webview(app: &tauri::App<tauri::test::MockRuntime>) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+fn test_webview(
+    app: &tauri::App<tauri::test::MockRuntime>,
+) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
     WebviewWindowBuilder::new(app, "main", Default::default())
         .build()
         .expect("build test webview")
@@ -217,6 +371,8 @@ fn invoke_cmd(
         },
     )
 }
+
+// ── No-repo error tests ──
 
 #[test]
 fn commit_changes_fails_without_repo() {
@@ -300,207 +456,8 @@ fn vcs_revert_commit_fails_without_repo() {
     assert!(res.is_err(), "revert needs a repo: {:?}", res);
 }
 
-#[test]
-fn commit_changes_fails_with_empty_summary() {
-    register_test_backend("test-vcs");
-    let (app, _vcs) = build_app_with_repo();
-    let wv = test_webview(&app);
+// ── IPC command tests ──
+// Tests that exercise each Tauri command with a mock VCS are in commit_ipc.rs
+// (included below to stay within the same #[cfg(test)] module).
 
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
-        "summary": "   ",
-        "description": null,
-    }));
-    let res = invoke_cmd(&wv, "commit_changes", body);
-    assert!(res.is_err(), "empty summary should fail: {:?}", res);
-}
-
-#[test]
-fn commit_changes_fails_without_identity() {
-    register_test_backend("test-vcs");
-    let (app, _vcs) = build_app_with_repo();
-    let wv = test_webview(&app);
-
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
-        "summary": "test commit",
-        "description": null,
-    }));
-    let res = invoke_cmd(&wv, "commit_changes", body);
-    assert!(res.is_err(), "no identity should fail: {:?}", res);
-}
-
-#[test]
-fn commit_changes_fails_with_unsupported_commit() {
-    register_test_backend("test-vcs");
-    let (app, vcs) = build_app_with_repo();
-    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
-    let wv = test_webview(&app);
-
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
-        "summary": "test commit",
-        "description": "body text",
-    }));
-    let res = invoke_cmd(&wv, "commit_changes", body);
-    assert!(res.is_err(), "unsupported commit should fail: {:?}", res);
-}
-
-#[test]
-fn commit_changes_succeeds_with_valid_input() {
-    register_test_backend("test-vcs");
-    let (app, vcs) = build_app_with_repo();
-    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
-    *vcs.commit_result.lock().unwrap() = Some("abc123def".into());
-    let wv = test_webview(&app);
-
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
-        "summary": "test commit",
-        "description": "",
-    }));
-    let res = invoke_cmd(&wv, "commit_changes", body);
-    assert!(res.is_ok(), "commit_changes should succeed: {:?}", res);
-    let commit_id: String = res.unwrap().deserialize().unwrap();
-    assert_eq!(commit_id, "abc123def");
-}
-
-// ── commit_selection IPC tests ──
-
-#[test]
-fn commit_selection_fails_without_repo() {
-    let app = build_app_no_repo();
-    let wv = test_webview(&app);
-
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
-        "summary": "test",
-        "description": null,
-        "selections": [],
-        "stagePaths": [],
-    }));
-    let res = invoke_cmd(&wv, "commit_selection", body);
-    assert!(res.is_err(), "commit_selection needs a repo: {:?}", res);
-}
-
-#[test]
-fn commit_selection_fails_without_identity() {
-    register_test_backend("test-vcs");
-    let (app, _vcs) = build_app_with_repo();
-    let wv = test_webview(&app);
-
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
-        "summary": "test",
-        "description": null,
-        "selections": [{
-            "path": "file.rs",
-            "whole_hunks": [0],
-            "partial_hunks": {}
-        }],
-        "stagePaths": [],
-    }));
-    let res = invoke_cmd(&wv, "commit_selection", body);
-    assert!(res.is_err(), "no identity should fail: {:?}", res);
-}
-
-#[test]
-fn commit_selection_fails_with_no_paths() {
-    register_test_backend("test-vcs");
-    let (app, vcs) = build_app_with_repo();
-    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
-    let wv = test_webview(&app);
-
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
-        "summary": "test",
-        "description": null,
-        "selections": [],
-        "stagePaths": [],
-    }));
-    let res = invoke_cmd(&wv, "commit_selection", body);
-    assert!(res.is_err(), "empty selections+stage_paths should fail: {:?}", res);
-}
-
-#[test]
-fn commit_selection_succeeds_with_hunk_selections() {
-    register_test_backend("test-vcs");
-    let (app, vcs) = build_app_with_repo();
-    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
-    *vcs.commit_result.lock().unwrap() = Some("oid-456".into());
-    let wv = test_webview(&app);
-
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
-        "summary": "partial commit",
-        "description": "via selections",
-        "selections": [{
-            "path": "src/lib.rs",
-            "whole_hunks": [0, 1],
-            "partial_hunks": { "2": [1, 3] }
-        }],
-        "stagePaths": [],
-    }));
-    let res = invoke_cmd(&wv, "commit_selection", body);
-    assert!(res.is_ok(), "commit_selection with hunks should succeed: {:?}", res);
-    let commit_id: String = res.unwrap().deserialize().unwrap();
-    assert_eq!(commit_id, "oid-456");
-}
-
-#[test]
-fn commit_selection_succeeds_with_stage_paths() {
-    register_test_backend("test-vcs");
-    let (app, vcs) = build_app_with_repo();
-    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
-    *vcs.commit_result.lock().unwrap() = Some("oid-789".into());
-    let wv = test_webview(&app);
-
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
-        "summary": "full file commit",
-        "description": "",
-        "selections": [],
-        "stagePaths": ["src/main.rs", "src/utils.rs"],
-    }));
-    let res = invoke_cmd(&wv, "commit_selection", body);
-    assert!(res.is_ok(), "commit_selection with stage_paths should succeed: {:?}", res);
-    let commit_id: String = res.unwrap().deserialize().unwrap();
-    assert_eq!(commit_id, "oid-789");
-}
-
-#[test]
-fn commit_selection_succeeds_with_combined_selections_and_stage_paths() {
-    register_test_backend("test-vcs");
-    let (app, vcs) = build_app_with_repo();
-    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
-    *vcs.commit_result.lock().unwrap() = Some("combined-oid".into());
-    let wv = test_webview(&app);
-
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
-        "summary": "combined commit",
-        "description": "",
-        "selections": [{
-            "path": "partial.rs",
-            "whole_hunks": [0],
-            "partial_hunks": {}
-        }],
-        "stagePaths": ["full.rs"],
-    }));
-    let res = invoke_cmd(&wv, "commit_selection", body);
-    assert!(res.is_ok(), "commit_selection combined should succeed: {:?}", res);
-    let commit_id: String = res.unwrap().deserialize().unwrap();
-    assert_eq!(commit_id, "combined-oid");
-}
-
-#[test]
-fn commit_selection_fails_when_stage_selections_fails() {
-    register_test_backend("test-vcs");
-    let (app, vcs) = build_app_with_repo();
-    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
-    *vcs.stage_sel_fail.lock().unwrap() = true;
-    let wv = test_webview(&app);
-
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
-        "summary": "failing selection",
-        "description": null,
-        "selections": [{
-            "path": "broken.rs",
-            "whole_hunks": [0],
-            "partial_hunks": {}
-        }],
-        "stagePaths": [],
-    }));
-    let res = invoke_cmd(&wv, "commit_selection", body);
-    assert!(res.is_err(), "stage_selections error should propagate: {:?}", res);
-}
+include!("commit_ipc.rs");

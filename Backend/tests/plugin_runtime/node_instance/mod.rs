@@ -329,3 +329,174 @@ fn drop_does_not_panic() {
     let runtime = test_runtime();
     drop(runtime);
 }
+
+// ── mock handler error ──
+
+#[test]
+fn rpc_call_propagates_mock_handler_error() {
+    let runtime = test_runtime();
+    runtime.set_mock_handler(Box::new(|_, _| Err("mock handler failure".to_string())));
+
+    let result: Result<serde_json::Value, String> = runtime.rpc_call("test.method", json!({}));
+    assert_eq!(result.unwrap_err(), "mock handler failure");
+}
+
+#[test]
+fn rpc_call_unit_propagates_mock_handler_error() {
+    let runtime = test_runtime();
+    runtime.set_mock_handler(Box::new(|_, _| Err("unit mock error".to_string())));
+
+    let result = runtime.rpc_call_unit("test.unit", json!({}));
+    assert_eq!(result.unwrap_err(), "unit mock error");
+}
+
+// ── PluginRuntimeInstance trait methods via mock handler ──
+
+#[test]
+fn get_menus_through_mock_handler() {
+    let runtime = test_runtime();
+    runtime.set_mock_handler(Box::new(|method, _params| {
+        assert_eq!(method, "plugin.get_menus");
+        Ok(json!([
+            {
+                "id": "m1",
+                "label": "Menu 1",
+                "surface": "menubar",
+                "elements": []
+            }
+        ]))
+    }));
+
+    let menus = runtime.get_menus().expect("get_menus");
+    assert_eq!(menus.len(), 1);
+    assert_eq!(menus[0].id, "m1");
+    assert_eq!(menus[0].label, "Menu 1");
+}
+
+#[test]
+fn handle_action_through_mock_handler() {
+    let runtime = test_runtime();
+    runtime.set_mock_handler(Box::new(|method, params| {
+        assert_eq!(method, "plugin.handle_action");
+        assert_eq!(params.get("action_id").and_then(Value::as_str), Some("test-action"));
+        Ok(json!({"success": true, "data": "ok"}))
+    }));
+
+    let result = runtime
+        .handle_action("test-action", json!({"arg": 42}))
+        .expect("handle_action");
+    assert_eq!(result.get("success"), Some(&json!(true)));
+}
+
+#[test]
+fn settings_defaults_through_mock_handler() {
+    use crate::core::settings::SettingKv;
+    let runtime = test_runtime();
+    runtime.set_mock_handler(Box::new(|method, _params| {
+        assert_eq!(method, "plugin.settings.defaults");
+        Ok(json!([
+            {"id": "enable_feature", "value": {"type": "bool", "value": true}},
+            {"id": "max_items", "value": {"type": "u32", "value": 10}}
+        ]))
+    }));
+
+    let defaults: Vec<SettingKv> = runtime.settings_defaults().expect("settings_defaults");
+    assert_eq!(defaults.len(), 2);
+    assert_eq!(defaults[0].id, "enable_feature");
+    assert_eq!(defaults[1].id, "max_items");
+}
+
+#[test]
+fn settings_on_load_through_mock_handler() {
+    use crate::core::settings::SettingKv;
+    let runtime = test_runtime();
+    runtime.set_mock_handler(Box::new(|method, params| {
+        assert_eq!(method, "plugin.settings.on_load");
+        let values = params.get("values").and_then(Value::as_array);
+        assert!(values.is_some(), "expected 'values' array param");
+        Ok(json!([
+            {"id": "theme", "value": {"type": "string", "value": "dark"}}
+        ]))
+    }));
+
+    let loaded = runtime
+        .settings_on_load(vec![SettingKv {
+            id: "theme".into(),
+            label: None,
+            value: crate::core::settings::SettingValue::String("light".into()),
+        }])
+        .expect("settings_on_load");
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(loaded[0].id, "theme");
+}
+
+#[test]
+fn settings_on_apply_through_mock_handler() {
+    use crate::core::settings::SettingKv;
+    let runtime = test_runtime();
+    runtime.set_mock_handler(Box::new(|method, params| {
+        assert_eq!(method, "plugin.settings.on_apply");
+        let values = params.get("values").and_then(Value::as_array);
+        assert!(values.is_some(), "expected 'values' array param");
+        Ok(Value::Null)
+    }));
+
+    runtime
+        .settings_on_apply(vec![SettingKv {
+            id: "volume".into(),
+            label: None,
+            value: crate::core::settings::SettingValue::S32(75),
+        }])
+        .expect("settings_on_apply");
+}
+
+#[test]
+fn settings_on_save_through_mock_handler() {
+    use crate::core::settings::SettingKv;
+    let runtime = test_runtime();
+    runtime.set_mock_handler(Box::new(|method, params| {
+        assert_eq!(method, "plugin.settings.on_save");
+        let values = params.get("values").and_then(Value::as_array);
+        assert!(values.is_some(), "expected 'values' array param");
+        Ok(json!([
+            {"id": "saved_key", "value": {"type": "string", "value": "saved"}}
+        ]))
+    }));
+
+    let saved = runtime
+        .settings_on_save(vec![SettingKv {
+            id: "saved_key".into(),
+            label: None,
+            value: crate::core::settings::SettingValue::String("original".into()),
+        }])
+        .expect("settings_on_save");
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].id, "saved_key");
+}
+
+#[test]
+fn settings_on_reset_through_mock_handler() {
+    let runtime = test_runtime();
+    runtime.set_mock_handler(Box::new(|method, _params| {
+        assert_eq!(method, "plugin.settings.on_reset");
+        Ok(Value::Null)
+    }));
+
+    runtime.settings_on_reset().expect("settings_on_reset");
+}
+
+// ── rpc_call_with_timeout timeout selection ──
+
+#[test]
+fn rpc_call_uses_vcs_timeout_for_vcs_methods() {
+    // Verify vcs methods go through mock (the mock ignores timeout, so just ensure
+    // the mock path works for vcs-prefixed methods)
+    let runtime = test_runtime();
+    runtime.set_mock_handler(Box::new(|method, _params| {
+        assert!(method.starts_with("vcs."), "expected vcs method, got: {method}");
+        Ok(json!("ok"))
+    }));
+
+    let result: Result<String, String> = runtime.rpc_call("vcs.status", json!({}));
+    assert_eq!(result.expect("rpc_call"), "ok");
+}
