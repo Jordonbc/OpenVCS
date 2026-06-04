@@ -116,7 +116,7 @@ fn hunk_selection_roundtrips_via_json() {
     assert_eq!(back.whole_hunks, vec![0, 1]);
     assert_eq!(back.partial_hunks.get(&0), Some(&vec![1, 3]));
     assert_eq!(back.partial_hunks.get(&2), Some(&vec![2]));
-    assert!(back.partial_hunks.get(&1).is_none());
+    assert!(!back.partial_hunks.contains_key(&1));
 }
 
 #[test]

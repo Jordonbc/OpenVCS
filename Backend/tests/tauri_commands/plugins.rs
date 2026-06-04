@@ -364,9 +364,9 @@ fn setting_from_json_s32_and_f64_and_string() {
     // F64
     assert_eq!(
         setting_value_to_json(
-            &setting_from_json("f", &serde_json::json!(3.14), &SettingValue::F64(0.0)).unwrap(),
+            &setting_from_json("f", &serde_json::json!(std::f64::consts::PI), &SettingValue::F64(0.0)).unwrap(),
         ),
-        serde_json::json!(3.14),
+        serde_json::json!(std::f64::consts::PI),
     );
     // String
     assert_eq!(

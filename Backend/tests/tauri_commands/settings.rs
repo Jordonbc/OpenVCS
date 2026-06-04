@@ -532,8 +532,7 @@ fn set_repo_settings_skips_empty_name_or_url_remotes() {
 #[test]
 fn diff_configs_all_fields_changed() {
     let old = AppConfig::default();
-    let mut new = AppConfig::default();
-    new.plugin = vec!["p".to_string()];
+    let mut new = AppConfig { plugin: vec!["p".to_string()], ..Default::default() };
     new.general.theme = crate::settings::Theme::Dark;
     new.vcs.default_branch = "dev".to_string();
     new.credentials.gpg_program = "gpg2".into();

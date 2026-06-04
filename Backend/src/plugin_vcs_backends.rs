@@ -62,7 +62,9 @@ pub(crate) fn store_backends(backends: Vec<PluginBackendDescriptor>) {
     #[cfg(test)]
     {
         TEST_BACKEND_CACHE.with(|tls| *tls.borrow_mut() = Some(backends.clone()));
-        let mut ids = test_backend_ids().write().unwrap_or_else(|p| p.into_inner());
+        let mut ids = test_backend_ids()
+            .write()
+            .unwrap_or_else(|p| p.into_inner());
         for b in &backends {
             if b.plugin_id.starts_with("test.") {
                 ids.insert(b.backend_id.as_ref().to_string());

@@ -285,7 +285,7 @@ fn packs_minimal_plugin_source_to_tarball() {
     let tarball = pack_plugin_source(&plugin_dir, &workdir).expect("npm pack should succeed");
     assert!(tarball.exists(), "tarball file should exist");
     assert!(
-        tarball.extension().map_or(false, |ext| ext == "tgz"),
+        tarball.extension().is_some_and(|ext| ext == "tgz"),
         "tarball should have .tgz extension: {:?}",
         tarball
     );
