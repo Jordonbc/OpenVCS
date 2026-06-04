@@ -298,7 +298,7 @@ fn vcs_revert_commit_returns_unsupported_by_default() {
 fn vcs_merge_into_current_with_message_delegates_to_merge_into_current() {
     let vcs = DummyVcs::new("test");
     // Should not error even with a message
-    assert!(vcs.merge_into_current_with_message("feature", Some("auto-merge")).is_ok());
-    // Should work with None message too
-    assert!(vcs.merge_into_current_with_message("feature", None).is_ok());
+    assert!(vcs.merge_into_current_with_message("feature", Some("auto-merge"), None).is_ok());
+    // Should work with None message and strategy too
+    assert!(vcs.merge_into_current_with_message("feature", None, None).is_ok());
 }

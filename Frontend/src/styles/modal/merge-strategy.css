@@ -1,0 +1,44 @@
+/* src/styles/modal/merge-strategy.css */
+
+#merge-strategy-modal .dialog.sheet {
+  width: clamp(380px, 88vw, 480px);
+  max-height: min(80vh, 400px);
+}
+
+#merge-strategy-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.merge-strategy-option {
+  cursor: pointer;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+  padding: 12px 16px;
+  transition: background-color 0.15s, border-color 0.15s;
+  user-select: none;
+}
+
+.merge-strategy-option:hover {
+  background-color: var(--hover-bg, rgba(0,0,0,0.04));
+  border-color: var(--accent, #4a90d9);
+}
+
+.merge-strategy-option:focus-visible {
+  outline: 2px solid var(--accent, #4a90d9);
+  outline-offset: 2px;
+}
+
+.merge-strategy-option strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.merge-strategy-option .hint {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}

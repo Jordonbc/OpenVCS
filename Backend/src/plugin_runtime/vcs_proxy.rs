@@ -5,6 +5,7 @@ use crate::core::models::{
     BranchItem, CommitItem, ConflictDetails, ConflictSide, DiffFileResult, LogQuery, OnEvent,
     StashItem, StatusPayload,
 };
+use crate::core::models::VcsCaps;
 use crate::core::{BackendId, Result as VcsResult, Vcs, VcsError};
 use crate::logging::LogTimer;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
@@ -285,15 +286,34 @@ impl Vcs for PluginVcsProxy {
             .map_err(|e| self.map_runtime_error(e))
     }
 
+    fn caps(&self) -> VcsResult<VcsCaps> {
+        let response = self
+            .runtime
+            .vcs_get_caps()
+            .map_err(|e| VcsError::Backend {
+                backend: self.backend_id.clone(),
+                msg: e,
+            })?;
+        serde_json::from_value(response).map_err(|e| VcsError::Backend {
+            backend: self.backend_id.clone(),
+            msg: format!("failed to parse caps: {e}"),
+        })
+    }
+
     fn merge_into_current(&self, name: &str) -> VcsResult<()> {
         self.runtime
-            .vcs_merge_into_current(name, None)
+            .vcs_merge_into_current(name, None, None)
             .map_err(|e| self.map_runtime_error(e))
     }
 
-    fn merge_into_current_with_message(&self, name: &str, message: Option<&str>) -> VcsResult<()> {
+    fn merge_into_current_with_message(
+        &self,
+        name: &str,
+        message: Option<&str>,
+        strategy: Option<&str>,
+    ) -> VcsResult<()> {
         self.runtime
-            .vcs_merge_into_current(name, message)
+            .vcs_merge_into_current(name, message, strategy)
             .map_err(|e| self.map_runtime_error(e))
     }
 

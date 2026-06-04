@@ -378,24 +378,66 @@ pub async fn vcs_rename_branch(
 }
 
 #[tauri::command]
+/// Returns whether the current VCS backend supports merge strategy selection.
+///
+/// # Parameters
+/// - `state`: Shared application state.
+///
+/// # Returns
+/// - `Ok(bool)` indicating whether merge strategies are supported.
+pub async fn vcs_merge_strategy_supported(state: State<'_, AppState>) -> Result<bool, String> {
+    let repo = current_repo_or_err(&state)?;
+    run_repo_task("vcs_merge_strategy_supported", repo, move |repo| {
+        let caps = repo.inner().caps().map_err(|e| e.to_string())?;
+        Ok(caps.merge_strategies)
+    })
+    .await
+}
+
+#[tauri::command]
 /// Merges a source branch into the current branch.
 ///
 /// # Parameters
 /// - `state`: Shared application state.
 /// - `name`: Source branch to merge.
+/// - `strategy`: Optional merge strategy (`merge`, `squash`, or `rebase`).
 ///
 /// # Returns
 /// - `Ok(())` when merge succeeds.
 /// - `Err(String)` when validation or merge fails.
-pub async fn vcs_merge_branch(state: State<'_, AppState>, name: String) -> Result<(), String> {
+pub async fn vcs_merge_branch(
+    state: State<'_, AppState>,
+    name: String,
+    strategy: Option<String>,
+) -> Result<(), String> {
     let name = name.trim();
     if name.is_empty() {
         return Err("Branch name cannot be empty".to_string());
     }
+    // Validate strategy before dispatching
+    let validated_strategy = match strategy.as_deref() {
+        None | Some("merge") => None,
+        Some(s) if s.trim().is_empty() => {
+            return Err("Merge strategy cannot be empty".to_string());
+        }
+        Some("squash") | Some("rebase") => strategy,
+        Some(other) => return Err(format!("Unknown merge strategy '{other}'. Must be 'merge', 'squash', or 'rebase'.")),
+    };
+    let needs_caps_check = validated_strategy.is_some();
+
     let repo = current_repo_or_err(&state)?;
     let branch = name.to_string();
     let template = backend_merge_message_template(&repo.id());
+    let strategy_clone = validated_strategy.clone();
     run_repo_task("vcs_merge_branch", repo, move |repo| {
+        // Backend-side capability guard: reject squash/rebase if unsupported
+        if needs_caps_check {
+            let caps = repo.inner().caps().map_err(|e| e.to_string())?;
+            if !caps.merge_strategies {
+                return Err("Backend does not support merge strategies".to_string());
+            }
+        }
+
         let vcs = repo.inner();
         let target_branch = vcs
             .current_branch()
@@ -437,7 +479,7 @@ pub async fn vcs_merge_branch(state: State<'_, AppState>, name: String) -> Resul
             ))
         };
 
-        vcs.merge_into_current_with_message(&branch, message.as_deref())
+        vcs.merge_into_current_with_message(&branch, message.as_deref(), strategy_clone.as_deref())
             .map_err(|e| e.to_string())
     })
     .await

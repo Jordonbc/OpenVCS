@@ -280,9 +280,20 @@ impl NodePluginRuntimeInstance {
         self.rpc_call_unit(Methods::VCS_RENAME_BRANCH, params)
     }
 
+    /// Calls `vcs.get_caps` and returns the raw JSON response.
+    pub fn vcs_get_caps(&self) -> Result<Value, String> {
+        let params = self.session_params(Value::Object(serde_json::Map::new()))?;
+        self.rpc_call(Methods::VCS_GET_CAPS, params)
+    }
+
     /// Calls `vcs.merge-into-current`.
-    pub fn vcs_merge_into_current(&self, name: &str, message: Option<&str>) -> Result<(), String> {
-        let params = self.session_params(json!({ "name": name, "message": message }))?;
+    pub fn vcs_merge_into_current(
+        &self,
+        name: &str,
+        message: Option<&str>,
+        strategy: Option<&str>,
+    ) -> Result<(), String> {
+        let params = self.session_params(json!({ "name": name, "message": message, "strategy": strategy }))?;
         self.rpc_call_unit(Methods::VCS_MERGE_INTO_CURRENT, params)
     }
 

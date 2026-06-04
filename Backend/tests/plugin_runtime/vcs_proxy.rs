@@ -212,7 +212,7 @@ fn proxy_merge_into_current_with_message_delegates() {
     let (proxy, rt) = mock_proxy();
     rt.set_session_id(Some("s".into()));
     set_unit_response(&rt);
-    assert!(proxy.merge_into_current_with_message("feature", Some("msg")).is_ok());
+    assert!(proxy.merge_into_current_with_message("feature", Some("msg"), None).is_ok());
 }
 
 #[test]

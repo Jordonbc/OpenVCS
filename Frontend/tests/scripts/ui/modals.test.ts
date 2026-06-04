@@ -722,6 +722,11 @@ describe('hydrate wiring for specific modals', () => {
     expect(() => hydrate('merge-modal')).not.toThrow();
   });
 
+  it('hydrates merge-strategy-modal without throwing', async () => {
+    const { hydrate } = await import('@scripts/ui/modals');
+    expect(() => hydrate('merge-strategy-modal')).not.toThrow();
+  });
+
   it('hydrates conflicts-summary-modal without throwing', async () => {
     const { hydrate } = await import('@scripts/ui/modals');
     expect(() => hydrate('conflicts-summary-modal')).not.toThrow();
