@@ -293,7 +293,8 @@ impl NodePluginRuntimeInstance {
         message: Option<&str>,
         strategy: Option<&str>,
     ) -> Result<(), String> {
-        let params = self.session_params(json!({ "name": name, "message": message, "strategy": strategy }))?;
+        let params =
+            self.session_params(json!({ "name": name, "message": message, "strategy": strategy }))?;
         self.rpc_call_unit(Methods::VCS_MERGE_INTO_CURRENT, params)
     }
 

@@ -1,11 +1,11 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::core::models::VcsCaps;
 use crate::core::models::{
     BranchItem, CommitItem, ConflictDetails, ConflictSide, DiffFileResult, LogQuery, OnEvent,
     StashItem, StatusPayload,
 };
-use crate::core::models::VcsCaps;
 use crate::core::{BackendId, Result as VcsResult, Vcs, VcsError};
 use crate::logging::LogTimer;
 use crate::plugin_runtime::instance::PluginRuntimeInstance;
@@ -287,13 +287,10 @@ impl Vcs for PluginVcsProxy {
     }
 
     fn caps(&self) -> VcsResult<VcsCaps> {
-        let response = self
-            .runtime
-            .vcs_get_caps()
-            .map_err(|e| VcsError::Backend {
-                backend: self.backend_id.clone(),
-                msg: e,
-            })?;
+        let response = self.runtime.vcs_get_caps().map_err(|e| VcsError::Backend {
+            backend: self.backend_id.clone(),
+            msg: e,
+        })?;
         serde_json::from_value(response).map_err(|e| VcsError::Backend {
             backend: self.backend_id.clone(),
             msg: format!("failed to parse caps: {e}"),

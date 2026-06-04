@@ -630,11 +630,10 @@ pub fn list_plugins_with_settings(state: State<'_, AppState>) -> Result<Vec<Stri
             continue;
         }
 
-        if let Ok((defaults, _)) = resolve_plugin_settings_defaults(&state, &cfg, &plugin_id) {
-            if !defaults.is_empty() {
+        if let Ok((defaults, _)) = resolve_plugin_settings_defaults(&state, &cfg, &plugin_id)
+            && !defaults.is_empty() {
                 out.push(plugin_id);
             }
-        }
     }
 
     out.sort();

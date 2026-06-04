@@ -421,7 +421,11 @@ pub async fn vcs_merge_branch(
             return Err("Merge strategy cannot be empty".to_string());
         }
         Some("squash") | Some("rebase") => strategy,
-        Some(other) => return Err(format!("Unknown merge strategy '{other}'. Must be 'merge', 'squash', or 'rebase'.")),
+        Some(other) => {
+            return Err(format!(
+                "Unknown merge strategy '{other}'. Must be 'merge', 'squash', or 'rebase'."
+            ));
+        }
     };
     let needs_caps_check = validated_strategy.is_some();
 
