@@ -6,6 +6,7 @@ import { TAURI, assertDesktopRuntime, isTauriRuntimeAvailable } from './lib/taur
 import type { GlobalSettings } from './types';
 import { qs } from './lib/dom';
 import { notify } from './lib/notify';
+import { confirmBool } from './lib/confirm';
 import { setStatus } from './lib/status';
 import { destroyOverlayScrollbarsFor, initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from './lib/scrollbars';
 import { prefs, state, hasRepo, resolveVcsActionLabel, setGlobalSettings } from './state/state';
@@ -469,6 +470,15 @@ async function boot() {
     // No dynamic undo insertion; the inline button lives in the commit panel
 
     undoLeftBtn?.addEventListener('click', async () => {
+        const ok = await confirmBool('Undo last commit? Changes stay in your working tree.');
+        if (!ok) return;
+
+        let headMsg = '';
+        try {
+            const headCommits = await TAURI.invoke<any[]>('vcs_log', { limit: 1 });
+            headMsg = String(headCommits?.[0]?.msg || '').trim();
+        } catch {}
+
         const statusEl = document.getElementById('status');
         const setBusy = (msg: string) => {
             if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
@@ -477,9 +487,24 @@ async function boot() {
         try {
             setBusy('Undoing…');
             await TAURI.invoke('vcs_undo_since_push', {});
-            notify('Undid unpushed commits');
+            const summary = headMsg ? headMsg.split('\n')[0].trim() : '';
+            notify(summary ? `Undone commit "${summary}" successfully` : 'Undone');
             await hydrateSnapshot(true);
-        } catch (e) { console.error('Undo failed:', e); notify('Undo failed'); } finally { clearBusy(); }
+            if (headMsg) {
+                const summaryEl = document.getElementById('commit-summary') as HTMLInputElement | null;
+                const descEl = document.getElementById('commit-desc') as HTMLTextAreaElement | null;
+                const firstNl = headMsg.indexOf('\n');
+                if (firstNl === -1) {
+                    if (summaryEl) { summaryEl.value = headMsg; summaryEl.dispatchEvent(new Event('input', { bubbles: true })); }
+                } else {
+                    if (summaryEl) { summaryEl.value = headMsg.slice(0, firstNl).trim(); summaryEl.dispatchEvent(new Event('input', { bubbles: true })); }
+                    if (descEl) { descEl.value = headMsg.slice(firstNl + 1).trim(); descEl.dispatchEvent(new Event('input', { bubbles: true })); }
+                }
+            }
+        } catch (e) {
+            const msg = String(e || '').trim();
+            notify(msg ? `Undo failed: ${msg}` : 'Undo failed');
+        } finally { clearBusy(); }
     });
 
 

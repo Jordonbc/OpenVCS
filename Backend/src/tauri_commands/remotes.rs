@@ -646,6 +646,7 @@ pub async fn vcs_undo_since_push<R: Runtime>(
 /// - `window`: Calling window handle for progress/events.
 /// - `state`: Shared application state.
 /// - `id`: Target commit id/prefix.
+/// - `parent`: When true, reset to `id~1` (undo the commit itself, not everything above it).
 ///
 /// # Returns
 /// - `Ok(())` when reset succeeds.
@@ -654,8 +655,10 @@ pub async fn vcs_undo_to_commit<R: Runtime>(
     window: Window<R>,
     state: State<'_, AppState>,
     id: String,
+    parent: Option<bool>,
 ) -> Result<(), String> {
-    info!("vcs_undo_to_commit called for {id}");
+    let parent = parent.unwrap_or(false);
+    info!("vcs_undo_to_commit called for {id} (parent={parent})");
 
     let repo = current_repo_or_err(&state)?;
     let app = window.app_handle().clone();
@@ -679,7 +682,7 @@ pub async fn vcs_undo_to_commit<R: Runtime>(
         }
 
         let target = id.trim();
-        if !ahead_list.is_empty() {
+        if !parent && !ahead_list.is_empty() {
             let target_in_ahead = ahead_list.iter().any(|c| c.id.starts_with(target));
             if !target_in_ahead {
                 return Err("Selected commit is not ahead of upstream".into());
@@ -690,7 +693,11 @@ pub async fn vcs_undo_to_commit<R: Runtime>(
         on(VcsEvent::Info {
             msg: "Undoing to selected commit (soft reset)…".into(),
         });
-        let rev = target.to_string();
+        let rev = if parent {
+            format!("{}~1", target)
+        } else {
+            target.to_string()
+        };
         repo.inner()
             .reset_soft_to(&rev)
             .map_err(|e| e.to_string())?;

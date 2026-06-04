@@ -6,22 +6,10 @@ import { updateCommitButton } from './commit';
 import { getVisibleFiles, updateSelectAllState } from './selectionState';
 import { allHunkIndices } from './diffFragment';
 
-/** Clears picked styling and checkboxes for all visible rows. */
-function clearAllFileSelections() {
-    if (!listEl) return;
-    const rows = listEl.querySelectorAll<HTMLElement>('li.row');
-    rows.forEach((row) => {
-        row.classList.remove('picked');
-        const cb = row.querySelector<HTMLInputElement>('input.pick');
-        if (cb) { cb.checked = false; (cb as any).indeterminate = false; }
-    });
-}
-
 /** Toggles commit inclusion for a file and syncs current hunk selection. */
 export function toggleFilePick(path: string, on: boolean) {
     if (!path) return;
-    const clearedImplicit = disableDefaultSelectAll(true);
-    if (clearedImplicit) clearAllFileSelections();
+    disableDefaultSelectAll(false);
     if (on) state.selectedFiles.add(path);
     else state.selectedFiles.delete(path);
     if (state.currentFile && state.currentFile === path && !state.currentDiffBinary) {
@@ -136,8 +124,7 @@ function handleDiffInputChange(ev: Event) {
 function handleHunkToggle(input: HTMLInputElement) {
     const idx = Number(input.dataset.hunk || -1);
     if (!state.currentFile || idx < 0) return;
-    const clearedImplicit = disableDefaultSelectAll(true);
-    if (clearedImplicit) clearAllFileSelections();
+    disableDefaultSelectAll(false);
     const rec: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
     if (input.checked) {
         if (!state.selectedHunks.includes(idx)) state.selectedHunks.push(idx);
@@ -178,8 +165,7 @@ function handleLineToggle(input: HTMLInputElement) {
     const hunk = Number(input.dataset.hunk || -1);
     const line = Number(input.dataset.line || -1);
     if (!state.currentFile || hunk < 0 || line < 0) return;
-    const clearedImplicit = disableDefaultSelectAll(true);
-    if (clearedImplicit) clearAllFileSelections();
+    disableDefaultSelectAll(false);
     const rec: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
     const old = new Set<number>(rec[hunk] || []);
     if (input.checked) {

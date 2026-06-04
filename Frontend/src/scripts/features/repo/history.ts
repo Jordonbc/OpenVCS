@@ -73,11 +73,36 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: C
     if (opts?.isAhead) {
         items.push({ label: '---' });
         items.push({
-            label: 'Undo to this commit', action: async () => {
+            label: 'Undo this commit', action: async () => {
+                const short = String(commit.id || '').slice(0, 7);
+                const msgSummary = String(commit.msg || '').split('\n')[0].trim() || short;
+                const ok = await confirmBool(`Undo commit "${msgSummary}" (${short}?)`);
+                if (!ok) return;
+                let headMsg = '';
                 try {
-                    await TAURI.invoke('vcs_undo_to_commit', { id: commit.id });
+                    const headCommits = await TAURI.invoke<any[]>('vcs_log', { limit: 1 });
+                    headMsg = String(headCommits?.[0]?.msg || '').trim();
+                } catch {}
+                try {
+                    await TAURI.invoke('vcs_undo_to_commit', { id: commit.id, parent: true });
+                    const summary = headMsg ? headMsg.split('\n')[0].trim() : '';
+                    notify(summary ? `Undone commit "${summary}" successfully` : 'Undone');
                     await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
-                } catch (e) { console.error('Undo failed:', e); notify('Undo failed'); }
+                    if (headMsg) {
+                        const summaryEl = document.getElementById('commit-summary') as HTMLInputElement | null;
+                        const descEl = document.getElementById('commit-desc') as HTMLTextAreaElement | null;
+                        const firstNl = headMsg.indexOf('\n');
+                        if (firstNl === -1) {
+                            if (summaryEl) { summaryEl.value = headMsg; summaryEl.dispatchEvent(new Event('input', { bubbles: true })); }
+                        } else {
+                            if (summaryEl) { summaryEl.value = headMsg.slice(0, firstNl).trim(); summaryEl.dispatchEvent(new Event('input', { bubbles: true })); }
+                            if (descEl) { descEl.value = headMsg.slice(firstNl + 1).trim(); descEl.dispatchEvent(new Event('input', { bubbles: true })); }
+                        }
+                    }
+                } catch (e) {
+                    const msg = String(e || '').trim();
+                    notify(msg ? `Undo failed: ${msg}` : 'Undo failed');
+                }
             },
         });
     }
