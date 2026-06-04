@@ -33,9 +33,16 @@ function wireMergeStrategyModal() {
       }
     });
   }
+
+  // Single persistent listener for all dismiss paths — never leaks
+  modal.addEventListener('modal:closed', () => resolvePending(null));
 }
 
-export function promptMergeStrategy(branchName: string, targetBranch: string): Promise<string | null> {
+export function promptMergeStrategy(
+  branchName: string,
+  targetBranch: string,
+  supported: string[],
+): Promise<string | null> {
   hydrate('merge-strategy-modal');
   wireMergeStrategyModal();
 
@@ -45,18 +52,21 @@ export function promptMergeStrategy(branchName: string, targetBranch: string): P
     hintEl.textContent = `Choose how to merge '${branchName}' into '${targetBranch}'.`;
   }
 
+  // Show only options for strategies the backend supports
+  const options = modal?.querySelectorAll<HTMLElement>('.merge-strategy-option');
+  if (options) {
+    const supportedSet = new Set(supported);
+    for (const opt of options) {
+      const strat = opt.getAttribute('data-strategy');
+      const visible = strat ? supportedSet.has(strat) : false;
+      opt.style.display = visible ? '' : 'none';
+    }
+  }
+
   return new Promise<string | null>((resolve) => {
     const prev = pendingResolve;
     pendingResolve = resolve;
     if (prev) prev(null);
-
-    // Resolve with null on any dismiss path (backdrop click, cancel, Escape)
-    const onClosed = () => {
-      resolvePending(null);
-      modal?.removeEventListener('modal:closed', onClosed);
-    };
-    modal?.addEventListener('modal:closed', onClosed);
-
     openModal('merge-strategy-modal');
   });
 }

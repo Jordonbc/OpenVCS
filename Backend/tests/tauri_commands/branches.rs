@@ -279,7 +279,7 @@ fn vcs_create_branch_propagates_error() {
     let (app, _) = build_vcs_branches_app();
     let wv = test_webview(&app);
 
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"name": "new-branch", "base": "main"}));
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"name": "new-branch", "from": "main"}));
     let res = invoke_cmd(&wv, "vcs_create_branch", body);
     assert!(res.is_err(), "create should fail (unsupported)");
 }
@@ -311,7 +311,10 @@ fn vcs_merge_context_fails_silently_when_not_in_progress() {
     let wv = test_webview(&app);
 
     let res = invoke_cmd(&wv, "vcs_merge_context", tauri::ipc::InvokeBody::default());
-    let _ = res;
+    assert!(res.is_ok(), "merge context should succeed even when not in progress");
+    let value = res.unwrap();
+    let ctx = value.deserialize::<serde_json::Value>().expect("should deserialize");
+    assert_eq!(ctx.get("in_progress").and_then(|v| v.as_bool()), Some(false), "should report not in progress");
 }
 
 #[test]
@@ -320,7 +323,7 @@ fn vcs_set_upstream_propagates_error() {
     let (app, _) = build_vcs_branches_app();
     let wv = test_webview(&app);
 
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"name": "main", "upstream": "origin/main"}));
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"branch": "main", "upstream": "origin/main"}));
     let res = invoke_cmd(&wv, "vcs_set_upstream", body);
     assert!(res.is_err(), "set upstream should fail (unsupported)");
 }

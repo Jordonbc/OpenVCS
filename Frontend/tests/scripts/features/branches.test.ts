@@ -409,7 +409,7 @@ it('merge into current', async () => {
   const items = await triggerContextMenu();
   await items[1].action();
 
-  expect(mockPromptMergeStrategy).toHaveBeenCalledWith('feature', 'main');
+  expect(mockPromptMergeStrategy).toHaveBeenCalledWith('feature', 'main', ['merge', 'squash', 'rebase']);
   expect(mockInvoke).toHaveBeenCalledWith('vcs_merge_branch', { name: 'feature', strategy: 'merge' });
   expect(mockNotify).toHaveBeenCalledWith("Merged branch 'feature' into 'main'");
 });

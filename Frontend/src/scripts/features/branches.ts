@@ -215,7 +215,7 @@ export function bindBranchUI() {
             if (name === cur) { notify('Cannot merge a branch into itself'); return; }
             const strategies = await TAURI.invoke<string[]>('vcs_merge_strategies').catch(() => []);
             const hasAdvanced = strategies.some(s => s === 'squash' || s === 'rebase');
-            const strategy = hasAdvanced ? await promptMergeStrategy(name, cur) : (await confirmBool(`Merge '${name}' into '${cur}'?`) ? 'merge' : null);
+            const strategy = hasAdvanced ? await promptMergeStrategy(name, cur, strategies) : (await confirmBool(`Merge '${name}' into '${cur}'?`) ? 'merge' : null);
             if (!strategy) return;
 
             const statusEl = document.getElementById('status');
