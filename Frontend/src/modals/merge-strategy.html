@@ -1,0 +1,29 @@
+<div class="modal" id="merge-strategy-modal" aria-hidden="true">
+  <div class="backdrop" data-close="true"></div>
+  <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="merge-strategy-title">
+    <div class="sheet-head">
+      <div>
+        <h3 id="merge-strategy-title" style="margin:0">Merge strategy</h3>
+        <p class="hint" id="merge-strategy-hint" style="margin:.25rem 0 0;">Choose how to merge the branch.</p>
+      </div>
+      <button class="tbtn" data-close type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body" id="merge-strategy-body">
+      <div class="merge-strategy-option" data-strategy="merge" role="button" tabindex="0">
+        <strong>Merge</strong>
+        <p class="hint">Create a merge commit that combines the histories.</p>
+      </div>
+      <div class="merge-strategy-option" data-strategy="squash" role="button" tabindex="0">
+        <strong>Squash merge</strong>
+        <p class="hint">Squash all commits into a single commit.</p>
+      </div>
+      <div class="merge-strategy-option" data-strategy="rebase" role="button" tabindex="0">
+        <strong>Rebase</strong>
+        <p class="hint">Rebase commits from the selected branch onto the current branch and fast-forward.</p>
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button class="tbtn" data-close type="button">Cancel</button>
+    </div>
+  </div>
+</div>

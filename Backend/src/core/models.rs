@@ -236,6 +236,15 @@ pub struct HunkSelection {
     pub partial_hunks: std::collections::HashMap<usize, Vec<usize>>,
 }
 
+/// Describes the capabilities advertised by a VCS backend.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct VcsCaps {
+    /// Merge strategies the backend supports (values like "merge", "squash", "rebase").
+    /// Empty means only default merge is supported.
+    #[serde(default)]
+    pub merge_strategies: Vec<String>,
+}
+
 /// Callback function type for handling VCS events.
 pub type OnEvent = Arc<dyn Fn(VcsEvent) + Send + Sync + 'static>;
 

@@ -29,6 +29,7 @@ import { wireUpdate } from "../features/update";
 import stashConfirmHtml from "@modals/stash-confirm.html?raw";
 import { wireStashConfirm } from "../features/stashConfirm";
 import mergeHtml from "@modals/merge.html?raw";
+import mergeStrategyHtml from "@modals/merge-strategy.html?raw";
 import conflictsSummaryHtml from "@modals/conflicts-summary.html?raw";
 import { wireSshKeys } from "../features/sshKeys";
 import repoSwitchDrawerHtml from "@modals/repoSwitchDrawer.html?raw";
@@ -53,6 +54,7 @@ const FRAGMENTS: Record<string, string> = {
     "update-modal": updateHtml,
     "stash-confirm-modal": stashConfirmHtml,
     "merge-modal": mergeHtml,
+    "merge-strategy-modal": mergeStrategyHtml,
     "conflicts-summary-modal": conflictsSummaryHtml,
     "error-modal": errorHtml,
 };

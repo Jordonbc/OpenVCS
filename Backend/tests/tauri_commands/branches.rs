@@ -170,6 +170,7 @@ fn build_vcs_branches_app() -> (tauri::App<tauri::test::MockRuntime>, Arc<TestVc
             super::vcs_merge_continue,
             super::vcs_set_upstream,
             super::vcs_merge_branch,
+            super::vcs_merge_strategies,
         ])
         .build(mock_context(noop_assets()))
         .expect("build branches test app");
@@ -278,7 +279,7 @@ fn vcs_create_branch_propagates_error() {
     let (app, _) = build_vcs_branches_app();
     let wv = test_webview(&app);
 
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"name": "new-branch", "base": "main"}));
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"name": "new-branch", "from": "main"}));
     let res = invoke_cmd(&wv, "vcs_create_branch", body);
     assert!(res.is_err(), "create should fail (unsupported)");
 }
@@ -310,7 +311,10 @@ fn vcs_merge_context_fails_silently_when_not_in_progress() {
     let wv = test_webview(&app);
 
     let res = invoke_cmd(&wv, "vcs_merge_context", tauri::ipc::InvokeBody::default());
-    let _ = res;
+    assert!(res.is_ok(), "merge context should succeed even when not in progress");
+    let value = res.unwrap();
+    let ctx = value.deserialize::<serde_json::Value>().expect("should deserialize");
+    assert_eq!(ctx.get("in_progress").and_then(|v| v.as_bool()), Some(false), "should report not in progress");
 }
 
 #[test]
@@ -319,7 +323,7 @@ fn vcs_set_upstream_propagates_error() {
     let (app, _) = build_vcs_branches_app();
     let wv = test_webview(&app);
 
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"name": "main", "upstream": "origin/main"}));
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"branch": "main", "upstream": "origin/main"}));
     let res = invoke_cmd(&wv, "vcs_set_upstream", body);
     assert!(res.is_err(), "set upstream should fail (unsupported)");
 }
@@ -344,4 +348,44 @@ fn vcs_merge_branch_propagates_error() {
     let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"name": "develop"}));
     let res = invoke_cmd(&wv, "vcs_merge_branch", body);
     assert!(res.is_err(), "merge should fail (unsupported)");
+}
+
+#[test]
+fn vcs_merge_branch_rejects_unsupported_strategy() {
+    register_test_backend("test-vcs");
+    let (app, _) = build_vcs_branches_app();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"name": "develop", "strategy": "squash"}));
+    let res = invoke_cmd(&wv, "vcs_merge_branch", body);
+    assert!(res.is_err(), "squash should be rejected on non-Git backend");
+    let err_str = format!("{:?}", res);
+    assert!(err_str.contains("does not support merge strategy"), "unexpected error: {err_str}");
+}
+
+#[test]
+fn vcs_merge_branch_rejects_unknown_strategy() {
+    register_test_backend("test-vcs");
+    let (app, _) = build_vcs_branches_app();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"name": "develop", "strategy": "xyz"}));
+    let res = invoke_cmd(&wv, "vcs_merge_branch", body);
+    assert!(res.is_err(), "unknown strategy should be rejected");
+    let err_str = format!("{:?}", res);
+    assert!(err_str.contains("Unknown merge strategy"), "unexpected error: {err_str}");
+}
+
+#[test]
+fn vcs_merge_strategies_returns_empty_for_test_backend() {
+    register_test_backend("test-vcs");
+    let (app, _) = build_vcs_branches_app();
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
+    let res = invoke_cmd(&wv, "vcs_merge_strategies", body);
+    assert!(res.is_ok(), "caps query should succeed: {:?}", res);
+    let value = res.unwrap();
+    let data = value.deserialize::<Vec<String>>().expect("should deserialize string list");
+    assert!(data.is_empty(), "test backend should have no merge strategies");
 }

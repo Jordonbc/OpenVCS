@@ -12,6 +12,7 @@ import { openRenameBranch } from './renameBranch';
 import { openSetUpstream } from './setUpstream';
 import { confirmDeleteBranch } from './deleteBranchConfirm';
 import { buildCtxMenu, CtxItem } from '../lib/menu';
+import { promptMergeStrategy } from './mergeStrategy';
 import { renderList, hydrateStatus } from './repo';
 import { setTab } from '../ui/layout';
 import type { ConflictDetails, FileStatus } from '../types';
@@ -212,8 +213,10 @@ export function bindBranchUI() {
         }});
         items.push({ label: 'Merge into current…', action: async () => {
             if (name === cur) { notify('Cannot merge a branch into itself'); return; }
-            const ok = await confirmBool(`Merge '${name}' into '${cur}'?`);
-            if (!ok) return;
+            const strategies = await TAURI.invoke<string[]>('vcs_merge_strategies').catch(() => []);
+            const hasAdvanced = strategies.some(s => s === 'squash' || s === 'rebase');
+            const strategy = hasAdvanced ? await promptMergeStrategy(name, cur, strategies) : (await confirmBool(`Merge '${name}' into '${cur}'?`) ? 'merge' : null);
+            if (!strategy) return;
 
             const statusEl = document.getElementById('status');
             const setBusy = (msg: string) => {
@@ -225,7 +228,7 @@ export function bindBranchUI() {
 
             try {
                 setBusy('Merging…');
-                await TAURI.invoke('vcs_merge_branch', { name });
+                await TAURI.invoke('vcs_merge_branch', { name, strategy });
                 clearBusy();
                 notify(`Merged branch '${name}' into '${cur}'`);
                 await Promise.allSettled([renderList(), loadBranches()]);

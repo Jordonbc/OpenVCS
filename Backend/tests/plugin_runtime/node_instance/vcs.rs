@@ -176,7 +176,7 @@ fn vcs_merge_into_current_works() {
     let rt = test_runtime();
     *rt.vcs_session_id.lock() = Some("s".into());
     mock_response(&rt, Value::Null);
-    rt.vcs_merge_into_current("feature", Some("merge msg")).unwrap();
+    rt.vcs_merge_into_current("feature", Some("merge msg"), None).unwrap();
 }
 
 #[test]
@@ -184,7 +184,7 @@ fn vcs_merge_into_current_without_message_works() {
     let rt = test_runtime();
     *rt.vcs_session_id.lock() = Some("s".into());
     mock_response(&rt, Value::Null);
-    rt.vcs_merge_into_current("feature", None::<&str>).unwrap();
+    rt.vcs_merge_into_current("feature", None::<&str>, None).unwrap();
 }
 
 #[test]

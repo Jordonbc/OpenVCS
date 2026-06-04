@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockInvoke = vi.fn();
 const mockConfirmBool = vi.fn();
+const mockPromptMergeStrategy = vi.fn();
 const mockNotify = vi.fn();
 const mockRefreshOverlayScrollbarsFor = vi.fn();
 const mockOpenModal = vi.fn();
@@ -49,6 +50,12 @@ vi.mock('@scripts/state/state', () => ({
 
 vi.mock('@scripts/ui/modals', () => ({
   openModal: mockOpenModal,
+  closeModal: vi.fn(),
+  hydrate: vi.fn(),
+}));
+
+vi.mock('@scripts/features/mergeStrategy', () => ({
+  promptMergeStrategy: mockPromptMergeStrategy,
 }));
 
 vi.mock('@scripts/features/renameBranch', () => ({
@@ -386,87 +393,95 @@ describe('bindBranchUI', () => {
       expect(items[0].label).toBe('Checkout');
     });
 
-    it('merge into current', async () => {
-      mockConfirmBool.mockResolvedValue(true);
-      mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
-      mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
-      mockInvoke.mockResolvedValueOnce(undefined);
 
-      const { bindBranchUI } = await import('@scripts/features/branches');
-      bindBranchUI();
-      await openPopover(1);
 
-      const items = await triggerContextMenu();
-      await items[1].action();
+it('merge into current', async () => {
+  mockPromptMergeStrategy.mockResolvedValue('merge');
+  mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
+  mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
+  mockInvoke.mockResolvedValueOnce(['merge', 'squash', 'rebase']); // vcs_merge_strategies
+  mockInvoke.mockResolvedValueOnce(undefined); // vcs_merge_branch
 
-      expect(mockConfirmBool).toHaveBeenCalledWith("Merge 'feature' into 'main'?");
-      expect(mockInvoke).toHaveBeenCalledWith('vcs_merge_branch', { name: 'feature' });
-      expect(mockNotify).toHaveBeenCalledWith("Merged branch 'feature' into 'main'");
+  const { bindBranchUI } = await import('@scripts/features/branches');
+  bindBranchUI();
+  await openPopover(1);
+
+  const items = await triggerContextMenu();
+  await items[1].action();
+
+  expect(mockPromptMergeStrategy).toHaveBeenCalledWith('feature', 'main', ['merge', 'squash', 'rebase']);
+  expect(mockInvoke).toHaveBeenCalledWith('vcs_merge_branch', { name: 'feature', strategy: 'merge' });
+  expect(mockNotify).toHaveBeenCalledWith("Merged branch 'feature' into 'main'");
+});
+
+it('merge cancelled by user', async () => {
+  mockPromptMergeStrategy.mockResolvedValue(null);
+  mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
+  mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
+  mockInvoke.mockResolvedValueOnce(['merge', 'squash', 'rebase']); // vcs_merge_strategies
+
+  const { bindBranchUI } = await import('@scripts/features/branches');
+  bindBranchUI();
+  await openPopover(1);
+
+  const items = await triggerContextMenu();
+  await items[1].action();
+
+  expect(mockInvoke).not.toHaveBeenCalledWith('vcs_merge_branch', expect.anything());
+});
+
+it('merge into self shows notify', async () => {
+  mockState.branch = 'feature';
+  mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
+  mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
+
+  const { bindBranchUI } = await import('@scripts/features/branches');
+  bindBranchUI();
+  await openPopover(1);
+
+  const items = await triggerContextMenu();
+  await items[1].action();
+
+  expect(mockNotify).toHaveBeenCalledWith('Cannot merge a branch into itself');
+});
+
+it('merge detects conflicts', async () => {
+  mockPromptMergeStrategy.mockResolvedValue('merge');
+  mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
+  mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
+  mockInvoke.mockResolvedValueOnce(['merge', 'squash', 'rebase']); // vcs_merge_strategies
+  mockInvoke.mockRejectedValueOnce(new Error('Automatic merge failed; fix conflicts and then commit'));
+  mockState.files = [{ path: 'file.txt' }];
+
+  const { bindBranchUI } = await import('@scripts/features/branches');
+  bindBranchUI();
+  await openPopover(1);
+
+  const items = await triggerContextMenu();
+  await items[1].action();
+
+  expect(mockNotify).toHaveBeenCalledWith('Merge conflict detected');
+  expect(mockSetTab).toHaveBeenCalledWith('changes');
+});
+
+it('merge shows generic error', async () => {
+  mockPromptMergeStrategy.mockResolvedValue('merge');
+  mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
+  mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
+  mockInvoke.mockResolvedValueOnce(['merge', 'squash', 'rebase']); // vcs_merge_strategies
+  mockInvoke.mockRejectedValueOnce(new Error('some other error'));
+
+  const { bindBranchUI } = await import('@scripts/features/branches');
+  bindBranchUI();
+  await openPopover(1);
+
+  const items = await triggerContextMenu();
+  await items[1].action();
+
+  expect(mockNotify).toHaveBeenCalledWith('Merge failed: Error: some other error');
     });
 
-    it('merge cancelled by user', async () => {
-      mockConfirmBool.mockResolvedValue(false);
-      mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
-      mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
 
-      const { bindBranchUI } = await import('@scripts/features/branches');
-      bindBranchUI();
-      await openPopover(1);
-
-      const items = await triggerContextMenu();
-      await items[1].action();
-
-      expect(mockInvoke).not.toHaveBeenCalledWith('vcs_merge_branch', expect.anything());
-    });
-
-    it('merge into self shows notify', async () => {
-      mockState.branch = 'feature';
-      mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
-      mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
-
-      const { bindBranchUI } = await import('@scripts/features/branches');
-      bindBranchUI();
-      await openPopover(1);
-
-      const items = await triggerContextMenu();
-      await items[1].action();
-
-      expect(mockNotify).toHaveBeenCalledWith('Cannot merge a branch into itself');
-    });
-
-    it('merge detects conflicts', async () => {
-      mockConfirmBool.mockResolvedValue(true);
-      mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
-      mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
-      mockInvoke.mockRejectedValueOnce(new Error('Automatic merge failed; fix conflicts and then commit'));
-      mockState.files = [{ path: 'file.txt' }];
-
-      const { bindBranchUI } = await import('@scripts/features/branches');
-      bindBranchUI();
-      await openPopover(1);
-
-      const items = await triggerContextMenu();
-      await items[1].action();
-
-      expect(mockNotify).toHaveBeenCalledWith('Merge conflict detected');
-      expect(mockSetTab).toHaveBeenCalledWith('changes');
-    });
-
-    it('merge shows generic error', async () => {
-      mockConfirmBool.mockResolvedValue(true);
-      mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
-      mockLoadBranches([{ name: 'feature', kind: { type: 'local' } }]);
-      mockInvoke.mockRejectedValueOnce(new Error('some other error'));
-
-      const { bindBranchUI } = await import('@scripts/features/branches');
-      bindBranchUI();
-      await openPopover(1);
-
-      const items = await triggerContextMenu();
-      await items[1].action();
-
-      expect(mockNotify).toHaveBeenCalledWith('Merge failed: Error: some other error');
-    });
 
     it('set upstream for local branch', async () => {
       mockLoadBranches([

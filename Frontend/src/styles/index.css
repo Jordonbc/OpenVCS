@@ -17,6 +17,7 @@
 @import "./modal/confirm.css";
 @import "./modal/stash-confirm.css";
 @import "./modal/merge.css";
+@import "./modal/merge-strategy.css";
 @import "./modal/ssh-keys.css";
 @import "./modal/delete-branch.css";
 @import "./modal/repo-switch-drawer.css";

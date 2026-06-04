@@ -13,6 +13,8 @@ pub use self::models::OnEvent;
 
 use std::path::{Path, PathBuf};
 
+use crate::core::models::VcsCaps;
+
 /// Error type returned by VCS backend operations.
 #[derive(thiserror::Error, Debug)]
 pub enum VcsError {
@@ -33,6 +35,14 @@ pub enum VcsError {
         /// Backend-provided error message.
         msg: String,
     },
+    /// The backend does not support the requested merge strategy.
+    #[error("unsupported merge strategy '{strategy}' for backend {backend}")]
+    UnsupportedStrategy {
+        /// Backend identifier.
+        backend: BackendId,
+        /// The strategy that was requested.
+        strategy: String,
+    },
 }
 
 impl VcsError {
@@ -47,6 +57,17 @@ impl VcsError {
             VcsError::Unsupported(backend) => format!("unsupported backend: {backend}"),
             VcsError::Io(e) => e.to_string(),
             VcsError::Backend { msg, .. } => msg.clone(),
+            VcsError::UnsupportedStrategy { strategy, .. } => {
+                format!("unsupported merge strategy '{strategy}'")
+            }
+        }
+    }
+
+    /// Builds an unsupported strategy error for the given backend and strategy.
+    pub fn unsupported_strategy(backend: &BackendId, strategy: &str) -> Self {
+        VcsError::UnsupportedStrategy {
+            backend: backend.clone(),
+            strategy: strategy.to_string(),
         }
     }
 }
@@ -87,6 +108,11 @@ pub trait Vcs: Send + Sync {
 
     /// Creates a commit from the provided paths and returns its id.
     fn commit(&self, message: &str, name: &str, email: &str, paths: &[PathBuf]) -> Result<String>;
+    /// Returns the capabilities advertised by this backend.
+    fn caps(&self) -> Result<VcsCaps> {
+        Ok(VcsCaps::default())
+    }
+
     /// Creates a commit from the current index and returns its id.
     fn commit_index(&self, message: &str, name: &str, email: &str) -> Result<String>;
     /// Returns status details for files and ahead/behind counts.
@@ -139,8 +165,20 @@ pub trait Vcs: Send + Sync {
     fn rename_branch(&self, old: &str, new: &str) -> Result<()>;
     /// Merges a branch into the current branch.
     fn merge_into_current(&self, name: &str) -> Result<()>;
-    /// Merges a branch into the current branch with an optional message.
-    fn merge_into_current_with_message(&self, name: &str, message: Option<&str>) -> Result<()> {
+    /// Merges a branch into the current branch with an optional message and strategy.
+    fn merge_into_current_with_message(
+        &self,
+        name: &str,
+        message: Option<&str>,
+        strategy: Option<&str>,
+    ) -> Result<()> {
+        // Reject non-merge strategies by default — backends that support them
+        // override this method and advertise via caps.
+        if let Some(s) = strategy
+            && s != "merge"
+        {
+            return Err(VcsError::unsupported_strategy(&self.id(), s));
+        }
         let _ = message;
         self.merge_into_current(name)
     }
