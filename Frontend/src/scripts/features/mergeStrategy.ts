@@ -39,6 +39,7 @@ export function promptMergeStrategy(branchName: string, targetBranch: string): P
   hydrate('merge-strategy-modal');
   wireMergeStrategyModal();
 
+  const modal = document.getElementById('merge-strategy-modal');
   const hintEl = document.getElementById('merge-strategy-hint');
   if (hintEl) {
     hintEl.textContent = `Choose how to merge '${branchName}' into '${targetBranch}'.`;
@@ -48,6 +49,14 @@ export function promptMergeStrategy(branchName: string, targetBranch: string): P
     const prev = pendingResolve;
     pendingResolve = resolve;
     if (prev) prev(null);
+
+    // Resolve with null on any dismiss path (backdrop click, cancel, Escape)
+    const onClosed = () => {
+      resolvePending(null);
+      modal?.removeEventListener('modal:closed', onClosed);
+    };
+    modal?.addEventListener('modal:closed', onClosed);
+
     openModal('merge-strategy-modal');
   });
 }

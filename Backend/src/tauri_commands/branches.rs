@@ -385,9 +385,9 @@ pub async fn vcs_rename_branch(
 ///
 /// # Returns
 /// - `Ok(bool)` indicating whether merge strategies are supported.
-pub async fn vcs_merge_strategy_supported(state: State<'_, AppState>) -> Result<bool, String> {
+pub async fn vcs_merge_strategies(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("vcs_merge_strategy_supported", repo, move |repo| {
+    run_repo_task("vcs_merge_strategies", repo, move |repo| {
         let caps = repo.inner().caps().map_err(|e| e.to_string())?;
         Ok(caps.merge_strategies)
     })
@@ -415,7 +415,7 @@ pub async fn vcs_merge_branch(
         return Err("Branch name cannot be empty".to_string());
     }
     // Validate strategy before dispatching
-    let validated_strategy = match strategy.as_deref() {
+    let validated_strategy: Option<String> = match strategy.as_deref() {
         None | Some("merge") => None,
         Some(s) if s.trim().is_empty() => {
             return Err("Merge strategy cannot be empty".to_string());
@@ -427,18 +427,18 @@ pub async fn vcs_merge_branch(
             ));
         }
     };
-    let needs_caps_check = validated_strategy.is_some();
 
     let repo = current_repo_or_err(&state)?;
     let branch = name.to_string();
     let template = backend_merge_message_template(&repo.id());
-    let strategy_clone = validated_strategy.clone();
     run_repo_task("vcs_merge_branch", repo, move |repo| {
-        // Backend-side capability guard: reject squash/rebase if unsupported
-        if needs_caps_check {
+        // Backend-side capability guard: reject strategy if not in supported list
+        if let Some(ref strat) = validated_strategy {
             let caps = repo.inner().caps().map_err(|e| e.to_string())?;
-            if !caps.merge_strategies {
-                return Err("Backend does not support merge strategies".to_string());
+            if !caps.merge_strategies.iter().any(|s| s == strat) {
+                return Err(format!(
+                    "Backend does not support merge strategy '{strat}'"
+                ));
             }
         }
 
@@ -483,7 +483,7 @@ pub async fn vcs_merge_branch(
             ))
         };
 
-        vcs.merge_into_current_with_message(&branch, message.as_deref(), strategy_clone.as_deref())
+        vcs.merge_into_current_with_message(&branch, message.as_deref(), validated_strategy.as_deref())
             .map_err(|e| e.to_string())
     })
     .await

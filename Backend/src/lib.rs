@@ -419,7 +419,7 @@ fn build_invoke_handler<R: tauri::Runtime>()
         tauri_commands::vcs_launch_merge_tool,
         tauri_commands::vcs_delete_branch,
         tauri_commands::vcs_merge_branch,
-        tauri_commands::vcs_merge_strategy_supported,
+        tauri_commands::vcs_merge_strategies,
         tauri_commands::vcs_merge_context,
         tauri_commands::vcs_merge_abort,
         tauri_commands::vcs_merge_continue,

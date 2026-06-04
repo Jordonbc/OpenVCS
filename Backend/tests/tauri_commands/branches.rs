@@ -170,7 +170,7 @@ fn build_vcs_branches_app() -> (tauri::App<tauri::test::MockRuntime>, Arc<TestVc
             super::vcs_merge_continue,
             super::vcs_set_upstream,
             super::vcs_merge_branch,
-            super::vcs_merge_strategy_supported,
+            super::vcs_merge_strategies,
         ])
         .build(mock_context(noop_assets()))
         .expect("build branches test app");
@@ -357,7 +357,7 @@ fn vcs_merge_branch_rejects_unsupported_strategy() {
     let res = invoke_cmd(&wv, "vcs_merge_branch", body);
     assert!(res.is_err(), "squash should be rejected on non-Git backend");
     let err_str = format!("{:?}", res);
-    assert!(err_str.contains("does not support merge strategies"), "unexpected error: {err_str}");
+    assert!(err_str.contains("does not support merge strategy"), "unexpected error: {err_str}");
 }
 
 #[test]
@@ -374,15 +374,15 @@ fn vcs_merge_branch_rejects_unknown_strategy() {
 }
 
 #[test]
-fn vcs_merge_strategy_supported_returns_false_for_test_backend() {
+fn vcs_merge_strategies_returns_empty_for_test_backend() {
     register_test_backend("test-vcs");
     let (app, _) = build_vcs_branches_app();
     let wv = test_webview(&app);
 
     let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
-    let res = invoke_cmd(&wv, "vcs_merge_strategy_supported", body);
+    let res = invoke_cmd(&wv, "vcs_merge_strategies", body);
     assert!(res.is_ok(), "caps query should succeed: {:?}", res);
     let value = res.unwrap();
-    let data = value.deserialize::<bool>().expect("should deserialize bool");
-    assert!(!data, "test backend should not support merge strategies");
+    let data = value.deserialize::<Vec<String>>().expect("should deserialize string list");
+    assert!(data.is_empty(), "test backend should have no merge strategies");
 }
