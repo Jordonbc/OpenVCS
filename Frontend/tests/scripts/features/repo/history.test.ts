@@ -420,7 +420,7 @@ describe('renderHistoryList', () => {
     expect(items.map((item) => item.label)).toContain('Plugin inspect')
     expect(items.map((item) => item.label)).toContain('Cherry-pick to branch')
     expect(items.map((item) => item.label)).toContain('Revert commit')
-    expect(items.map((item) => item.label)).toContain('Undo to this commit')
+    expect(items.map((item) => item.label)).toContain('Undo this commit')
 
     await items.find((item) => item.label === 'Copy hash')?.action?.()
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('abcdef123456')
@@ -441,9 +441,10 @@ describe('renderHistoryList', () => {
     expect(hydrateStatus).toHaveBeenCalled()
     expect(hydrateCommits).toHaveBeenCalled()
 
-    await items.find((item) => item.label === 'Undo to this commit')?.action?.()
+    await items.find((item) => item.label === 'Undo this commit')?.action?.()
     expect((window as any).__TAURI__.core.invoke).toHaveBeenCalledWith('vcs_undo_to_commit', {
       id: 'abcdef123456',
+      parent: true,
     })
   })
 })
@@ -882,6 +883,8 @@ describe('undo action failure', () => {
       return undefined;
     });
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { confirmBool } = await import('@scripts/lib/confirm');
+    vi.mocked(confirmBool).mockResolvedValue(true);
     const { renderHistoryList } = await loadHistoryModule();
     const { state, prefs } = await loadStateModule();
     const { buildCtxMenu } = await import('@scripts/lib/menu');
@@ -897,8 +900,8 @@ describe('undo action failure', () => {
     const row = document.querySelector('#file-list li.row.commit') as HTMLElement;
     row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 20 }));
     const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
-    await items.find((i: any) => i.label === 'Undo to this commit')?.action?.();
-    expect(notify).toHaveBeenCalledWith('Undo failed');
+    await items.find((i: any) => i.label === 'Undo this commit')?.action?.();
+    expect(notify).toHaveBeenCalledWith('Undo failed: Error: undo fail');
     errorSpy.mockRestore();
   });
 });

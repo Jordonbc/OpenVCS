@@ -112,7 +112,7 @@ describe('toggleFilePick', () => {
     expect(state.selectedFiles.has('test.txt')).toBe(true);
   });
 
-  it('clears implicit select-all before explicit file pick', async () => {
+  it('disables implicit select-all on explicit file pick without clearing other files', async () => {
     const { toggleFilePick } = await import('@scripts/features/repo/diffSelection');
     const { state } = await import('@scripts/state/state');
     state.selectedFiles = new Set(['a.txt', 'b.txt']);
@@ -123,7 +123,7 @@ describe('toggleFilePick', () => {
 
     toggleFilePick('test.txt', true);
 
-    expect(Array.from(state.selectedFiles).sort()).toEqual(['test.txt']);
+    expect(Array.from(state.selectedFiles).sort()).toEqual(['a.txt', 'b.txt', 'test.txt']);
     expect(state.defaultSelectAll).toBe(false);
     expect(state.selectionImplicitAll).toBe(false);
   });
