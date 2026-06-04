@@ -378,13 +378,15 @@ pub async fn vcs_rename_branch(
 }
 
 #[tauri::command]
-/// Returns whether the current VCS backend supports merge strategy selection.
+/// Returns the merge strategies advertised by the current VCS backend.
+///
+/// An empty list means only the default merge strategy is available.
 ///
 /// # Parameters
 /// - `state`: Shared application state.
 ///
 /// # Returns
-/// - `Ok(bool)` indicating whether merge strategies are supported.
+/// - `Ok(Vec<String>)` — supported strategy names (e.g. `"squash"`, `"rebase"`).
 pub async fn vcs_merge_strategies(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let repo = current_repo_or_err(&state)?;
     run_repo_task("vcs_merge_strategies", repo, move |repo| {
