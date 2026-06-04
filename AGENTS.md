@@ -1,5 +1,20 @@
 # Repository Guidelines
 
+## VCS-agnostic architecture (CRITICAL)
+
+OpenVCS is **VCS-agnostic** — the desktop app and its runtime MUST work identically across any version control system (Git, Mercurial, Pijul, Jujutsu, etc.).
+
+**Rules for this repo:**
+
+1. **NO VCS assumptions in app code.** The backend and frontend must never import, call, or assume any specific VCS's internals, CLI flags, error messages, or data formats. All VCS operations are delegated to plugins via the JSON-RPC plugin protocol.
+2. **VCS-specific logic lives in plugin repos.** The Git plugin ([`Open-VCS/OpenVCS-Plugin-Git`](https://github.com/Open-VCS/OpenVCS-Plugin-Git), package `@openvcs/git-plugin`, ID `openvcs.git`, backend `git`) owns all Git-specific behavior. This repo only talks to plugins through the generic host/plugin contract.
+3. **Use generic VCS terminology in the UI.** Labels, icons, error messages, and UI copy should use VCS-neutral terms (e.g., "commit" not "git commit", "branch" not "git branch", "remote" not "origin"). Avoid VCS-specific jargon in this repo.
+4. **Plugin protocol is the abstraction boundary.** When adding new VCS features, extend the plugin protocol in `Backend/src/plugin_runtime/protocol.rs` with generic method names. Do not leak VCS-specific concepts into the host runtime.
+5. **Plugin SDK reflects the contract.** The SDK repo ([`Open-VCS/OpenVCS-SDK`](https://github.com/Open-VCS/OpenVCS-SDK)) must provide VCS-agnostic interfaces that plugin authors implement. When this repo calls a plugin method, it must not know or care which VCS backs the plugin.
+6. **Validation.** Code review must catch: VCS CLI calls outside the plugin system, VCS-specific references in UI copy, VCS-specific types leaking into the host protocol, and tests that assume a single VCS.
+
+> **Exception:** VCS plugin repos (e.g. [`Open-VCS/OpenVCS-Plugin-Git`](https://github.com/Open-VCS/OpenVCS-Plugin-Git)) are explicitly VCS-specific. This repo is VCS-agnostic.
+
 ## Project structure & module organization
 
 - `Backend/`: Rust + Tauri backend (`src/`), commands (`src/tauri_commands/`), plugin runtime (`src/plugin_runtime/`), and config-driven plugin sync support (`scripts/`).
