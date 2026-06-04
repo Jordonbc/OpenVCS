@@ -436,9 +436,7 @@ pub async fn vcs_merge_branch(
         if let Some(ref strat) = validated_strategy {
             let caps = repo.inner().caps().map_err(|e| e.to_string())?;
             if !caps.merge_strategies.iter().any(|s| s == strat) {
-                return Err(format!(
-                    "Backend does not support merge strategy '{strat}'"
-                ));
+                return Err(format!("Backend does not support merge strategy '{strat}'"));
             }
         }
 
@@ -483,8 +481,12 @@ pub async fn vcs_merge_branch(
             ))
         };
 
-        vcs.merge_into_current_with_message(&branch, message.as_deref(), validated_strategy.as_deref())
-            .map_err(|e| e.to_string())
+        vcs.merge_into_current_with_message(
+            &branch,
+            message.as_deref(),
+            validated_strategy.as_deref(),
+        )
+        .map_err(|e| e.to_string())
     })
     .await
 }

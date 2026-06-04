@@ -238,19 +238,12 @@ pub struct HunkSelection {
 
 /// Describes the capabilities advertised by a VCS backend.
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Default)]
 pub struct VcsCaps {
     /// Merge strategies the backend supports (values like "merge", "squash", "rebase").
     /// Empty means only default merge is supported.
     #[serde(default)]
     pub merge_strategies: Vec<String>,
-}
-
-impl Default for VcsCaps {
-    fn default() -> Self {
-        Self {
-            merge_strategies: Vec::new(),
-        }
-    }
 }
 
 

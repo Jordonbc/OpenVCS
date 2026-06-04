@@ -175,9 +175,10 @@ pub trait Vcs: Send + Sync {
         // Reject non-merge strategies by default — backends that support them
         // override this method and advertise via caps.
         if let Some(s) = strategy
-            && s != "merge" {
-                return Err(VcsError::unsupported_strategy(&self.id(), s));
-            }
+            && s != "merge"
+        {
+            return Err(VcsError::unsupported_strategy(&self.id(), s));
+        }
         let _ = message;
         self.merge_into_current(name)
     }
