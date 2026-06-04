@@ -309,10 +309,26 @@ export async function renderPluginMenus(modal: HTMLElement): Promise<void> {
         panelsScroll.appendChild(panel);
     }
 
+    // Fetch which plugins have backend-declared settings so we can skip
+    // plugins that have no configurable settings at all.
+    let pluginsWithSettings: Set<string> | null = null;
+    try {
+        const ids = await TAURI.invoke<string[]>('list_plugins_with_settings');
+        pluginsWithSettings = new Set(ids.map((id) => id.toLowerCase()));
+    } catch {
+        // If the endpoint is unavailable, fall back to showing all plugins.
+    }
+
     for (const summary of Array.isArray(pluginSummaries) ? pluginSummaries : []) {
         const pluginId = String(summary?.id || '').trim();
         const pluginKey = pluginId.toLowerCase();
         if (!pluginId) continue;
+
+        // Skip plugins that have no backend-declared settings (they would
+        // only show a "No settings available" placeholder).
+        if (pluginsWithSettings !== null && !pluginsWithSettings.has(pluginKey)) {
+            continue;
+        }
 
         const section = `plugin-settings-${toKebab(pluginId)}`;
         const navLi = document.createElement('li');

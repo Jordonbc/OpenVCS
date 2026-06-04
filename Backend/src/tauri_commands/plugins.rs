@@ -606,6 +606,41 @@ pub fn reset_plugin_settings(state: State<'_, AppState>, plugin_id: String) -> R
     Ok(())
 }
 
+/// Returns plugin IDs that have declared non-empty settings defaults.
+///
+/// Only enabled plugins with loaded, running runtimes are checked.
+///
+/// # Parameters
+/// - `state`: Application state.
+///
+/// # Returns
+/// - `Ok(Vec<String>)` of plugin IDs with settings.
+/// - `Err(String)` when runtime access fails.
+#[tauri::command]
+pub fn list_plugins_with_settings(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let cfg = state.config();
+    let mut out: Vec<String> = Vec::new();
+
+    for summary in plugins::list_plugins() {
+        let plugin_id = summary.id.trim().to_string();
+        if plugin_id.is_empty() {
+            continue;
+        }
+        if !cfg.is_plugin_enabled(&plugin_id, summary.default_enabled) {
+            continue;
+        }
+
+        if let Ok((defaults, _)) = resolve_plugin_settings_defaults(&state, &cfg, &plugin_id) {
+            if !defaults.is_empty() {
+                out.push(plugin_id);
+            }
+        }
+    }
+
+    out.sort();
+    Ok(out)
+}
+
 /// Resolves plugin settings defaults from runtime hooks.
 ///
 /// If the plugin is disabled, this returns early without starting the runtime
