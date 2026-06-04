@@ -214,11 +214,23 @@ export function bindBranchUI() {
             if (name === cur) { notify('Cannot merge a branch into itself'); return; }
             const ok = await confirmBool(`Merge '${name}' into '${cur}'?`);
             if (!ok) return;
+
+            const statusEl = document.getElementById('status');
+            const setBusy = (msg: string) => {
+                if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
+            };
+            const clearBusy = () => {
+                if (statusEl) statusEl.classList.remove('busy');
+            };
+
             try {
+                setBusy('Merging…');
                 await TAURI.invoke('vcs_merge_branch', { name });
+                clearBusy();
                 notify(`Merged branch '${name}' into '${cur}'`);
                 await Promise.allSettled([renderList(), loadBranches()]);
             } catch (e) {
+                clearBusy();
                 const msg = String(e || '');
                 const looksLikeConflict =
                     /CONFLICT/i.test(msg) ||
