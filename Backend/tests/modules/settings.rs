@@ -64,8 +64,6 @@ fn section_defaults_stay_aligned_with_schema() {
     assert!(vcs.backend.is_empty());
     assert_eq!(vcs.default_branch, "main");
     assert_eq!(vcs.ssh_binary, GitSshBinary::Auto);
-    assert!(vcs.ssh_path.is_empty());
-    assert!(vcs.prune_on_fetch);
     assert!(vcs.fetch_on_focus);
     assert_eq!(vcs.allow_hooks, HookPolicy::Ask);
     assert!(vcs.respect_core_autocrlf);

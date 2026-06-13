@@ -138,8 +138,6 @@ pub struct Vcs {
     #[serde(default)]
     pub ssh_path: String,
     #[serde(default)]
-    pub prune_on_fetch: bool,
-    #[serde(default)]
     pub fetch_on_focus: bool,
     #[serde(default)]
     pub allow_hooks: HookPolicy,
@@ -163,7 +161,6 @@ impl Default for Vcs {
             default_branch: "main".into(),
             ssh_binary: GitSshBinary::Auto,
             ssh_path: String::new(),
-            prune_on_fetch: true,
             fetch_on_focus: true,
             allow_hooks: HookPolicy::Ask,
             respect_core_autocrlf: true,

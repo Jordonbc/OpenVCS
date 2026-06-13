@@ -139,7 +139,10 @@ impl NodePluginRuntimeInstance {
 
     /// Calls `vcs.fetch`.
     pub fn vcs_fetch(&self, remote: &str, refspec: &str) -> Result<(), String> {
-        let params = self.session_params(json!({ "remote": remote, "refspec": refspec }))?;
+        let params = self.session_params(json!({
+            "remote": remote,
+            "refspec": refspec,
+        }))?;
         self.rpc_call_unit(Methods::VCS_FETCH, params)
     }
 

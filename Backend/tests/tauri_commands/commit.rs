@@ -162,12 +162,7 @@ impl Vcs for TestVcs {
     fn remove_remote(&self, _name: &str) -> Result<(), VcsError> {
         self.unsupported()
     }
-    fn fetch(
-        &self,
-        _remote: &str,
-        _refspec: &str,
-        _on: Option<models::OnEvent>,
-    ) -> Result<(), VcsError> {
+    fn fetch(&self, _remote: &str, _refspec: &str, _on: Option<models::OnEvent>) -> Result<(), VcsError> {
         self.unsupported()
     }
     fn push(
