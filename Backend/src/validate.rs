@@ -33,9 +33,6 @@ fn normalize_and_probe(input: &str) -> (String, bool, bool) {
     (s.clone(), p.exists(), p.is_dir())
 }
 
-/// VCS plugins validate URLs via the protocol. This just checks non-empty so the
-/// frontend doesn't send obviously blank input to the plugin.
-
 /// Checks whether a string looks like an absolute filesystem path.
 ///
 /// # Parameters
