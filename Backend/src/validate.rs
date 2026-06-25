@@ -57,6 +57,16 @@ fn looks_like_path(s: &str) -> bool {
     WIN_ABS_RE.is_match(s)
 }
 
+/// Validates whether a string looks like a supported VCS URL.
+///
+/// VCS plugins validate URLs via the protocol. This just checks non-empty so the
+/// frontend doesn't send obviously blank input to the plugin.
+///
+/// # Parameters
+/// - `url`: Candidate URL string.
+///
+/// # Returns
+/// - Validation result with `ok` and optional reason.
 pub fn validate_vcs_url(url: String) -> Validation {
     let trimmed = url.trim();
     if trimmed.is_empty() {
