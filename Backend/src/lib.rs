@@ -13,6 +13,7 @@ use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_updater::UpdaterExt;
 
 use crate::core::BackendId;
+use crate::state::RecentEntry;
 
 mod app_identity;
 mod config_watcher;
@@ -43,39 +44,10 @@ fn local_dotenv_path() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.env")
 }
 
-/// Resolves the preferred backend from a configured default and available backend ids.
-fn resolve_preferred_backend_id(
-    configured_default: &str,
-    available_backend_ids: &[BackendId],
-) -> Option<BackendId> {
-    let desired = configured_default.trim();
-    if !desired.is_empty() {
-        let desired_backend = BackendId::from(desired.to_string());
-        if available_backend_ids
-            .iter()
-            .any(|backend| backend.as_ref() == desired_backend.as_ref())
-        {
-            return Some(desired_backend);
-        }
-    }
-
-    let mut backends = available_backend_ids.to_vec();
-    backends.sort_by(|left, right| left.as_ref().cmp(right.as_ref()));
-    backends.into_iter().next()
-}
-
-/// Returns the first recent repository path that still exists on disk.
-fn first_existing_recent_repo(paths: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
-    paths.iter().find(|path| path.exists()).cloned()
-}
-
 /// Loads `Client/.env` for local development without overwriting existing env vars.
-///
-/// Missing .env file is silently ignored. Malformed or unreadable .env files
-/// are reported with context for debugging before structured logging is ready.
+/// Missing .env file is silently ignored.
 fn load_local_dotenv() {
     let dotenv_path = local_dotenv_path();
-
     match dotenvy::from_path(&dotenv_path) {
         Ok(_) => {}
         Err(dotenvy::Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -89,32 +61,9 @@ fn load_local_dotenv() {
     }
 }
 
-/// Selects preferred backend from settings or first available plugin backend.
-///
-/// # Parameters
-/// - `_cfg`: Current application config.
-///
-/// # Returns
-/// - `Some(BackendId)` when a backend is available.
-/// - `None` otherwise.
-fn preferred_vcs_backend_id(_cfg: &settings::AppConfig) -> Option<BackendId> {
-    let available_backend_ids = crate::plugin_vcs_backends::list_plugin_vcs_backends()
-        .ok()
-        .map(|backends| {
-            backends
-                .into_iter()
-                .map(|backend| backend.backend_id)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    let resolved =
-        resolve_preferred_backend_id(&_cfg.general.default_backend, &available_backend_ids)?;
-    if crate::plugin_vcs_backends::has_plugin_vcs_backend(&resolved) {
-        Some(resolved)
-    } else {
-        None
-    }
+/// Returns the first recent repository entry that still exists on disk.
+fn first_existing_recent_repo(entries: &[RecentEntry]) -> Option<RecentEntry> {
+    entries.iter().find(|e| e.path.exists()).cloned()
 }
 
 /// Attempt to reopen the most recent repository at startup if the
@@ -129,41 +78,38 @@ fn try_reopen_last_repo<R: tauri::Runtime>(app_handle: &tauri::AppHandle<R>) {
     use crate::repo::Repo;
     use std::path::Path;
 
-    let state = app_handle.state::<state::AppState>();
+    let state = app_handle.state::<crate::state::AppState>();
     let app_config = state.config();
     if !app_config.general.reopen_last_repos {
         return;
     }
 
     let recents = state.recents();
-    if let Some(path) = first_existing_recent_repo(&recents) {
-        let Some(backend) = preferred_vcs_backend_id(&app_config) else {
-            log::warn!("startup reopen: no VCS backend available");
+    if let Some(recent) = first_existing_recent_repo(&recents) {
+        let backend = BackendId::from(recent.backend_id.as_str());
+        if !crate::plugin_vcs_backends::has_plugin_vcs_backend(&backend) {
+            log::warn!("startup reopen: backend '{}' not available", backend);
             return;
-        };
+        }
 
-        let path_str = path.to_string_lossy().to_string();
-        if crate::plugin_vcs_backends::has_plugin_vcs_backend(&backend) {
-            let runtime_manager = state.plugin_runtime();
-            match crate::plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
-                runtime_manager.as_ref(),
-                &app_config,
-                backend,
-                Path::new(&path),
-            ) {
-                Ok(backend_handle) => {
-                    let existing_repo = Arc::new(Repo::new(backend_handle));
-                    state.set_current_repo(existing_repo);
-                    if let Err(error) = app_handle.emit("repo:selected", &path_str) {
-                        log::warn!("startup reopen: failed to emit repo:selected: {}", error);
-                    }
-                }
-                Err(error) => {
-                    log::warn!("startup reopen: failed to open repo: {}", error)
+        let path_str = recent.path.to_string_lossy().to_string();
+        let runtime_manager = state.plugin_runtime();
+        match crate::plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
+            runtime_manager.as_ref(),
+            &app_config,
+            backend,
+            Path::new(&recent.path),
+        ) {
+            Ok(backend_handle) => {
+                let existing_repo = Arc::new(Repo::new(backend_handle));
+                state.set_current_repo(existing_repo);
+                if let Err(error) = app_handle.emit("repo:selected", &path_str) {
+                    log::warn!("startup reopen: failed to emit repo:selected: {}", error);
                 }
             }
-        } else {
-            log::warn!("startup reopen: backend not available");
+            Err(error) => {
+                log::warn!("startup reopen: failed to open repo: {}", error)
+            }
         }
     }
 }

@@ -3,11 +3,19 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@scripts/lib/tauri', () => ({
-  TAURI: {
-    invoke: vi.fn(),
-  },
-}));
+vi.mock('@scripts/lib/tauri', () => {
+  const invokeFn = vi.fn();
+  // Proxy so list_vcs_backends_cmd is always handled without consuming mockResolvedValueOnce
+  const handler = new Proxy(invokeFn, {
+    apply(target, thisArg, args) {
+      if (args[0] === 'list_vcs_backends_cmd') {
+        return Promise.resolve([['git', 'Git']]);
+      }
+      return Reflect.apply(target, thisArg, args);
+    }
+  });
+  return { TAURI: { invoke: handler } };
+});
 
 vi.mock('@scripts/lib/notify', () => ({
   notify: vi.fn(),
@@ -50,11 +58,13 @@ function mountCommandModal() {
       <section id="sheet-clone">
         <input id="clone-url" />
         <input id="clone-path" />
+        <select id="clone-backend"><option value="git">Git</option></select>
         <button id="browse-clone">Browse clone</button>
         <button id="do-clone" disabled>Clone</button>
       </section>
       <section id="sheet-add" class="hidden">
         <input id="add-path" />
+        <select id="add-backend"><option value="git">Git</option></select>
         <button id="browse-add">Browse add</button>
         <button id="do-add" disabled>Add</button>
       </section>
@@ -212,6 +222,7 @@ describe('bindCommandSheet', () => {
     expect(TAURI.invoke).toHaveBeenCalledWith('clone_repo', {
       url: 'https://example.com/repo.git',
       dest: '/tmp/repo',
+      backendId: 'git',
     });
     expect(notify).toHaveBeenCalledWith('Cloned https://example.com/repo.git → /tmp/repo');
     expect(closeModal).toHaveBeenCalledWith('command-modal');
@@ -230,7 +241,7 @@ describe('bindCommandSheet', () => {
     (document.getElementById('do-add') as HTMLButtonElement).click();
     await Promise.resolve();
 
-    expect(TAURI.invoke).toHaveBeenCalledWith('add_repo', { path: '/tmp/repo' });
+    expect(TAURI.invoke).toHaveBeenCalledWith('add_repo', { path: '/tmp/repo', backendId: 'git' });
     expect(notify).toHaveBeenCalledWith('Add failed');
   });
 

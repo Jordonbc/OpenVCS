@@ -51,6 +51,12 @@ impl Methods {
     pub const VCS_CLOSE: &'static str = "vcs.close";
     /// Clones a repository.
     pub const VCS_CLONE_REPO: &'static str = "vcs.clone_repo";
+    /// Validates whether a URL is supported by this VCS backend.
+    /// Returns { ok: bool, reason?: string }.
+    pub const VCS_VALIDATE_URL: &'static str = "vcs.validate_url";
+    /// Validates whether a local path is a valid repository for this backend.
+    /// Returns { ok: bool, reason?: string }.
+    pub const VCS_VALIDATE_PATH: &'static str = "vcs.validate_path";
     /// Returns session workdir.
     pub const VCS_GET_WORKDIR: &'static str = "vcs.get_workdir";
     /// Returns current branch.

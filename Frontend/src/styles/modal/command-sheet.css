@@ -115,6 +115,62 @@
     font-weight: 500;
 }
 
+/* Title row with h3 + backend selector */
+#command-modal .sheet-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    margin-bottom: 1rem;
+}
+
+#command-modal .sheet-title-row h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--fg, #eaeaea);
+}
+
+#command-modal .backend-field {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    gap: .4rem;
+    margin-top: .4rem;
+}
+
+#command-modal .backend-field label {
+    margin-bottom: 0;
+    font-size: .9rem;
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+#command-modal .backend-select {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 100px;
+    max-width: 180px;
+    padding: .35rem 1rem;
+    border-radius: var(--r-md, 8px);
+    border: 1px solid var(--border, #3a3a3a);
+    background: var(--surface, #1e1e1e);
+    color: var(--fg, #eaeaea);
+    font-size: .9rem;
+    cursor: pointer;
+    text-align: right;
+    text-align-last: right;
+    direction: rtl;
+    unicode-bidi: plaintext;
+    -webkit-padding-start: 1rem;
+    -webkit-padding-end: 0;
+}
+
+#command-modal .backend-select:focus {
+    outline: 2px solid var(--accent, #5aa2ff);
+    outline-offset: 1px;
+}
+
 /* Rows that contain [input + button] */
 #command-modal .input-row {
     display: flex;

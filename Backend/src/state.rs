@@ -18,9 +18,17 @@ use serde::{Deserialize, Serialize};
 /// Default number of recent repositories stored when settings are missing or invalid.
 pub const MAX_RECENTS: usize = 10;
 
+/// A recent repository entry with its VCS backend ID.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RecentEntry {
+    /// Repository path.
+    pub path: PathBuf,
+    /// VCS backend ID that opened this repo (e.g. "git", "lore").
+    pub backend_id: String,
+}
+
 /// Central application state.
-/// Keeps track of the currently open repo and MRU recents.
-/// Backend choice is tied to each repo (via `Repo::id()`), not stored globally.
+/// Keeps track of the currently open repo and MRU recents with backend IDs.
 #[derive(Default)]
 pub struct AppState {
     /// Global settings (loaded on startup), thread-safe.
@@ -35,8 +43,8 @@ pub struct AppState {
     /// Currently open repository
     current_repo: RwLock<Option<Arc<Repo>>>,
 
-    /// MRU list for “Recents”
-    recents: RwLock<Vec<PathBuf>>,
+    /// MRU list for "Recents" — each entry stores path + backend_id
+    recents: RwLock<Vec<RecentEntry>>,
 
     /// Long-lived plugin process runtime manager.
     plugin_runtime: Arc<PluginRuntimeManager>,
@@ -152,10 +160,11 @@ impl AppState {
     /// - `()`.
     pub fn set_current_repo(&self, repo: Arc<Repo>) {
         let path = repo.inner().workdir().to_path_buf();
+        let backend_id = repo.id().as_ref().to_string();
 
         info!(
             "AppState: set current repo (backend={}, path={})",
-            repo.id(),
+            backend_id,
             path.display()
         );
 
@@ -163,8 +172,11 @@ impl AppState {
 
         // Update recents (front insert, unique, cap N from settings)
         let mut r = self.recents.write();
-        r.retain(|p| p != &path);
-        r.insert(0, path.clone());
+        r.retain(|entry| entry.path != path);
+        r.insert(0, RecentEntry {
+            path: path.clone(),
+            backend_id: backend_id.clone(),
+        });
         let limit = self.config.read().ux.recents_limit as usize;
         let max_items = if limit == 0 { MAX_RECENTS } else { limit };
         if r.len() > max_items {
@@ -174,7 +186,7 @@ impl AppState {
         debug!(
             "AppState: recents -> [{}]",
             r.iter()
-                .map(|p| p.display().to_string())
+                .map(|entry| format!("{} ({})", entry.path.display(), entry.backend_id))
                 .collect::<Vec<_>>()
                 .join(", ")
         );
@@ -209,8 +221,8 @@ impl AppState {
     /// Returns a snapshot of the recent repository list.
     ///
     /// # Returns
-    /// - A cloned MRU-ordered list of repository paths.
-    pub fn recents(&self) -> Vec<PathBuf> {
+    /// - A cloned MRU-ordered list of recent entries (path + backend_id).
+    pub fn recents(&self) -> Vec<RecentEntry> {
         self.recents.read().clone()
     }
 
@@ -225,13 +237,14 @@ impl AppState {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Recents persistence (outside config dir)
-// File format: JSON array of objects { "path": "..." } for forward compatibility.
+// File format: JSON array of objects { path, backend_id }
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// On-disk serialization format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RecentFileEntry {
-    /// Stored repository path string.
     path: String,
+    backend_id: String,
 }
 
 /// Returns the path for persisted recent repositories JSON file.
@@ -249,30 +262,37 @@ fn recents_file_path() -> PathBuf {
 /// Loads recent repositories from disk.
 ///
 /// # Returns
-/// - `Ok(Vec<PathBuf>)` loaded recent paths.
+/// - `Ok(Vec<RecentEntry>)` loaded recent entries (path + backend_id).
 /// - `Err(String)` on read failures.
-fn load_recents_from_disk() -> Result<Vec<PathBuf>, String> {
+fn load_recents_from_disk() -> Result<Vec<RecentEntry>, String> {
     let p = recents_file_path();
     let data = match fs::read_to_string(&p) {
         Ok(s) => s,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(vec![]),
-        Err(e) => return Err(format!("read recents: {}", e)),
+        Err(e) => return Err(format!("read recents: {e}")),
     };
 
-    // Accept: [ { path }, ... ] or ["/path", ...]
-    let mut out: Vec<PathBuf> = Vec::new();
+    // Accept: [{path, backend_id}, ...] or legacy ["/path", ...]
+    let mut out: Vec<RecentEntry> = Vec::new();
     if let Ok(serde_json::Value::Array(items)) = serde_json::from_str::<serde_json::Value>(&data) {
         for it in items {
             match it {
-                serde_json::Value::String(s) if !s.trim().is_empty() => {
-                    out.push(PathBuf::from(s));
-                }
                 serde_json::Value::Object(map) => {
-                    if let Some(serde_json::Value::String(s)) = map.get("path")
-                        && !s.trim().is_empty()
-                    {
-                        out.push(PathBuf::from(s));
+                    let path = map.get("path").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+                    let backend_id = map.get("backend_id").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+                    if !path.is_empty() {
+                        out.push(RecentEntry {
+                            path: PathBuf::from(&path),
+                            backend_id: if backend_id.is_empty() { "git".into() } else { backend_id },
+                        });
                     }
+                }
+                serde_json::Value::String(s) if !s.trim().is_empty() => {
+                    // Legacy format: just a path — default to "git" for backward compat
+                    out.push(RecentEntry {
+                        path: PathBuf::from(s.trim()),
+                        backend_id: "git".into(),
+                    });
                 }
                 _ => {}
             }
@@ -284,12 +304,12 @@ fn load_recents_from_disk() -> Result<Vec<PathBuf>, String> {
 /// Persists recent repositories to disk.
 ///
 /// # Parameters
-/// - `list`: Recent repository paths to persist.
+/// - `list`: Recent repository entries (path + backend_id) to persist.
 ///
 /// # Returns
 /// - `Ok(())` on success.
 /// - `Err(String)` on serialization/write failures.
-fn save_recents_to_disk(list: &[PathBuf]) -> Result<(), String> {
+fn save_recents_to_disk(list: &[RecentEntry]) -> Result<(), String> {
     #[cfg(test)]
     crate::app_identity::assert_test_isolation();
     let p = recents_file_path();
@@ -298,8 +318,9 @@ fn save_recents_to_disk(list: &[PathBuf]) -> Result<(), String> {
     }
     let entries: Vec<RecentFileEntry> = list
         .iter()
-        .map(|pb| RecentFileEntry {
-            path: pb.to_string_lossy().to_string(),
+        .map(|e| RecentFileEntry {
+            path: e.path.to_string_lossy().to_string(),
+            backend_id: e.backend_id.clone(),
         })
         .collect();
     let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;

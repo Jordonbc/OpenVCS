@@ -3,13 +3,6 @@
 use std::path::Path;
 use std::sync::LazyLock;
 
-/// Regex pattern for scp-like VCS URLs.
-static SCP_LIKE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"^[\w.-]+@[\w.-]+:[\w./-]+(?:\.git)?$")
-        .expect("hardcoded SCP-like regex is valid")
-});
-
-/// Regex pattern for Windows absolute paths.
 static WIN_ABS_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r"^[A-Za-z]:[\\/]").expect("hardcoded Windows path regex is valid")
 });
@@ -40,51 +33,8 @@ fn normalize_and_probe(input: &str) -> (String, bool, bool) {
     (s.clone(), p.exists(), p.is_dir())
 }
 
-/// Returns whether a URL has a non-empty repository path segment.
-///
-/// # Parameters
-/// - `u`: Candidate URL string.
-/// - `scheme`: URL scheme prefix to strip.
-///
-/// # Returns
-/// - `true` when the scheme is present and at least one path segment exists.
-fn has_url_path_segment(u: &str, scheme: &str) -> bool {
-    let rest = u
-        .strip_prefix(scheme)
-        .unwrap_or_default()
-        .trim_end_matches('/');
-    rest.split_once('/')
-        .is_some_and(|(_, path)| !path.trim_matches('/').is_empty())
-}
-
-/// Heuristically checks whether a string looks like a VCS URL.
-///
-/// # Parameters
-/// - `u`: Candidate URL string.
-///
-/// # Returns
-/// - `true` when URL matches supported VCS URL forms.
-/// - `false` otherwise.
-fn is_probably_vcs_url(u: &str) -> bool {
-    let u = u.trim();
-    if u.is_empty() {
-        return false;
-    }
-
-    // http(s)://.../repo[.git]
-    if has_url_path_segment(u, "http://") || has_url_path_segment(u, "https://") {
-        return true;
-    }
-    // ssh://user@host/.../repo[.git]
-    if has_url_path_segment(u, "ssh://") {
-        return true;
-    }
-    // scp-like: git@host:org/repo[.git]
-    if SCP_LIKE_RE.is_match(u) {
-        return true;
-    }
-    false
-}
+/// VCS plugins validate URLs via the protocol. This just checks non-empty so the
+/// frontend doesn't send obviously blank input to the plugin.
 
 /// Checks whether a string looks like an absolute filesystem path.
 ///
@@ -107,27 +57,16 @@ fn looks_like_path(s: &str) -> bool {
     WIN_ABS_RE.is_match(s)
 }
 
-/// Validates whether a string looks like a supported VCS URL.
-///
-/// # Parameters
-/// - `url`: Candidate URL string.
-///
-/// # Returns
-/// - Validation result with `ok` and optional reason.
 pub fn validate_vcs_url(url: String) -> Validation {
-    if is_probably_vcs_url(&url) {
-        Validation {
-            ok: true,
-            reason: None,
-        }
-    } else {
-        Validation {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return Validation {
             ok: false,
-            reason: Some(
-                "Not a recognized VCS URL (http(s), ssh, or scp-like ending in .git)".into(),
-            ),
-        }
+            reason: Some("Enter a repository URL".into()),
+        };
     }
+    // Let the selected VCS plugin validate the URL format.
+    Validation { ok: true, reason: None }
 }
 
 /// Validates a repository path for add/open operations.
@@ -157,16 +96,8 @@ pub fn validate_add_path(path: String) -> Validation {
             reason: Some(format!("Not a directory: {norm}")),
         };
     }
-
-    // Optional: require repository marker present
-    let is_repo = Path::new(&norm).join(".git").exists();
-    if !is_repo {
-        return Validation {
-            ok: false,
-            reason: Some("Folder does not look like a repository (.git missing)".into()),
-        };
-    }
-
+    // Path is a directory; let the selected VCS backend determine
+    // whether it contains a valid repository.
     Validation {
         ok: true,
         reason: None,
@@ -182,10 +113,17 @@ pub fn validate_add_path(path: String) -> Validation {
 /// # Returns
 /// - Validation result with `ok` and optional reason.
 pub fn validate_clone_input(url: String, dest: String) -> Validation {
-    if !is_probably_vcs_url(&url) {
+    // URL non-empty check only — format validation is delegated to the VCS plugin.
+    if url.trim().is_empty() {
         return Validation {
             ok: false,
-            reason: Some("Invalid VCS URL".into()),
+            reason: Some("Enter a repository URL".into()),
+        };
+    }
+    if !looks_like_path(&dest) {
+        return Validation {
+            ok: false,
+            reason: Some("Destination must be an absolute path".into()),
         };
     }
     if !looks_like_path(&dest) {
@@ -216,12 +154,13 @@ pub fn validate_clone_input(url: String, dest: String) -> Validation {
             reason: Some("Destination is not a directory".into()),
         };
     }
-    // If directory exists, ensure it's empty-ish (no .git)
-    if Path::new(&norm).join(".git").exists() {
-        return Validation {
-            ok: false,
-            reason: Some("Destination already contains a repository".into()),
-        };
+    // If directory exists, warn when it's non-empty
+    if let Ok(mut rd) = std::fs::read_dir(Path::new(&norm)) {
+        if rd.next().is_none() {
+            // Empty directory — OK, clone will populate it
+        } else {
+            // Non-empty — still OK; let the backend decide if it can clone here
+        }
     }
     Validation {
         ok: true,

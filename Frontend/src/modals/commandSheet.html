@@ -44,15 +44,21 @@
                 id="sheet-clone"
                 role="tabpanel"
                 aria-labelledby="sheet-tab-clone">
-            <h3>Clone repository</h3>
+            <div class="sheet-title-row">
+                <h3>Clone repository</h3>
+                <div class="backend-field">
+                    <label for="clone-backend">VCS Backend</label>
+                    <select id="clone-backend" class="backend-select"></select>
+                </div>
+            </div>
 
             <div class="group">
-                <label for="clone-url">Source</label>
+                <label for="clone-url">Source URL</label>
                 <div class="input-row">
                     <input type="text" id="clone-url"
-                           placeholder="https://github.com/user/repo.git or git@github.com:user/repo.git" />
+                           placeholder="https://host.com/user/repo" />
                 </div>
-                <div class="hint" id="clone-url-hint">Enter a valid Git URL. Protocol will be detected automatically.</div>
+                <div class="hint" id="clone-url-hint">Enter a valid repository URL.</div>
             </div>
 
             <div class="group">
@@ -76,15 +82,21 @@
                 id="sheet-add"
                 role="tabpanel"
                 aria-labelledby="sheet-tab-add">
-            <h3>Add existing repository</h3>
+            <div class="sheet-title-row">
+                <h3>Add existing repository</h3>
+                <div class="backend-field">
+                    <label for="add-backend">VCS Backend</label>
+                    <select id="add-backend" class="backend-select"></select>
+                </div>
+            </div>
 
             <div class="group">
                 <label for="add-path">Repository folder</label>
                 <div class="input-row">
-                    <input type="text" id="add-path" placeholder="/path/to/repo (must contain .git)" />
+                    <input type="text" id="add-path" placeholder="/path/to/repo" />
                     <button class="pick" id="browse-add" type="button">Browse…</button>
                 </div>
-                <div class="hint" id="add-path-hint">Select a folder that already contains a Git repo.</div>
+                <div class="hint" id="add-path-hint">Select a folder that contains an existing repository.</div>
             </div>
 
             <div class="sheet-actions">

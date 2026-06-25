@@ -51,13 +51,6 @@ fn resolve_default_backend_id(
     backends.into_iter().next()
 }
 
-/// Extracts the display name used for a recent repository entry.
-fn recent_repo_name(path: &Path) -> Option<String> {
-    path.file_name()
-        .and_then(|segment| segment.to_str())
-        .map(|segment| segment.to_string())
-}
-
 #[derive(serde::Serialize)]
 /// Event payload emitted after selecting/opening a repository.
 struct RepoSelectedPayload {
@@ -360,6 +353,8 @@ pub struct RecentRepoDto {
     path: String,
     /// Last path segment used as a display name when available.
     name: Option<String>,
+    /// VCS backend ID that opened this repository.
+    backend: String,
 }
 
 #[tauri::command]
@@ -374,11 +369,14 @@ pub fn list_recent_repos(state: State<'_, AppState>) -> Vec<RecentRepoDto> {
     state
         .recents()
         .into_iter()
-        .map(|p| {
-            let name = recent_repo_name(&p);
+        .map(|entry| {
+            let name = entry.path.file_name()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_string());
             RecentRepoDto {
-                path: p.to_string_lossy().to_string(),
+                path: entry.path.to_string_lossy().to_string(),
                 name,
+                backend: entry.backend_id,
             }
         })
         .collect()

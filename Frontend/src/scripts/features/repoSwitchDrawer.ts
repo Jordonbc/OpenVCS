@@ -5,7 +5,7 @@ import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { hydrate, openModal, closeModal } from '../ui/modals';
 
-type Recent = { path: string; name?: string };
+type Recent = { path: string; name?: string; backend?: string };
 
 let drawerRoot: HTMLElement | null = null;
 let drawerDialog: HTMLDivElement | null = null;
@@ -92,8 +92,9 @@ function renderRecents() {
             const base = item.name || item.path.split(/[\\/]/).pop() || item.path;
             const label = escapeHTML(base);
             const escapedPath = escapeHTML(item.path);
+            const backendAttr = item.backend ? ` data-backend="${escapeHTML(item.backend)}"` : "";
             return `
-                <li data-path="${escapedPath}" tabindex="0" role="button" aria-label="Open ${label}">
+                <li data-path="${escapedPath}"${backendAttr} tabindex="0" role="button" aria-label="Open ${label}">
                     <span class="repo-icon" aria-hidden="true">▣</span>
                     <div class="repo-main">
                         <strong>${label}</strong>
@@ -105,9 +106,11 @@ function renderRecents() {
         .join('');
 }
 
-async function openRecent(path: string) {
+async function openRecent(path: string, backend?: string) {
+    const args: Record<string, unknown> = { path };
+    if (backend) args.backendId = backend;
     try {
-        await TAURI.invoke('open_repo', { path });
+        await TAURI.invoke('open_repo', args);
         closeSwitchDrawer();
     } catch {
         notify('Open failed');
@@ -126,6 +129,7 @@ async function loadRecents() {
                   .map((r: any) => ({
                       path: r.path.trim(),
                       name: typeof r.name === 'string' ? r.name.trim() : undefined,
+                      backend: typeof r.backend === 'string' ? r.backend.trim() : undefined,
                   }))
             : [];
 
@@ -135,7 +139,8 @@ async function loadRecents() {
             const row = (event.target as HTMLElement)?.closest<HTMLElement>('li[data-path]');
             const path = row?.dataset.path?.trim();
             if (!path) return;
-            await openRecent(path);
+            const backend = row?.dataset.backend?.trim() || undefined;
+            await openRecent(path, backend);
         };
 
         recentList.onkeydown = async (event) => {
@@ -144,8 +149,9 @@ async function loadRecents() {
             const row = (event.target as HTMLElement)?.closest<HTMLElement>('li[data-path]');
             const path = row?.dataset.path?.trim();
             if (!path) return;
+            const backend = row?.dataset.backend?.trim() || undefined;
             keyEvent.preventDefault();
-            await openRecent(path);
+            await openRecent(path, backend);
         };
     } catch {
         allRecents = [];

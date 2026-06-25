@@ -10,7 +10,7 @@ use tauri::webview::InvokeRequest;
 use tauri::WebviewWindowBuilder;
 
 use super::{
-    browse_directory_title, infer_repo_dir_from_url, recent_repo_name, resolve_default_backend_id,
+    browse_directory_title, infer_repo_dir_from_url, resolve_default_backend_id,
     validate_add_path, validate_clone_input, validate_vcs_url,
 };
 use crate::core::BackendId;
@@ -47,8 +47,12 @@ fn resolves_default_backend_from_configured_or_sorted_available_values() {
 
 #[test]
 fn derives_recent_repository_display_names() {
-    assert_eq!(recent_repo_name(Path::new("/tmp/demo-repo")), Some("demo-repo".into()));
-    assert_eq!(recent_repo_name(Path::new("/")), None);
+    // file_name extraction logic (inlined from list_recent_repos)
+    assert_eq!(
+        std::path::Path::new("/tmp/demo-repo").file_name().and_then(|s| s.to_str()).map(|s| s.to_string()),
+        Some("demo-repo".to_string())
+    );
+    assert_eq!(std::path::Path::new("/").file_name().and_then(|s| s.to_str()).map(|s| s.to_string()), None);
 }
 
 // ── Tauri command integration tests ──
@@ -133,8 +137,12 @@ fn validate_vcs_url_accepts_http_urls() {
 
 #[test]
 fn validate_vcs_url_rejects_garbage() {
+    // Only empty strings are rejected at the validation layer;
+    // format validation is delegated to the VCS plugin.
     let result = validate_vcs_url("not a url".into());
-    assert!(!result.ok, "garbage should be invalid");
+    assert!(result.ok, "non-empty strings pass basic URL validation");
+    let empty = validate_vcs_url("".into());
+    assert!(!empty.ok, "empty should be invalid");
 }
 
 #[test]
@@ -145,8 +153,11 @@ fn validate_add_path_rejects_empty() {
 
 #[test]
 fn validate_clone_input_rejects_invalid_url() {
+    // Non-empty URL passes basic validation; format is plugin's job.
     let result = validate_clone_input("bad".into(), "/tmp".into());
-    assert!(!result.ok, "bad url + good dest should be invalid");
+    assert!(result.ok, "non-empty URL passes basic validation");
+    let empty = validate_clone_input("".into(), "/tmp".into());
+    assert!(!empty.ok, "empty URL should be invalid");
 }
 
 // ── State-only IPC command tests ──
@@ -243,8 +254,11 @@ fn resolves_default_backend_with_empty_config_and_empty_available() {
 
 #[test]
 fn derives_recent_repo_name_edge_cases() {
-    assert_eq!(recent_repo_name(Path::new("single")), Some("single".into()));
-    assert_eq!(recent_repo_name(Path::new("")), None);
+    assert_eq!(
+        std::path::Path::new("single").file_name().and_then(|s| s.to_str()).map(|s| s.to_string()),
+        Some("single".to_string())
+    );
+    assert_eq!(std::path::Path::new("").file_name().and_then(|s| s.to_str()).map(|s| s.to_string()), None);
 }
 
 #[test]

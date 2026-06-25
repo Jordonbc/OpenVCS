@@ -8,6 +8,8 @@ import { openModal, closeModal, hydrate } from "../ui/modals";
 /** Available command-sheet tabs. */
 type Which = "clone" | "add";
 
+/** Tuple: [backend_id, display_name] */
+type BackendEntry = [string, string];
 // Elements inside the modal
 let root: HTMLElement | null = null;
 let tabs: HTMLButtonElement[] = [];
@@ -15,10 +17,15 @@ let panels: Record<Which, HTMLElement> = {} as any;
 
 let cloneUrl: HTMLInputElement | null = null;
 let clonePath: HTMLInputElement | null = null;
+let cloneBackend: HTMLSelectElement | null = null;
 let doCloneBtn: HTMLButtonElement | null = null;
 
 let addPath: HTMLInputElement | null = null;
+let addBackend: HTMLSelectElement | null = null;
 let doAddBtn: HTMLButtonElement | null = null;
+
+/** Cached list of available VCS backends. */
+let backendCache: BackendEntry[] = [];
 
 // Slider indicator bits
 let seg: HTMLElement | null = null;
@@ -146,8 +153,10 @@ export function bindCommandSheet() {
     cloneUrl = el<HTMLInputElement>("#clone-url", root);
     clonePath = el<HTMLInputElement>("#clone-path", root);
     doCloneBtn = el<HTMLButtonElement>("#do-clone", root);
+    cloneBackend = el<HTMLSelectElement>("#clone-backend", root);
 
     addPath = el<HTMLInputElement>("#add-path", root);
+    addBackend = el<HTMLSelectElement>("#add-backend", root);
     doAddBtn = el<HTMLButtonElement>("#do-add", root);
 
     // Tab switching (click)
@@ -176,6 +185,8 @@ export function bindCommandSheet() {
         tabs[next].click();
     });
 
+    // Fetch & populate VCS backend selectors
+    void populateBackendSelectors();
     // Validation
     cloneUrl?.addEventListener("input", validateClone);
     clonePath?.addEventListener("input", validateClone);
@@ -207,8 +218,10 @@ export function bindCommandSheet() {
         const url = cloneUrl?.value.trim();
         const dest = clonePath?.value.trim();
         if (!url || !dest) return;
+        const backendId = cloneBackend?.value || "";
+        if (!backendId) { notify("No VCS backend selected"); return; }
         try {
-            await TAURI.invoke("clone_repo", { url, dest });
+            await TAURI.invoke("clone_repo", { url, dest, backendId });
             notify(`Cloned ${url} → ${dest}`);
             closeSheet();
         } catch {
@@ -218,9 +231,11 @@ export function bindCommandSheet() {
 
     doAddBtn?.addEventListener("click", async () => {
         const path = addPath?.value.trim();
+        const backendId = addBackend?.value || "";
         if (!path) return;
+        if (!backendId) { notify("No VCS backend selected"); return; }
         try {
-            await TAURI.invoke("add_repo", { path });
+            await TAURI.invoke("add_repo", { path, backendId });
             notify(`Added ${path}`);
             closeSheet();
         } catch {
@@ -241,4 +256,45 @@ export function bindCommandSheet() {
 
     // First alignment
     requestAnimationFrame(positionIndicator);
+}
+
+/** Fetches available VCS backends and populates both selectors. */
+async function populateBackendSelectors() {
+    try {
+        const raw = await TAURI.invoke<BackendEntry[]>("list_vcs_backends_cmd");
+        backendCache = (Array.isArray(raw) ? raw : []).filter(([id]) => id.trim().length > 0);
+    } catch {
+        backendCache = [];
+    }
+
+    if (backendCache.length === 0) {
+        // Keep existing static options from HTML (e.g. hardcoded <option> for tests)
+        return;
+    }
+
+    const opts = backendCache.map(([id, name]) => {
+        const opt = document.createElement("option");
+        opt.value = id;
+        opt.textContent = name || id;
+        return opt;
+    });
+
+    [cloneBackend, addBackend].forEach((sel) => {
+        if (!sel) return;
+        sel.innerHTML = "";
+        opts.forEach((o) => sel.appendChild(o.cloneNode(true)));
+        sel.disabled = opts.length <= 1;
+        if (opts.length === 1) {
+            sel.value = opts[0].value;
+        }
+    });
+}
+
+/** Returns the currently selected backend id from the active tab, or the first available. */
+export function getSelectedBackendId(): string {
+    const active = document.querySelector(".seg-btn.active[data-sheet]") as HTMLElement | null;
+    const which = active?.dataset.sheet as Which | undefined;
+    if (which === "clone" && cloneBackend?.value) return cloneBackend.value;
+    if (which === "add" && addBackend?.value) return addBackend.value;
+    return backendCache[0]?.[0] || "";
 }

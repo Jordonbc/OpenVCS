@@ -186,7 +186,7 @@ fn set_current_repo_affects_recents() {
     let after = state.recents().len();
 
     // recents should grow by at least 1 (or stay same if repo was already present)
-    assert!(after > before || state.recents().iter().any(|p| p.ends_with("my-repo")));
+    assert!(after > before || state.recents().iter().any(|e| e.path.ends_with("my-repo")));
 }
 
 #[test]
@@ -199,7 +199,7 @@ fn set_current_repo_places_new_path_at_front() {
 
     state.set_current_repo(dummy_repo(&repo_path));
     // The most recently set repo should be first
-    assert!(state.recents()[0].ends_with("front-repo"));
+    assert!(state.recents()[0].path.ends_with("front-repo"));
 }
 
 // ── Recents accessor tests ────────────────────────────────────────────────
@@ -215,7 +215,7 @@ fn recents_contains_paths_after_setting_current_repo() {
     // recents may be pre-populated from disk, so we check the repo appears
     state.set_current_repo(dummy_repo(&repo_path));
     assert!(
-        state.recents().iter().any(|p| p.ends_with("test-repo")),
+        state.recents().iter().any(|e| e.path.ends_with("test-repo")),
         "repo path should appear in recents"
     );
 }
