@@ -173,10 +173,13 @@ impl AppState {
         // Update recents (front insert, unique, cap N from settings)
         let mut r = self.recents.write();
         r.retain(|entry| entry.path != path);
-        r.insert(0, RecentEntry {
-            path: path.clone(),
-            backend_id: backend_id.clone(),
-        });
+        r.insert(
+            0,
+            RecentEntry {
+                path: path.clone(),
+                backend_id: backend_id.clone(),
+            },
+        );
         let limit = self.config.read().ux.recents_limit as usize;
         let max_items = if limit == 0 { MAX_RECENTS } else { limit };
         if r.len() > max_items {
@@ -278,12 +281,26 @@ fn load_recents_from_disk() -> Result<Vec<RecentEntry>, String> {
         for it in items {
             match it {
                 serde_json::Value::Object(map) => {
-                    let path = map.get("path").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
-                    let backend_id = map.get("backend_id").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+                    let path = map
+                        .get("path")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    let backend_id = map
+                        .get("backend_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
                     if !path.is_empty() {
                         out.push(RecentEntry {
                             path: PathBuf::from(&path),
-                            backend_id: if backend_id.is_empty() { "git".into() } else { backend_id },
+                            backend_id: if backend_id.is_empty() {
+                                "git".into()
+                            } else {
+                                backend_id
+                            },
                         });
                     }
                 }

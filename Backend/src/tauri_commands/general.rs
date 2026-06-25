@@ -370,7 +370,9 @@ pub fn list_recent_repos(state: State<'_, AppState>) -> Vec<RecentRepoDto> {
         .recents()
         .into_iter()
         .map(|entry| {
-            let name = entry.path.file_name()
+            let name = entry
+                .path
+                .file_name()
                 .and_then(|s| s.to_str())
                 .map(|s| s.to_string());
             RecentRepoDto {

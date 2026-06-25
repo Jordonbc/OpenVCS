@@ -66,7 +66,10 @@ pub fn validate_vcs_url(url: String) -> Validation {
         };
     }
     // Let the selected VCS plugin validate the URL format.
-    Validation { ok: true, reason: None }
+    Validation {
+        ok: true,
+        reason: None,
+    }
 }
 
 /// Validates a repository path for add/open operations.
