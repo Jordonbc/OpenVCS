@@ -1,14 +1,17 @@
 {
   "stable": [
     "@openvcs/git-plugin@latest",
-    "@openvcs/official-themes@latest"
+    "@openvcs/lore@latest",
+    "@openvcs/official-themes@latest",
   ],
   "beta": [
     "@openvcs/git-plugin@beta",
+    "@openvcs/lore@beta",
     "@openvcs/official-themes@beta"
   ],
   "dev": [
     "@openvcs/git-plugin@edge",
+    "@openvcs/lore@edge",
     "@openvcs/official-themes@nightly"
   ]
 }
