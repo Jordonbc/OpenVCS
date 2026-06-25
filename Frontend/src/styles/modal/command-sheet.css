@@ -126,6 +126,7 @@
 
 #command-modal .sheet-title-row h3 {
     margin: 0;
+    line-height: 1.5;
     font-size: 1.1rem;
     font-weight: 600;
     color: var(--fg, #eaeaea);
@@ -136,7 +137,7 @@
     flex-direction: row !important;
     align-items: center;
     gap: .4rem;
-    margin-top: .4rem;
+    padding-top: .2rem;
 }
 
 #command-modal .backend-field label {
