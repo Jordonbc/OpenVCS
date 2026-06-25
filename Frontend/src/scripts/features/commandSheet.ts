@@ -113,14 +113,16 @@ function setSheet(which: Which) {
 }
 
 /** Opens the command sheet and selects an initial tab. */
-export function openSheet(which: Which = "clone") {
-    openModal("command-modal");
+export function openSheet(which: Which = 'clone') {
+    openModal('command-modal');
     if (!root) bindCommandSheet();
+    // Re-fetch backends and default on each open
+    void populateBackendSelectors();
     setSheet(which);
 
     // Focus first relevant input without scrolling
-    const focusId = which === "clone" ? "clone-url" : which === "add" ? "add-path" : null;
-    if (focusId) setTimeout(() => root?.querySelector<HTMLInputElement>("#" + focusId)?.focus({ preventScroll: true }), 0);
+    const focusId = which === 'clone' ? 'clone-url' : which === 'add' ? 'add-path' : null;
+    if (focusId) setTimeout(() => root?.querySelector<HTMLInputElement>('#' + focusId)?.focus({ preventScroll: true }), 0);
 
     // Align the pill once frame is painted
     requestAnimationFrame(positionIndicator);
@@ -185,8 +187,6 @@ export function bindCommandSheet() {
         tabs[next].click();
     });
 
-    // Fetch & populate VCS backend selectors
-    void populateBackendSelectors();
     // Validation
     cloneUrl?.addEventListener("input", validateClone);
     clonePath?.addEventListener("input", validateClone);
@@ -261,7 +261,7 @@ export function bindCommandSheet() {
 /** Fetches available VCS backends and populates both selectors. */
 async function populateBackendSelectors() {
     try {
-        const raw = await TAURI.invoke<BackendEntry[]>("list_vcs_backends_cmd");
+        const raw = await TAURI.invoke<BackendEntry[]>('list_vcs_backends_cmd');
         backendCache = (Array.isArray(raw) ? raw : []).filter(([id]) => id.trim().length > 0);
     } catch {
         backendCache = [];
@@ -272,8 +272,15 @@ async function populateBackendSelectors() {
         return;
     }
 
+    // Get default backend from settings
+    let defaultBackend = '';
+    try {
+        const cfg = await TAURI.invoke<{ general?: { default_backend?: string } }>('get_global_settings');
+        defaultBackend = String(cfg?.general?.default_backend || '').trim();
+    } catch {}
+
     const opts = backendCache.map(([id, name]) => {
-        const opt = document.createElement("option");
+        const opt = document.createElement('option');
         opt.value = id;
         opt.textContent = name || id;
         return opt;
@@ -281,10 +288,13 @@ async function populateBackendSelectors() {
 
     [cloneBackend, addBackend].forEach((sel) => {
         if (!sel) return;
-        sel.innerHTML = "";
+        sel.innerHTML = '';
         opts.forEach((o) => sel.appendChild(o.cloneNode(true)));
         sel.disabled = opts.length <= 1;
-        if (opts.length === 1) {
+        // Set default backend if configured and available
+        if (defaultBackend && backendCache.some(([id]) => id === defaultBackend)) {
+            sel.value = defaultBackend;
+        } else if (opts.length === 1) {
             sel.value = opts[0].value;
         }
     });
