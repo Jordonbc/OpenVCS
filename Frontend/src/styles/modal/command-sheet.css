@@ -118,10 +118,10 @@
 /* Title row with h3 + backend selector */
 #command-modal .sheet-title-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start !important;
     justify-content: space-between;
     gap: .75rem;
-    margin-bottom: 1rem;
+    margin-bottom: 0;
 }
 
 #command-modal .sheet-title-row h3 {
@@ -137,7 +137,7 @@
     flex-direction: row !important;
     align-items: center;
     gap: .4rem;
-    padding-top: .2rem;
+    margin-top: .6rem !important;
 }
 
 #command-modal .backend-field label {
@@ -152,15 +152,15 @@
     width: auto !important;
     min-width: 100px;
     max-width: 180px;
-    padding: .35rem 1rem;
+    padding: .35rem .75rem .35rem .5rem !important;
     border-radius: var(--r-md, 8px);
     border: 1px solid var(--border, #3a3a3a);
     background: var(--surface, #1e1e1e);
     color: var(--fg, #eaeaea);
     font-size: .9rem;
     cursor: pointer;
-    text-align: right;
-    text-align-last: right;
+    text-align: right !important;
+    text-align-last: right !important;
     direction: rtl;
     unicode-bidi: plaintext;
     -webkit-padding-start: 1rem;
