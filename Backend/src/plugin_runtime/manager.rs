@@ -229,7 +229,7 @@ impl PluginRuntimeManager {
         let running: Vec<String> = {
             let mut processes = self.processes.lock();
             let keys: Vec<String> = processes.keys().cloned().collect();
-            for (_, process) in processes.iter_mut() {
+            for process in processes.values_mut() {
                 process.runtime.stop();
             }
             processes.clear();
