@@ -14,10 +14,10 @@ export async function wireRepoSettings() {
     if (!modal || (modal as any).__wired) return;
     (modal as any).__wired = true;
 
-    const nameInput  = modal.querySelector('#git-user-name') as HTMLInputElement | null;
-    const emailInput = modal.querySelector('#git-user-email') as HTMLInputElement | null;
-    const remotesEl = modal.querySelector('#git-remotes') as HTMLElement | null;
-    const addRemoteBtn = modal.querySelector('#git-remote-add') as HTMLButtonElement | null;
+    const nameInput  = modal.querySelector('#user-name') as HTMLInputElement | null;
+    const emailInput = modal.querySelector('#user-email') as HTMLInputElement | null;
+    const remotesEl = modal.querySelector('#remotes') as HTMLElement | null;
+    const addRemoteBtn = modal.querySelector('#remote-add') as HTMLButtonElement | null;
     const saveBtn = modal.querySelector('#repo-settings-save') as HTMLButtonElement | null;
 
     if (saveBtn) {
@@ -43,7 +43,7 @@ export async function wireRepoSettings() {
 
         const url = document.createElement('input');
         url.type = 'text';
-        url.placeholder = 'git@host:org/repo.git or https://…';
+        url.placeholder = 'https://host/org/repo or ssh://host/org/repo';
         url.className = 'remote-url';
         if (initial?.url) url.value = initial.url;
 
@@ -76,9 +76,7 @@ export async function wireRepoSettings() {
         if (emailInput && cfg?.user_email) emailInput.value = cfg.user_email;
 
         clearRemoteRows();
-        const remotes = cfg?.remotes?.length
-            ? cfg.remotes
-            : (cfg?.origin_url ? [{ name: 'origin', url: cfg.origin_url }] : []);
+        const remotes = cfg?.remotes ?? [];
 
         for (const r of remotes) addRemoteRow(r);
         initialRemotesKey = JSON.stringify(
@@ -106,7 +104,6 @@ export async function wireRepoSettings() {
             seen.add(name);
             remotes.push({ name, url });
         }
-        const origin = remotes.find(r => r.name === 'origin')?.url;
         const nextRemotesKey = JSON.stringify(
             remotes
                 .map(r => ({ name: r.name.trim(), url: r.url.trim() }))
@@ -117,7 +114,6 @@ export async function wireRepoSettings() {
         const next: RepoSettings = {
             user_name: nameInput?.value || undefined,
             user_email: emailInput?.value || undefined,
-            origin_url: origin || undefined,
             remotes,
         };
         try {

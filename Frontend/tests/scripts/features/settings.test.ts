@@ -839,8 +839,8 @@ describe('wireSettings (SSH binary toggle)', () => {
     function mountWithSsh() {
         const modal = mountSettingsModal();
         modal.insertAdjacentHTML('beforeend', [
-            '<select id="set-git-ssh-binary"><option value="auto">Auto</option><option value="custom">Custom</option></select>',
-            '<input id="set-git-ssh-path" type="text" />',
+            '<select id="set-ssh-binary"><option value="auto">Auto</option><option value="custom">Custom</option></select>',
+            '<input id="set-ssh-path" type="text" />',
         ].join('\n'));
         return modal;
     }
@@ -849,10 +849,10 @@ describe('wireSettings (SSH binary toggle)', () => {
         mountWithSsh();
         const { wireSettings } = await load();
         wireSettings();
-        const select = document.getElementById('set-git-ssh-binary') as HTMLSelectElement;
+        const select = document.getElementById('set-ssh-binary') as HTMLSelectElement;
         select.value = 'auto';
         select.dispatchEvent(new Event('change'));
-        const pathInput = document.getElementById('set-git-ssh-path') as HTMLInputElement;
+        const pathInput = document.getElementById('set-ssh-path') as HTMLInputElement;
         expect(pathInput.disabled).toBe(true);
         expect(pathInput.value).toBe('');
     });
@@ -861,10 +861,10 @@ describe('wireSettings (SSH binary toggle)', () => {
         mountWithSsh();
         const { wireSettings } = await load();
         wireSettings();
-        const select = document.getElementById('set-git-ssh-binary') as HTMLSelectElement;
+        const select = document.getElementById('set-ssh-binary') as HTMLSelectElement;
         select.value = 'custom';
         select.dispatchEvent(new Event('change'));
-        const pathInput = document.getElementById('set-git-ssh-path') as HTMLInputElement;
+        const pathInput = document.getElementById('set-ssh-path') as HTMLInputElement;
         expect(pathInput.disabled).toBe(false);
     });
 });
@@ -992,8 +992,8 @@ describe('wireSettings (SSH binary custom path)', () => {
   function mountWithSsh() {
     const modal = mountSettingsModal();
     modal.insertAdjacentHTML('beforeend', [
-      '<select id="set-git-ssh-binary"><option value="auto">Auto</option><option value="custom">Custom</option></select>',
-      '<input id="set-git-ssh-path" type="text" value="/usr/bin/ssh" />',
+      '<select id="set-ssh-binary"><option value="auto">Auto</option><option value="custom">Custom</option></select>',
+      '<input id="set-ssh-path" type="text" value="/usr/bin/ssh" />',
     ].join('\n'));
     return modal;
   }
@@ -1002,10 +1002,10 @@ describe('wireSettings (SSH binary custom path)', () => {
     mountWithSsh();
     const { wireSettings } = await load();
     wireSettings();
-    const select = document.getElementById('set-git-ssh-binary') as HTMLSelectElement;
+    const select = document.getElementById('set-ssh-binary') as HTMLSelectElement;
     select.value = 'auto';
     select.dispatchEvent(new Event('change'));
-    const pathInput = document.getElementById('set-git-ssh-path') as HTMLInputElement;
+    const pathInput = document.getElementById('set-ssh-path') as HTMLInputElement;
     expect(pathInput.disabled).toBe(true);
     expect(pathInput.value).toBe('');
   });
@@ -1944,15 +1944,15 @@ describe('wireSettings (SSH binary custom mode path)', () => {
   it('clears path when switching to auto', async () => {
     const modal = mountSettingsModal();
     modal.insertAdjacentHTML('beforeend', [
-      '<select id="set-git-ssh-binary"><option value="auto">Auto</option><option value="custom">Custom</option></select>',
-      '<input id="set-git-ssh-path" type="text" value="/usr/bin/ssh" />',
+      '<select id="set-ssh-binary"><option value="auto">Auto</option><option value="custom">Custom</option></select>',
+      '<input id="set-ssh-path" type="text" value="/usr/bin/ssh" />',
     ].join('\n'));
     const { wireSettings } = await load();
     wireSettings();
-    const select = document.getElementById('set-git-ssh-binary') as HTMLSelectElement;
+    const select = document.getElementById('set-ssh-binary') as HTMLSelectElement;
     select.value = 'auto';
     select.dispatchEvent(new Event('change'));
-    const pathInput = document.getElementById('set-git-ssh-path') as HTMLInputElement;
+    const pathInput = document.getElementById('set-ssh-path') as HTMLInputElement;
     expect(pathInput.value).toBe('');
   });
 });

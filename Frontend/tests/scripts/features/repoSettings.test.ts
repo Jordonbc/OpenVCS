@@ -39,10 +39,10 @@ function mountModal(overrides?: {
         : '';
     document.body.innerHTML = `
         <div id="repo-settings-modal">
-            <input id="git-user-name" value="${overrides?.nameValue ?? ''}" />
-            <input id="git-user-email" value="${overrides?.emailValue ?? ''}" />
-            <div id="git-remotes">${remotesHtml}</div>
-            <button id="git-remote-add">Add Remote</button>
+            <input id="user-name" value="${overrides?.nameValue ?? ''}" />
+            <input id="user-email" value="${overrides?.emailValue ?? ''}" />
+            <div id="remotes">${remotesHtml}</div>
+            <button id="remote-add">Add Remote</button>
             <button id="repo-settings-save">Save</button>
         </div>
     `;
@@ -116,8 +116,8 @@ describe('wireRepoSettings (initialisation)', () => {
         const { wireRepoSettings } = await load();
         await wireRepoSettings();
 
-        const nameInput = document.getElementById('git-user-name') as HTMLInputElement;
-        const emailInput = document.getElementById('git-user-email') as HTMLInputElement;
+        const nameInput = document.getElementById('user-name') as HTMLInputElement;
+        const emailInput = document.getElementById('user-email') as HTMLInputElement;
         expect(nameInput.value).toBe('Test User');
         expect(emailInput.value).toBe('test@example.com');
     });
@@ -145,38 +145,35 @@ describe('wireRepoSettings (remote rows)', () => {
             user_name: '',
             user_email: '',
             remotes: [
-                { name: 'origin', url: 'git@host:org/repo.git' },
+                { name: 'origin', url: 'ssh://host/org/repo' },
                 { name: 'upstream', url: 'https://host/upstream.git' },
             ],
         });
         const { wireRepoSettings } = await load();
         await wireRepoSettings();
 
-        const remotesEl = document.getElementById('git-remotes')!;
+        const remotesEl = document.getElementById('remotes')!;
         const rows = remotesEl.querySelectorAll('.remote-row');
         expect(rows.length).toBe(2);
         expect((rows[0].querySelector('.remote-name') as HTMLInputElement).value).toBe('origin');
-        expect((rows[0].querySelector('.remote-url') as HTMLInputElement).value).toBe('git@host:org/repo.git');
+        expect((rows[0].querySelector('.remote-url') as HTMLInputElement).value).toBe('ssh://host/org/repo');
         expect((rows[1].querySelector('.remote-name') as HTMLInputElement).value).toBe('upstream');
         expect((rows[1].querySelector('.remote-url') as HTMLInputElement).value).toBe('https://host/upstream.git');
     });
 
-    it('falls back to origin_url when remotes array is empty', async () => {
+    it('does not synthesize a remote when remotes array is empty', async () => {
         mountModal();
         mockInvoke.mockResolvedValueOnce({
             user_name: '',
             user_email: '',
             remotes: [],
-            origin_url: 'https://origin/fallback.git',
         });
         const { wireRepoSettings } = await load();
         await wireRepoSettings();
 
-        const remotesEl = document.getElementById('git-remotes')!;
+        const remotesEl = document.getElementById('remotes')!;
         const rows = remotesEl.querySelectorAll('.remote-row');
-        expect(rows.length).toBe(1);
-        expect((rows[0].querySelector('.remote-name') as HTMLInputElement).value).toBe('origin');
-        expect((rows[0].querySelector('.remote-url') as HTMLInputElement).value).toBe('https://origin/fallback.git');
+        expect(rows.length).toBe(0);
     });
 
     it('adds a remote row when add button is clicked', async () => {
@@ -189,10 +186,10 @@ describe('wireRepoSettings (remote rows)', () => {
         const { wireRepoSettings } = await load();
         await wireRepoSettings();
 
-        const addBtn = document.getElementById('git-remote-add') as HTMLButtonElement;
+        const addBtn = document.getElementById('remote-add') as HTMLButtonElement;
         addBtn.click();
 
-        const remotesEl = document.getElementById('git-remotes')!;
+        const remotesEl = document.getElementById('remotes')!;
         expect(remotesEl.querySelectorAll('.remote-row').length).toBe(1);
         // Second click
         addBtn.click();
@@ -205,14 +202,14 @@ describe('wireRepoSettings (remote rows)', () => {
             user_name: '',
             user_email: '',
             remotes: [
-                { name: 'origin', url: 'git@host:org/repo.git' },
+                { name: 'origin', url: 'ssh://host/org/repo' },
                 { name: 'extra', url: 'https://extra.git' },
             ],
         });
         const { wireRepoSettings } = await load();
         await wireRepoSettings();
 
-        const remotesEl = document.getElementById('git-remotes')!;
+        const remotesEl = document.getElementById('remotes')!;
         expect(remotesEl.querySelectorAll('.remote-row').length).toBe(2);
 
         const removeBtns = remotesEl.querySelectorAll('.remote-remove');
@@ -245,13 +242,13 @@ describe('wireRepoSettings (save flow)', () => {
         await wireRepoSettings();
 
         // Add a remote row
-        const addBtn = document.getElementById('git-remote-add') as HTMLButtonElement;
+        const addBtn = document.getElementById('remote-add') as HTMLButtonElement;
         addBtn.click();
 
         const remoteName = document.querySelector('.remote-name') as HTMLInputElement;
         const remoteUrl = document.querySelector('.remote-url') as HTMLInputElement;
         remoteName.value = 'origin';
-        remoteUrl.value = 'git@host:org/repo.git';
+        remoteUrl.value = 'ssh://host/org/repo';
 
         // Save
         const saveBtn = document.getElementById('repo-settings-save') as HTMLButtonElement;
@@ -263,7 +260,7 @@ describe('wireRepoSettings (save flow)', () => {
                 cfg: expect.objectContaining({
                     user_name: 'User',
                     user_email: 'u@example.com',
-                    remotes: [{ name: 'origin', url: 'git@host:org/repo.git' }],
+                    remotes: [{ name: 'origin', url: 'ssh://host/org/repo' }],
                 }),
             });
         });
@@ -327,7 +324,7 @@ describe('wireRepoSettings (save flow)', () => {
         await wireRepoSettings();
 
         // Add an incomplete remote
-        const addBtn = document.getElementById('git-remote-add') as HTMLButtonElement;
+        const addBtn = document.getElementById('remote-add') as HTMLButtonElement;
         addBtn.click();
         const remoteName = document.querySelector('.remote-name') as HTMLInputElement;
         remoteName.value = 'origin';
@@ -379,7 +376,7 @@ describe('wireRepoSettings (save flow)', () => {
         await wireRepoSettings();
 
         // Add two remotes with same name
-        const addBtn = document.getElementById('git-remote-add') as HTMLButtonElement;
+        const addBtn = document.getElementById('remote-add') as HTMLButtonElement;
         addBtn.click();
         const rows = document.querySelectorAll('.remote-row');
         (rows[0].querySelector('.remote-name') as HTMLInputElement).value = 'origin';
@@ -414,7 +411,7 @@ describe('wireRepoSettings (save flow)', () => {
     await wireRepoSettings();
 
     // Add an empty row, then a real one
-    const addBtn = document.getElementById('git-remote-add') as HTMLButtonElement;
+    const addBtn = document.getElementById('remote-add') as HTMLButtonElement;
     addBtn.click();
 
     addBtn.click();
@@ -445,7 +442,7 @@ describe('wireRepoSettings (save flow)', () => {
     const { wireRepoSettings } = await load();
     await wireRepoSettings();
 
-    const addRemoteBtn = document.getElementById('git-remote-add') as HTMLButtonElement;
+    const addRemoteBtn = document.getElementById('remote-add') as HTMLButtonElement;
     addRemoteBtn.click();
 
     addRemoteBtn.click();
@@ -469,10 +466,10 @@ describe('wireRepoSettings (save flow)', () => {
   it('does not fail when modal has no save button', async () => {
     document.body.innerHTML = `
       <div id="repo-settings-modal">
-        <input id="git-user-name" value="" />
-        <input id="git-user-email" value="" />
-        <div id="git-remotes"></div>
-        <button id="git-remote-add">Add Remote</button>
+        <input id="user-name" value="" />
+        <input id="user-email" value="" />
+        <div id="remotes"></div>
+        <button id="remote-add">Add Remote</button>
       </div>
     `;
     mockInvoke.mockResolvedValueOnce({
@@ -507,12 +504,12 @@ describe('wireRepoSettings (fetch error and timeout)', () => {
     await wireRepoSettings();
 
     // Add a remote row so remotes changed flag is set
-    const addBtn = document.getElementById('git-remote-add') as HTMLButtonElement;
+    const addBtn = document.getElementById('remote-add') as HTMLButtonElement;
     addBtn.click();
     const remoteName = document.querySelector('.remote-name') as HTMLInputElement;
     const remoteUrl = document.querySelector('.remote-url') as HTMLInputElement;
     remoteName.value = 'origin';
-    remoteUrl.value = 'git@host:org/repo.git';
+    remoteUrl.value = 'ssh://host/org/repo';
 
     const saveBtn = document.getElementById('repo-settings-save') as HTMLButtonElement;
     saveBtn.click();

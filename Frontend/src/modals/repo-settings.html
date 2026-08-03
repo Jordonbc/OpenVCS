@@ -2,24 +2,24 @@
     <div class="dialog sheet" role="dialog" aria-modal="true" aria-labelledby="repo-settings-title">
         <div class="sheet-head">
             <h3 id="repo-settings-title" style="margin:0">Repository Settings</h3>
-            <button class="icon close" data-close aria-label="Close">✕</button>
+            <button class="icon close" type="button" data-close aria-label="Close">✕</button>
         </div>
         <div class="sheet-body">
             <form id="repo-settings-form" class="panel-form">
                 <div class="group">
-                    <label for="git-user-name">Name on commits</label>
-                    <input id="git-user-name" type="text" />
+                    <label for="user-name">Name on commits</label>
+                    <input id="user-name" type="text" />
                     <div class="help-text">Used only for this repository’s commits.</div>
                 </div>
                 <div class="group">
-                    <label for="git-user-email">Email on commits</label>
-                    <input id="git-user-email" type="text" inputmode="email" autocomplete="email" spellcheck="false" />
+                    <label for="user-email">Email on commits</label>
+                    <input id="user-email" type="text" inputmode="email" autocomplete="email" spellcheck="false" />
                     <div class="help-text">Used only for this repository’s commits.</div>
                 </div>
                 <div class="group">
-                    <label>Remotes</label>
-                    <div id="git-remotes" class="remotes" role="group" aria-label="Git remotes"></div>
-                    <button class="tbtn" id="git-remote-add" type="button">Add Remote</button>
+                    <div class="field-label">Remotes</div>
+                    <div id="remotes" class="remotes"></div>
+                    <button class="tbtn" id="remote-add" type="button">Add Remote</button>
                 </div>
             </form>
         </div>

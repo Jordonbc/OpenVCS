@@ -360,8 +360,8 @@ export function wireSettings() {
     updateMergeCustomState();
     mergeModeSel?.addEventListener('change', updateMergeCustomState);
 
-    const sshBinSel = modal.querySelector('#set-git-ssh-binary') as HTMLSelectElement | null;
-    const sshPathInput = modal.querySelector('#set-git-ssh-path') as HTMLInputElement | null;
+    const sshBinSel = modal.querySelector('#set-ssh-binary') as HTMLSelectElement | null;
+    const sshPathInput = modal.querySelector('#set-ssh-path') as HTMLInputElement | null;
     const updateSshPathState = () => {
         if (!sshPathInput) return;
         const mode = (sshBinSel?.value || 'auto').toLowerCase();
