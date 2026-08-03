@@ -422,15 +422,6 @@ fn proxy_diff_file_returns_lines() {
     assert_eq!(diff.binary, Some(false));
 }
 
-#[test]
-fn proxy_diff_file_accepts_legacy_line_arrays() {
-    let (proxy, rt) = mock_proxy();
-    rt.set_session_id(Some("s".into()));
-    set_response(&rt, json!(["-old", "+new"]));
-    let diff = proxy.diff_file(PathBuf::from("file.rs").as_path()).unwrap();
-    assert_eq!(diff.lines, vec!["-old", "+new"]);
-    assert_eq!(diff.binary, None);
-}
 
 #[test]
 fn proxy_diff_commit_returns_lines() {

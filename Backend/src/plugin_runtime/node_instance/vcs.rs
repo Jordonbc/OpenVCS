@@ -40,29 +40,6 @@ struct RemoteEntry {
     url: String,
 }
 
-/// Parsed `vcs.diff-file` response payload.
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum DiffFileResponse {
-    /// Structured diff payload with metadata.
-    Structured(DiffFileResult),
-    /// Legacy line-only diff payload.
-    Legacy(Vec<String>),
-}
-
-impl DiffFileResponse {
-    /// Normalizes structured and legacy payloads into one backend model.
-    fn into_result(self) -> DiffFileResult {
-        match self {
-            Self::Structured(result) => result,
-            Self::Legacy(lines) => DiffFileResult {
-                lines,
-                binary: None,
-            },
-        }
-    }
-}
-
 impl NodePluginRuntimeInstance {
     /// Calls `vcs.open` and stores active session id.
     ///
@@ -205,8 +182,7 @@ impl NodePluginRuntimeInstance {
     /// Calls `vcs.diff-file`.
     pub fn vcs_diff_file(&self, path: &str) -> Result<DiffFileResult, String> {
         let params = self.session_params(json!({ "path": path }))?;
-        let result: DiffFileResponse = self.rpc_call(Methods::VCS_DIFF_FILE, params)?;
-        Ok(result.into_result())
+        self.rpc_call(Methods::VCS_DIFF_FILE, params)
     }
 
     /// Calls `vcs.diff-commit`.
