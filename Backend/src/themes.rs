@@ -345,7 +345,7 @@ pub fn list_themes() -> Vec<ThemeSummary> {
 ///
 /// # Returns
 /// - `Ok(ThemePayload)` when found.
-/// - `Err(String)` when the id is ambiguous or missing.
+/// - `Err(String)` when the id is missing.
 pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
     let requested = id.trim();
     if requested.is_empty() || requested.eq_ignore_ascii_case(DEFAULT_THEME_ID) {
@@ -366,38 +366,6 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
                     );
                 }
 
-                // Back-compat: allow loading a plugin theme by its raw `theme.json` id iff it is unambiguous.
-                if !requested.contains('.') && theme_id.eq_ignore_ascii_case(requested) {
-                    let mut matches = 0usize;
-                    for other in plugins::plugin_theme_dirs() {
-                        if !other
-                            .plugin_id
-                            .trim()
-                            .eq_ignore_ascii_case(theme_dir.plugin_id.trim())
-                            && let Ok(other_manifest) = read_manifest_from_directory(&other.path)
-                            && other_manifest.id.trim().eq_ignore_ascii_case(requested)
-                        {
-                            matches += 1;
-                            if matches > 0 {
-                                break;
-                            }
-                        }
-                    }
-
-                    if matches > 0 {
-                        return Err(format!(
-                            "theme id `{}` is ambiguous; use `{}` instead",
-                            requested, namespaced_id
-                        ));
-                    }
-
-                    return build_theme_payload_from_directory(
-                        &theme_dir.path,
-                        manifest,
-                        ThemeSource::Plugin,
-                        Some(theme_dir.plugin_id.clone()),
-                    );
-                }
             }
             Err(err) => warn!(
                 "themes: failed to read {}: {}",
