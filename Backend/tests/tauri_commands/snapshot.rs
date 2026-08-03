@@ -294,6 +294,10 @@ fn revision_none_head_commit_uses_empty_string() {
 // ---------------------------------------------------------------------------
 // 3. infer_kind
 // ---------------------------------------------------------------------------
+// BLOCKED-CROSS-REPO VCS-21: `infer_kind` literally matches the git ref
+// namespaces (`refs/heads/`, `refs/remotes/`). The `full_ref` inputs below are
+// plugin wire output; no neutral ref shape is classified by the host, so the
+// fixtures cannot be genericized without a host-logic + protocol change.
 
 #[test]
 fn infer_kind_heads_prefix_is_local() {
@@ -342,6 +346,11 @@ fn infer_kind_arbitrary_ref_is_unknown() {
 // ---------------------------------------------------------------------------
 // 4. normalize_branches
 // ---------------------------------------------------------------------------
+// BLOCKED-CROSS-REPO VCS-21: BranchItem inputs below simulate plugin wire
+// output (`full_ref` carries the plugin's ref namespace, e.g.
+// `refs/heads/main`). `normalize_branches` classifies Unknown kinds via
+// `infer_kind`, which only recognizes git ref prefixes — no neutral shape
+// is accepted. Fixtures stay verbatim.
 
 fn make_branch(name: &str, full_ref: &str, kind: BranchKind) -> BranchItem {
     BranchItem {
@@ -518,7 +527,7 @@ fn branch_label_with_both_returns_name_twice() {
 fn branch_label_detached_with_commit_shows_short_hash() {
     assert_eq!(
         super::branch_label(None, Some("abc1234def")),
-        ("".to_string(), "Detached HEAD (abc1234)".to_string())
+        ("".to_string(), "Detached (abc1234)".to_string())
     );
 }
 
@@ -526,7 +535,7 @@ fn branch_label_detached_with_commit_shows_short_hash() {
 fn branch_label_detached_no_commit() {
     assert_eq!(
         super::branch_label(None, None),
-        ("".to_string(), "Detached HEAD".to_string())
+        ("".to_string(), "Detached".to_string())
     );
 }
 
@@ -534,7 +543,7 @@ fn branch_label_detached_no_commit() {
 fn branch_label_empty_branch_with_commit() {
     assert_eq!(
         super::branch_label(Some(""), Some("abc1234def")),
-        ("".to_string(), "Detached HEAD (abc1234)".to_string())
+        ("".to_string(), "Detached (abc1234)".to_string())
     );
 }
 
@@ -550,7 +559,7 @@ fn branch_label_with_branch_no_commit() {
 fn branch_label_whitespace_only_branch_treated_empty() {
     assert_eq!(
         super::branch_label(Some("   "), Some("abc1234def")),
-        ("".to_string(), "Detached HEAD (abc1234)".to_string())
+        ("".to_string(), "Detached (abc1234)".to_string())
     );
 }
 

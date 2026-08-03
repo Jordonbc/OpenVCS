@@ -301,7 +301,7 @@ describe('sshToHttps host/path edge cases', () => {
   it('disables HTTPS for ssh:// URL with empty path after trim', async () => {
     const { initSshAuthPrompt } = await import('@scripts/features/sshAuth');
     initSshAuthPrompt();
-    listenHandler?.({ payload: { host: 'ex.com', remote: 'origin', url: 'ssh://git@host//', message: '' } });
+    listenHandler?.({ payload: { host: 'ex.com', remote: 'origin', url: 'ssh://dev@host//', message: '' } });
 
     const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
     expect(httpsBtn.disabled).toBe(true);
@@ -310,7 +310,7 @@ describe('sshToHttps host/path edge cases', () => {
   it('disables HTTPS for SCP URL with trailing slash in path', async () => {
     const { initSshAuthPrompt } = await import('@scripts/features/sshAuth');
     initSshAuthPrompt();
-    listenHandler?.({ payload: { host: 'ex.com', remote: 'origin', url: 'git@host:/', message: '' } });
+    listenHandler?.({ payload: { host: 'ex.com', remote: 'origin', url: 'dev@host:/', message: '' } });
 
     const httpsBtn = document.getElementById('ssh-auth-switch-https') as HTMLButtonElement;
     expect(httpsBtn.disabled).toBe(true);
@@ -508,7 +508,7 @@ describe('sshToHttps generic URL parsing', () => {
   });
 
   it('drops the port from ssh://user@host:port/path', async () => {
-    const { invoke, httpsBtn } = await fillAndConvert('ssh://git@host.example:2222/owner/repo.git');
+    const { invoke, httpsBtn } = await fillAndConvert('ssh://dev@host.example:2222/owner/repo.git');
     expect(httpsBtn.disabled).toBe(false);
     httpsBtn.click();
     await new Promise((r) => setTimeout(r, 0));

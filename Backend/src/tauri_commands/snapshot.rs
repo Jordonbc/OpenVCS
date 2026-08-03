@@ -244,9 +244,9 @@ fn branch_label(branch: Option<&str>, commit: Option<&str>) -> (String, String) 
     let short = short_commit_label(commit);
     if branch.is_empty() {
         let label = if short.is_empty() {
-            String::from("Detached HEAD")
+            String::from("Detached")
         } else {
-            format!("Detached HEAD ({short})")
+            format!("Detached ({short})")
         };
         (String::new(), label)
     } else {

@@ -380,12 +380,12 @@ describe('wireRepoSettings (save flow)', () => {
         addBtn.click();
         const rows = document.querySelectorAll('.remote-row');
         (rows[0].querySelector('.remote-name') as HTMLInputElement).value = 'origin';
-        (rows[0].querySelector('.remote-url') as HTMLInputElement).value = 'git@host:one.git';
+        (rows[0].querySelector('.remote-url') as HTMLInputElement).value = 'dev@host:one.git';
 
         addBtn.click();
         const rows2 = document.querySelectorAll('.remote-row');
         (rows2[1].querySelector('.remote-name') as HTMLInputElement).value = 'origin';
-        (rows2[1].querySelector('.remote-url') as HTMLInputElement).value = 'git@host:two.git';
+        (rows2[1].querySelector('.remote-url') as HTMLInputElement).value = 'dev@host:two.git';
 
         const saveBtn = document.getElementById('repo-settings-save') as HTMLButtonElement;
         saveBtn.click();
@@ -393,7 +393,7 @@ describe('wireRepoSettings (save flow)', () => {
         await vi.waitFor(() => {
             expect(mockInvoke).toHaveBeenCalledWith('set_repo_settings', {
                 cfg: expect.objectContaining({
-                    remotes: [{ name: 'origin', url: 'git@host:one.git' }],
+                    remotes: [{ name: 'origin', url: 'dev@host:one.git' }],
                 }),
             });
         });
@@ -417,7 +417,7 @@ describe('wireRepoSettings (save flow)', () => {
     addBtn.click();
     const rows = document.querySelectorAll('.remote-row');
     (rows[1].querySelector('.remote-name') as HTMLInputElement).value = 'origin';
-    (rows[1].querySelector('.remote-url') as HTMLInputElement).value = 'git@host:real.git';
+    (rows[1].querySelector('.remote-url') as HTMLInputElement).value = 'dev@host:real.git';
 
     const saveBtn = document.getElementById('repo-settings-save') as HTMLButtonElement;
     saveBtn.click();
@@ -425,7 +425,7 @@ describe('wireRepoSettings (save flow)', () => {
     await vi.waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('set_repo_settings', {
         cfg: expect.objectContaining({
-          remotes: [{ name: 'origin', url: 'git@host:real.git' }],
+          remotes: [{ name: 'origin', url: 'dev@host:real.git' }],
         }),
       });
     });
