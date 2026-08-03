@@ -10,28 +10,59 @@ type AuthPrompt = { host: string; remote: string; url: string; message?: string 
 
 let wired = false;
 
+/** Parsed parts of an SSH remote URL. */
+type RemoteParts = { user: string | null; host: string; path: string };
+
+/**
+ * Parses the user, host, and path of an SSH remote URL without assuming a
+ * username. Supports the `ssh://[user@]host[:port]/path`, `https://[user@]
+ * host/path`, and scp-like `user@host:path` forms. Returns `null` when the
+ * URL matches no known form or has an empty host/path after trimming.
+ */
+function parseRemoteParts(url: string): RemoteParts | null {
+  const u = String(url || '').trim();
+  if (!u) return null;
+
+  // ssh://[user@]host[:port]/path
+  const ssh = u.match(/^ssh:\/\/(?:([^@]+)@)?([^/:]+)(?::\d+)?\/(.+)$/);
+  if (ssh) {
+    const host = ssh[2].trim();
+    const path = ssh[3].replace(/^\/+/, '').trim();
+    if (host && path) return { user: ssh[1] ?? null, host, path };
+  }
+
+  // https://[user@]host/path
+  const https = u.match(/^https:\/\/(?:([^@]+)@)?([^/]+)\/(.+)$/);
+  if (https) {
+    const host = https[2].trim();
+    const path = https[3].replace(/^\/+/, '').trim();
+    if (host && path) return { user: https[1] ?? null, host, path };
+  }
+
+  // user@host:path (scp-like; the user part is required)
+  const scp = u.match(/^([^@]+)@([^:]+):(.+)$/);
+  if (scp) {
+    const host = scp[2].trim();
+    const path = scp[3].replace(/^\/+/, '').trim();
+    if (host && path) return { user: scp[1], host, path };
+  }
+
+  return null;
+}
+
+/**
+ * Converts an SSH-style remote URL to its HTTPS equivalent. https:// and
+ * http:// URLs are returned unchanged; ssh:// and scp-like URLs drop any
+ * username and port, keeping only the host and path.
+ */
 function sshToHttps(url: string): string | null {
   const u = String(url || '').trim();
   if (!u) return null;
   if (u.startsWith('https://') || u.startsWith('http://')) return u;
 
-  // git@host:owner/repo(.git)
-  const scp = u.match(/^([^@]+)@([^:]+):(.+)$/);
-  if (scp) {
-    const host = scp[2].trim();
-    const path = scp[3].replace(/^\/+/, '').trim();
-    if (host && path) return `https://${host}/${path}`;
-  }
-
-  // ssh://user@host/owner/repo(.git)
-  const ssh = u.match(/^ssh:\/\/([^@]+@)?([^/]+)\/(.+)$/);
-  if (ssh) {
-    const host = ssh[2].trim();
-    const path = ssh[3].replace(/^\/+/, '').trim();
-    if (host && path) return `https://${host}/${path}`;
-  }
-
-  return null;
+  const parts = parseRemoteParts(u);
+  if (!parts) return null;
+  return `https://${parts.host}/${parts.path}`;
 }
 
 function wireAuthModal() {

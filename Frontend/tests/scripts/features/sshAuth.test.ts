@@ -468,3 +468,74 @@ describe('wireAuthModal ok button edge cases', () => {
     expect(document.getElementById('ssh-auth-host')!.textContent).toBe('ex.com');
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// sshToHttps - generic URL parsing (VCS-12)
+// ---------------------------------------------------------------------------
+
+describe('sshToHttps generic URL parsing', () => {
+  /** Fills the auth modal with the given URL and clicks the HTTPS switch. */
+  async function fillAndConvert(url: string) {
+    const invoke = vi.fn(async () => null);
+    (window as any).__TAURI__ = {
+      core: { invoke },
+      event: { listen: vi.fn(async (_e: string, cb: any) => { listenHandler = cb; return { unlisten: vi.fn() }; }) },
+    };
+    const { initSshAuthPrompt } = await import('@scripts/features/sshAuth');
+    initSshAuthPrompt();
+    listenHandler?.({ payload: { host: 'ignored', remote: 'origin', url } });
+    return {
+      invoke,
+      httpsBtn: document.getElementById('ssh-auth-switch-https') as HTMLButtonElement,
+    };
+  }
+
+  it('converts ssh://host/path without a username', async () => {
+    const { invoke, httpsBtn } = await fillAndConvert('ssh://host.example/owner/repo.git');
+    expect(httpsBtn.disabled).toBe(false);
+    httpsBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invoke).toHaveBeenCalledWith('vcs_set_remote_url', { name: 'origin', url: 'https://host.example/owner/repo.git' });
+  });
+
+  it('converts ssh://alice@host/path with a non-git username', async () => {
+    const { invoke, httpsBtn } = await fillAndConvert('ssh://alice@host.example/owner/repo.git');
+    expect(httpsBtn.disabled).toBe(false);
+    httpsBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invoke).toHaveBeenCalledWith('vcs_set_remote_url', { name: 'origin', url: 'https://host.example/owner/repo.git' });
+  });
+
+  it('drops the port from ssh://user@host:port/path', async () => {
+    const { invoke, httpsBtn } = await fillAndConvert('ssh://git@host.example:2222/owner/repo.git');
+    expect(httpsBtn.disabled).toBe(false);
+    httpsBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invoke).toHaveBeenCalledWith('vcs_set_remote_url', { name: 'origin', url: 'https://host.example/owner/repo.git' });
+  });
+
+  it('keeps https://host/path unchanged', async () => {
+    const { invoke, httpsBtn } = await fillAndConvert('https://host.example/owner/repo.git');
+    expect(httpsBtn.disabled).toBe(false);
+    httpsBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invoke).toHaveBeenCalledWith('vcs_set_remote_url', { name: 'origin', url: 'https://host.example/owner/repo.git' });
+  });
+
+  it('keeps https://alice@host/path unchanged', async () => {
+    const { invoke, httpsBtn } = await fillAndConvert('https://alice@host.example/owner/repo.git');
+    expect(httpsBtn.disabled).toBe(false);
+    httpsBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invoke).toHaveBeenCalledWith('vcs_set_remote_url', { name: 'origin', url: 'https://alice@host.example/owner/repo.git' });
+  });
+
+  it('converts scp-like alice@host:path with a non-git username', async () => {
+    const { invoke, httpsBtn } = await fillAndConvert('alice@host.example:owner/repo.git');
+    expect(httpsBtn.disabled).toBe(false);
+    httpsBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invoke).toHaveBeenCalledWith('vcs_set_remote_url', { name: 'origin', url: 'https://host.example/owner/repo.git' });
+  });
+});
