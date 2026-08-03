@@ -143,10 +143,6 @@ pub async fn get_repo_settings(state: State<'_, AppState>) -> Result<RepoConfig,
             cfg.user_email = Some(email);
         }
         if let Some(remotes) = remotes {
-            cfg.origin_url = remotes
-                .iter()
-                .find(|r| r.name == "origin")
-                .map(|r| r.url.clone());
             cfg.remotes = Some(remotes);
         }
     }
@@ -179,7 +175,8 @@ pub async fn set_repo_settings(state: State<'_, AppState>, cfg: RepoConfig) -> R
                     .map_err(|e| e.to_string())?;
             }
 
-            // Back-compat: if `remotes` is omitted, only update origin (legacy UI behavior).
+            // remotes: None leaves remotes unchanged; Some(list) replaces the set
+            // (Some([]) clears all configured remotes).
             if let Some(remotes) = cfg_clone.remotes.as_ref() {
                 let mut desired: HashMap<&str, &str> = HashMap::new();
                 for remote in remotes {
@@ -206,13 +203,6 @@ pub async fn set_repo_settings(state: State<'_, AppState>, cfg: RepoConfig) -> R
                             .remove_remote(&name)
                             .map_err(|e| e.to_string())?;
                     }
-                }
-            } else if let Some(url) = cfg_clone.origin_url.as_deref() {
-                let url = url.trim();
-                if !url.is_empty() {
-                    repo.inner()
-                        .ensure_remote("origin", url)
-                        .map_err(|e| e.to_string())?;
                 }
             }
             Ok(())

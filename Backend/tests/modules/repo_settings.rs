@@ -13,7 +13,6 @@ fn serializes_repo_config_with_optional_fields() {
     let populated = RepoConfig {
         user_name: Some("Alice".into()),
         user_email: Some("alice@example.com".into()),
-        origin_url: Some("https://example.com/repo.git".into()),
         remotes: Some(vec![RemoteConfig {
             name: "origin".into(),
             url: "https://example.com/repo.git".into(),

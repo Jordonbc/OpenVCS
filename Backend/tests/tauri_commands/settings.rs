@@ -437,6 +437,40 @@ fn get_repo_settings_succeeds_with_identity_and_remotes() {
     assert!(res.is_ok(), "get_repo_settings should succeed with identity and remotes");
 }
 
+fn response_to_json(body: InvokeResponseBody) -> serde_json::Value {
+    match body {
+        InvokeResponseBody::Json(json) => {
+            serde_json::from_str(&json).expect("json response body")
+        }
+        InvokeResponseBody::Raw(bytes) => {
+            serde_json::from_slice(&bytes).expect("raw json response body")
+        }
+    }
+}
+
+#[test]
+fn origin_url_removed_from_get_response() {
+    let _guard = AppDirsGuard::new();
+    let (app, _vcs) = build_app_with_settings_vcs();
+    let wv = test_webview(&app);
+
+    let res = invoke_cmd(&wv, "get_repo_settings", tauri::ipc::InvokeBody::default());
+    assert!(res.is_ok(), "get_repo_settings should succeed: {:?}", res);
+    let json = response_to_json(res.expect("get_repo_settings response"));
+
+    // Remotes-only schema: the origin_url key must never appear.
+    assert!(
+        json.get("origin_url").is_none(),
+        "response must not contain origin_url"
+    );
+    let remotes = json
+        .get("remotes")
+        .and_then(|v| v.as_array())
+        .expect("response should contain the remotes array");
+    assert_eq!(remotes.len(), 2);
+    assert!(json.get("user_name").is_some(), "identity still returned");
+}
+
 // ── set_repo_settings tests ──
 
 #[test]
@@ -482,23 +516,23 @@ fn set_repo_settings_updates_identity_and_remotes() {
 }
 
 #[test]
-fn set_repo_settings_origin_only_when_no_remotes_list() {
+fn remotes_none_leaves_unchanged() {
     let _guard = AppDirsGuard::new();
     let (app, vcs) = build_app_with_settings_vcs();
     let wv = test_webview(&app);
 
-    // Back-compat: send origin_url without remotes → should only call ensure_remote
+    // remotes omitted (None) → existing remotes must be left untouched
     let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
         "cfg": {
-            "origin_url": "https://example.com/new-origin.git",
+            "user_name": "NewName",
         },
     }));
     let res = invoke_cmd(&wv, "set_repo_settings", body);
-    assert!(res.is_ok(), "set_repo_settings with origin_url should succeed: {:?}", res);
+    assert!(res.is_ok(), "set_repo_settings should succeed: {:?}", res);
 
-    // Existing remotes should be untouched (no remotes list → origin-only path)
     let remotes = vcs.list_remotes().unwrap();
-    assert!(remotes.contains(&("origin".into(), "https://example.com/new-origin.git".into())));
+    assert_eq!(remotes.len(), 2);
+    assert!(remotes.contains(&("origin".into(), "https://example.com/repo.git".into())));
     assert!(remotes.contains(&("upstream".into(), "https://example.com/upstream.git".into())));
 }
 
@@ -751,23 +785,45 @@ fn set_repo_settings_skips_identity_when_only_email_provided() {
 }
 
 #[test]
-fn set_repo_settings_skips_empty_origin_url() {
+fn remotes_some_empty_clears_all() {
     let _guard = AppDirsGuard::new();
     let (app, vcs) = build_app_with_settings_vcs();
     let wv = test_webview(&app);
 
-    // origin_url is empty → ensure_remote skipped
-    let body = tauri::ipc::InvokeBody::Json(serde_json::json!([{
-        "origin_url": "",
-    }]));
+    // Some([]) → remove every configured remote
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "cfg": {
+            "remotes": [],
+        },
+    }));
     let res = invoke_cmd(&wv, "set_repo_settings", body);
-    let _ = res;
+    assert!(res.is_ok(), "set_repo_settings should succeed: {:?}", res);
 
-    // Remotes should be unchanged
     let remotes = vcs.list_remotes().unwrap();
-    assert_eq!(remotes.len(), 2);
-    assert!(remotes.contains(&("origin".into(), "https://example.com/repo.git".into())));
-    assert!(remotes.contains(&("upstream".into(), "https://example.com/upstream.git".into())));
+    assert!(remotes.is_empty(), "Some([]) must clear all remotes");
+}
+
+#[test]
+fn remotes_some_replaces_set() {
+    let _guard = AppDirsGuard::new();
+    let (app, vcs) = build_app_with_settings_vcs();
+    let wv = test_webview(&app);
+
+    // Some(list) → replace the whole set (origin re-pointed, upstream dropped)
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "cfg": {
+            "remotes": [
+                { "name": "origin", "url": "https://example.com/new-repo.git" },
+            ],
+        },
+    }));
+    let res = invoke_cmd(&wv, "set_repo_settings", body);
+    assert!(res.is_ok(), "set_repo_settings should succeed: {:?}", res);
+
+    let remotes = vcs.list_remotes().unwrap();
+    assert_eq!(remotes.len(), 1);
+    assert!(remotes.contains(&("origin".into(), "https://example.com/new-repo.git".into())));
+    assert!(!remotes.contains(&("upstream".into(), "https://example.com/upstream.git".into())));
 }
 
 #[test]

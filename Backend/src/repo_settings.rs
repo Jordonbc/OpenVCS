@@ -22,11 +22,10 @@ pub struct RepoConfig {
     /// Repository-local user.email (if set)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_email: Option<String>,
-    /// Convenience: the URL for the 'origin' remote (if present)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub origin_url: Option<String>,
-    /// Desired configured remotes (name + url). When provided, `set_repo_settings` will
-    /// ensure these exist and remove any others.
+    /// Desired configured remotes (name + url) to apply on save:
+    /// - `None`: leave existing remotes unchanged.
+    /// - `Some([])`: remove all configured remotes.
+    /// - `Some(list)`: replace the whole set with the given remotes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remotes: Option<Vec<RemoteConfig>>,
 }
