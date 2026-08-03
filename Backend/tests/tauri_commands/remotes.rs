@@ -488,7 +488,7 @@ fn vcs_undo_to_commit_fails_without_repo() {
 // ── IPC command tests with DummyVcs ──
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use crate::plugin_vcs_backends::{self, PluginBackendDescriptor};
 use crate::repo::Repo;
 
@@ -500,6 +500,12 @@ struct RemotesTestVcs {
     ahead: u32,
     log_commits: Vec<models::CommitItem>,
     current_branch: Option<String>,
+    /// Resolved upstream returned by `branch_upstream` (None = no upstream).
+    upstream: Option<String>,
+    /// When true, `reset_soft_to` succeeds and records its target.
+    reset_ok: bool,
+    /// Last revision passed to `reset_soft_to` (recorded when `reset_ok`).
+    reset_target: Mutex<Option<String>>,
     /// Must be true when ensure_remote should succeed. Stored as bool since
     /// VcsError does not implement Clone.
     ensure_remote_ok: bool,
@@ -514,6 +520,9 @@ impl RemotesTestVcs {
             ahead: 0,
             log_commits: vec![],
             current_branch: Some("main".into()),
+            upstream: None,
+            reset_ok: false,
+            reset_target: Mutex::new(None),
             ensure_remote_ok: true,
         }
     }
@@ -568,6 +577,19 @@ impl Vcs for RemotesTestVcs {
     fn merge_into_current(&self, _: &str) -> crate::core::Result<()> { self.unsupported() }
     fn get_identity(&self) -> crate::core::Result<Option<(String, String)>> { Ok(None) }
     fn set_identity_local(&self, _: &str, _: &str) -> crate::core::Result<()> { Ok(()) }
+
+    fn branch_upstream(&self, _branch: &str) -> crate::core::Result<Option<String>> {
+        Ok(self.upstream.clone())
+    }
+
+    fn reset_soft_to(&self, rev: &str) -> crate::core::Result<()> {
+        if self.reset_ok {
+            *self.reset_target.lock().unwrap() = Some(rev.to_string());
+            Ok(())
+        } else {
+            self.unsupported()
+        }
+    }
 }
 
 fn register_remotes_test_backend(backend_id: &str) {
@@ -676,6 +698,47 @@ fn vcs_undo_since_push_nothing_to_undo() {
     let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
     let res = invoke_cmd(&wv, "vcs_undo_since_push", body);
     assert!(res.is_err(), "undo with ahead=0 should fail: {:?}", res);
+}
+
+#[test]
+fn vcs_undo_since_push_uses_resolved_upstream() {
+    register_remotes_test_backend("remotes-test");
+    let mut vcs = RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    );
+    vcs.ahead = 3;
+    vcs.upstream = Some("refs/remotes/origin/main".into());
+    vcs.reset_ok = true;
+    let vcs = Arc::new(vcs);
+    let (app, ref_vcs) = build_remotes_app(vcs.clone());
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
+    let res = invoke_cmd(&wv, "vcs_undo_since_push", body);
+    assert!(res.is_ok(), "undo with upstream should succeed: {:?}", res);
+    // Reset must target the resolved upstream name, not a VCS-specific literal.
+    let target = ref_vcs.reset_target.lock().unwrap().clone();
+    assert_eq!(target.as_deref(), Some("refs/remotes/origin/main"));
+    let _ = ref_vcs; // keep alive
+}
+
+#[test]
+fn vcs_undo_since_push_no_upstream_errors() {
+    register_remotes_test_backend("remotes-test");
+    let mut vcs = RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    );
+    vcs.ahead = 3;
+    // upstream = None → NoUpstream error
+    let vcs = Arc::new(vcs);
+    let (app, _) = build_remotes_app(vcs);
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
+    let res = invoke_cmd(&wv, "vcs_undo_since_push", body);
+    assert!(res.is_err(), "undo without upstream should fail: {:?}", res);
 }
 
 #[test]

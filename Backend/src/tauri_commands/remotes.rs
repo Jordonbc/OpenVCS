@@ -621,20 +621,19 @@ pub async fn vcs_undo_since_push<R: Runtime>(
         on(VcsEvent::Info {
             msg: "Undoing unpushed commits (soft reset)…".into(),
         });
-        match repo.inner().reset_soft_to("@{upstream}") {
-            Ok(_) => Ok(()),
-            Err(_e) => {
-                let cur = repo
-                    .inner()
-                    .current_branch()
-                    .map_err(|e| e.to_string())?
-                    .ok_or_else(|| "Detached HEAD; cannot resolve upstream".to_string())?;
-                let remote_short = format!("origin/{}", cur);
-                repo.inner()
-                    .reset_soft_to(&remote_short)
-                    .map_err(|e| e.to_string())
-            }
-        }
+        let cur = repo
+            .inner()
+            .current_branch()
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| VcsError::NoUpstream.user_message())?;
+        let upstream = repo
+            .inner()
+            .branch_upstream(&cur)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| VcsError::NoUpstream.user_message())?;
+        repo.inner()
+            .reset_soft_to(&upstream)
+            .map_err(|e| e.to_string())
     })
     .await
 }
@@ -665,12 +664,16 @@ pub async fn vcs_undo_to_commit<R: Runtime>(
     run_repo_task("vcs_undo_to_commit", repo, move |repo| {
         let mut ahead_list: Vec<CommitItem> = Vec::new();
         {
+            // BLOCKED-CROSS-REPO VCS-04: directional range semantics need generic
+            // {from,to} history — literal kept until cross-repo protocol lands.
             let mut q = LogQuery::head(1000);
             q.rev = Some("@{upstream}..HEAD".to_string());
             match repo.inner().log_commits(&q) {
                 Ok(list) => ahead_list = list,
                 Err(_) => {
                     if let Some(cur) = repo.inner().current_branch().map_err(|e| e.to_string())? {
+                        // BLOCKED-CROSS-REPO VCS-04: `origin/{branch}..HEAD` literal is
+                        // VCS-specific; blocked until generic {from,to} history exists.
                         let mut q2 = LogQuery::head(1000);
                         q2.rev = Some(format!("origin/{}..HEAD", cur));
                         if let Ok(list) = repo.inner().log_commits(&q2) {
