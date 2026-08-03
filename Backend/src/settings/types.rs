@@ -136,7 +136,7 @@ pub struct Vcs {
     /// On Linux AppImage, the bundled `ssh` can be older than the host and may fail to parse
     /// distro crypto-policy configuration. `Auto` prefers the host OpenSSH if present.
     #[serde(default)]
-    pub ssh_binary: GitSshBinary,
+    pub ssh_binary: SshBinary,
     /// Used when `ssh_binary = "custom"`.
     #[serde(default)]
     pub ssh_path: String,
@@ -162,7 +162,7 @@ impl Default for Vcs {
         Self {
             backend: DEFAULT_BACKEND_ID.into(),
             default_branch: "main".into(),
-            ssh_binary: GitSshBinary::Auto,
+            ssh_binary: SshBinary::Auto,
             ssh_path: String::new(),
             fetch_on_focus: true,
             allow_hooks: HookPolicy::Ask,
@@ -262,8 +262,8 @@ impl Default for Credentials {
         Self {
             helper: CredentialHelper::OsKeychain,
             ssh_agent: SshAgent::Env,
-            ssh_key_paths: vec!["~/.ssh/id_ed25519".into(), "~/.ssh/id_rsa".into()],
-            gpg_program: "gpg".into(),
+            ssh_key_paths: vec!["~/.ssh/id_ed25519".into(), "~/.ssh/id_rsa".into()], // BLOCKED-CROSS-REPO VCS-16 (owner SDK + Git plugin)
+            gpg_program: "gpg".into(), // BLOCKED-CROSS-REPO VCS-16 (owner SDK + Git plugin)
             sign_commits: false,
             signing_key: String::new(),
         }
@@ -507,11 +507,11 @@ pub enum UpdateChannel {
     Nightly,
 }
 
-/// SSH binary selection strategy for Git operations.
+/// SSH binary selection strategy used by the configured VCS backend.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
-pub enum GitSshBinary {
+pub enum SshBinary {
     #[default]
     Auto,
     Host,

@@ -6,7 +6,7 @@ use crate::app_identity;
 use std::path::PathBuf;
 use std::{fs, io};
 
-use super::{AppConfig, DEFAULT_BACKEND_ID, GitSshBinary, default_theme_pack};
+use super::{AppConfig, DEFAULT_BACKEND_ID, SshBinary, default_theme_pack};
 
 impl AppConfig {
     /// ~/.config/openvcs/openvcs.conf (XDG/macOS/Windows aware)
@@ -116,8 +116,8 @@ impl AppConfig {
         if self.vcs.default_branch.trim().is_empty() {
             self.vcs.default_branch = "main".into();
         }
-        if self.vcs.ssh_path.trim().is_empty() && self.vcs.ssh_binary == GitSshBinary::Custom {
-            self.vcs.ssh_binary = GitSshBinary::Auto;
+        if self.vcs.ssh_path.trim().is_empty() && self.vcs.ssh_binary == SshBinary::Custom {
+            self.vcs.ssh_binary = SshBinary::Auto;
         }
 
         // Diff

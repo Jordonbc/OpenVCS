@@ -31,6 +31,11 @@ fn clear_test_home_dir() {
     *TEST_HOME_DIR.get_or_init(|| RwLock::new(None)).write() = None;
 }
 
+/// Resolves the home directory, honoring the test override when active.
+///
+/// # Returns
+/// - `Some(PathBuf)` home directory path.
+/// - `None` when the home directory cannot be determined.
 fn home_dir_for_paths() -> Option<PathBuf> {
     #[cfg(test)]
     if let Some(dir) = TEST_HOME_DIR
@@ -151,6 +156,17 @@ mod tests {
     include!("../../tests/tauri_commands/ssh.rs");
 }
 
+/// Returns whether `path` points to a regular executable file.
+///
+/// On Unix this checks the executable permission bits; elsewhere a
+/// regular file is treated as executable.
+///
+/// # Parameters
+/// - `path`: Candidate file path.
+///
+/// # Returns
+/// - `true` when the candidate exists and is executable.
+/// - `false` otherwise.
 fn is_executable(path: &Path) -> bool {
     let Ok(metadata) = fs::metadata(path) else {
         return false;
@@ -172,6 +188,17 @@ fn is_executable(path: &Path) -> bool {
     }
 }
 
+/// Resolves a command name to an executable path via `PATH`.
+///
+/// Absolute paths or paths containing separators are returned when
+/// executable; otherwise each `PATH` entry is searched in order.
+///
+/// # Parameters
+/// - `candidate`: Command name or path.
+///
+/// # Returns
+/// - `Some(PathBuf)` first executable match.
+/// - `None` when no executable is found.
 fn resolve_command(candidate: &Path) -> Option<PathBuf> {
     if candidate.is_absolute() || candidate.components().count() > 1 {
         return is_executable(candidate).then(|| candidate.to_path_buf());
@@ -183,6 +210,14 @@ fn resolve_command(candidate: &Path) -> Option<PathBuf> {
         .find(|path| is_executable(path))
 }
 
+/// Resolves an SSH askpass helper, preferring `SSH_ASKPASS` when set.
+///
+/// Falls back to common system askpass binaries when the environment
+/// variable is unset or points to a non-executable file.
+///
+/// # Returns
+/// - `Some(PathBuf)` first executable askpass helper.
+/// - `None` when none is available.
 fn resolve_ssh_askpass() -> Option<PathBuf> {
     let mut candidates = Vec::new();
 
@@ -371,6 +406,16 @@ pub fn ssh_key_candidates() -> Result<Vec<SshKeyCandidate>, String> {
     ssh_key_candidates_in_dir(&dir)
 }
 
+/// Lists candidate private-key files in `dir` using filename heuristics.
+///
+/// Public keys, config, known_hosts and log/backup files are excluded.
+///
+/// # Parameters
+/// - `dir`: SSH directory to scan.
+///
+/// # Returns
+/// - `Ok(Vec<SshKeyCandidate>)` sorted candidate list, empty when the
+///   directory is missing or unreadable.
 fn ssh_key_candidates_in_dir(dir: &Path) -> Result<Vec<SshKeyCandidate>, String> {
     let Ok(read_dir) = fs::read_dir(dir) else {
         debug!("ssh_key_candidates: ssh directory does not exist or is not readable",);
