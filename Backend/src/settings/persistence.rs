@@ -21,7 +21,7 @@ impl AppConfig {
         }
     }
 
-    /// Load from disk or fall back to defaults; then migrate+validate.
+    /// Load from disk or fall back to defaults; then validate.
     ///
     /// # Returns
     /// - A valid [`AppConfig`] loaded from disk or synthesized from defaults.
@@ -31,7 +31,6 @@ impl AppConfig {
             Ok(s) => toml::from_str::<AppConfig>(&s).unwrap_or_default(),
             Err(_) => AppConfig::default(),
         };
-        cfg.migrate();
         cfg.validate();
         cfg
     }
@@ -84,18 +83,6 @@ impl AppConfig {
                 .any(|id| id.trim().eq_ignore_ascii_case(&plugin_id))
     }
 
-    /// Future-proof migrations between schema versions.
-    ///
-    /// # Returns
-    /// - `()`.
-    pub fn migrate(&mut self) {
-        match self.schema_version {
-            0 => { /* never shipped */ }
-            1 => { /* current */ }
-            _ => { /* future: add stepwise migrations */ }
-        }
-        // no-op
-    }
 
     /// Clamp and normalize values so hand edits can't break the app.
     ///

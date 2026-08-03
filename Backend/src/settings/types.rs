@@ -18,7 +18,6 @@ fn default_true() -> bool {
 /// Root global settings document persisted as TOML.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppConfig {
-    pub schema_version: u32,
     /// Opencode-style plugin source entries resolved from npm specs or local paths.
     #[serde(default)]
     pub plugin: Vec<String>,
@@ -55,7 +54,6 @@ impl Default for AppConfig {
     /// - Default [`AppConfig`].
     fn default() -> Self {
         Self {
-            schema_version: 1,
             plugin: Default::default(),
             general: Default::default(),
             vcs: Default::default(),

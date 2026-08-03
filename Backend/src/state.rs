@@ -90,7 +90,6 @@ impl AppState {
     /// - `Ok(())` when the config was saved and applied.
     /// - `Err(String)` if persistence fails.
     pub fn set_config(&self, mut next: AppConfig) -> Result<(), String> {
-        next.migrate();
         next.validate();
         next.save().map_err(|e| e.to_string())?;
         crate::monitoring::sync_backend_monitoring(&next);

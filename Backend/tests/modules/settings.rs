@@ -7,7 +7,6 @@ use super::*;
 /// Verifies default config values stay aligned with startup expectations.
 fn default_config_populates_expected_values() {
     let cfg = AppConfig::default();
-    assert_eq!(cfg.schema_version, 1);
     assert!(cfg.plugin.is_empty());
     assert_eq!(cfg.general.theme, Theme::System);
     assert_eq!(cfg.general.theme_pack, "default");
@@ -195,7 +194,6 @@ fn section_defaults_stay_aligned_with_schema() {
 fn deserializes_partial_toml_with_field_defaults() {
     let cfg: AppConfig = toml::from_str(
         r#"
-schema_version = 1
 
 [general]
 default_backend = "hg"
@@ -206,7 +204,6 @@ enabled = ["openvcs.git"]
     )
     .expect("parse config");
 
-    assert_eq!(cfg.schema_version, 1);
     assert_eq!(cfg.general.default_backend, "hg");
     assert_eq!(cfg.general.theme_pack, "default");
     assert_eq!(cfg.vcs.default_branch, "main");
