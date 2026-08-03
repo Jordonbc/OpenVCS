@@ -11,7 +11,17 @@ use std::collections::BTreeMap;
 use crate::core::BackendId;
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
+use crate::settings::DEFAULT_BACKEND_ID;
 use crate::state::AppState;
+
+/// Response payload for the `list_vcs_backends_cmd` IPC command.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ListVcsBackendsResponse {
+    /// Available `(backend_id, display_label)` entries.
+    pub backends: Vec<(String, String)>,
+    /// Backend id shown as selected when no explicit default is configured.
+    pub default_backend_id: String,
+}
 
 /// Resolves the display label shown for a backend entry.
 fn backend_display_label(
@@ -53,8 +63,9 @@ fn auto_default_backend_id(current_default: &str, backends: &[(String, String)])
 /// - `state`: Shared application state.
 ///
 /// # Returns
-/// - A list of `(backend_id, display_name)` tuples.
-pub fn list_vcs_backends_cmd(state: State<'_, AppState>) -> Vec<(String, String)> {
+/// - A [`ListVcsBackendsResponse`] with `(backend_id, display_name)` entries
+///   and the default backend id.
+pub fn list_vcs_backends_cmd(state: State<'_, AppState>) -> ListVcsBackendsResponse {
     info!("list_vcs_backends_cmd called");
 
     let mut map: BTreeMap<String, String> = BTreeMap::new();
@@ -96,7 +107,10 @@ pub fn list_vcs_backends_cmd(state: State<'_, AppState>) -> Vec<(String, String)
         info!("  - {} ({})", id, name);
     }
 
-    backends
+    ListVcsBackendsResponse {
+        backends,
+        default_backend_id: DEFAULT_BACKEND_ID.to_string(),
+    }
 }
 
 #[tauri::command]

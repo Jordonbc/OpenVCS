@@ -81,7 +81,7 @@ export interface GlobalSettings {
         theme?: 'system'|'dark'|'light';
         theme_pack?: string;
         language?: string;
-        default_backend?: 'git'|string;
+        default_backend?: string;
         update_channel?: string;
         reopen_last_repos?: boolean;
         checks_on_launch?: boolean;

@@ -4,6 +4,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Ships-with default backend, overridable by config.
+pub const DEFAULT_BACKEND_ID: &str = "git";
+
 /// Serde helper default for `true`.
 ///
 /// # Returns
@@ -102,7 +105,7 @@ impl Default for General {
             theme: Theme::System,
             theme_pack: default_theme_pack(),
             language: Language::System,
-            default_backend: "git".into(),
+            default_backend: DEFAULT_BACKEND_ID.into(),
             update_channel: UpdateChannel::Stable,
             reopen_last_repos: true,
             checks_on_launch: true,
@@ -157,7 +160,7 @@ impl Default for Vcs {
     /// - Default [`Vcs`].
     fn default() -> Self {
         Self {
-            backend: String::new(),
+            backend: DEFAULT_BACKEND_ID.into(),
             default_branch: "main".into(),
             ssh_binary: GitSshBinary::Auto,
             ssh_path: String::new(),

@@ -58,11 +58,14 @@ async function refreshDefaultBackendOptions(modal: HTMLElement, cfg: GlobalSetti
     const desired = String(cfg.general?.default_backend || '').trim();
 
     let available: Array<[string, string]> = [];
+    let defaultBackendId = '';
     try {
-        available = await TAURI.invoke<Array<[string, string]>>('list_vcs_backends_cmd');
+        const res = await TAURI.invoke<{ backends: Array<[string, string]>; default_backend_id: string }>('list_vcs_backends_cmd');
+        available = Array.isArray(res?.backends) ? res.backends : [];
+        defaultBackendId = String(res?.default_backend_id || '').trim();
     } catch {}
 
-    const backends = (Array.isArray(available) ? available : [])
+    const backends = available
         .map(([id, name]) => [String(id || '').trim(), String(name || '').trim()] as const)
         .filter(([id]) => id.length > 0);
 
@@ -83,6 +86,8 @@ async function refreshDefaultBackendOptions(modal: HTMLElement, cfg: GlobalSetti
     }
     if (desired && backends.some(([id]) => id === desired)) {
         el.value = desired;
+    } else if (defaultBackendId && backends.some(([id]) => id === defaultBackendId)) {
+        el.value = defaultBackendId;
     } else {
         el.value = backends[0][0];
     }
@@ -518,7 +523,7 @@ export function wireSettings() {
                 theme: 'system',
                 theme_pack: DEFAULT_LIGHT_THEME_ID,
                 language: 'system',
-                default_backend: 'git',
+                default_backend: '',
                 update_channel: 'stable',
                 reopen_last_repos: true,
                 checks_on_launch: true,

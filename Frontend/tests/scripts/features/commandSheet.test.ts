@@ -9,7 +9,7 @@ vi.mock('@scripts/lib/tauri', () => {
   const handler = new Proxy(invokeFn, {
     apply(target, thisArg, args) {
       if (args[0] === 'list_vcs_backends_cmd') {
-        return Promise.resolve([['git', 'Git']]);
+        return Promise.resolve({ backends: [['git', 'Git']], default_backend_id: 'git' });
       }
       return Reflect.apply(target, thisArg, args);
     }

@@ -8,7 +8,7 @@ use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INV
 use tauri::webview::InvokeRequest;
 use tauri::WebviewWindowBuilder;
 
-use super::{auto_default_backend_id, backend_display_label};
+use super::{ListVcsBackendsResponse, auto_default_backend_id, backend_display_label};
 
 #[test]
 fn picks_backend_display_labels_from_backend_name_plugin_name_or_id() {
@@ -99,11 +99,12 @@ fn list_vcs_backends_returns_backend_entries() {
 
     let res = invoke_cmd(&webview, "list_vcs_backends_cmd", tauri::ipc::InvokeBody::default());
     assert!(res.is_ok(), "list_vcs_backends_cmd should succeed: {:?}", res);
-    let backends: Vec<(String, String)> = res.unwrap().deserialize().unwrap();
-    for (id, label) in &backends {
+    let payload: ListVcsBackendsResponse = res.unwrap().deserialize().unwrap();
+    for (id, label) in &payload.backends {
         assert!(!id.is_empty(), "each backend should have a non-empty id");
         assert!(!label.is_empty(), "each backend should have a non-empty label");
     }
+    assert_eq!(payload.default_backend_id, settings::DEFAULT_BACKEND_ID);
 }
 
 #[test]

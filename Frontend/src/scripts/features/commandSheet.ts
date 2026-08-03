@@ -27,6 +27,9 @@ let doAddBtn: HTMLButtonElement | null = null;
 /** Cached list of available VCS backends. */
 let backendCache: BackendEntry[] = [];
 
+/** Backend id the host reports as its ships-with default. */
+let defaultBackendId = '';
+
 // Slider indicator bits
 let seg: HTMLElement | null = null;
 let segIndicator: HTMLElement | null = null;
@@ -261,8 +264,9 @@ export function bindCommandSheet() {
 /** Fetches available VCS backends and populates both selectors. */
 async function populateBackendSelectors() {
     try {
-        const raw = await TAURI.invoke<BackendEntry[]>('list_vcs_backends_cmd');
-        backendCache = (Array.isArray(raw) ? raw : []).filter(([id]) => id.trim().length > 0);
+        const res = await TAURI.invoke<{ backends: BackendEntry[]; default_backend_id: string }>('list_vcs_backends_cmd');
+        backendCache = (Array.isArray(res?.backends) ? res.backends : []).filter(([id]) => id.trim().length > 0);
+        defaultBackendId = String(res?.default_backend_id || '').trim();
     } catch {
         backendCache = [];
     }
@@ -294,6 +298,8 @@ async function populateBackendSelectors() {
         // Set default backend if configured and available
         if (defaultBackend && backendCache.some(([id]) => id === defaultBackend)) {
             sel.value = defaultBackend;
+        } else if (defaultBackendId && backendCache.some(([id]) => id === defaultBackendId)) {
+            sel.value = defaultBackendId;
         } else if (opts.length === 1) {
             sel.value = opts[0].value;
         }

@@ -23,7 +23,7 @@ fn validate_normalizes_invalid_values() {
     cfg.validate();
 
     assert_eq!(cfg.general.theme_pack, "default");
-    assert_eq!(cfg.general.default_backend, "git");
+    assert_eq!(cfg.general.default_backend, DEFAULT_BACKEND_ID);
     assert_eq!(cfg.vcs.backend, "git");
     assert_eq!(cfg.vcs.default_branch, "main");
     assert_eq!(cfg.vcs.ssh_binary, GitSshBinary::Auto);

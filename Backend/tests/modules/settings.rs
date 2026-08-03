@@ -12,7 +12,7 @@ fn default_config_populates_expected_values() {
     assert_eq!(cfg.general.theme, Theme::System);
     assert_eq!(cfg.general.theme_pack, "default");
     assert_eq!(cfg.general.language, Language::System);
-    assert_eq!(cfg.general.default_backend, "git");
+    assert_eq!(cfg.general.default_backend, DEFAULT_BACKEND_ID);
     assert_eq!(cfg.general.update_channel, UpdateChannel::Stable);
     assert!(cfg.general.reopen_last_repos);
     assert!(cfg.general.checks_on_launch);
@@ -61,7 +61,7 @@ fn helper_constructors_return_disabled_defaults() {
 #[test]
 fn section_defaults_stay_aligned_with_schema() {
     let vcs = Vcs::default();
-    assert!(vcs.backend.is_empty());
+    assert_eq!(vcs.backend, DEFAULT_BACKEND_ID);
     assert_eq!(vcs.default_branch, "main");
     assert_eq!(vcs.ssh_binary, GitSshBinary::Auto);
     assert!(vcs.fetch_on_focus);

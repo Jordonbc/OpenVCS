@@ -21,7 +21,7 @@ export function collectGeneralSettings(
         theme,
         theme_pack: themePack || DEFAULT_LIGHT_THEME_ID,
         language: get<HTMLSelectElement>('#set-language')?.value,
-    default_backend: (get<HTMLSelectElement>('#set-default-backend')?.value || 'git') as any,
+    default_backend: get<HTMLSelectElement>('#set-default-backend')?.value || '',
     update_channel: get<HTMLSelectElement>('#set-update-channel')?.value || 'stable',
         reopen_last_repos: !!get<HTMLInputElement>('#set-reopen-last')?.checked,
         checks_on_launch: !!get<HTMLInputElement>('#set-checks-on-launch')?.checked,

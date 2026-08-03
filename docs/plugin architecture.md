@@ -73,9 +73,10 @@ Selected-file commit flows stage repository-relative paths into the index with
 commits should therefore support both RPCs consistently.
 
 `vcs.get_status_payload` file entries may include optional `binary` metadata.
-`vcs.diff_file` may return either a legacy `string[]` line array or a structured
-`{ lines, binary }` payload. The host prefers explicit binary metadata and falls
-back to diff-marker heuristics only when plugins omit it.
+`vcs.diff_file` returns a structured `{ lines, binary }` payload; the legacy
+`string[]` line-array form is no longer accepted. The host passes explicit
+binary metadata through and falls back to diff-marker heuristics only when
+plugins omit it.
 
 Clone flows resolve the final target directory in the host and then invoke the
 selected backend plugin's `vcs.clone_repo` method with `{ url, dest }`, where
@@ -160,6 +161,15 @@ Backend objects may include a namespaced action-label map such as `VCS.Push`
 back to generic VCS text when a label is missing.
 
 `module.exec` must resolve to a `.js`, `.mjs`, or `.cjs` file inside `bin/`.
+
+### Default backend
+
+The ships-with default backend id is a single constant, `DEFAULT_BACKEND_ID`
+(`Backend/src/settings/types.rs`). It drives the default `default_backend`
+config value, the validation fallback, and the `default_backend_id` field of the
+`list_vcs_backends_cmd` response, which the Settings modal uses to preselect the
+backend when no explicit default is configured. Users can override
+`default_backend` in `openvcs.conf` or via the Settings > General dropdown.
 
 ## Runtime Lifecycle
 

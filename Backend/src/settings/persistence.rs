@@ -6,7 +6,7 @@ use crate::app_identity;
 use std::path::PathBuf;
 use std::{fs, io};
 
-use super::{AppConfig, GitSshBinary, default_theme_pack};
+use super::{AppConfig, DEFAULT_BACKEND_ID, GitSshBinary, default_theme_pack};
 
 impl AppConfig {
     /// ~/.config/openvcs/openvcs.conf (XDG/macOS/Windows aware)
@@ -108,7 +108,7 @@ impl AppConfig {
         }
         self.general.default_backend = self.general.default_backend.trim().to_string();
         if self.general.default_backend.is_empty() {
-            self.general.default_backend = "git".into();
+            self.general.default_backend = DEFAULT_BACKEND_ID.into();
         }
 
         // Vcs

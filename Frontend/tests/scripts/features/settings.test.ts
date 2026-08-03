@@ -807,7 +807,7 @@ describe('wireSettings (reset button)', () => {
         await vi.waitFor(() => {
             expect(mockInvoke).toHaveBeenCalledWith('set_global_settings', {
                 cfg: expect.objectContaining({
-                    general: expect.objectContaining({ theme: 'system' }),
+                    general: expect.objectContaining({ theme: 'system', default_backend: '' }),
                 }),
             });
             expect(mockNotify).toHaveBeenCalledWith('Defaults restored');
@@ -1110,7 +1110,7 @@ describe('refreshDefaultBackendOptions', () => {
     mountSettingsModal();
     const modal = document.getElementById('settings-modal')!;
     modal.insertAdjacentHTML('beforeend', '<select id="set-default-backend"></select>');
-    mockInvoke.mockResolvedValue([['git', 'Git'], ['hg', 'Mercurial']]);
+    mockInvoke.mockResolvedValue({ backends: [['git', 'Git'], ['hg', 'Mercurial']], default_backend_id: 'git' });
     mockLoadPluginsIntoForm.mockResolvedValue(undefined);
     mockLoadGeneralSettingsIntoForm.mockImplementation(async (_m: HTMLElement, _c: any, _k: any, refreshBackends: any) => {
       await refreshBackends(_m, { general: { default_backend: 'git' } });
@@ -1130,7 +1130,7 @@ describe('refreshDefaultBackendOptions', () => {
     mountSettingsModal();
     const modal = document.getElementById('settings-modal')!;
     modal.insertAdjacentHTML('beforeend', '<select id="set-default-backend"></select>');
-    mockInvoke.mockResolvedValue([]);
+    mockInvoke.mockResolvedValue({ backends: [], default_backend_id: '' });
     mockLoadPluginsIntoForm.mockResolvedValue(undefined);
     mockLoadGeneralSettingsIntoForm.mockImplementation(async (_m: HTMLElement, _c: any, _k: any, refreshBackends: any) => {
       await refreshBackends(_m, {});
@@ -1403,11 +1403,31 @@ describe('refreshDefaultBackendOptions error handling', () => {
     expect(sel.options.length).toBe(0);
   });
 
-  it('selects first backend when desired is empty', async () => {
+  it('selects backend from default_backend_id when desired is empty', async () => {
     mountSettingsModal();
     const modal = document.getElementById('settings-modal')!;
     modal.insertAdjacentHTML('beforeend', '<select id="set-default-backend"></select>');
-    mockInvoke.mockResolvedValue([['git', 'Git'], ['hg', 'Mercurial']]);
+    mockInvoke.mockResolvedValue({ backends: [['git', 'Git'], ['hg', 'Mercurial']], default_backend_id: 'git' });
+    mockLoadPluginsIntoForm.mockResolvedValue(undefined);
+    mockLoadGeneralSettingsIntoForm.mockImplementation(
+      async (_m: HTMLElement, _c: any, _k: any, refreshBackends: any) => {
+        await refreshBackends(_m, {});
+      },
+    );
+
+    const { loadSettingsIntoForm } = await load();
+    await loadSettingsIntoForm();
+    await flushPromises();
+
+    const sel = document.getElementById('set-default-backend') as HTMLSelectElement;
+    expect(sel.value).toBe('git');
+  });
+
+  it('selects default_backend_id when desired is empty and it is not the first entry', async () => {
+    mountSettingsModal();
+    const modal = document.getElementById('settings-modal')!;
+    modal.insertAdjacentHTML('beforeend', '<select id="set-default-backend"></select>');
+    mockInvoke.mockResolvedValue({ backends: [['hg', 'Mercurial'], ['git', 'Git']], default_backend_id: 'git' });
     mockLoadPluginsIntoForm.mockResolvedValue(undefined);
     mockLoadGeneralSettingsIntoForm.mockImplementation(
       async (_m: HTMLElement, _c: any, _k: any, refreshBackends: any) => {

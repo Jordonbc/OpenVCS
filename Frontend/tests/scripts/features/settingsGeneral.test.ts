@@ -20,7 +20,7 @@ describe('collectGeneralSettings', () => {
         <input id="set-theme-auto" type="checkbox" checked />
         <select id="set-theme"><option value="default" selected>Default</option></select>
         <select id="set-language"><option value="system" selected>System</option></select>
-        <select id="set-default-backend"><option value="git" selected>Git</option></select>
+        <select id="set-default-backend"></select>
         <select id="set-update-channel"><option value="stable" selected>Stable</option></select>
         <input id="set-reopen-last" type="checkbox" checked />
         <input id="set-checks-on-launch" type="checkbox" checked />
@@ -260,7 +260,7 @@ describe('collectGeneralSettings - uncovered branches', () => {
     const general = collectGeneralSettings(root, {} as any, () => 'dark');
     expect(general?.theme).toBe('dark');
     expect(general?.theme_pack).toBe('my-theme');
-    expect(general?.default_backend).toBe('git');
+    expect(general?.default_backend).toBe('');
     expect(general?.update_channel).toBe('stable');
   });
 
@@ -274,7 +274,7 @@ describe('collectGeneralSettings - uncovered branches', () => {
     const root = document.body.firstElementChild as HTMLElement;
     const general = collectGeneralSettings(root, {} as any, () => 'dark');
     expect(general?.language).toBeUndefined();
-    expect(general?.default_backend).toBe('git');
+    expect(general?.default_backend).toBe('');
     expect(general?.update_channel).toBe('stable');
   });
 });
