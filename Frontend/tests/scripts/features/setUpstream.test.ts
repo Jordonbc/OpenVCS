@@ -202,29 +202,29 @@ describe('wireSetUpstream', () => {
 });
 
 describe('setInitial', () => {
-  it('prefers origin/<branch> when present', async () => {
+  it('selects the actual upstream even when not alphabetically first', async () => {
     const { wireSetUpstream } = await import('@scripts/features/setUpstream');
     wireSetUpstream();
     const modal = document.getElementById('set-upstream-modal') as any;
 
-    modal.setInitial('main', ['origin/other', 'origin/main', 'upstream/main']);
-
-    const selectEl = document.getElementById('set-upstream-select') as HTMLSelectElement;
-    expect(selectEl.value).toBe('origin/main');
-  });
-
-  it('falls back to branch-suffix match when origin/<branch> missing', async () => {
-    const { wireSetUpstream } = await import('@scripts/features/setUpstream');
-    wireSetUpstream();
-    const modal = document.getElementById('set-upstream-modal') as any;
-
-    modal.setInitial('main', ['origin/develop', 'upstream/main', 'origin/feature']);
+    modal.setInitial('main', ['origin/z', 'upstream/main', 'origin/a'], 'upstream/main');
 
     const selectEl = document.getElementById('set-upstream-select') as HTMLSelectElement;
     expect(selectEl.value).toBe('upstream/main');
   });
 
-  it('falls back to first option when no matching suffix', async () => {
+  it('falls back to the first remote when the actual upstream is missing', async () => {
+    const { wireSetUpstream } = await import('@scripts/features/setUpstream');
+    wireSetUpstream();
+    const modal = document.getElementById('set-upstream-modal') as any;
+
+    modal.setInitial('main', ['origin/develop', 'upstream/main', 'origin/feature'], 'origin/missing');
+
+    const selectEl = document.getElementById('set-upstream-select') as HTMLSelectElement;
+    expect(selectEl.value).toBe('origin/develop');
+  });
+
+  it('falls back to the first remote when no upstream is provided', async () => {
     const { wireSetUpstream } = await import('@scripts/features/setUpstream');
     wireSetUpstream();
     const modal = document.getElementById('set-upstream-modal') as any;
@@ -240,7 +240,7 @@ describe('setInitial', () => {
     wireSetUpstream();
     const modal = document.getElementById('set-upstream-modal') as any;
 
-    modal.setInitial('main', []);
+    modal.setInitial('main', [], 'origin/main');
 
     const selectEl = document.getElementById('set-upstream-select') as HTMLSelectElement;
     expect(selectEl.value).toBe('');
@@ -308,5 +308,12 @@ describe('openSetUpstream', () => {
 
     const selectEl = document.getElementById('set-upstream-select') as HTMLSelectElement;
     expect(selectEl.value).toBe('origin/my-branch');
+  });
+  it('prefers the actual upstream passed through openSetUpstream', async () => {
+    const { openSetUpstream } = await import('@scripts/features/setUpstream');
+    openSetUpstream('my-branch', ['origin/other', 'origin/my-branch', 'upstream/my-branch'], 'upstream/my-branch');
+
+    const selectEl = document.getElementById('set-upstream-select') as HTMLSelectElement;
+    expect(selectEl.value).toBe('upstream/my-branch');
   });
 });

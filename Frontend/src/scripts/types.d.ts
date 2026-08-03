@@ -186,6 +186,7 @@ export interface RepoSnapshotCache {
     ahead: number;
     behind: number;
     branch_on_remote: boolean;
+    current_upstream?: string | null;
     merge_in_progress: boolean;
     seen_conflicts: string[];
     conflict_statuses?: string[];

@@ -62,6 +62,7 @@ export const state = {
     ahead: 0 as number,             // commits ahead of upstream
     behind: 0 as number,            // commits behind upstream
     branchOnRemote: false as boolean, // current branch has a tracking reference on a remote
+    currentUpstream: null as string | null, // resolved upstream ref for the current branch
     aheadIds: new Set<string>() as Set<string>, // IDs of commits ahead of upstream
     conflictStatuses: new Set<string>() as Set<string>,
     mergeInProgress: false as boolean,

@@ -66,6 +66,7 @@ function applyRepoSnapshot(snapshot: RepoSnapshotCache): void {
     (state as any).ahead = Number(snapshot.ahead || 0);
     (state as any).behind = Number(snapshot.behind || 0);
     state.branchOnRemote = Boolean(snapshot.branch_on_remote);
+    state.currentUpstream = snapshot.current_upstream ?? null;
     state.mergeInProgress = Boolean(snapshot.merge_in_progress);
     state.seenConflicts = new Set(Array.isArray(snapshot.seen_conflicts) ? snapshot.seen_conflicts : []);
     state.conflictStatuses = new Set(Array.isArray(snapshot.conflict_statuses) ? snapshot.conflict_statuses.map((s) => String(s || '').trim().toUpperCase()) : []);
@@ -306,12 +307,12 @@ export async function hydrateCommits(): Promise<void> {
         let incoming: any[] = [];
         if (behindCount > 0) {
             const limit = Math.min(Math.max(behindCount, 50), 500);
-            const branch = (state.branch || '').trim();
             const ranges: { range: string; ref: string }[] = [
                 { range: 'HEAD..@{upstream}', ref: '@{upstream}' },
             ];
-            if (branch) {
-                ranges.push({ range: `HEAD..origin/${branch}`, ref: `origin/${branch}` });
+            const upstreamRef = (state.currentUpstream || '').trim();
+            if (upstreamRef) {
+                ranges.push({ range: `HEAD..${upstreamRef}`, ref: upstreamRef });
             }
             for (const { range, ref } of ranges) {
                 try {

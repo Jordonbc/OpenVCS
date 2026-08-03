@@ -1,9 +1,20 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::core::models::{BranchItem, BranchKind, CommitItem};
+use crate::core::{BackendId, Vcs, VcsError, models};
+use crate::plugin_vcs_backends::{self, PluginBackendDescriptor};
+use crate::repo::Repo;
+use crate::settings;
+use crate::state::AppState;
+use tauri::WebviewWindowBuilder;
+use tauri::ipc::InvokeBody;
+use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
+use tauri::webview::InvokeRequest;
 
 // ---------------------------------------------------------------------------
 // Existing tests (preserved)
@@ -24,6 +35,7 @@ fn revision_bumps_when_stash_count_changes() {
             merge_in_progress: false,
             branch_on_remote: true,
             branch_count: 5,
+            current_upstream: None,
         })
     }
 
@@ -45,6 +57,7 @@ fn revision_bumps_when_merge_state_changes() {
             merge_in_progress,
             branch_on_remote: true,
             branch_count: 5,
+            current_upstream: None,
         })
     }
 
@@ -66,6 +79,7 @@ fn revision_bumps_when_branch_on_remote_changes() {
             merge_in_progress: false,
             branch_on_remote,
             branch_count: 5,
+            current_upstream: None,
         })
     }
 
@@ -87,6 +101,7 @@ fn revision_bumps_when_branch_count_changes() {
             merge_in_progress: false,
             branch_on_remote: true,
             branch_count,
+            current_upstream: None,
         })
     }
 
@@ -144,12 +159,27 @@ fn conflict_status_parse_all_codes() {
     use super::ConflictStatus;
     assert_eq!(ConflictStatus::parse("U"), Some(ConflictStatus::Unmerged));
     assert_eq!(ConflictStatus::parse("AA"), Some(ConflictStatus::BothAdded));
-    assert_eq!(ConflictStatus::parse("DD"), Some(ConflictStatus::BothDeleted));
+    assert_eq!(
+        ConflictStatus::parse("DD"),
+        Some(ConflictStatus::BothDeleted)
+    );
     assert_eq!(ConflictStatus::parse("UA"), Some(ConflictStatus::AddedByUs));
-    assert_eq!(ConflictStatus::parse("AU"), Some(ConflictStatus::AddedByThem));
-    assert_eq!(ConflictStatus::parse("UD"), Some(ConflictStatus::DeletedByUs));
-    assert_eq!(ConflictStatus::parse("DU"), Some(ConflictStatus::DeletedByThem));
-    assert_eq!(ConflictStatus::parse("UU"), Some(ConflictStatus::BothModified));
+    assert_eq!(
+        ConflictStatus::parse("AU"),
+        Some(ConflictStatus::AddedByThem)
+    );
+    assert_eq!(
+        ConflictStatus::parse("UD"),
+        Some(ConflictStatus::DeletedByUs)
+    );
+    assert_eq!(
+        ConflictStatus::parse("DU"),
+        Some(ConflictStatus::DeletedByThem)
+    );
+    assert_eq!(
+        ConflictStatus::parse("UU"),
+        Some(ConflictStatus::BothModified)
+    );
 }
 
 #[test]
@@ -224,9 +254,10 @@ fn revision_has_expected_format_structure() {
         merge_in_progress: true,
         branch_on_remote: false,
         branch_count: 4,
+        current_upstream: None,
     });
-    let parts: Vec<&str> = revision.splitn(11, ':').collect();
-    assert_eq!(parts.len(), 11, "Expected 11 colon-separated fields");
+    let parts: Vec<&str> = revision.splitn(12, ':').collect();
+    assert_eq!(parts.len(), 12, "Expected 12 colon-separated fields");
     assert_eq!(parts[0], "/repo");
     assert_eq!(parts[1], "main");
     assert_eq!(parts[2], "abc123");
@@ -238,8 +269,8 @@ fn revision_has_expected_format_structure() {
     assert_eq!(parts[8], "true");
     assert_eq!(parts[9], "false");
     assert_eq!(parts[10], "4");
+    assert_eq!(parts[11], "");
 }
-
 #[test]
 fn revision_none_head_commit_uses_empty_string() {
     let revision = super::build_repo_snapshot_revision(&super::SnapshotRevisionParts {
@@ -254,8 +285,9 @@ fn revision_none_head_commit_uses_empty_string() {
         merge_in_progress: false,
         branch_on_remote: false,
         branch_count: 0,
+        current_upstream: None,
     });
-    let parts: Vec<&str> = revision.splitn(11, ':').collect();
+    let parts: Vec<&str> = revision.splitn(12, ':').collect();
     assert_eq!(parts[2], "");
 }
 
@@ -656,6 +688,7 @@ fn repo_snapshot_all_fields_accessible() {
         ahead: 5,
         behind: 3,
         branch_on_remote: true,
+        current_upstream: None,
         merge_in_progress: false,
         seen_conflicts: vec![],
         conflict_statuses: vec![],
@@ -731,6 +764,7 @@ fn snapshot_revision_parts_construction() {
         merge_in_progress: true,
         branch_on_remote: false,
         branch_count: 5,
+        current_upstream: None,
     };
     assert_eq!(parts.repo_path, "/repo");
     assert_eq!(parts.head_commit, Some("abc"));
@@ -742,4 +776,218 @@ fn snapshot_revision_parts_construction() {
     assert!(parts.merge_in_progress);
     assert!(!parts.branch_on_remote);
     assert_eq!(parts.branch_count, 5);
+    assert_eq!(parts.current_upstream, None);
+}
+
+// ---------------------------------------------------------------------------
+// 13. current_upstream snapshot plumbing
+// ---------------------------------------------------------------------------
+
+/// Minimal VCS backend whose `branch_upstream` override drives snapshot fields.
+struct UpstreamMockVcs {
+    current_branch: Option<String>,
+    upstream: Option<String>,
+}
+
+impl UpstreamMockVcs {
+    fn new(current_branch: Option<String>, upstream: Option<String>) -> Self {
+        Self {
+            current_branch,
+            upstream,
+        }
+    }
+
+    fn unsupported<T>(&self) -> Result<T, VcsError> {
+        Err(VcsError::Unsupported(self.id()))
+    }
+}
+
+impl Vcs for UpstreamMockVcs {
+    fn id(&self) -> BackendId {
+        BackendId::from("snapshot-test")
+    }
+
+    fn workdir(&self) -> &Path {
+        Path::new("/repo")
+    }
+
+    fn current_branch(&self) -> Result<Option<String>, VcsError> {
+        Ok(self.current_branch.clone())
+    }
+
+    fn branches(&self) -> Result<Vec<models::BranchItem>, VcsError> {
+        Ok(vec![])
+    }
+
+    fn create_branch(&self, _: &str, _: bool) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn checkout_branch(&self, _: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn ensure_remote(&self, _: &str, _: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn list_remotes(&self) -> Result<Vec<(String, String)>, VcsError> {
+        self.unsupported()
+    }
+    fn remove_remote(&self, _: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn fetch(&self, _: &str, _: &str, _: Option<models::OnEvent>) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn push(&self, _: &str, _: &str, _: Option<models::OnEvent>) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn pull_ff_only(&self, _: &str, _: &str, _: Option<models::OnEvent>) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn commit(&self, _: &str, _: &str, _: &str, _: &[PathBuf]) -> Result<String, VcsError> {
+        self.unsupported()
+    }
+    fn commit_index(&self, _: &str, _: &str, _: &str) -> Result<String, VcsError> {
+        self.unsupported()
+    }
+    fn status_payload(&self) -> Result<models::StatusPayload, VcsError> {
+        Ok(models::StatusPayload {
+            ahead: 0,
+            behind: 0,
+            files: vec![],
+            branch_on_remote: self.upstream.is_some(),
+        })
+    }
+    fn log_commits(&self, _: &models::LogQuery) -> Result<Vec<models::CommitItem>, VcsError> {
+        Ok(vec![])
+    }
+    fn diff_file(&self, _: &Path) -> Result<models::DiffFileResult, VcsError> {
+        self.unsupported()
+    }
+    fn diff_commit(&self, _: &str) -> Result<Vec<String>, VcsError> {
+        self.unsupported()
+    }
+    fn stage_patch(&self, _: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn stage_paths(&self, _: &[PathBuf]) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn discard_paths(&self, _: &[PathBuf]) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn apply_reverse_patch(&self, _: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn delete_branch(&self, _: &str, _: bool) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn rename_branch(&self, _: &str, _: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn merge_into_current(&self, _: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+    fn get_identity(&self) -> Result<Option<(String, String)>, VcsError> {
+        self.unsupported()
+    }
+    fn set_identity_local(&self, _: &str, _: &str) -> Result<(), VcsError> {
+        self.unsupported()
+    }
+
+    fn branch_upstream(&self, _branch: &str) -> Result<Option<String>, VcsError> {
+        Ok(self.upstream.clone())
+    }
+}
+
+fn register_snapshot_test_backend() {
+    let desc = PluginBackendDescriptor {
+        backend_id: BackendId::from("snapshot-test"),
+        backend_name: Some("Snapshot Test VCS".into()),
+        action_labels: BTreeMap::new(),
+        plugin_id: "test.snapshot-test".into(),
+        plugin_name: Some("Snapshot Test Plugin".into()),
+    };
+    plugin_vcs_backends::store_backends(vec![desc]);
+}
+
+fn build_snapshot_app(vcs: Arc<UpstreamMockVcs>) -> tauri::App<tauri::test::MockRuntime> {
+    crate::app_identity::setup_test_isolation();
+    let repo = Arc::new(Repo::new(vcs.clone() as Arc<dyn Vcs>));
+    let mut cfg = settings::AppConfig::default();
+    cfg.plugins.enabled = vec!["test.snapshot-test".into()];
+    let app_state = AppState::new_with_config(cfg);
+    app_state.set_current_repo(repo);
+
+    mock_builder()
+        .manage(app_state)
+        .invoke_handler(tauri::generate_handler![super::get_repo_snapshot])
+        .build(mock_context(noop_assets()))
+        .expect("build snapshot test app")
+}
+
+fn fetch_snapshot(vcs: Arc<UpstreamMockVcs>) -> serde_json::Value {
+    register_snapshot_test_backend();
+    let app = build_snapshot_app(vcs);
+    let webview = WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("build snapshot test webview");
+    let res = get_ipc_response(
+        &webview,
+        InvokeRequest {
+            cmd: "get_repo_snapshot".into(),
+            callback: tauri::ipc::CallbackFn(0),
+            error: tauri::ipc::CallbackFn(1),
+            url: "tauri://localhost".parse().unwrap(),
+            body: InvokeBody::default(),
+            headers: Default::default(),
+            invoke_key: INVOKE_KEY.to_string(),
+        },
+    )
+    .expect("get_repo_snapshot should succeed");
+    res.deserialize().expect("deserialize snapshot")
+}
+
+#[test]
+fn current_upstream_present() {
+    let snapshot = fetch_snapshot(Arc::new(UpstreamMockVcs::new(
+        Some("main".into()),
+        Some("origin/main".into()),
+    )));
+    assert_eq!(snapshot["branch"], "main");
+    assert_eq!(snapshot["current_upstream"], "origin/main");
+}
+
+#[test]
+fn current_upstream_none_detached() {
+    let detached = fetch_snapshot(Arc::new(UpstreamMockVcs::new(
+        None,
+        Some("origin/main".into()),
+    )));
+    assert_eq!(detached["branch"], "");
+    assert!(detached["current_upstream"].is_null());
+
+    let untracked = fetch_snapshot(Arc::new(UpstreamMockVcs::new(Some("main".into()), None)));
+    assert!(untracked["current_upstream"].is_null());
+}
+
+#[test]
+fn revision_changes_when_upstream_changes() {
+    fn make(current_upstream: Option<&str>) -> String {
+        super::build_repo_snapshot_revision(&super::SnapshotRevisionParts {
+            repo_path: "/repo",
+            branch_label: "main",
+            head_commit: Some("abc123"),
+            file_count: 3,
+            commit_count: 10,
+            ahead: 1,
+            behind: 2,
+            stash_count: 1,
+            merge_in_progress: false,
+            branch_on_remote: true,
+            branch_count: 5,
+            current_upstream,
+        })
+    }
+    assert_ne!(make(Some("origin/main")), make(None));
+    assert_ne!(make(Some("origin/main")), make(Some("upstream/main")));
 }

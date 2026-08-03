@@ -455,6 +455,8 @@ describe('hydrateCommits', () => {
     (state as any).behind = 2;
     (state as any).ahead = 2;
     state.branch = 'main';
+    state.currentUpstream = 'origin/main';
+    prefs.tab = 'history';
     prefs.tab = 'history';
 
     await hydrateCommits();
@@ -476,6 +478,8 @@ describe('hydrateCommits', () => {
     const { hydrateCommits } = await import('@scripts/features/repo/hydrate');
     const { state } = await import('@scripts/state/state');
     (state as any).behind = 2;
+    state.branch = 'main';
+    state.currentUpstream = 'origin/main';
     state.branch = 'main';
 
     await hydrateCommits();
@@ -1359,5 +1363,44 @@ describe('yieldToPaint visibility edge case', () => {
     await yieldToPaint();
     expect(spy).toHaveBeenCalled();
     if (originalDef) Object.defineProperty(document, 'visibilityState', originalDef);
+  });
+});
+
+// ===========================================================================
+// T3.4: upstream-only snapshot changes refresh mirror state
+// ===========================================================================
+describe('hydrateSnapshot upstream refresh', () => {
+  it('re-renders when only the upstream changes across snapshots', async () => {
+    let callCount = 0;
+    const snapshots = [
+      {
+        revision: 'r-up-1', current_upstream: 'origin/main', has_repo: true, repo_path: '/repo',
+        branch: 'main', branch_label: 'main', branches: [], files: [], commits: [], stash: [],
+        ahead: 0, behind: 0, branch_on_remote: true, merge_in_progress: false,
+        seen_conflicts: [], conflict_statuses: [], vcs_action_labels: {}, ahead_ids: [],
+      },
+      {
+        revision: 'r-up-2', current_upstream: 'upstream/main', has_repo: true, repo_path: '/repo',
+        branch: 'main', branch_label: 'main', branches: [], files: [], commits: [], stash: [],
+        ahead: 0, behind: 0, branch_on_remote: true, merge_in_progress: false,
+        seen_conflicts: [], conflict_statuses: [], vcs_action_labels: {}, ahead_ids: [],
+      },
+    ];
+    installTauriMock(async (cmd) => {
+      if (cmd === 'get_repo_snapshot') return snapshots[Math.min(callCount++, snapshots.length - 1)];
+      return [];
+    });
+
+    const { hydrateSnapshot } = await import('@scripts/features/repo/hydrate');
+    const list = await import('@scripts/features/repo/list');
+    const { state } = await import('@scripts/state/state');
+
+    await hydrateSnapshot();
+    expect(state.currentUpstream).toBe('origin/main');
+    await hydrateSnapshot();
+
+    // Revision changed (upstream-only change) -> second snapshot must re-render.
+    expect(vi.mocked(list.renderList)).toHaveBeenCalledTimes(2);
+    expect(state.currentUpstream).toBe('upstream/main');
   });
 });

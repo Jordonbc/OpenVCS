@@ -504,7 +504,7 @@ it('merge shows generic error', async () => {
       const items = await triggerContextMenu();
       await items[3].action();
 
-      expect(mockOpenSetUpstream).toHaveBeenCalledWith('feature', ['origin/main']);
+      expect(mockOpenSetUpstream).toHaveBeenCalledWith('feature', ['origin/main'], null);
     });
 
     it('set upstream with no remote branches shows notify', async () => {

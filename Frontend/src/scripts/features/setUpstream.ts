@@ -40,17 +40,17 @@ export function wireSetUpstream() {
     }
   });
 
-  (modal as any).setInitial = (branch: string, upstreams: string[]) => {
+  (modal as any).setInitial = (branch: string, upstreams: string[], currentUpstream?: string | null) => {
     modalEl.dataset.branch = branch;
     if (branchEl) branchEl.value = branch;
     if (selectEl) {
       const opts = (upstreams || []).slice().sort((a, b) => a.localeCompare(b));
       const existing = new Set(opts);
 
-      // Prefer origin/<branch> when present, else first branch-suffix match, else first option.
-      const preferred = existing.has(`origin/${branch}`)
-        ? `origin/${branch}`
-        : (opts.find((u) => u.endsWith(`/${branch}`)) || opts[0] || "");
+      // Prefer the branch's actual upstream when listed; fall back to the first remote.
+      const preferred = currentUpstream && existing.has(currentUpstream)
+        ? currentUpstream
+        : (opts[0] || "");
 
       selectEl.innerHTML = [
         `<option value="" disabled ${preferred ? "" : "selected"}>Select a remote branch…</option>`,
@@ -64,10 +64,10 @@ export function wireSetUpstream() {
   };
 }
 
-export function openSetUpstream(branch: string, upstreams: string[]) {
+export function openSetUpstream(branch: string, upstreams: string[], currentUpstream?: string | null) {
   hydrate("set-upstream-modal");
   wireSetUpstream();
   const modal = document.getElementById("set-upstream-modal") as any;
-  modal?.setInitial?.(branch, upstreams);
+  modal?.setInitial?.(branch, upstreams, currentUpstream);
   openModal("set-upstream-modal");
 }

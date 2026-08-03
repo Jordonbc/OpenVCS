@@ -265,7 +265,7 @@ export function bindBranchUI() {
                     return;
                 }
 
-                openSetUpstream(name, remoteBranches);
+                openSetUpstream(name, remoteBranches, state.repoSnapshotCache?.current_upstream ?? null);
             }});
             items.push({ label: 'Rename…', action: () => openRenameBranch(name) });
             items.push({ label: wantForce ? 'Force delete…' : 'Delete…', action: async () => {

@@ -96,6 +96,8 @@ pub struct RepoSnapshot {
     pub behind: u32,
     /// Whether current branch tracks a remote.
     pub branch_on_remote: bool,
+    /// Resolved upstream tracking ref for the current branch.
+    pub current_upstream: Option<String>,
     /// Whether merge state is active.
     pub merge_in_progress: bool,
     /// Paths still conflicted during merge.
@@ -141,6 +143,7 @@ struct SnapshotRevisionParts<'a> {
     merge_in_progress: bool,
     branch_on_remote: bool,
     branch_count: usize,
+    current_upstream: Option<&'a str>,
 }
 
 /// Builds the snapshot revision token used by the frontend cache gate.
@@ -149,7 +152,7 @@ struct SnapshotRevisionParts<'a> {
 /// - Stable revision token for cache invalidation.
 fn build_repo_snapshot_revision(parts: &SnapshotRevisionParts<'_>) -> String {
     format!(
-        "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+        "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
         parts.repo_path,
         parts.branch_label,
         parts.head_commit.unwrap_or_default(),
@@ -161,6 +164,7 @@ fn build_repo_snapshot_revision(parts: &SnapshotRevisionParts<'_>) -> String {
         parts.merge_in_progress,
         parts.branch_on_remote,
         parts.branch_count,
+        parts.current_upstream.unwrap_or_default(),
     )
 }
 
@@ -368,6 +372,11 @@ pub async fn get_repo_snapshot(state: State<'_, AppState>) -> Result<RepoSnapsho
         );
         let (branch, branch_label) =
             branch_label(current_branch.as_deref(), head_commit.as_deref());
+        let current_upstream = current_branch
+            .as_deref()
+            .map(str::trim)
+            .filter(|branch| !branch.is_empty())
+            .and_then(|branch| vcs.branch_upstream(branch).ok().flatten());
         let status = vcs.status_payload().map_err(|e| e.to_string())?;
         let merge_in_progress = vcs.merge_in_progress().unwrap_or(false);
         let seen_conflicts = if merge_in_progress {
@@ -441,6 +450,7 @@ pub async fn get_repo_snapshot(state: State<'_, AppState>) -> Result<RepoSnapsho
             merge_in_progress,
             branch_on_remote: status.branch_on_remote,
             branch_count: branches.len(),
+            current_upstream: current_upstream.as_deref(),
         });
 
         Ok(RepoSnapshot {
@@ -455,6 +465,7 @@ pub async fn get_repo_snapshot(state: State<'_, AppState>) -> Result<RepoSnapsho
             ahead: status.ahead,
             behind: status.behind,
             branch_on_remote: status.branch_on_remote,
+            current_upstream,
             merge_in_progress,
             seen_conflicts,
             conflict_statuses,
