@@ -8,7 +8,7 @@ export interface BranchKind {
     type?: 'Local' | 'Remote' | string;
     remote?: string;
 }
-/** Represents a Git branch entry used in branch pickers. */
+/** Represents a VCS branch entry used in branch pickers. */
 export interface Branch {
     name: string;
     full_ref?: string;
@@ -97,6 +97,7 @@ export interface GlobalSettings {
             commit_message_template_delete?: string;
         };
     };
+    // BLOCKED-CROSS-REPO VCS-09: settings namespace owned by Git plugin.
     git?: {
         backend?: string;
         default_branch?: string;

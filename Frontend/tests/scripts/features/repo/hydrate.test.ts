@@ -351,7 +351,7 @@ describe('hydrateBranches', () => {
     const { state } = await import('@scripts/state/state');
 
     await hydrateBranches();
-    expect(state.branchLabel).toContain('Detached HEAD');
+    expect(state.branchLabel).toContain('Detached');
     expect(state.branchLabel).toContain('abc1234');
   });
 
@@ -367,7 +367,7 @@ describe('hydrateBranches', () => {
     const { state } = await import('@scripts/state/state');
 
     await hydrateBranches();
-    expect(state.branchLabel).toBe('Detached HEAD');
+    expect(state.branchLabel).toBe('Detached');
   });
 
   it('handles failure gracefully', async () => {

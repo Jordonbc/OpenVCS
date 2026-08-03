@@ -205,7 +205,7 @@ export async function hydrateBranches(): Promise<boolean> {
             const detached = Boolean((head as any)?.detached);
             const short = String((head as any)?.commit || '').slice(0, 7);
             state.branchLabel = detached
-                ? `Detached HEAD ${short ? '(' + short + ')' : ''}`.trim()
+                ? `Detached ${short ? '(' + short + ')' : ''}`.trim()
                 : (state.branch || '—');
             window.dispatchEvent(new CustomEvent('app:branches-updated'));
             return true;

@@ -298,15 +298,15 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         }});
     }
     items.push({ label: '---' });
-    items.push({ label: 'Add to .gitignore', action: async () => {
+    items.push({ label: 'Add to ignore file', action: async () => {
         const targets = (explicitMultiSelection ? selectedPaths.slice() : [f.path]).filter(Boolean);
         if (!targets.length) return;
         const label = targets.length > 1 ? `${targets.length} files` : targets[0];
-        const ok = await confirmBool(`Add ${label} to .gitignore?`);
+        const ok = await confirmBool(`Add ${label} to ignore file?`);
         if (!ok) return;
         try {
-            await TAURI.invoke('vcs_add_to_gitignore_paths', { paths: targets });
-            notify(targets.length > 1 ? 'Added to .gitignore' : 'Added to .gitignore');
+            await TAURI.invoke('vcs_add_to_ignore_paths', { paths: targets });
+            notify('Added to ignore file');
             await Promise.allSettled([hydrateStatus()]);
         } catch {
             notify('Ignore failed');

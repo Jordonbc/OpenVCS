@@ -48,7 +48,7 @@ async function loadBranches() {
         const head = await TAURI.invoke<{ detached: boolean; branch?: string; commit?: string }>('vcs_head_status');
         if (head?.branch) state.branch = head.branch;
         const short = (head?.commit || '').slice(0, 7);
-        const label = head?.detached ? `Detached HEAD ${short ? '(' + short + ')' : ''}` : (state.branch || '—');
+        const label = head?.detached ? `Detached ${short ? '(' + short + ')' : ''}` : (state.branch || '—');
         state.branchLabel = label;
         if (branchName) branchName.textContent = label;
         if (repoBranchEl) repoBranchEl.textContent = label;

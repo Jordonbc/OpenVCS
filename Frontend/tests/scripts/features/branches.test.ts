@@ -253,7 +253,7 @@ describe('bindBranchUI', () => {
     document.getElementById('branch-switch')!.click();
 
     await vi.waitFor(() => {
-      expect(document.getElementById('branch-name')!.textContent).toContain('Detached HEAD');
+      expect(document.getElementById('branch-name')!.textContent).toContain('Detached');
     });
   });
 
@@ -768,7 +768,7 @@ it('merge shows generic error', async () => {
     document.getElementById('branch-switch')!.click();
 
     await vi.waitFor(() => {
-      expect(document.getElementById('branch-name')!.textContent).toContain('Detached HEAD');
+      expect(document.getElementById('branch-name')!.textContent).toContain('Detached');
     });
   });
 

@@ -642,9 +642,9 @@ describe('onFileContextMenu', () => {
     expect(hydrateStash).toHaveBeenCalled();
     expect(rerender).toHaveBeenCalled();
 
-    await items.find((item) => item.label === 'Add to .gitignore')?.action?.();
+    await items.find((item) => item.label === 'Add to ignore file')?.action?.();
     expect(TAURI.invoke).toHaveBeenCalledWith(
-      'vcs_add_to_gitignore_paths',
+      'vcs_add_to_ignore_paths',
       { paths: ['a.txt', 'b.txt'] },
     );
 
@@ -847,7 +847,7 @@ describe('onFileContextMenu', () => {
     expect(stashFileItem).toBeDefined();
   });
 
-  it('includes add to gitignore action', async () => {
+  it('includes add to ignore file action', async () => {
     const { onFileContextMenu } = await import('@scripts/features/repo/interactions');
     const { state } = await import('@scripts/state/state');
     const { buildCtxMenu } = await import('@scripts/lib/menu');
@@ -860,10 +860,10 @@ describe('onFileContextMenu', () => {
     await onFileContextMenu({ clientX: 100, clientY: 200, preventDefault: vi.fn() } as any, file);
 
     const items = vi.mocked(buildCtxMenu).mock.lastCall![0];
-    const gitignoreItem = items.find((i: any) => i.label?.includes('Add to .gitignore'));
-    expect(gitignoreItem).toBeDefined();
+    const ignoreItem = items.find((i: any) => i.label?.includes('Add to ignore file'));
+    expect(ignoreItem).toBeDefined();
 
-    await gitignoreItem!.action!();
+    await ignoreItem!.action!();
     expect(confirmBool).toHaveBeenCalled();
   });
 
@@ -1130,7 +1130,7 @@ describe('onFileContextMenu - rejection paths', () => {
     expect(TAURI.invoke).toHaveBeenCalledWith('open_repo_file', { path: 'single.txt' });
   });
 
-  it('add to .gitignore rejection', async () => {
+  it('add to ignore file rejection', async () => {
     const { onFileContextMenu } = await import('@scripts/features/repo/interactions');
     const { state } = await import('@scripts/state/state');
     const { buildCtxMenu } = await import('@scripts/lib/menu');
@@ -1141,9 +1141,9 @@ describe('onFileContextMenu - rejection paths', () => {
     state.selectionImplicitAll = false;
     await onFileContextMenu({ preventDefault: vi.fn(), clientX: 1, clientY: 2 } as any, { path: 'a.txt', status: 'M' } as any);
     const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
-    const gitignoreItem = items.find((i: any) => i.label === 'Add to .gitignore');
-    await gitignoreItem!.action!();
-    expect(TAURI.invoke).not.toHaveBeenCalledWith('vcs_add_to_gitignore_paths');
+    const ignoreItem = items.find((i: any) => i.label === 'Add to ignore file');
+    await ignoreItem!.action!();
+    expect(TAURI.invoke).not.toHaveBeenCalledWith('vcs_add_to_ignore_paths');
   });
 
   it('discard changes rejection', async () => {
@@ -1183,7 +1183,7 @@ describe('onFileContextMenu - rejection paths', () => {
     expect(discardAll).toBeDefined();
   });
 
-  it('gitignore failure notifies without throwing', async () => {
+  it('ignore file failure notifies without throwing', async () => {
     const { onFileContextMenu } = await import('@scripts/features/repo/interactions');
     const { state } = await import('@scripts/state/state');
     const { buildCtxMenu } = await import('@scripts/lib/menu');
@@ -1196,10 +1196,10 @@ describe('onFileContextMenu - rejection paths', () => {
 
     await onFileContextMenu({ preventDefault: vi.fn(), clientX: 1, clientY: 2 } as any, { path: 'a.txt', status: 'M' } as any);
     const items = vi.mocked(buildCtxMenu).mock.calls.at(-1)?.[0] || [];
-    const addItem = items.find((i: any) => i.label === 'Add to .gitignore');
+    const addItem = items.find((i: any) => i.label === 'Add to ignore file');
     expect(addItem).toBeDefined();
     await addItem!.action!();
-    expect(TAURI.invoke).toHaveBeenCalledWith('vcs_add_to_gitignore_paths', { paths: ['a.txt'] });
+    expect(TAURI.invoke).toHaveBeenCalledWith('vcs_add_to_ignore_paths', { paths: ['a.txt'] });
   });
 
   it('discard changes invoke failure notifies and does not throw', async () => {

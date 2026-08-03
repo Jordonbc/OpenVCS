@@ -390,7 +390,20 @@ async function boot() {
         try { window.open(WIKI_URL, '_blank', 'noopener'); } catch (e) { console.error('Unable to open docs:', e); notify('Unable to open docs'); }
     }
 
+    // BLOCKED-CROSS-REPO VCS-07: IDs owned by Git plugin until cross-repo rename.
+    const REPO_DOTFILE_ACTION_ALIASES: Readonly<Record<string, string>> = {
+        'repo-edit-gitignore': '.gitignore',
+        'repo-edit-gitattributes': '.gitattributes',
+    };
+
     async function runMenuAction(id?: string | null, payload?: { pluginId?: string; actionId?: string } | null) {
+        const dotfileName = id ? REPO_DOTFILE_ACTION_ALIASES[id] : undefined;
+        if (dotfileName) {
+            console.log('Action:', id);
+            try { await TAURI.invoke('open_repo_dotfile', { name: dotfileName }); }
+            catch (e) { console.error(`Could not open ${dotfileName}:`, e); notify(`Could not open ${dotfileName}`); }
+            return;
+        }
         switch (id) {
             case 'clone_repo': console.log('Action: clone_repo'); openSheet('clone'); break;
             case 'add_repo':   console.log('Action: add_repo'); openSheet('add'); break;
@@ -407,14 +420,6 @@ async function boot() {
             case 'about': console.log('Action: about'); openAbout(); break;
             case 'settings': console.log('Action: settings'); openSettings(); break;
             case 'repo-settings': console.log('Action: repo-settings'); openRepoSettings(); break;
-            case 'repo-edit-gitignore':
-            case 'repo-edit-gitattributes': {
-                console.log('Action:', id);
-                const name = id === 'repo-edit-gitignore' ? '.gitignore' : '.gitattributes';
-                try { await TAURI.invoke('open_repo_dotfile', { name }); }
-                catch (e) { console.error(`Could not open ${name}:`, e); notify(`Could not open ${name}`); }
-                break;
-            }
             case 'check_updates':
                 try {
                     const hasUpdate = await TAURI.invoke<boolean>('check_for_updates', {});
@@ -610,6 +615,7 @@ async function boot() {
     });
 
     // App focus: handle entirely in TS (no backend event)
+    const FETCH_SETTINGS_PLUGIN_ID = 'openvcs.git'; // allowlist
     let focusInFlight: Promise<void> | null = null;
     async function onFocus() {
         if (focusInFlight) return focusInFlight;
@@ -618,7 +624,7 @@ async function boot() {
         let doFetch = true;
         try {
             const fields = await TAURI.invoke<Array<{ id: string; value: unknown }>>('get_plugin_settings', {
-                pluginId: 'openvcs.git',
+                pluginId: FETCH_SETTINGS_PLUGIN_ID,
             });
             const fetchSetting = (Array.isArray(fields) ? fields : []).find((field) => String(field?.id || '').trim() === 'fetch_on_focus');
             if (fetchSetting && typeof fetchSetting.value === 'boolean') {
@@ -644,8 +650,8 @@ async function boot() {
         if (document.visibilityState === 'visible') onFocus().catch(() => {});
     });
 
-    // Poll HEAD so external checkouts (CLI/other apps) update the UI while focused.
-    // This is intentionally lightweight: only re-hydrate when HEAD changes.
+    // Poll current revision so external changes update UI while focused.
+    // Keep polling lightweight: rehydrate only when current revision changes.
     let headPollInFlight: Promise<void> | null = null;
     let lastHeadKey = '';
     const headPollMs = 15000;
