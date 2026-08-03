@@ -8,6 +8,8 @@ import { notify } from '../../lib/notify';
 import { isConflictStatus, state, prefs } from '../../state/state';
 import type { FileStatus } from '../../types';
 import type { RepoFileMeta, VcsDiffResult } from '../../types';
+// BLOCKED-CROSS-REPO VCS-06: hunk-discard patch builder (kept until generic
+// `discard_selections` exists cross-repo). See diff.ts for the full marker.
 import { buildPatchForSelectedHunks } from '../diff';
 import { diffEl, diffHeadPath, diffHeadMeta, diffLineEndingEl, diffEncodingEl, diffBomEl, listEl } from './context';
 import { updateCommitButton } from './commit';
@@ -172,6 +174,8 @@ export async function selectFile(file: FileStatus, index: number) {
                 const ok = await confirmBool('Discard this hunk? This cannot be undone.');
                 if (!ok) return;
                 try {
+                    // BLOCKED-CROSS-REPO VCS-06: discard via patch text (see diff.ts marker);
+                    // replacement = generic `discard_selections` (cross-repo).
                     const patch = buildPatchForSelectedHunks(file.path, state.currentDiff, [hi]);
                     if (patch) {
                         await TAURI.invoke('vcs_discard_patch', { patch });
@@ -185,6 +189,8 @@ export async function selectFile(file: FileStatus, index: number) {
                     const ok = await confirmBool(`Discard ${selected.length} selected hunk(s) in this file? This cannot be undone.`);
                     if (!ok) return;
                     try {
+                        // BLOCKED-CROSS-REPO VCS-06: discard via patch text (see diff.ts marker);
+                        // replacement = generic `discard_selections` (cross-repo).
                         const patch = buildPatchForSelectedHunks(file.path, state.currentDiff, selected);
                         if (patch) {
                             await TAURI.invoke('vcs_discard_patch', { patch });
@@ -209,6 +215,8 @@ export async function selectFile(file: FileStatus, index: number) {
                                 ).lines;
                             } catch {}
                             if (lines.length === 0) continue;
+                            // BLOCKED-CROSS-REPO VCS-06: discard via patch text (see diff.ts marker);
+                            // replacement = generic `discard_selections` (cross-repo).
                             patch += buildPatchForSelectedHunks(p, lines, hunksMap[p]) + '\n';
                         }
                         if (patch.trim()) {

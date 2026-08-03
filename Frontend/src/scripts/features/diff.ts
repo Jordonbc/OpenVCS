@@ -137,6 +137,10 @@ export function bindCommit() {
 }
 
 // Construct a minimal patch for one file by combining the file header and selected hunks.
+// BLOCKED-CROSS-REPO VCS-06: patch-text builder kept ONLY for hunk discard via
+// `vcs_discard_patch` (see diffView.ts). Replacement is a generic `discard_selections`
+// method (SDK + plugin, cross-repo). Do NOT delete; do NOT use for staging.
+
 export function buildPatchForSelectedHunks(path: string, lines: string[], hunkIndices: number[]): string {
     if (!Array.isArray(lines) || !lines.length || !hunkIndices.length) return '';
     const normPath = String(path).replace(/\\/g, '/');
