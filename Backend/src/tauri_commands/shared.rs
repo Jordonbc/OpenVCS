@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, async_runtime};
 
-use crate::core::OnEvent;
 use crate::core::models::VcsEvent;
+use crate::core::{OnEvent, Vcs};
 use crate::output_log::{OutputLevel, OutputLogEntry};
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
@@ -30,6 +30,62 @@ pub(crate) fn repo_task_active() -> bool {
 #[cfg(test)]
 pub(crate) fn repo_task_count() -> usize {
     ACTIVE_REPO_TASKS.load(Ordering::SeqCst)
+}
+
+/// Parses an upstream ref into `(remote, branch)` when it carries a
+/// remote-like prefix (`refs/remotes/<remote>/<branch>` or `<remote>/<branch>`).
+///
+/// # Parameters
+/// - `upstream`: Upstream ref returned by [`Vcs::branch_upstream`].
+///
+/// # Returns
+/// - `Some((remote, branch))` when the ref has a remote-like prefix.
+/// - `None` when the ref has no remote-like prefix.
+pub(crate) fn parse_upstream_ref(upstream: &str) -> Option<(String, String)> {
+    let up = upstream.trim().trim_start_matches("refs/remotes/");
+    let (remote, branch) = up.split_once('/')?;
+    let remote = remote.trim();
+    let branch = branch.trim();
+    if remote.is_empty() || branch.is_empty() {
+        None
+    } else {
+        Some((remote.to_string(), branch.to_string()))
+    }
+}
+
+/// Returns the name of the first configured remote, if any.
+///
+/// # Parameters
+/// - `vcs`: Repository backend.
+///
+/// # Returns
+/// - `Some(String)` for the first remote name.
+/// - `None` when no remotes are configured.
+pub(crate) fn first_remote_name(vcs: &dyn Vcs) -> Option<String> {
+    vcs.list_remotes()
+        .ok()?
+        .into_iter()
+        .next()
+        .map(|(name, _)| name)
+}
+
+/// Resolves the default remote for a branch: its upstream remote when the
+/// upstream ref has a remote-like prefix, else the first configured remote.
+///
+/// # Parameters
+/// - `vcs`: Repository backend.
+/// - `branch`: Branch used to resolve the upstream remote.
+///
+/// # Returns
+/// - `Some(String)` remote name.
+/// - `None` when no remote is resolvable.
+pub(crate) fn default_remote_name(vcs: &dyn Vcs, branch: &str) -> Option<String> {
+    if let Ok(Some(upstream)) = vcs.branch_upstream(branch)
+        && let Some((remote, _)) = parse_upstream_ref(&upstream)
+    {
+        return Some(remote);
+    }
+    first_remote_name(vcs)
 }
 
 /// Marks the current thread as executing a repository task until dropped.

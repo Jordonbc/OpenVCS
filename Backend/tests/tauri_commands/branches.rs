@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use super::{apply_merge_template, repo_name_from_origin, repo_username_from_origin};
 use crate::core::{BackendId, Vcs, VcsError, models};
@@ -67,6 +67,13 @@ struct TestVcs {
     workdir: PathBuf,
     current_branch: Option<String>,
     branches: Vec<models::BranchItem>,
+    remotes: Vec<(String, String)>,
+    /// Resolved upstream returned by `branch_upstream` (None = no upstream).
+    upstream: Option<String>,
+    /// When true, `merge_into_current_with_message` succeeds and records the message.
+    merge_ok: bool,
+    /// Last message passed to `merge_into_current_with_message` (recorded when `merge_ok`).
+    merge_message: Mutex<Option<String>>,
 }
 
 impl TestVcs {
@@ -89,6 +96,10 @@ impl TestVcs {
                     current: false,
                 },
             ],
+            remotes: vec![],
+            upstream: None,
+            merge_ok: false,
+            merge_message: Mutex::new(None),
         }
     }
 
@@ -112,7 +123,7 @@ impl Vcs for TestVcs {
     fn create_branch(&self, _name: &str, _checkout: bool) -> Result<(), VcsError> { self.unsupported() }
     fn checkout_branch(&self, _name: &str) -> Result<(), VcsError> { self.unsupported() }
     fn ensure_remote(&self, _name: &str, _url: &str) -> Result<(), VcsError> { self.unsupported() }
-    fn list_remotes(&self) -> Result<Vec<(String, String)>, VcsError> { self.unsupported() }
+    fn list_remotes(&self) -> Result<Vec<(String, String)>, VcsError> { Ok(self.remotes.clone()) }
     fn remove_remote(&self, _name: &str) -> Result<(), VcsError> { self.unsupported() }
     fn fetch(&self, _remote: &str, _refspec: &str, _on: Option<models::OnEvent>) -> Result<(), VcsError> { self.unsupported() }
     fn push(&self, _remote: &str, _refspec: &str, _on: Option<models::OnEvent>) -> Result<(), VcsError> { self.unsupported() }
@@ -132,6 +143,23 @@ impl Vcs for TestVcs {
     fn merge_into_current(&self, _name: &str) -> Result<(), VcsError> { self.unsupported() }
     fn get_identity(&self) -> Result<Option<(String, String)>, VcsError> { self.unsupported() }
     fn set_identity_local(&self, _name: &str, _email: &str) -> Result<(), VcsError> { self.unsupported() }
+
+    fn branch_upstream(&self, _branch: &str) -> Result<Option<String>, VcsError> {
+        Ok(self.upstream.clone())
+    }
+
+    fn merge_into_current_with_message(
+        &self,
+        _name: &str,
+        message: Option<&str>,
+        _strategy: Option<&str>,
+    ) -> Result<(), VcsError> {
+        if !self.merge_ok {
+            return self.unsupported();
+        }
+        *self.merge_message.lock().unwrap() = message.map(str::to_string);
+        Ok(())
+    }
 }
 
 fn register_test_backend(backend_id: &str) {
@@ -388,4 +416,29 @@ fn vcs_merge_strategies_returns_empty_for_test_backend() {
     let value = res.unwrap();
     let data = value.deserialize::<Vec<String>>().expect("should deserialize string list");
     assert!(data.is_empty(), "test backend should have no merge strategies");
+}
+
+// ── Merge-message default-remote metadata (VCS-19) ──
+
+#[test]
+fn merge_message_uses_resolved_upstream_remote() {
+    let mut vcs = TestVcs::new("test-vcs", tempfile::tempdir().unwrap().keep());
+    vcs.remotes = vec![
+        ("primary".into(), "https://example.com/bob/wrong.git".into()),
+        ("upstream".into(), "git@github.com:alice/demo.git".into()),
+    ];
+    vcs.upstream = Some("refs/remotes/upstream/main".into());
+    // The resolved upstream remote wins over the first configured remote.
+    let (username, name) = super::merge_message_repo_metadata(&vcs, "main", "localrepo");
+    assert_eq!(username, "alice");
+    assert_eq!(name, "demo");
+}
+
+#[test]
+fn merge_message_omits_remote_when_none() {
+    let vcs = TestVcs::new("test-vcs", tempfile::tempdir().unwrap().keep());
+    // No remotes and no upstream → remote metadata omitted; workdir-name fallback.
+    let (username, name) = super::merge_message_repo_metadata(&vcs, "main", "localrepo");
+    assert_eq!(username, "");
+    assert_eq!(name, "localrepo");
 }

@@ -509,6 +509,16 @@ struct RemotesTestVcs {
     /// Must be true when ensure_remote should succeed. Stored as bool since
     /// VcsError does not implement Clone.
     ensure_remote_ok: bool,
+    /// When true, `fetch` succeeds; it still records its `(remote, refspec)`.
+    fetch_ok: bool,
+    /// When true, `push` succeeds; it still records its `(remote, refspec)`.
+    push_ok: bool,
+    /// Recorded `(remote, refspec)` arguments of `fetch` calls.
+    fetch_calls: Mutex<Vec<(String, String)>>,
+    /// Recorded `(remote, refspec)` arguments of `push` calls.
+    push_calls: Mutex<Vec<(String, String)>>,
+    /// Recorded `(branch, upstream)` arguments of `set_branch_upstream` calls.
+    upstream_calls: Mutex<Vec<(String, String)>>,
 }
 
 impl RemotesTestVcs {
@@ -516,7 +526,7 @@ impl RemotesTestVcs {
         Self {
             id: BackendId::from(id),
             workdir,
-            remotes: vec![("origin".into(), "https://example.com/repo.git".into())],
+            remotes: vec![("primary".into(), "https://example.com/repo.git".into())],
             ahead: 0,
             log_commits: vec![],
             current_branch: Some("main".into()),
@@ -524,6 +534,11 @@ impl RemotesTestVcs {
             reset_ok: false,
             reset_target: Mutex::new(None),
             ensure_remote_ok: true,
+            fetch_ok: false,
+            push_ok: false,
+            fetch_calls: Mutex::new(vec![]),
+            push_calls: Mutex::new(vec![]),
+            upstream_calls: Mutex::new(vec![]),
         }
     }
 
@@ -547,8 +562,28 @@ impl Vcs for RemotesTestVcs {
     }
     fn list_remotes(&self) -> crate::core::Result<Vec<(String, String)>> { Ok(self.remotes.clone()) }
     fn remove_remote(&self, _: &str) -> crate::core::Result<()> { self.unsupported() }
-    fn fetch(&self, _: &str, _: &str, _: Option<models::OnEvent>) -> crate::core::Result<()> { self.unsupported() }
-    fn push(&self, _: &str, _: &str, _: Option<models::OnEvent>) -> crate::core::Result<()> { self.unsupported() }
+    fn fetch(&self, remote: &str, refspec: &str, _: Option<models::OnEvent>) -> crate::core::Result<()> {
+        self.fetch_calls
+            .lock()
+            .unwrap()
+            .push((remote.to_string(), refspec.to_string()));
+        if self.fetch_ok {
+            Ok(())
+        } else {
+            self.unsupported()
+        }
+    }
+    fn push(&self, remote: &str, refspec: &str, _: Option<models::OnEvent>) -> crate::core::Result<()> {
+        self.push_calls
+            .lock()
+            .unwrap()
+            .push((remote.to_string(), refspec.to_string()));
+        if self.push_ok {
+            Ok(())
+        } else {
+            self.unsupported()
+        }
+    }
     fn pull_ff_only(&self, _: &str, _: &str, _: Option<models::OnEvent>) -> crate::core::Result<()> { self.unsupported() }
     fn commit(&self, _: &str, _: &str, _: &str, _: &[PathBuf]) -> crate::core::Result<String> { self.unsupported() }
     fn commit_index(&self, _: &str, _: &str, _: &str) -> crate::core::Result<String> { self.unsupported() }
@@ -577,6 +612,14 @@ impl Vcs for RemotesTestVcs {
     fn merge_into_current(&self, _: &str) -> crate::core::Result<()> { self.unsupported() }
     fn get_identity(&self) -> crate::core::Result<Option<(String, String)>> { Ok(None) }
     fn set_identity_local(&self, _: &str, _: &str) -> crate::core::Result<()> { Ok(()) }
+
+    fn set_branch_upstream(&self, branch: &str, upstream: &str) -> crate::core::Result<()> {
+        self.upstream_calls
+            .lock()
+            .unwrap()
+            .push((branch.to_string(), upstream.to_string()));
+        Ok(())
+    }
 
     fn branch_upstream(&self, _branch: &str) -> crate::core::Result<Option<String>> {
         Ok(self.upstream.clone())
@@ -844,4 +887,111 @@ fn vcs_fetch_all_fails_no_backend_support() {
     let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
     let res = invoke_cmd(&wv, "vcs_fetch_all", body);
     assert!(res.is_err(), "fetch_all with unsupported fetch should fail: {:?}", res);
+}
+
+// ── Default-remote selection (VCS-19) ──
+
+#[test]
+fn fetch_prefers_resolved_upstream_remote() {
+    register_remotes_test_backend("remotes-test");
+    let mut vcs = RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    );
+    vcs.remotes = vec![
+        ("primary".into(), "https://example.com/repo.git".into()),
+        ("upstream".into(), "https://other.example.com/repo.git".into()),
+    ];
+    vcs.upstream = Some("refs/remotes/upstream/main".into());
+    vcs.fetch_ok = true;
+    let vcs = Arc::new(vcs);
+    let (app, ref_vcs) = build_remotes_app(vcs.clone());
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
+    let res = invoke_cmd(&wv, "vcs_fetch", body);
+    assert!(res.is_ok(), "fetch should succeed: {:?}", res);
+    // The resolved upstream remote wins over the first configured remote.
+    let calls = ref_vcs.fetch_calls.lock().unwrap().clone();
+    assert_eq!(calls, vec![("upstream".to_string(), "main".to_string())]);
+    let _ = ref_vcs; // keep alive
+}
+
+#[test]
+fn fetch_falls_back_to_first_remote() {
+    register_remotes_test_backend("remotes-test");
+    let mut vcs = RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    );
+    vcs.remotes = vec![
+        ("alpha".into(), "https://alpha.example/repo.git".into()),
+        ("beta".into(), "https://beta.example/repo.git".into()),
+    ];
+    // No upstream → first configured remote is used.
+    vcs.fetch_ok = true;
+    let vcs = Arc::new(vcs);
+    let (app, ref_vcs) = build_remotes_app(vcs.clone());
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
+    let res = invoke_cmd(&wv, "vcs_fetch", body);
+    assert!(res.is_ok(), "fetch should succeed: {:?}", res);
+    let calls = ref_vcs.fetch_calls.lock().unwrap().clone();
+    assert_eq!(calls, vec![("alpha".to_string(), "main".to_string())]);
+    let _ = ref_vcs; // keep alive
+}
+
+#[test]
+fn fetch_no_remotes_errors() {
+    register_remotes_test_backend("remotes-test");
+    let mut vcs = RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    );
+    vcs.remotes = vec![];
+    vcs.fetch_ok = true;
+    let vcs = Arc::new(vcs);
+    let (app, _) = build_remotes_app(vcs);
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
+    let res = invoke_cmd(&wv, "vcs_fetch", body);
+    assert!(res.is_err(), "fetch without remotes should fail: {:?}", res);
+    let err_str = format!("{:?}", res);
+    assert!(err_str.contains("no remotes configured"), "unexpected error: {err_str}");
+}
+
+#[test]
+fn push_sets_upstream_after_success() {
+    register_remotes_test_backend("remotes-test");
+    let mut vcs = RemotesTestVcs::new(
+        "remotes-test",
+        tempfile::tempdir().unwrap().keep(),
+    );
+    // Default remotes = [("primary", ...)], no upstream → push to first remote.
+    vcs.push_ok = true;
+    vcs.fetch_ok = true;
+    let vcs = Arc::new(vcs);
+    let (app, ref_vcs) = build_remotes_app(vcs.clone());
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({}));
+    let res = invoke_cmd(&wv, "vcs_push", body);
+    assert!(res.is_ok(), "push should succeed: {:?}", res);
+    let push_calls = ref_vcs.push_calls.lock().unwrap().clone();
+    assert_eq!(
+        push_calls,
+        vec![("primary".to_string(), "refs/heads/main:refs/heads/main".to_string())]
+    );
+    // Post-push fetch refreshes tracking refs from the same remote.
+    let fetch_calls = ref_vcs.fetch_calls.lock().unwrap().clone();
+    assert_eq!(fetch_calls, vec![("primary".to_string(), "main".to_string())]);
+    // No upstream → the branch tracks the push remote.
+    let upstream_calls = ref_vcs.upstream_calls.lock().unwrap().clone();
+    assert_eq!(
+        upstream_calls,
+        vec![("main".to_string(), "primary/main".to_string())]
+    );
+    let _ = ref_vcs; // keep alive
 }

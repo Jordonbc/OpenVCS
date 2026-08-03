@@ -43,4 +43,7 @@ pub use themes::*;
 pub use updater::*;
 
 /// Internal helpers shared across command modules.
-pub(crate) use shared::{ProgressPayload, current_repo_or_err, progress_bridge, run_repo_task};
+pub(crate) use shared::{
+    ProgressPayload, current_repo_or_err, default_remote_name, first_remote_name,
+    parse_upstream_ref, progress_bridge, run_repo_task,
+};

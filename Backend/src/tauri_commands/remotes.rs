@@ -7,7 +7,10 @@ use crate::state::AppState;
 use log::{error, info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window};
 
-use super::{ProgressPayload, current_repo_or_err, progress_bridge, run_repo_task};
+use super::{
+    ProgressPayload, current_repo_or_err, first_remote_name, parse_upstream_ref, progress_bridge,
+    run_repo_task,
+};
 
 /// Extracts host name from common Git remote URL formats.
 ///
@@ -58,6 +61,9 @@ fn host_from_remote_url(url: &str) -> Option<String> {
     None
 }
 
+// BLOCKED-CROSS-REPO VCS-19: error-phrase heuristics cannot be replaced with
+// structured plugin errors until the cross-repo error contract lands; do not
+// change this logic.
 /// Heuristically detects unknown-host-key style errors.
 ///
 /// # Parameters
@@ -76,6 +82,9 @@ fn looks_like_unknown_host_key(msg: &str) -> bool {
         || m.contains("strict host key checking")
 }
 
+// BLOCKED-CROSS-REPO VCS-19: error-phrase heuristics cannot be replaced with
+// structured plugin errors until the cross-repo error contract lands; do not
+// change this logic.
 /// Heuristically detects SSH authentication failures.
 ///
 /// # Parameters
@@ -92,6 +101,9 @@ fn looks_like_ssh_auth_failure(msg: &str) -> bool {
         || m.contains("authentication failed")
 }
 
+// BLOCKED-CROSS-REPO VCS-19: error-phrase heuristics cannot be replaced with
+// structured plugin errors until the cross-repo error contract lands; do not
+// change this logic.
 /// Heuristically detects fast-forward-only divergence failures.
 ///
 /// # Parameters
@@ -232,7 +244,7 @@ pub async fn vcs_set_remote_url(
 }
 
 #[tauri::command]
-/// Fetches updates for the current branch's upstream (or origin fallback).
+/// Fetches updates for the current branch's upstream (or default remote).
 ///
 /// # Parameters
 /// - `window`: Calling window handle for progress/events.
@@ -262,20 +274,18 @@ pub async fn vcs_fetch<R: Runtime>(
                 "Detached HEAD; cannot determine upstream".to_string()
             })?;
 
-        // Prefer the upstream remote for the current branch, falling back to `origin`.
-        let mut remote = "origin".to_string();
-        let mut refspec = current.clone();
-        if let Ok(Some(upstream)) = repo.inner().branch_upstream(&current) {
-            let up = upstream.trim().trim_start_matches("refs/remotes/");
-            if let Some((r, upstream_branch)) = up.split_once('/') {
-                let r = r.trim();
-                let upstream_branch = upstream_branch.trim();
-                if !r.is_empty() && !upstream_branch.is_empty() {
-                    remote = r.to_string();
-                    refspec = upstream_branch.to_string();
-                }
+        // Remote selection is host-side: prefer the current branch's resolved
+        // upstream remote (derived from its upstream ref), else the first
+        // configured remote, else error.
+        let upstream = repo.inner().branch_upstream(&current).ok().flatten();
+        let (remote, refspec) = match upstream.as_deref().and_then(parse_upstream_ref) {
+            Some((remote, upstream_branch)) => (remote, upstream_branch),
+            None => {
+                let remote = first_remote_name(repo.inner())
+                    .ok_or_else(|| "no remotes configured".to_string())?;
+                (remote, current.clone())
             }
-        }
+        };
 
         info!("Fetching '{refspec}' from remote '{remote}' (current branch '{current}')");
         if let Err(e) = repo.inner().fetch(&remote, &refspec, on) {
@@ -515,9 +525,9 @@ pub struct PullResult {
 }
 
 #[tauri::command]
-/// Pushes the current branch to `origin`, refreshes tracking refs, and best-effort
-/// ensures the branch tracks its corresponding `origin/*` upstream when one is not
-/// already configured.
+/// Pushes the current branch to its default remote, refreshes tracking refs, and
+/// best-effort ensures the branch tracks the corresponding upstream on that remote
+/// when one is not already configured.
 ///
 /// # Parameters
 /// - `window`: Calling window handle for progress/events.
@@ -549,33 +559,38 @@ pub async fn vcs_push<R: Runtime>(
             })?;
 
         let refspec = format!("refs/heads/{0}:refs/heads/{0}", current);
+        // Remote selection is host-side: prefer the current branch's resolved
+        // upstream remote (derived from its upstream ref), else the first
+        // configured remote, else error.
+        let upstream = repo.inner().branch_upstream(&current).ok().flatten();
+        let upstream_remote = upstream
+            .as_deref()
+            .and_then(parse_upstream_ref)
+            .map(|(remote, _)| remote);
+        let remote = match &upstream_remote {
+            Some(remote) => remote.clone(),
+            None => first_remote_name(repo.inner())
+                .ok_or_else(|| "no remotes configured".to_string())?,
+        };
         info!("Pushing branch '{current}' with refspec '{refspec}'");
 
-        repo.inner().push("origin", &refspec, on).map_err(|e| {
+        repo.inner().push(&remote, &refspec, on).map_err(|e| {
             let msg = e.user_message();
             error!("Push failed for branch '{current}': {e}");
             msg
         })?;
 
-        // Pushing does not update local remote-tracking refs (refs/remotes/origin/*),
+        // Pushing does not update local remote-tracking refs (refs/remotes/<remote>/*),
         // which the UI uses for ahead/behind; refresh them best-effort.
         let on_fetch = Some(progress_bridge(app));
-        if let Err(e) = repo.inner().fetch("origin", &current, on_fetch) {
+        if let Err(e) = repo.inner().fetch(&remote, &current, on_fetch) {
             warn!("Post-push fetch failed for branch '{current}': {e}");
         }
 
-        let upstream = match repo.inner().branch_upstream(&current) {
-            Ok(upstream) => upstream,
-            Err(e) => {
-                warn!("Failed to determine upstream for branch '{current}': {e}");
-                None
-            }
-        };
-
-        if upstream.is_none()
+        if upstream_remote.is_none()
             && let Err(e) = repo
                 .inner()
-                .set_branch_upstream(&current, &format!("origin/{current}"))
+                .set_branch_upstream(&current, &format!("{remote}/{current}"))
         {
             warn!("Failed to set upstream for published branch '{current}': {e}");
         }

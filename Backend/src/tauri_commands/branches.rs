@@ -5,14 +5,14 @@ use std::collections::HashSet;
 use log::{debug, error, info, warn};
 use tauri::State;
 
-use crate::core::BackendId;
 use crate::core::models::{BranchItem, BranchKind};
+use crate::core::{BackendId, Vcs};
 
 use crate::plugin_runtime::settings_store;
 use crate::plugin_vcs_backends;
 use crate::state::AppState;
 
-use super::{current_repo_or_err, run_repo_task};
+use super::{current_repo_or_err, default_remote_name, run_repo_task};
 
 const DEFAULT_MERGE_TEMPLATE: &str = "Merged branch '{branch:source}' into '{branch:target}'";
 
@@ -82,6 +82,40 @@ fn repo_name_from_origin(url: &str) -> Option<String> {
     }
 
     None
+}
+
+/// Resolves repo owner/name metadata for merge-message templates from the
+/// default remote: the current branch's upstream remote when resolvable,
+/// else the first configured remote. Falls back to the workdir name with an
+/// empty owner when no remote is available.
+///
+/// # Parameters
+/// - `vcs`: Repository backend.
+/// - `branch`: Branch used to resolve the upstream remote.
+/// - `workdir_name`: Repository directory name used as a name fallback.
+///
+/// # Returns
+/// - `(owner, name)` metadata pair.
+fn merge_message_repo_metadata(
+    vcs: &dyn Vcs,
+    branch: &str,
+    workdir_name: &str,
+) -> (String, String) {
+    let remote_url = default_remote_name(vcs, branch).and_then(|remote_name| {
+        vcs.list_remotes()
+            .ok()?
+            .into_iter()
+            .find(|(name, _)| name == &remote_name)
+            .map(|(_, url)| url)
+    });
+    match remote_url {
+        Some(url) => {
+            let username = repo_username_from_origin(&url).unwrap_or_default();
+            let name = repo_name_from_origin(&url).unwrap_or_else(|| workdir_name.to_string());
+            (username, name)
+        }
+        None => (String::new(), workdir_name.to_string()),
+    }
 }
 
 /// Expands merge-message template placeholders.
@@ -456,19 +490,8 @@ pub async fn vcs_merge_branch(
             .unwrap_or("repo")
             .to_string();
 
-        let (repo_username, repo_name) = match vcs.list_remotes() {
-            Ok(remotes) => {
-                let origin = remotes
-                    .iter()
-                    .find(|(n, _)| n == "origin")
-                    .map(|(_, url)| url.as_str())
-                    .unwrap_or("");
-                let username = repo_username_from_origin(origin).unwrap_or_default();
-                let name = repo_name_from_origin(origin).unwrap_or_else(|| workdir_name.clone());
-                (username, name)
-            }
-            Err(_) => (String::new(), workdir_name.clone()),
-        };
+        let (repo_username, repo_name) =
+            merge_message_repo_metadata(vcs, &target_branch, &workdir_name);
 
         let msg = template.trim();
         let message = if msg.is_empty() {
