@@ -51,6 +51,10 @@ fn safe_relative_path(input: &str) -> Result<PathBuf, String> {
     Ok(candidate)
 }
 
+// BLOCKED-CROSS-REPO VCS-18: ignore-syntax normalization below is Git-specific
+// (gitignore rules). Host fn renamed vcs_add_to_gitignore_paths → vcs_add_to_ignore_paths
+// in D8; FUNCTIONAL part blocked — a generic ignore op needs an SDK/Git-plugin contract.
+// Do NOT invent a DEFAULT_IGNORE_FILENAME constant.
 /// Normalizes a `.gitignore` entry from a repo-relative path.
 ///
 /// # Parameters
@@ -75,7 +79,7 @@ fn normalize_gitignore_entry(path: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-/// Adds repository-relative paths to `.gitignore` if not already present.
+/// Adds repository-relative paths to the ignore file if not already present.
 ///
 /// # Parameters
 /// - `state`: Shared application state.
@@ -84,18 +88,21 @@ fn normalize_gitignore_entry(path: &str) -> Result<String, String> {
 /// # Returns
 /// - `Ok(())` when update succeeds.
 /// - `Err(String)` when validation or file IO fails.
-pub async fn vcs_add_to_gitignore_paths(
+pub async fn vcs_add_to_ignore_paths(
     state: State<'_, AppState>,
     paths: Vec<String>,
 ) -> Result<(), String> {
-    info!("vcs_add_to_gitignore_paths called (count={})", paths.len());
+    info!("vcs_add_to_ignore_paths called (count={})", paths.len());
     if paths.is_empty() {
         return Ok(());
     }
 
     let repo = current_repo_or_err(&state)?;
-    run_repo_task("vcs_add_to_gitignore_paths", repo, move |repo| {
+    run_repo_task("vcs_add_to_ignore_paths", repo, move |repo| {
         let workdir = repo.inner().workdir();
+        // BLOCKED-CROSS-REPO VCS-18: `.gitignore` filename literal is Git-specific
+        // (functional part of vcs_add_to_gitignore_paths). Generic ignore-file name
+        // blocked until SDK/Git-plugin define a generic ignore op.
         let gitignore_path = workdir.join(".gitignore");
 
         let existing = std::fs::read_to_string(&gitignore_path).unwrap_or_default();

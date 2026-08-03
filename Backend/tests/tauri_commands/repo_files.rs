@@ -114,7 +114,7 @@ fn build_app_no_repo() -> tauri::App<tauri::test::MockRuntime> {
             super::read_repo_file_text,
             super::read_repo_file_meta,
             super::open_repo_file,
-            super::vcs_add_to_gitignore_paths,
+            super::vcs_add_to_ignore_paths,
         ])
         .build(mock_context(noop_assets()))
         .expect("build repo_files test app")
@@ -271,24 +271,24 @@ fn inspects_utf16le_bom_meta() {
     assert!(!meta.binary);
 }
 
-// ── vcs_add_to_gitignore_paths IPC tests ──
+// ── vcs_add_to_ignore_paths IPC tests ──
 
 #[test]
-fn vcs_add_to_gitignore_paths_succeeds_with_empty_paths() {
+fn vcs_add_to_ignore_paths_succeeds_with_empty_paths() {
     let app = build_app_no_repo();
     let wv = test_webview(&app);
 
     let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"paths": []}));
-    let res = invoke_cmd(&wv, "vcs_add_to_gitignore_paths", body);
+    let res = invoke_cmd(&wv, "vcs_add_to_ignore_paths", body);
     assert!(res.is_ok(), "empty paths should succeed: {:?}", res);
 }
 
 #[test]
-fn vcs_add_to_gitignore_paths_fails_without_repo() {
+fn vcs_add_to_ignore_paths_fails_without_repo() {
     let app = build_app_no_repo();
     let wv = test_webview(&app);
 
     let body = tauri::ipc::InvokeBody::Json(serde_json::json!({"paths": ["node_modules"]}));
-    let res = invoke_cmd(&wv, "vcs_add_to_gitignore_paths", body);
+    let res = invoke_cmd(&wv, "vcs_add_to_ignore_paths", body);
     assert!(res.is_err(), "non-empty paths should fail without repo: {:?}", res);
 }

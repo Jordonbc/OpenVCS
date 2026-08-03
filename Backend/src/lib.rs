@@ -387,7 +387,7 @@ fn build_invoke_handler<R: tauri::Runtime>()
         tauri_commands::vcs_push,
         tauri_commands::vcs_undo_since_push,
         tauri_commands::vcs_undo_to_commit,
-        tauri_commands::vcs_add_to_gitignore_paths,
+        tauri_commands::vcs_add_to_ignore_paths,
         tauri_commands::open_repo_file,
         tauri_commands::read_repo_file_text,
         tauri_commands::read_repo_file_meta,
