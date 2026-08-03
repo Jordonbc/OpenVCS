@@ -66,7 +66,7 @@ describe('wireNewBranch', () => {
     expect(checkout.checked).toBe(true);
   });
 
-  it('shows normalized branch name when spaces collapse to dashes', async () => {
+  it('rejects branch names containing whitespace', async () => {
     installTauriMock();
 
     const { wireNewBranch } = await import('@scripts/features/newBranch');
@@ -77,35 +77,34 @@ describe('wireNewBranch', () => {
     const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
     const create = document.getElementById('new-branch-create') as HTMLButtonElement;
 
-    name.value = '  feature  branch  ';
-    name.dispatchEvent(new Event('input'));
-    await flushPromises();
-
-    expect(hint.hidden).toBe(false);
-    expect(hint.classList.contains('error')).toBe(false);
-    expect(hint.textContent).toContain('Will be created as');
-    expect(hint.querySelector('code')?.textContent).toBe('feature-branch');
-    expect(create.disabled).toBe(false);
-  });
-
-  it('rejects branch names with invalid characters', async () => {
-    installTauriMock();
-
-    const { wireNewBranch } = await import('@scripts/features/newBranch');
-    wireNewBranch();
-    await flushPromises();
-
-    const name = document.getElementById('new-branch-name') as HTMLInputElement;
-    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
-    const create = document.getElementById('new-branch-create') as HTMLButtonElement;
-
-    name.value = 'bad~branch';
+    name.value = ' bad ';
     name.dispatchEvent(new Event('input'));
     await flushPromises();
 
     expect(hint.hidden).toBe(false);
     expect(hint.classList.contains('error')).toBe(true);
-    expect(hint.textContent).toBe('Branch name contains invalid characters');
+    expect(hint.textContent).toBe('Branch name cannot contain whitespace or control characters');
+    expect(create.disabled).toBe(true);
+  });
+
+  it('rejects branch names starting with a dash', async () => {
+    installTauriMock();
+
+    const { wireNewBranch } = await import('@scripts/features/newBranch');
+    wireNewBranch();
+    await flushPromises();
+
+    const name = document.getElementById('new-branch-name') as HTMLInputElement;
+    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
+    const create = document.getElementById('new-branch-create') as HTMLButtonElement;
+
+    name.value = '-feature';
+    name.dispatchEvent(new Event('input'));
+    await flushPromises();
+
+    expect(hint.hidden).toBe(false);
+    expect(hint.classList.contains('error')).toBe(true);
+    expect(hint.textContent).toBe('Branch name cannot start with "-"');
     expect(create.disabled).toBe(true);
   });
 
@@ -137,7 +136,7 @@ describe('wireNewBranch', () => {
 });
 
 describe('wireNewBranch - additional', () => {
-  it('reflects normalized names in the hint during validation', async () => {
+  it('shows validation state changes in the hint', async () => {
     function installTauriMockLocal() {
       (window as any).__TAURI__ = {
         core: { invoke: vi.fn(async () => null) },
@@ -154,12 +153,13 @@ describe('wireNewBranch - additional', () => {
     const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
     const create = document.getElementById('new-branch-create') as HTMLButtonElement;
 
-    // Whitespace-heavy name triggers normalization hint
+    // Whitespace-heavy name is rejected by the generic rules
     name.value = '  my  branch  ';
     name.dispatchEvent(new Event('input'));
     await new Promise((r) => setTimeout(r, 0));
     expect(hint.hidden).toBe(false);
-    expect(hint.textContent).toContain('Will be created as');
+    expect(hint.classList.contains('error')).toBe(true);
+    expect(create.disabled).toBe(true);
 
     // Empty after trim - shows error
     name.value = '   ';
@@ -235,106 +235,64 @@ describe('validateBranchName', () => {
     nameInput.value = 'bad\x00branch';
     nameInput.dispatchEvent(new Event('input'));
     await new Promise((r) => setTimeout(r, 0));
-    expect(hint.textContent).toContain('cannot contain spaces or control characters');
+    expect(hint.textContent).toContain('cannot contain whitespace or control characters');
   });
 
-  it('rejects names with tilde', async () => {
+  it('rejects names with leading or trailing whitespace', async () => {
     const { wireNewBranch } = await import('@scripts/features/newBranch');
     wireNewBranch();
     const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
     const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
-    nameInput.value = 'bad~branch';
+    nameInput.value = ' bad ';
     nameInput.dispatchEvent(new Event('input'));
     await new Promise((r) => setTimeout(r, 0));
-    expect(hint.textContent).toContain('invalid characters');
+    expect(hint.textContent).toContain('cannot contain whitespace or control characters');
   });
 
-  it('rejects names starting with /', async () => {
+  it('rejects names starting with a dash', async () => {
     const { wireNewBranch } = await import('@scripts/features/newBranch');
     wireNewBranch();
     const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
     const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
-    nameInput.value = '/branch';
+    nameInput.value = '-foo';
     nameInput.dispatchEvent(new Event('input'));
     await new Promise((r) => setTimeout(r, 0));
-    expect(hint.textContent).toContain('start or end with /');
+    expect(hint.textContent).toContain('cannot start with "-"');
   });
 
-  it('rejects names ending with /', async () => {
+  it('rejects names longer than 255 characters', async () => {
     const { wireNewBranch } = await import('@scripts/features/newBranch');
     wireNewBranch();
     const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
     const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
-    nameInput.value = 'branch/';
+    nameInput.value = 'a'.repeat(256);
     nameInput.dispatchEvent(new Event('input'));
     await new Promise((r) => setTimeout(r, 0));
-    expect(hint.textContent).toContain('start or end with /');
+    expect(hint.textContent).toContain('cannot exceed 255 characters');
   });
 
-  it('rejects names with ..', async () => {
+  it('rejects empty names', async () => {
+    const { wireNewBranch } = await import('@scripts/features/newBranch');
+    wireNewBranch();
+    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
+    const create = document.getElementById('new-branch-create') as HTMLButtonElement;
+    nameInput.value = '';
+    nameInput.dispatchEvent(new Event('input'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(create.disabled).toBe(true);
+  });
+
+  it('accepts feature/test', async () => {
     const { wireNewBranch } = await import('@scripts/features/newBranch');
     wireNewBranch();
     const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
     const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
-    nameInput.value = 'bad..branch';
+    const create = document.getElementById('new-branch-create') as HTMLButtonElement;
+    nameInput.value = 'feature/test';
     nameInput.dispatchEvent(new Event('input'));
     await new Promise((r) => setTimeout(r, 0));
-    expect(hint.textContent).toContain('..');
-  });
-
-  it('rejects names with @{', async () => {
-    const { wireNewBranch } = await import('@scripts/features/newBranch');
-    wireNewBranch();
-    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
-    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
-    nameInput.value = 'bad@{branch';
-    nameInput.dispatchEvent(new Event('input'));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(hint.textContent).toContain('@{');
-  });
-
-  it('rejects names with //', async () => {
-    const { wireNewBranch } = await import('@scripts/features/newBranch');
-    wireNewBranch();
-    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
-    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
-    nameInput.value = 'bad//branch';
-    nameInput.dispatchEvent(new Event('input'));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(hint.textContent).toContain('//');
-  });
-
-  it('rejects names ending with .', async () => {
-    const { wireNewBranch } = await import('@scripts/features/newBranch');
-    wireNewBranch();
-    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
-    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
-    nameInput.value = 'branch.';
-    nameInput.dispatchEvent(new Event('input'));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(hint.textContent).toContain('end with "."');
-  });
-
-  it('rejects names ending with .lock', async () => {
-    const { wireNewBranch } = await import('@scripts/features/newBranch');
-    wireNewBranch();
-    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
-    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
-    nameInput.value = 'branch.lock';
-    nameInput.dispatchEvent(new Event('input'));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(hint.textContent).toContain('.lock');
-  });
-
-  it('rejects names with /./', async () => {
-    const { wireNewBranch } = await import('@scripts/features/newBranch');
-    wireNewBranch();
-    const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
-    const hint = document.getElementById('new-branch-name-hint') as HTMLElement;
-    nameInput.value = 'bad/./path';
-    nameInput.dispatchEvent(new Event('input'));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(hint.textContent).toContain('invalid segments');
+    expect(hint.hidden).toBe(true);
+    expect(create.disabled).toBe(false);
   });
 });
 
@@ -582,7 +540,7 @@ describe('name input keyboard events', () => {
     await new Promise((r) => setTimeout(r, 0));
 
     const nameInput = document.getElementById('new-branch-name') as HTMLInputElement;
-    nameInput.value = 'bad~branch';
+    nameInput.value = '-foo';
     nameInput.dispatchEvent(new Event('input'));
     await new Promise((r) => setTimeout(r, 0));
 

@@ -8,23 +8,19 @@ import { closeModal } from "../ui/modals";
 import { runHook } from "../plugins";
 
 function fixBranchName(raw: string): string {
-    // Keep the user's input intact; only normalize for creation.
-    // Currently: trim and replace whitespace runs with dashes.
-    return (raw || '').trim().replace(/\s+/g, '-');
+    // Keep the user's input intact; only trim for creation.
+    // Whitespace and control characters are rejected by validation.
+    return (raw || '').trim();
 }
 
 function validateBranchName(name: string): string | null {
-    // Minimal Git-ish refname validation (frontend-side guardrail).
-    if (!name) return 'Branch name cannot be empty';
-    if (/[\0-\x20\x7f]/.test(name)) return 'Branch name cannot contain spaces or control characters';
-    if (/[~^:?*\[\\]/.test(name)) return 'Branch name contains invalid characters';
-    if (name.startsWith('/') || name.endsWith('/')) return 'Branch name cannot start or end with /';
-    if (name.includes('..')) return 'Branch name cannot contain ".."';
-    if (name.includes('@{')) return 'Branch name cannot contain "@{"';
-    if (name.includes('//')) return 'Branch name cannot contain "//"';
-    if (name.endsWith('.')) return 'Branch name cannot end with "."';
-    if (name.endsWith('.lock')) return 'Branch name cannot end with ".lock"';
-    if (name.includes('/.') || name.includes('.//') || name.includes('\\')) return 'Branch name contains invalid segments';
+    // VCS-neutral refname validation (frontend-side guardrail). No VCS-specific
+    // characters are restricted here, so the same rules apply across version
+    // control systems; VCS-specific constraints stay with the plugins.
+    if (!name.trim()) return 'Branch name cannot be empty';
+    if (/\s/.test(name) || /[\0-\x1f\x7f]/.test(name)) return 'Branch name cannot contain whitespace or control characters';
+    if (name.startsWith('-')) return 'Branch name cannot start with "-"';
+    if (name.length > 255) return 'Branch name cannot exceed 255 characters';
     return null;
 }
 
@@ -82,7 +78,7 @@ export function wireNewBranch() {
         const raw = nameInput?.value || '';
         const hasAny = raw.length > 0;
         const fixed = fixBranchName(raw);
-        const err = validateBranchName(fixed);
+        const err = validateBranchName(raw);
         const rawTrim = raw.trim();
 
         if (nameHint) {
@@ -98,12 +94,6 @@ export function wireNewBranch() {
                 nameHint.hidden = false;
                 nameHint.classList.add('error');
                 nameHint.textContent = err;
-            } else if (fixed !== rawTrim || raw !== rawTrim) {
-                nameHint.hidden = false;
-                nameHint.classList.remove('error');
-                const code = document.createElement('code');
-                code.textContent = fixed;
-                nameHint.replaceChildren('Will be created as ', code);
             } else {
                 nameHint.hidden = true;
                 nameHint.textContent = '';
@@ -118,10 +108,11 @@ export function wireNewBranch() {
     setTimeout(validate, 0);
 
     async function createBranch() {
-        const name = fixBranchName(nameInput?.value || '');
+        const raw = nameInput?.value || '';
+        const name = fixBranchName(raw);
         const from = baseSelect?.value || state.branch || '';
         const checkout = !!checkoutEl?.checked;
-        const err = validateBranchName(name);
+        const err = validateBranchName(raw);
         if (err) { validate(); return; }
         try {
             const hookData = { name, from, checkout, branch: state.branch };
