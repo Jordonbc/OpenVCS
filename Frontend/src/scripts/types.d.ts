@@ -165,12 +165,17 @@ export interface ThemePayload {
     scripts?: string[];
 }
 
+/** Name/URL pair for a configured VCS remote. */
+export interface RemoteConfig {
+    name: string;
+    url: string;
+}
+
 /** Represents repository-local identity and remote settings. */
 export interface RepoSettings {
     user_name?: string;
     user_email?: string;
-    origin_url?: string;
-    remotes?: Array<{ name: string; url: string }>;
+    remotes?: RemoteConfig[];
 }
 
 /** Represents a backend-owned repository snapshot used by the frontend cache. */
