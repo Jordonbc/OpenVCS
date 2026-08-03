@@ -34,6 +34,16 @@ impl AppDirsGuard {
         set_test_app_dirs(AppDirs::new(cfg_dir, data_dir));
         Self { _dir: dir }
     }
+
+    /// Data dir backing this guard's app dirs override.
+    fn data_dir(&self) -> PathBuf {
+        self._dir.path().join("data")
+    }
+
+    /// Path of the persisted recents file under this guard's data dir.
+    fn recents_path(&self) -> PathBuf {
+        self.data_dir().join("recents.json")
+    }
 }
 
 impl Drop for AppDirsGuard {
@@ -113,7 +123,6 @@ fn stores_repo_config_in_memory() {
     let repo_cfg = RepoConfig {
         user_name: Some("Alice".into()),
         user_email: Some("alice@example.com".into()),
-        origin_url: None,
         remotes: None,
     };
     assert!(state.set_repo_config(repo_cfg).is_ok());
@@ -217,5 +226,84 @@ fn recents_contains_paths_after_setting_current_repo() {
     assert!(
         state.recents().iter().any(|e| e.path.ends_with("test-repo")),
         "repo path should appear in recents"
+    );
+}
+
+// ── Recents loader/saver clean-break tests (D11b) ────────────────────────
+
+#[test]
+fn recents_loader_rejects_legacy_string_entries() {
+    let _guard = AppDirsGuard::new();
+    std::fs::write(_guard.recents_path(), r#"["/legacy/one", "/legacy/two"]"#)
+        .expect("write legacy recents file");
+
+    let loaded = super::load_recents_from_disk().expect("load should succeed");
+    assert!(
+        loaded.is_empty(),
+        "legacy string array must not be interpreted as recents"
+    );
+    // Loader never writes: file untouched on disk.
+    let on_disk = std::fs::read_to_string(_guard.recents_path()).expect("read recents file");
+    assert_eq!(on_disk, r#"["/legacy/one", "/legacy/two"]"#);
+}
+
+#[test]
+fn recents_loader_skips_entries_with_blank_backend_id() {
+    let _guard = AppDirsGuard::new();
+    let entries = r#"[
+  {"path": "/a", "backend_id": ""},
+  {"path": "/b"},
+  {"path": "/c", "backend_id": "   "},
+  {"path": "/d", "backend_id": "git"},
+  {"path": "  ", "backend_id": "hg"}
+]"#;
+    std::fs::write(_guard.recents_path(), entries).expect("write recents file");
+
+    let loaded = super::load_recents_from_disk().expect("load should succeed");
+    assert_eq!(loaded.len(), 1, "only the entry with a real backend_id is kept");
+    assert_eq!(loaded[0].path, PathBuf::from("/d"));
+    assert_eq!(loaded[0].backend_id, "git");
+}
+
+#[test]
+fn recents_loader_returns_empty_and_leaves_file_untouched_on_malformed_json() {
+    let _guard = AppDirsGuard::new();
+    let malformed = r#"{ this is not json "#;
+    std::fs::write(_guard.recents_path(), malformed).expect("write malformed recents file");
+
+    let loaded = super::load_recents_from_disk().expect("load should succeed");
+    assert!(loaded.is_empty(), "malformed file must yield empty recents");
+    let on_disk = std::fs::read_to_string(_guard.recents_path()).expect("read recents file");
+    assert_eq!(on_disk, malformed, "file must remain untouched until next save");
+}
+
+#[test]
+fn save_after_load_overwrites_legacy_file_with_canonical_objects() {
+    let _guard = AppDirsGuard::new();
+    // Pre-existing legacy file on disk.
+    std::fs::write(_guard.recents_path(), r#"["/legacy/one"]"#).expect("write legacy recents file");
+
+    // Constructing state loads the legacy file into empty recents.
+    let state = AppState::new_with_config(AppConfig::default());
+    assert!(state.recents().is_empty());
+
+    // Next normal save writes canonical objects only.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let repo_path = dir.path().join("canonical-repo");
+    std::fs::create_dir(&repo_path).expect("create repo dir");
+    state.set_current_repo(dummy_repo(&repo_path));
+
+    let on_disk = std::fs::read_to_string(_guard.recents_path()).expect("read recents file");
+    let value: serde_json::Value = serde_json::from_str(&on_disk).expect("valid JSON on disk");
+    let items = value.as_array().expect("saved recents is an array");
+    assert!(!items.is_empty(), "saved recents should contain the opened repo");
+    for item in items {
+        let obj = item.as_object().expect("every saved entry is an object");
+        assert!(obj.contains_key("path"), "entry has path");
+        assert!(obj.contains_key("backend_id"), "entry has backend_id");
+    }
+    assert!(
+        !items.iter().any(|i| i.is_string()),
+        "no legacy string entries survive a normal save"
     );
 }

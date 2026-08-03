@@ -275,45 +275,44 @@ fn load_recents_from_disk() -> Result<Vec<RecentEntry>, String> {
         Err(e) => return Err(format!("read recents: {e}")),
     };
 
-    // Accept: [{path, backend_id}, ...] or legacy ["/path", ...]
-    let mut out: Vec<RecentEntry> = Vec::new();
-    if let Ok(serde_json::Value::Array(items)) = serde_json::from_str::<serde_json::Value>(&data) {
-        for it in items {
-            match it {
-                serde_json::Value::Object(map) => {
-                    let path = map
-                        .get("path")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .trim()
-                        .to_string();
-                    let backend_id = map
-                        .get("backend_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .trim()
-                        .to_string();
-                    if !path.is_empty() {
-                        out.push(RecentEntry {
-                            path: PathBuf::from(&path),
-                            backend_id: if backend_id.is_empty() {
-                                "git".into()
-                            } else {
-                                backend_id
-                            },
-                        });
-                    }
-                }
-                serde_json::Value::String(s) if !s.trim().is_empty() => {
-                    // Legacy format: just a path — default to "git" for backward compat
-                    out.push(RecentEntry {
-                        path: PathBuf::from(s.trim()),
-                        backend_id: "git".into(),
-                    });
-                }
-                _ => {}
-            }
+    // Canonical format only: JSON array of { path, backend_id } objects.
+    // Legacy string-only entries, missing/blank backend_id, and malformed
+    // rows are skipped. A malformed or non-array file yields empty recents;
+    // the file is left untouched until the next normal save (canonical overwrite).
+    let items = match serde_json::from_str::<serde_json::Value>(&data) {
+        Ok(serde_json::Value::Array(items)) => items,
+        Ok(_) | Err(_) => {
+            debug!("AppState: recents file has unsupported shape; ignoring it");
+            return Ok(vec![]);
         }
+    };
+
+    let mut out: Vec<RecentEntry> = Vec::new();
+    for it in items {
+        let serde_json::Value::Object(map) = it else {
+            debug!("AppState: skipping non-object recents entry");
+            continue;
+        };
+        let path = map
+            .get("path")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let backend_id = map
+            .get("backend_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if path.is_empty() || backend_id.is_empty() {
+            debug!("AppState: skipping recents entry with missing path or backend_id");
+            continue;
+        }
+        out.push(RecentEntry {
+            path: PathBuf::from(&path),
+            backend_id,
+        });
     }
     Ok(out)
 }
