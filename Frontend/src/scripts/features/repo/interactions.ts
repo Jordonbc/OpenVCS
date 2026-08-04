@@ -5,6 +5,8 @@ import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
 import { TAURI } from '../../lib/tauri';
+import { refreshAll } from '../../lib/async';
+import { collectHunkLineIndices } from '../../lib/hunks';
 import { getPluginContextMenuItems, runPluginAction } from '../../plugins';
 import { state, disableDefaultSelectAll } from '../../state/state';
 import type { FileStatus } from '../../types';
@@ -204,17 +206,8 @@ export function updateDragRange(visible: FileStatus[]) {
                     const rec: Record<number, number[]> = { ...recExisting };
                     state.selectedHunks.forEach((h) => {
                         if (rec[h] && rec[h].length > 0) return;
-                        const picked: number[] = [];
-                        const refs = hunkNodes.get(h);
-                        Object.keys(refs?.lineCheckboxes || {}).forEach((ln) => {
-                            const idx = Number(ln);
-                            if (idx < 0) return;
-                            const box = refs?.lineCheckboxes[idx];
-                            if (!box) return;
-                            box.checked = true;
-                            picked.push(idx);
-                        });
-                        if (picked.length > 0) rec[h] = Array.from(new Set(picked)).sort((a, b) => a - b);
+                        const picked = collectHunkLineIndices(hunkNodes.get(h));
+                        if (picked.length > 0) rec[h] = picked;
                     });
                     (state as any).selectedLinesByFile[state.currentFile] = rec;
                 } else {
@@ -271,7 +264,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             includeUntracked: false,
             paths: normalizedPaths,
             onSuccess: async () => {
-                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                await refreshAll([hydrateStatus, hydrateStash]);
                 renderListCallback?.();
             },
         });
@@ -308,7 +301,7 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
         try {
             await TAURI.invoke('vcs_add_to_ignore_paths', { paths: targets });
             notify('Added to ignore file');
-            await Promise.allSettled([hydrateStatus()]);
+            await refreshAll([hydrateStatus]);
         } catch {
             notify('Ignore failed');
         }
@@ -319,14 +312,14 @@ export async function onFileContextMenu(ev: MouseEvent, f: FileStatus) {
             const paths = selectedPaths.slice();
             const ok = await confirmBool(`Discard all changes in ${paths.length} selected file(s)? This cannot be undone.`);
             if (!ok) return;
-            try { await TAURI.invoke('vcs_discard_paths', { paths }); await Promise.allSettled([hydrateStatus()]); }
+            try { await TAURI.invoke('vcs_discard_paths', { paths }); await refreshAll([hydrateStatus]); }
             catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
         }});
     } else {
         items.push({ label: 'Discard changes', action: async () => {
             const ok = await confirmBool(`Discard all changes in \n${f.path}? This cannot be undone.`);
             if (!ok) return;
-            try { await TAURI.invoke('vcs_discard_paths', { paths: [f.path] }); await Promise.allSettled([hydrateStatus()]); }
+            try { await TAURI.invoke('vcs_discard_paths', { paths: [f.path] }); await refreshAll([hydrateStatus]); }
             catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
         }});
     }

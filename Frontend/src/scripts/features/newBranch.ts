@@ -7,6 +7,7 @@ import { state } from "../state/state";
 import { closeModal } from "../ui/modals";
 import { runHook } from "../plugins";
 import { ModalController } from "../lib/modalController";
+import { populateSelect, setConfirmDisabled } from "../lib/forms";
 
 function fixBranchName(raw: string): string {
     // Keep the user's input intact; only trim for creation.
@@ -37,18 +38,12 @@ function populateBaseSelect(modal: HTMLElement) {
 
     const curName = state.branch || current[0]?.name || '';
 
-    sel.replaceChildren();
-    for (const b of all) {
+    const entries = all.map((b) => {
         const isRemote = (b.kind?.type || '').toLowerCase() === 'remote';
         const label = isRemote && b.kind?.remote ? `${b.kind.remote}/${b.name.split('/').pop() || b.name}` : b.name;
-        const value = b.name; // backend expects the ref name we already use elsewhere
-
-        const opt = document.createElement('option');
-        opt.value = value;
-        opt.textContent = label;
-        opt.selected = value === curName;
-        sel.appendChild(opt);
-    }
+        return [b.name, label] as const;
+    });
+    populateSelect(sel, entries, curName);
 }
 
 /** Applies the default checkout choice to the create-branch form. */
@@ -101,8 +96,8 @@ export const newBranchController = new ModalController<void>("new-branch-modal",
             }
         }
 
-        const ok = !err && !!fixed;
-        if (createBtn) createBtn.disabled = !ok;
+const ok = !err && !!fixed;
+        setConfirmDisabled(modal, '#new-branch-create', !ok);
     }
     nameInput?.addEventListener('input', validate);
     setTimeout(validate, 0);

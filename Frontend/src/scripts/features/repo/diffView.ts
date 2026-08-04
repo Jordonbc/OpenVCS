@@ -5,6 +5,8 @@ import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
 import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
+import { refreshAll } from '../../lib/async';
+import { collectHunkLineIndices } from '../../lib/hunks';
 import { isConflictStatus, state, prefs } from '../../state/state';
 import type { FileStatus } from '../../types';
 import type { RepoFileMeta, VcsDiffResult } from '../../types';
@@ -179,7 +181,7 @@ export async function selectFile(file: FileStatus, index: number) {
                     const patch = buildPatchForSelectedHunks(file.path, state.currentDiff, [hi]);
                     if (patch) {
                         await TAURI.invoke('vcs_discard_patch', { patch });
-                        await Promise.allSettled([hydrateStatus()]);
+                        await refreshAll([hydrateStatus]);
                     }
                 } catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
             }});
@@ -194,7 +196,7 @@ export async function selectFile(file: FileStatus, index: number) {
                         const patch = buildPatchForSelectedHunks(file.path, state.currentDiff, selected);
                         if (patch) {
                             await TAURI.invoke('vcs_discard_patch', { patch });
-                            await Promise.allSettled([hydrateStatus()]);
+                            await refreshAll([hydrateStatus]);
                         }
                     } catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
                 }});
@@ -221,7 +223,7 @@ export async function selectFile(file: FileStatus, index: number) {
                         }
                         if (patch.trim()) {
                             await TAURI.invoke('vcs_discard_patch', { patch });
-                            await Promise.allSettled([hydrateStatus()]);
+                            await refreshAll([hydrateStatus]);
                         }
                     } catch (e) { console.error('Discard failed:', e); notify('Discard failed'); }
                 }});
@@ -243,17 +245,8 @@ export async function selectFile(file: FileStatus, index: number) {
                 const rec: Record<number, number[]> = { ...recExisting };
                 state.selectedHunks.forEach((h) => {
                     if (rec[h] && rec[h].length > 0) return;
-                    const picked: number[] = [];
-                    const refs = hunkNodes.get(h);
-                    Object.keys(refs?.lineCheckboxes || {}).forEach((ln) => {
-                        const idx = Number(ln);
-                        if (idx < 0) return;
-                        const box = refs?.lineCheckboxes[idx];
-                        if (!box) return;
-                        box.checked = true;
-                        picked.push(idx);
-                    });
-                    if (picked.length > 0) rec[h] = Array.from(new Set(picked)).sort((a, b) => a - b);
+                    const picked = collectHunkLineIndices(hunkNodes.get(h));
+                    if (picked.length > 0) rec[h] = picked;
                 });
                 (state as any).selectedLinesByFile[state.currentFile] = rec;
                 updateHunkCheckboxes();

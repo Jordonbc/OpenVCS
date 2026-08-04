@@ -3,6 +3,8 @@
 // src/scripts/features/cherryPick.ts
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
+import { refreshAll } from '../lib/async';
+import { populateSelect, setConfirmDisabled } from '../lib/forms';
 import { closeModal } from '../ui/modals';
 import { state } from '../state/state';
 import { hydrateBranches, hydrateCommits, hydrateStatus } from './repo';
@@ -21,9 +23,8 @@ export interface CherryPickState {
 function validateCherryPick(modal: HTMLElement): void {
   const commit = (modal.dataset.commit || '').trim();
   const branchEl = modal.querySelector<HTMLSelectElement>('#cherry-pick-branch');
-  const confirm = modal.querySelector<HTMLButtonElement>('#cherry-pick-confirm');
   const branch = (branchEl?.value || '').trim();
-  if (confirm) confirm.disabled = !(commit && branch);
+  setConfirmDisabled(modal, '#cherry-pick-confirm', !(commit && branch));
 }
 
 /** Owns the cherry-pick modal lifecycle: wires once, applies state per open. */
@@ -42,7 +43,7 @@ export const cherryPickController = new ModalController<CherryPickState>(
           await TAURI.invoke('vcs_cherry_pick_to_branch', { id: commit, branch });
           notify(`Cherry-picked onto ${branch}`);
           closeModal('cherry-pick-modal');
-          await Promise.allSettled([hydrateBranches(), hydrateStatus(), hydrateCommits()]);
+          await refreshAll([hydrateBranches, hydrateStatus, hydrateCommits]);
         } catch (e) {
           const msg = String(e || '').trim();
           notify(msg ? `Cherry-pick failed: ${msg}` : 'Cherry-pick failed');
@@ -65,11 +66,7 @@ export const cherryPickController = new ModalController<CherryPickState>(
       const preferred = opts.includes(current) ? current : (opts[0] || '');
       const branchEl = modal.querySelector<HTMLSelectElement>('#cherry-pick-branch');
       if (branchEl) {
-        branchEl.innerHTML = [
-          `<option value="" disabled ${preferred ? '' : 'selected'}>Select a branch…</option>`,
-          ...opts.map((b) => `<option value="${b}">${b}</option>`),
-        ].join('');
-        if (preferred) branchEl.value = preferred;
+        populateSelect(branchEl, opts.map((b) => [b, b] as const), preferred, 'Select a branch…');
       }
 
       validateCherryPick(modal);

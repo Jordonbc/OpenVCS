@@ -32,6 +32,8 @@ import { DEFAULT_LIGHT_THEME_ID, refreshAvailableThemes, selectThemePack } from 
 import { initPlugins, invokePluginAction, runHook, runPluginAction } from './plugins';
 import { openSwitchDrawer, closeSwitchDrawer, registerDrawerActions } from './features/repoSwitchDrawer';
 import { hydrateSnapshot } from './features/repo/hydrate';
+import { applyAppearanceCssVars } from './lib/cssVars';
+import { prefillCommitForm } from './lib/commitForm';
 
 const WIKI_URL = 'https://github.com/jordonbc/OpenVCS/wiki';
 
@@ -128,13 +130,11 @@ async function boot() {
                 }
                 setTheme(themeMode || prefs.theme);
                 try {
-                    const root = document.documentElement;
-                    const tabw = Number(cfg?.diff?.tab_width ?? 4);
-                    if (tabw && isFinite(tabw)) root.style.setProperty('--tab-size', String(tabw));
-                    const uiScale = Number(cfg?.ux?.ui_scale ?? 1);
-                    if (uiScale && isFinite(uiScale)) root.style.setProperty('--ui-scale', String(uiScale));
-                    const mono = String(cfg?.ux?.font_mono || '').trim();
-                    if (mono) root.style.setProperty('--mono', mono);
+                    applyAppearanceCssVars({
+                        tabWidth: cfg?.diff?.tab_width,
+                        uiScale: cfg?.ux?.ui_scale,
+                        fontMono: cfg?.ux?.font_mono,
+                    });
                     applyAnimationPreference(cfg?.performance?.animations);
                     applyGpuAccelerationPreference(cfg?.performance?.gpu_accel);
                     applyCommitSummaryRestriction(cfg?.commit?.restrict_commit_summary !== false);
@@ -495,17 +495,7 @@ async function boot() {
             const summary = headMsg ? headMsg.split('\n')[0].trim() : '';
             notify(summary ? `Undone commit "${summary}" successfully` : 'Undone');
             await hydrateSnapshot(true);
-            if (headMsg) {
-                const summaryEl = document.getElementById('commit-summary') as HTMLInputElement | null;
-                const descEl = document.getElementById('commit-desc') as HTMLTextAreaElement | null;
-                const firstNl = headMsg.indexOf('\n');
-                if (firstNl === -1) {
-                    if (summaryEl) { summaryEl.value = headMsg; summaryEl.dispatchEvent(new Event('input', { bubbles: true })); }
-                } else {
-                    if (summaryEl) { summaryEl.value = headMsg.slice(0, firstNl).trim(); summaryEl.dispatchEvent(new Event('input', { bubbles: true })); }
-                    if (descEl) { descEl.value = headMsg.slice(firstNl + 1).trim(); descEl.dispatchEvent(new Event('input', { bubbles: true })); }
-                }
-            }
+            if (headMsg) prefillCommitForm(headMsg);
         } catch (e) {
             const msg = String(e || '').trim();
             notify(msg ? `Undo failed: ${msg}` : 'Undo failed');

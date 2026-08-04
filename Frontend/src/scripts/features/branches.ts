@@ -5,6 +5,7 @@ import { qs } from '../lib/dom';
 import { TAURI } from '../lib/tauri';
 import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
+import { refreshAll } from '../lib/async';
 import { refreshOverlayScrollbarsFor } from '../lib/scrollbars';
 import { state } from '../state/state';
 import { openModal } from '../ui/modals';
@@ -231,7 +232,7 @@ export function bindBranchUI() {
                 await TAURI.invoke('vcs_merge_branch', { name, strategy });
                 clearBusy();
                 notify(`Merged branch '${name}' into '${cur}'`);
-                await Promise.allSettled([renderList(), loadBranches()]);
+                await refreshAll([renderList, loadBranches]);
             } catch (e) {
                 clearBusy();
                 const msg = String(e || '');

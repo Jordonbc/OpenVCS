@@ -4,6 +4,7 @@
 import { TAURI } from '../lib/tauri';
 import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
+import { refreshAll } from '../lib/async';
 import { hydrate, openModal, closeModal } from '../ui/modals';
 import { hydrateStatus } from './repo';
 import type { FileStatus, ConflictDetails, GlobalSettings } from '../types';
@@ -43,7 +44,7 @@ export const mergeController = new ModalController<MergeModalState>('merge-modal
                 await TAURI.invoke('vcs_save_merge_result', { path, content });
                 notify('Saved merge result');
                 closeModal('merge-modal');
-                await Promise.allSettled([hydrateStatus()]);
+                await refreshAll([hydrateStatus]);
             } catch (err) {
                 console.error(err);
                 notify('Failed to save merge result');

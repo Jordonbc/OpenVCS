@@ -5,6 +5,7 @@ import { TAURI } from "../lib/tauri";
 import { notify } from "../lib/notify";
 import { closeModal } from "../ui/modals";
 import { ModalController } from "../lib/modalController";
+import { setConfirmDisabled } from "../lib/forms";
 
 /** Per-open state for the rename-branch modal. */
 export interface RenameBranchState {
@@ -14,10 +15,8 @@ export interface RenameBranchState {
 /** Enables the confirm button only when the new name is valid and different. */
 function validateRename(modal: HTMLElement): void {
   const oldName = (modal.dataset.oldBranch || "").trim();
-  const nameEl = modal.querySelector<HTMLInputElement>("#rename-branch-name");
-  const confirm = modal.querySelector<HTMLButtonElement>("#rename-branch-confirm");
-  const newName = (nameEl?.value || "").trim();
-  if (confirm) confirm.disabled = !newName || newName === oldName;
+  const newName = (modal.querySelector<HTMLInputElement>("#rename-branch-name")?.value || "").trim();
+  setConfirmDisabled(modal, "#rename-branch-confirm", !newName || newName === oldName);
 }
 
 /** Owns the rename-branch modal lifecycle: wires once, applies state per open. */

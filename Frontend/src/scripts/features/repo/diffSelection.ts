@@ -5,6 +5,8 @@ import { listEl } from './context';
 import { updateCommitButton } from './commit';
 import { getVisibleFiles, updateSelectAllState } from './selectionState';
 import { allHunkIndices } from './diffFragment';
+import { collectHunkLineIndices } from '../../lib/hunks';
+import { escapeCssAttribute } from '../../lib/dom';
 
 /** Toggles commit inclusion for a file and syncs current hunk selection. */
 export function toggleFilePick(path: string, on: boolean) {
@@ -23,14 +25,8 @@ export function toggleFilePick(path: string, on: boolean) {
                     box.checked = true;
                     box.indeterminate = false;
                 });
-                const picked: number[] = [];
-                Object.entries(refs.lineCheckboxes).forEach(([key, box]) => {
-                    const lineIdx = Number(key);
-                    if (lineIdx < 0) return;
-                    picked.push(lineIdx);
-                    box.checked = true;
-                });
-                if (picked.length > 0) rec[idx] = Array.from(new Set(picked)).sort((a, b) => a - b);
+                const picked = collectHunkLineIndices(refs);
+                if (picked.length > 0) rec[idx] = picked;
             });
             (state as any).selectedLinesByFile[state.currentFile] = rec;
         } else {
@@ -128,15 +124,8 @@ function handleHunkToggle(input: HTMLInputElement) {
     const rec: Record<number, number[]> = (state as any).selectedLinesByFile[state.currentFile] || {};
     if (input.checked) {
         if (!state.selectedHunks.includes(idx)) state.selectedHunks.push(idx);
-        const refs = state.currentDiffHunkNodes.get(idx);
-        const picked: number[] = [];
-        Object.entries(refs?.lineCheckboxes || {}).forEach(([k, box]) => {
-            const lineIdx = Number(k);
-            if (lineIdx < 0) return;
-            picked.push(lineIdx);
-            box.checked = true;
-        });
-        if (picked.length > 0) rec[idx] = Array.from(new Set(picked)).sort((a, b) => a - b);
+        const picked = collectHunkLineIndices(state.currentDiffHunkNodes.get(idx));
+        if (picked.length > 0) rec[idx] = picked;
     } else {
         state.selectedHunks = state.selectedHunks.filter((i) => i !== idx);
         const refs = state.currentDiffHunkNodes.get(idx);
@@ -336,7 +325,7 @@ function handleMultiLineToggle(input: HTMLInputElement, file: string) {
 /** Updates a list row checkbox and picked class for a specific file path. */
 export function updateListCheckboxForPath(path: string, checked: boolean, indeterminate: boolean) {
     if (!listEl || !path) return;
-    const rowSel = `li.row[data-path="${path.replace(/(["\\])/g, '\\$1')}"]`;
+    const rowSel = `li.row[data-path="${escapeCssAttribute(path)}"]`;
     const row = listEl.querySelector<HTMLElement>(rowSel);
     if (row) row.classList.toggle('picked', checked && !indeterminate);
     const cb = row?.querySelector<HTMLInputElement>('input.pick');

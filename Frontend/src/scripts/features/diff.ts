@@ -3,6 +3,7 @@
 import { qs } from '../lib/dom';
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
+import { refreshAll } from '../lib/async';
 import { showError } from './errorModal';
 import { state } from '../state/state';
 import { hydrateStatus, hydrateCommits } from './repo';
@@ -114,7 +115,7 @@ export function bindCommit() {
             state.currentDiff = [];
             state.currentFile = '';
             // Refresh status and commits immediately
-            await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+            await refreshAll([hydrateStatus, hydrateCommits]);
             await runHook('postCommit', {
                 summary,
                 description,

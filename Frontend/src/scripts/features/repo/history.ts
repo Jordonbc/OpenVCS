@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { escapeHtml } from '../../lib/dom';
 import { copyText } from '../../lib/clipboard';
+import { prefillCommitForm } from '../../lib/commitForm';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
 import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
+import { refreshAll } from '../../lib/async';
 import { getPluginContextMenuItems, runPluginAction } from '../../plugins';
 import { prefs, state, statusClass, statusLabel } from '../../state/state';
 import { diffEl, diffHeadPath, listEl, countEl } from './context';
@@ -59,7 +61,7 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: C
                 try {
                     await TAURI.invoke('vcs_revert_commit', { id: commit.id });
                     notify('Revert complete');
-                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+                    await refreshAll([hydrateStatus, hydrateCommits]);
                 } catch (e) {
                     const msg = String(e || '').trim();
                     notify(msg ? `Revert failed: ${msg}` : 'Revert failed');
@@ -85,18 +87,8 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: C
                     await TAURI.invoke('vcs_undo_to_commit', { id: commit.id, parent: true });
                     const summary = headMsg ? headMsg.split('\n')[0].trim() : '';
                     notify(summary ? `Undone commit "${summary}" successfully` : 'Undone');
-                    await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
-                    if (headMsg) {
-                        const summaryEl = document.getElementById('commit-summary') as HTMLInputElement | null;
-                        const descEl = document.getElementById('commit-desc') as HTMLTextAreaElement | null;
-                        const firstNl = headMsg.indexOf('\n');
-                        if (firstNl === -1) {
-                            if (summaryEl) { summaryEl.value = headMsg; summaryEl.dispatchEvent(new Event('input', { bubbles: true })); }
-                        } else {
-                            if (summaryEl) { summaryEl.value = headMsg.slice(0, firstNl).trim(); summaryEl.dispatchEvent(new Event('input', { bubbles: true })); }
-                            if (descEl) { descEl.value = headMsg.slice(firstNl + 1).trim(); descEl.dispatchEvent(new Event('input', { bubbles: true })); }
-                        }
-                    }
+                    await refreshAll([hydrateStatus, hydrateCommits]);
+                    if (headMsg) prefillCommitForm(headMsg);
                 } catch (e) {
                     const msg = String(e || '').trim();
                     notify(msg ? `Undo failed: ${msg}` : 'Undo failed');
@@ -309,7 +301,7 @@ export async function selectHistory(commit: any, index: number) {
                             try {
                                 await TAURI.invoke('vcs_discard_patch', { patch });
                                 notify('Reverted file changes (review in Changes tab)');
-                                await Promise.allSettled([hydrateStatus()]);
+                                await refreshAll([hydrateStatus]);
                             } catch (e) {
                                 const msg = String(e || '').trim();
                                 notify(msg ? `Revert failed: ${msg}` : 'Revert failed');

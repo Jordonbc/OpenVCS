@@ -4,6 +4,7 @@ import { escapeHtml } from '../../lib/dom';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
 import { notify } from '../../lib/notify';
+import { refreshAll } from '../../lib/async';
 import { state } from '../../state/state';
 import type { FileStatus, ConflictDetails } from '../../types';
 import { diffEl } from './context';
@@ -92,7 +93,7 @@ function bindConflictActions(root: HTMLElement, file: FileStatus, details: Confl
         try {
             await TAURI.invoke('vcs_resolve_conflict_side', { path: file.path, side });
             notify(side === 'ours' ? 'Kept your version' : 'Kept their version');
-            await Promise.allSettled([hydrateStatus()]);
+            await refreshAll([hydrateStatus]);
         } catch (err) {
             console.error(err);
             notify('Failed to resolve conflict');

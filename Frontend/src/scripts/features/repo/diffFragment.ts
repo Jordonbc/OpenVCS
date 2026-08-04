@@ -3,6 +3,19 @@
 import { escapeHtml } from '../../lib/dom';
 import { DiffMeta, HunkNodeRefs, state } from '../../state/state';
 
+/** Scans diff lines for unified-diff hunk header markers. */
+function scanHunkStarts(lines: string[]): { idx: number; rest: string[]; starts: number[] } {
+    const idx = lines.findIndex((l) => (l || '').startsWith('@@'));
+    const rest = idx >= 0 ? lines.slice(idx) : [];
+    const starts: number[] = [];
+    rest.forEach((l, i) => { if ((l || '').startsWith('@@')) starts.push(i); });
+    return { idx, rest, starts };
+}
+/** Markup for a selectable hunk-selection label (checkbox + screen-reader text). */
+function hunkSelectionLabelHtml(h: number): string {
+    return `<label class="pick-toggle"><input type="checkbox" class="pick-hunk" data-hunk="${h}" /><span class="sr-only">Include hunk</span></label>`;
+}
+
 /** Returns contiguous hunk indices derived from unified diff lines. */
 export function allHunkIndices(lines: string[]) {
     const meta = state.currentDiffMeta;
@@ -10,19 +23,12 @@ export function allHunkIndices(lines: string[]) {
         return Array.from({ length: meta.totalHunks }, (_, i) => i);
     }
     if (!Array.isArray(lines) || !lines.length) return [] as number[];
-    const idx = lines.findIndex((l) => l.startsWith('@@'));
-    const rest = idx >= 0 ? lines.slice(idx) : [];
-    const starts: number[] = [];
-    rest.forEach((l, i) => { if (l.startsWith('@@')) starts.push(i); });
-    return starts.map((_, i) => i);
+    return scanHunkStarts(lines).starts.map((_, i) => i);
 }
 
 /** Parses diff lines into reusable metadata for hunk rendering. */
 function buildDiffMeta(lines: string[]): DiffMeta {
-    const idx = lines.findIndex((l) => (l || '').startsWith('@@'));
-    const rest = idx >= 0 ? lines.slice(idx) : [];
-    const starts: number[] = [];
-    rest.forEach((l, i) => { if ((l || '').startsWith('@@')) starts.push(i); });
+    const { idx, rest, starts } = scanHunkStarts(lines);
     if (starts.length === 0) return {
         offset: Math.max(0, idx),
         rest,
@@ -132,27 +138,17 @@ function buildDiffFragment(lines: string[]): DocumentFragment {
             const hunkEl = document.createElement('div');
             hunkEl.className = 'hunk';
             hunkEl.dataset.hunkIndex = String(h);
-            const selectionBody = document.createElement('div');
-            selectionBody.className = 'hunk-selection-body';
-            const hunkCheckbox = document.createElement('input');
-            hunkCheckbox.type = 'checkbox';
-            hunkCheckbox.className = 'pick-hunk';
-            hunkCheckbox.dataset.hunk = String(h);
-            const label = document.createElement('label');
-            label.className = 'pick-toggle';
-            label.appendChild(hunkCheckbox);
-            const srHunk = document.createElement('span');
-            srHunk.className = 'sr-only';
-            srHunk.textContent = 'Include hunk';
-            label.appendChild(srHunk);
-            selectionBody.appendChild(label);
-            currentSegmentRows.forEach((row) => {
-                selectionBody.appendChild(row);
-            });
-            hunkEl.appendChild(selectionBody);
+            hunkEl.innerHTML = `<div class="hunk-selection-body">${hunkSelectionLabelHtml(h)}</div>`;
+            const selectionBody = hunkEl.querySelector<HTMLElement>('.hunk-selection-body');
+            if (selectionBody) {
+                currentSegmentRows.forEach((row) => {
+                    selectionBody.appendChild(row);
+                });
+            }
+            const hunkCheckbox = selectionBody?.querySelector<HTMLInputElement>('.pick-hunk');
             fragment.appendChild(hunkEl);
             hunkEls.push(hunkEl);
-            hunkCheckboxes.push(hunkCheckbox);
+            if (hunkCheckbox) hunkCheckboxes.push(hunkCheckbox);
             currentSegmentRows = [];
         };
         hunkLines.forEach((ln, i) => {
@@ -177,10 +173,7 @@ export { buildDiffFragment, buildDiffMeta };
 /** Renders diff hunks as HTML with selectable hunk and line checkboxes. */
 export function renderHunksWithSelection(lines: string[]) {
     if (!lines || !lines.length) return '';
-    let idx = lines.findIndex((l) => l.startsWith('@@'));
-    const rest = idx >= 0 ? lines.slice(idx) : [];
-    const starts: number[] = [];
-    rest.forEach((l, i) => { if (l.startsWith('@@')) starts.push(i); });
+    const { idx, rest, starts } = scanHunkStarts(lines);
     starts.push(rest.length);
     if (starts.length <= 1) {
         return '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">No textual hunks to display</div></div></div>';
@@ -204,7 +197,7 @@ export function renderHunksWithSelection(lines: string[]) {
         let currentSegmentRows: string[] = [];
         const flushSegment = () => {
             if (currentSegmentRows.length === 0) return;
-            html += `<div class="hunk" data-hunk-index="${h}"><div class="hunk-selection-body"><label class="pick-toggle"><input type="checkbox" class="pick-hunk" data-hunk="${h}" /><span class="sr-only">Include hunk</span></label>${currentSegmentRows.join('')}</div></div>`;
+            html += `<div class="hunk" data-hunk-index="${h}"><div class="hunk-selection-body">${hunkSelectionLabelHtml(h)}${currentSegmentRows.join('')}</div></div>`;
             currentSegmentRows = [];
         };
         hunkLines.forEach((ln, i) => {
@@ -225,10 +218,7 @@ export function renderHunksWithSelection(lines: string[]) {
 /** Renders diff hunks as static, read-only HTML. */
 export function renderHunksReadonly(lines: string[]) {
     if (!lines || !lines.length) return '';
-    let idx = lines.findIndex((l) => l.startsWith('@@'));
-    const rest = idx >= 0 ? lines.slice(idx) : [];
-    const starts: number[] = [];
-    rest.forEach((l, i) => { if (l.startsWith('@@')) starts.push(i); });
+    const { idx, rest, starts } = scanHunkStarts(lines);
     starts.push(rest.length);
     if (starts.length <= 1) {
         return '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">No textual hunks to display</div></div></div>';

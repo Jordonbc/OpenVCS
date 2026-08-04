@@ -3,6 +3,8 @@
 // src/scripts/features/setUpstream.ts
 import { TAURI } from "../lib/tauri";
 import { notify } from "../lib/notify";
+import { refreshAll } from "../lib/async";
+import { populateSelect, setConfirmDisabled } from "../lib/forms";
 import { closeModal } from "../ui/modals";
 import { hydrateCommits, hydrateStatus } from "./repo";
 import { ModalController } from "../lib/modalController";
@@ -18,9 +20,8 @@ export interface SetUpstreamState {
 function validateSetUpstream(modal: HTMLElement): void {
   const branch = (modal.dataset.branch || "").trim();
   const selectEl = modal.querySelector<HTMLSelectElement>("#set-upstream-select");
-  const confirm = modal.querySelector<HTMLButtonElement>("#set-upstream-confirm");
   const upstream = (selectEl?.value || "").trim();
-  if (confirm) confirm.disabled = !(branch && upstream);
+  setConfirmDisabled(modal, "#set-upstream-confirm", !(branch && upstream));
 }
 
 /** Owns the set-upstream modal lifecycle: wires once, applies state per open. */
@@ -38,7 +39,7 @@ export const setUpstreamController = new ModalController<SetUpstreamState>(
           await TAURI.invoke("vcs_set_upstream", { branch, upstream });
           notify(`Tracking '${upstream}'`);
           closeModal("set-upstream-modal");
-          await Promise.allSettled([hydrateStatus(), hydrateCommits()]);
+          await refreshAll([hydrateStatus, hydrateCommits]);
           window.dispatchEvent(new CustomEvent("app:branches-updated"));
           window.dispatchEvent(new CustomEvent("app:status-updated"));
         } catch (e) {
@@ -61,12 +62,7 @@ export const setUpstreamController = new ModalController<SetUpstreamState>(
           ? state.currentUpstream
           : (opts[0] || "");
 
-        selectEl.innerHTML = [
-          `<option value="" disabled ${preferred ? "" : "selected"}>Select a remote branch…</option>`,
-          ...opts.map((u) => `<option value="${u}">${u}</option>`),
-        ].join("");
-
-        if (preferred) selectEl.value = preferred;
+        populateSelect(selectEl, opts.map((u) => [u, u] as const), preferred, 'Select a remote branch…');
       }
       validateSetUpstream(modal);
       setTimeout(() => selectEl?.focus(), 0);

@@ -6,6 +6,7 @@ import { notify } from "../lib/notify";
 import { qs } from "../lib/dom";
 import { openModal, closeModal, hydrate } from "../ui/modals";
 import { ModalController } from "../lib/modalController";
+import { populateSelect } from "../lib/forms";
 
 /** Available command-sheet tabs. */
 type Which = "clone" | "add";
@@ -285,26 +286,18 @@ async function populateBackendSelectors() {
         defaultBackend = String(cfg?.general?.default_backend || '').trim();
     } catch {}
 
-    const opts = backendCache.map(([id, name]) => {
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = name || id;
-        return opt;
-    });
+    const backendOpts = backendCache.map(([id, name]) => [id, name || id] as const);
 
     [cloneBackend, addBackend].forEach((sel) => {
         if (!sel) return;
-        sel.innerHTML = '';
-        opts.forEach((o) => sel.appendChild(o.cloneNode(true)));
-        sel.disabled = opts.length <= 1;
         // Set default backend if configured and available
-        if (defaultBackend && backendCache.some(([id]) => id === defaultBackend)) {
-            sel.value = defaultBackend;
-        } else if (defaultBackendId && backendCache.some(([id]) => id === defaultBackendId)) {
-            sel.value = defaultBackendId;
-        } else if (opts.length === 1) {
-            sel.value = opts[0].value;
-        }
+        const preferred = (defaultBackend && backendCache.some(([id]) => id === defaultBackend))
+            ? defaultBackend
+            : (defaultBackendId && backendCache.some(([id]) => id === defaultBackendId))
+                ? defaultBackendId
+                : '';
+        populateSelect(sel, backendOpts, preferred);
+        sel.disabled = backendOpts.length <= 1;
     });
 }
 

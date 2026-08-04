@@ -6,6 +6,8 @@ import { syncFrontendMonitoring } from '../lib/monitoring';
 import { openModal, closeModal } from '../ui/modals';
 import { ModalController } from '../lib/modalController';
 import { toKebab } from '../lib/dom';
+import { populateSelect } from '../lib/forms';
+import { applyAppearanceCssVars } from '../lib/cssVars';
 import { notify } from '../lib/notify';
 import { setTheme, applyCommitSummaryRestriction, applyGpuAccelerationPreference } from '../ui/layout';
 import { collectGeneralSettings, loadGeneralSettingsIntoForm } from './settingsGeneral';
@@ -70,13 +72,12 @@ async function refreshDefaultBackendOptions(modal: HTMLElement, cfg: GlobalSetti
         .map(([id, name]) => [String(id || '').trim(), String(name || '').trim()] as const)
         .filter(([id]) => id.length > 0);
 
-    el.innerHTML = '';
-    for (const [id, name] of backends) {
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = name || id;
-        el.appendChild(opt);
-    }
+    const preferred = (desired && backends.some(([id]) => id === desired))
+        ? desired
+        : (defaultBackendId && backends.some(([id]) => id === defaultBackendId))
+            ? defaultBackendId
+            : '';
+    populateSelect(el, backends, preferred);
 
     el.disabled = backends.length === 0;
     if (!backends.length) {
@@ -84,13 +85,6 @@ async function refreshDefaultBackendOptions(modal: HTMLElement, cfg: GlobalSetti
             'settings: no VCS backends are currently available; default backend selection is disabled',
         );
         return;
-    }
-    if (desired && backends.some(([id]) => id === desired)) {
-        el.value = desired;
-    } else if (defaultBackendId && backends.some(([id]) => id === defaultBackendId)) {
-        el.value = defaultBackendId;
-    } else {
-        el.value = backends[0][0];
     }
 }
 
@@ -474,14 +468,11 @@ export const settingsModalController = new ModalController<void>("settings-modal
             setTheme(theme);
             try { await selectThemePack(pack, { silent: true, mode: theme }); } catch {}
             try {
-                const root = document.documentElement;
-                const tabw = Number(next?.diff?.tab_width ?? 4);
-                if (tabw && isFinite(tabw)) root.style.setProperty('--tab-size', String(tabw));
-                const uiScale = Number(next?.ux?.ui_scale ?? 1);
-                if (uiScale && isFinite(uiScale)) root.style.setProperty('--ui-scale', String(uiScale));
-                const mono = String(next?.ux?.font_mono || '').trim();
-                if (mono) root.style.setProperty('--mono', mono);
-                else root.style.removeProperty('--mono');
+                applyAppearanceCssVars({
+                    tabWidth: next?.diff?.tab_width,
+                    uiScale: next?.ux?.ui_scale,
+                    fontMono: next?.ux?.font_mono,
+                }, true);
                 applyAnimationPreference(next?.performance?.animations);
                 applyGpuAccelerationPreference(next?.performance?.gpu_accel);
                 applyCommitSummaryRestriction(next?.commit?.restrict_commit_summary !== false);

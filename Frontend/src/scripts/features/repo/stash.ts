@@ -5,6 +5,7 @@ import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
 import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
+import { refreshAll } from '../../lib/async';
 import { state } from '../../state/state';
 import { openStashConfirm } from '../stashConfirm';
 import { diffEl, diffHeadPath, listEl, countEl, leftFootEl, undoLeftBtn } from './context';
@@ -27,7 +28,51 @@ type StashListItem = {
 
 /** Registers a list render callback used after stash mutations. */
 export function setRenderListRef(fn: () => void) {
-    renderListRef = fn;
+renderListRef = fn;
+}
+
+/** Enables or disables footer action buttons for stash operations. */
+function enableActionButtons(enabled: boolean) {
+    const a = document.querySelector<HTMLButtonElement>('#stash-apply-btn'); if (a) a.disabled = !enabled;
+    const p = document.querySelector<HTMLButtonElement>('#stash-pop-btn'); if (p) p.disabled = !enabled;
+    const d = document.querySelector<HTMLButtonElement>('#stash-drop-btn'); if (d) d.disabled = !enabled;
+}
+
+/** Applies a stash and refreshes status and stash state. */
+async function handleStashApply(selector: string): Promise<void> {
+    try {
+        await TAURI.invoke('vcs_stash_apply', { selector });
+        notify('Applied stash');
+        await refreshAll([hydrateStatus, hydrateStash]);
+        renderListRef?.();
+    } catch (e) { console.error('vcs_stash_apply failed:', e); notify('Failed to apply stash'); }
+}
+
+/** Pops a stash and refreshes status and stash state. */
+async function handleStashPop(selector: string): Promise<void> {
+    try {
+        await TAURI.invoke('vcs_stash_pop', { selector });
+        notify('Popped stash');
+        await refreshAll([hydrateStatus, hydrateStash]);
+        renderListRef?.();
+    } catch (e) { console.error('vcs_stash_pop failed:', e); notify('Failed to pop stash'); }
+}
+
+/** Drops a stash after confirmation and refreshes stash state. */
+async function handleStashDrop(selector: string, opts: { confirmLabel: string;
+success: string;
+    failure: string }): Promise<void> {
+    const ok = await confirmBool(opts.confirmLabel);
+if (!ok) return;
+    try {
+        await TAURI.invoke('vcs_stash_drop', { selector });
+        notify(opts.success);
+        if (state.currentStash === selector) state.currentStash = '';
+        await refreshAll([hydrateStash]);
+        renderListRef?.();
+        } catch (e) { console.error('vcs_stash_drop failed:', e);
+    notify(opts.failure);
+}
 }
 
 /** Renders stash entries filtered by the provided query. */
@@ -42,13 +87,6 @@ export function renderStashList(query: string): boolean {
     const items = stash.filter((s) => !query || (s.msg || '').toLowerCase().includes(query) || (s.selector || '').includes(query));
     count.textContent = `${items.length} stash${items.length === 1 ? '' : 'es'}`;
     list.classList.toggle('empty-state', !items.length);
-
-    /** Enables or disables footer action buttons for stash operations. */
-    const enableActionButtons = (enabled: boolean) => {
-        const a = document.querySelector<HTMLButtonElement>('#stash-apply-btn'); if (a) a.disabled = !enabled;
-        const p = document.querySelector<HTMLButtonElement>('#stash-pop-btn'); if (p) p.disabled = !enabled;
-        const d = document.querySelector<HTMLButtonElement>('#stash-drop-btn'); if (d) d.disabled = !enabled;
-    };
 
     if (!items.length) {
         list.innerHTML = '<li class="empty-state-message" aria-disabled="true"><div class="file">No stashes.</div></li>';
@@ -76,25 +114,8 @@ export function renderStashList(query: string): boolean {
             const x = mev.clientX, y = mev.clientY;
             const target = sel;
             const items: CtxItem[] = [];
-            items.push({ label: 'Apply stash', action: async () => {
-                try {
-                    await TAURI.invoke('vcs_stash_apply', { selector: target });
-                    notify('Applied stash');
-                    await Promise.allSettled([hydrateStatus(), hydrateStash()]);
-                    renderListRef?.();
-                } catch (e) { console.error('Failed to apply stash:', e); notify('Failed to apply stash'); }
-            }});
-            items.push({ label: 'Delete stash', action: async () => {
-                const ok = await confirmBool(`Delete ${target}? This cannot be undone.`);
-                if (!ok) return;
-                try {
-                    await TAURI.invoke('vcs_stash_drop', { selector: target });
-                    notify('Deleted stash');
-                    if (state.currentStash === target) state.currentStash = '';
-                    await Promise.allSettled([hydrateStash()]);
-                    renderListRef?.();
-                } catch (e) { console.error('Failed to delete stash:', e); notify('Failed to delete stash'); }
-            }});
+            items.push({ label: 'Apply stash', action: () => handleStashApply(target) });
+            items.push({ label: 'Delete stash', action: () => handleStashDrop(target, { confirmLabel: `Delete ${target}? This cannot be undone.`, success: 'Deleted stash', failure: 'Failed to delete stash' }) });
             buildCtxMenu(items, x, y);
         });
         list.appendChild(li);
@@ -113,9 +134,7 @@ export async function selectStash(item: StashListItem, index: number) {
     diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Loading…</div></div></div>';
     try {
         await selectStashDiff(item.selector);
-        const a = document.querySelector<HTMLButtonElement>('#stash-apply-btn'); if (a) a.disabled = false;
-        const p = document.querySelector<HTMLButtonElement>('#stash-pop-btn'); if (p) p.disabled = false;
-        const d = document.querySelector<HTMLButtonElement>('#stash-drop-btn'); if (d) d.disabled = false;
+        enableActionButtons(true);
     } catch (e) {
         console.warn('vcs_stash_show failed', e);
         diffEl.innerHTML = '<div class="hunk"><div class="hline"><div class="gutter"></div><div class="code">Failed to load stash diff</div></div></div>';
@@ -181,7 +200,7 @@ function wireStashFooterButtons(container: HTMLElement) {
     createBtn?.addEventListener('click', () => {
         openStashConfirm({
             onSuccess: async () => {
-                await Promise.allSettled([hydrateStatus(), hydrateStash()]);
+                await refreshAll([hydrateStatus, hydrateStash]);
                 renderListRef?.();
             },
         });
@@ -191,38 +210,20 @@ function wireStashFooterButtons(container: HTMLElement) {
     applyBtn?.addEventListener('click', async () => {
         const selector = getActiveStashSelector();
         if (!selector) return;
-        try {
-            await TAURI.invoke('vcs_stash_apply', { selector });
-            notify('Applied stash');
-            await Promise.allSettled([hydrateStatus(), hydrateStash()]);
-            renderListRef?.();
-        } catch (e) { console.error('vcs_stash_apply failed:', e); notify('Failed to apply stash'); }
+        await handleStashApply(selector);
     });
 
     const popBtn = container.querySelector<HTMLButtonElement>('#stash-pop-btn');
     popBtn?.addEventListener('click', async () => {
         const selector = getActiveStashSelector();
         if (!selector) return;
-        try {
-            await TAURI.invoke('vcs_stash_pop', { selector });
-            notify('Popped stash');
-            await Promise.allSettled([hydrateStatus(), hydrateStash()]);
-            renderListRef?.();
-        } catch (e) { console.error('vcs_stash_pop failed:', e); notify('Failed to pop stash'); }
+        await handleStashPop(selector);
     });
 
     const dropBtn = container.querySelector<HTMLButtonElement>('#stash-drop-btn');
     dropBtn?.addEventListener('click', async () => {
         const selector = getActiveStashSelector();
         if (!selector) return;
-        const ok = await confirmBool(`Drop ${selector}? This cannot be undone.`);
-        if (!ok) return;
-        try {
-            await TAURI.invoke('vcs_stash_drop', { selector });
-            notify('Dropped stash');
-            state.currentStash = '';
-            await Promise.allSettled([hydrateStash()]);
-            renderListRef?.();
-        } catch (e) { console.error('vcs_stash_drop failed:', e); notify('Failed to drop stash'); }
+        await handleStashDrop(selector, { confirmLabel: `Drop ${selector}? This cannot be undone.`, success: 'Dropped stash', failure: 'Failed to drop stash' });
     });
 }

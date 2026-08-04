@@ -50,28 +50,28 @@ export async function ensureConflictStatusesLoaded(): Promise<void> {
     return conflictStatusesInFlight;
 }
 
-/** Applies a backend snapshot to frontend mirror state. */
-function applyRepoSnapshot(snapshot: RepoSnapshotCache): void {
-    if (!snapshot || snapshot.revision === lastSnapshotRevision) return;
-
-    lastSnapshotRevision = snapshot.revision;
-    state.repoSnapshotCache = snapshot;
-    state.hasRepo = Boolean(snapshot.has_repo);
-    state.branch = String(snapshot.branch || '');
-    state.branchLabel = String(snapshot.branch_label || '');
-    state.branches = Array.isArray(snapshot.branches) ? (snapshot.branches as any) : [];
-    state.files = Array.isArray(snapshot.files) ? (snapshot.files as any) : [];
-    state.commits = Array.isArray(snapshot.commits) ? (snapshot.commits as any) : [];
-    (state as any).stash = Array.isArray(snapshot.stash) ? (snapshot.stash as any) : [];
-    (state as any).ahead = Number(snapshot.ahead || 0);
-    (state as any).behind = Number(snapshot.behind || 0);
-    state.branchOnRemote = Boolean(snapshot.branch_on_remote);
-    state.currentUpstream = snapshot.current_upstream ?? null;
-    state.mergeInProgress = Boolean(snapshot.merge_in_progress);
-    state.seenConflicts = new Set(Array.isArray(snapshot.seen_conflicts) ? snapshot.seen_conflicts : []);
-    state.conflictStatuses = new Set(Array.isArray(snapshot.conflict_statuses) ? snapshot.conflict_statuses.map((s) => String(s || '').trim().toUpperCase()) : []);
-    state.vcsActionLabels = { ...(snapshot.vcs_action_labels || {}) };
-    (state as any).aheadIds = new Set(Array.isArray(snapshot.ahead_ids) ? snapshot.ahead_ids : []);
+/**
+ * Applies freshly computed status fields and the derived selection state to
+ * the frontend mirror, then refreshes the file list and conflict UI.
+ */
+function applyStatusState(input: {
+    files: any[];
+    ahead: number;
+    behind: number;
+    branchOnRemote: boolean;
+    mergeInProgress: boolean;
+    seenConflicts: Set<string>;
+    hasRepo: boolean;
+    notifyBranches?: boolean;
+    notifyActionLabels?: boolean;
+}): void {
+    state.hasRepo = input.hasRepo;
+    state.files = input.files;
+    state.mergeInProgress = input.mergeInProgress;
+    state.seenConflicts = input.seenConflicts;
+    (state as any).ahead = input.ahead;
+    (state as any).behind = input.behind;
+    state.branchOnRemote = input.branchOnRemote;
 
     const currentPaths = new Set<string>(state.files.map((f: any) => String(f?.path || '')));
     if (state.defaultSelectAll) {
@@ -86,9 +86,38 @@ function applyRepoSnapshot(snapshot: RepoSnapshotCache): void {
     state.diffDirty = true;
     renderList();
     void autoOpenFirstConflict(state.files as any);
-    window.dispatchEvent(new CustomEvent('app:branches-updated'));
+    if (input.notifyBranches) window.dispatchEvent(new CustomEvent('app:branches-updated'));
     window.dispatchEvent(new CustomEvent('app:status-updated'));
-    window.dispatchEvent(new CustomEvent('app:vcs-action-labels-updated'));
+    if (input.notifyActionLabels) window.dispatchEvent(new CustomEvent('app:vcs-action-labels-updated'));
+}
+
+/** Applies a backend snapshot to frontend mirror state. */
+function applyRepoSnapshot(snapshot: RepoSnapshotCache): void {
+    if (!snapshot || snapshot.revision === lastSnapshotRevision) return;
+
+    lastSnapshotRevision = snapshot.revision;
+    state.repoSnapshotCache = snapshot;
+    state.branch = String(snapshot.branch || '');
+    state.branchLabel = String(snapshot.branch_label || '');
+    state.branches = Array.isArray(snapshot.branches) ? (snapshot.branches as any) : [];
+    state.commits = Array.isArray(snapshot.commits) ? (snapshot.commits as any) : [];
+    (state as any).stash = Array.isArray(snapshot.stash) ? (snapshot.stash as any) : [];
+    state.currentUpstream = snapshot.current_upstream ?? null;
+    state.conflictStatuses = new Set(Array.isArray(snapshot.conflict_statuses) ? snapshot.conflict_statuses.map((s) => String(s || '').trim().toUpperCase()) : []);
+    state.vcsActionLabels = { ...(snapshot.vcs_action_labels || {}) };
+    (state as any).aheadIds = new Set(Array.isArray(snapshot.ahead_ids) ? snapshot.ahead_ids : []);
+
+    applyStatusState({
+        files: Array.isArray(snapshot.files) ? (snapshot.files as any) : [],
+        ahead: Number(snapshot.ahead || 0),
+        behind: Number(snapshot.behind || 0),
+        branchOnRemote: Boolean(snapshot.branch_on_remote),
+        mergeInProgress: Boolean(snapshot.merge_in_progress),
+        seenConflicts: new Set(Array.isArray(snapshot.seen_conflicts) ? snapshot.seen_conflicts : []),
+        hasRepo: Boolean(snapshot.has_repo),
+        notifyBranches: true,
+        notifyActionLabels: true,
+    });
 }
 
 /** Fetches one snapshot from Rust, with in-flight dedupe.
@@ -256,28 +285,16 @@ export async function hydrateStatus() {
         });
         if (nextSignature === lastStatusSignature) return;
         lastStatusSignature = nextSignature;
-        state.diffDirty = true;
 
-        state.hasRepo = true;
-        state.files = nextFiles;
-        state.mergeInProgress = nextMergeInProgress;
-        state.seenConflicts = nextSeenConflicts;
-
-        const currentPaths = new Set<string>(nextFiles.map((f: any) => String(f?.path || '')));
-        if (state.defaultSelectAll) {
-            state.selectionImplicitAll = true;
-            state.selectedFiles = new Set<string>(Array.from(currentPaths));
-        } else {
-            state.selectionImplicitAll = false;
-            state.selectedFiles.forEach((p) => { if (!currentPaths.has(p)) state.selectedFiles.delete(p); });
-        }
-        pruneSelectionMaps(currentPaths);
-        (state as any).ahead = nextAhead;
-        (state as any).behind = nextBehind;
-        state.branchOnRemote = nextBranchOnRemote;
-        renderList();
-        void autoOpenFirstConflict(state.files as any);
-        window.dispatchEvent(new CustomEvent('app:status-updated'));
+        applyStatusState({
+            files: nextFiles,
+            ahead: nextAhead,
+            behind: nextBehind,
+            branchOnRemote: nextBranchOnRemote,
+            mergeInProgress: nextMergeInProgress,
+            seenConflicts: nextSeenConflicts,
+            hasRepo: true,
+        });
     } catch (e) {
         console.warn(describeHydrationFailure('hydrateStatus', e), e);
         state.files = [];
