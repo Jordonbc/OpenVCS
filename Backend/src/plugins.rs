@@ -8,6 +8,7 @@ use crate::plugin_manifest::{
     validate_manifest_identity,
 };
 use crate::plugin_paths::{ensure_dir, plugins_dir};
+use crate::utilities::inner::recover_poisoned;
 use log::{debug, warn};
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
@@ -204,7 +205,7 @@ impl PluginCache {
         self.ensure_fresh();
         self.data
             .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(recover_poisoned)
             .list
             .clone()
     }
@@ -213,7 +214,7 @@ impl PluginCache {
         self.ensure_fresh();
         self.data
             .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(recover_poisoned)
             .entries
             .get(id)
             .cloned()
@@ -228,7 +229,7 @@ impl PluginCache {
             let data = self
                 .data
                 .read()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                .unwrap_or_else(recover_poisoned);
             !data.loaded
         };
         if needs_reload {
@@ -306,7 +307,7 @@ impl PluginCache {
         let mut data = self
             .data
             .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(recover_poisoned);
         data.list = summaries;
         data.entries = entries;
         data.loaded = true;
@@ -337,7 +338,7 @@ impl PluginCache {
         let mut guard = self
             .watcher
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(recover_poisoned);
         *guard = Some(watcher);
     }
 }

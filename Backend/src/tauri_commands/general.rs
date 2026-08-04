@@ -11,6 +11,7 @@ use tauri_plugin_updater::UpdaterExt;
 use crate::core::BackendId;
 use crate::plugin_vcs_backends;
 use crate::state::AppState;
+use crate::urlparse::infer_repo_dir_from_url;
 use crate::utilities::utilities;
 use crate::validate;
 
@@ -325,7 +326,7 @@ pub fn validate_clone_input(url: String, dest: String) -> validate::Validation {
 pub fn current_repo_path(state: State<'_, AppState>) -> Option<String> {
     state
         .current_repo()
-        .map(|repo| repo.inner().workdir().to_string_lossy().to_string())
+        .map(|repo| repo.workdir().to_string_lossy().to_string())
 }
 
 #[derive(serde::Serialize)]
@@ -411,7 +412,7 @@ pub fn open_repo_dotfile<R: Runtime>(
     let repo_state = state
         .current_repo()
         .ok_or_else(|| "No repository selected".to_string())?;
-    let mut path = repo_state.inner().workdir().to_path_buf();
+    let mut path = repo_state.workdir().to_path_buf();
     path.push(name);
 
     if !path.exists() {
@@ -489,18 +490,6 @@ pub async fn check_for_updates<R: Runtime>(window: Window<R>) -> Result<bool, St
     }
 }
 
-/// Infers target folder name from repository URL.
-///
-/// # Parameters
-/// - `url`: Source repository URL.
-///
-/// # Returns
-/// - Inferred repository directory name.
-fn infer_repo_dir_from_url(url: &str) -> String {
-    let trimmed = url.trim_end_matches('/');
-    let last = trimmed.rsplit('/').next().unwrap_or(trimmed);
-    last.trim_end_matches(".git").to_string()
-}
 
 #[cfg(test)]
 mod tests {

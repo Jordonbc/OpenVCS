@@ -158,7 +158,7 @@ impl AppState {
     /// # Returns
     /// - `()`.
     pub fn set_current_repo(&self, repo: Arc<Repo>) {
-        let path = repo.inner().workdir().to_path_buf();
+        let path = repo.workdir().to_path_buf();
         let backend_id = repo.id().as_ref().to_string();
 
         info!(

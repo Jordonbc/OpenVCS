@@ -471,7 +471,7 @@ pub fn invoke_plugin_action(
     let runtime = state.plugin_runtime().runtime_for_workspace_with_config(
         &cfg,
         plugin_id.trim(),
-        Some(repo.inner().workdir().to_path_buf()),
+        Some(repo.workdir().to_path_buf()),
     )?;
     let result = runtime.handle_action(action_id.trim(), payload.unwrap_or(Value::Null));
     if let Ok(ref value) = result {

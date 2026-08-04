@@ -154,7 +154,7 @@ pub async fn set_vcs_backend_cmd(
     }
 
     if let Some(repo) = state.current_repo() {
-        let path = repo.inner().workdir().to_path_buf();
+        let path = repo.workdir().to_path_buf();
         info!(
             "set_vcs_backend_cmd: reopening current repo with backend {} → {}",
             repo.id(),
@@ -203,7 +203,7 @@ pub async fn reopen_current_repo_cmd(state: State<'_, AppState>) -> Result<(), S
     };
 
     let backend_id = repo.id();
-    let path = repo.inner().workdir().to_path_buf();
+    let path = repo.workdir().to_path_buf();
 
     let backend_label = backend_id.as_ref().to_string();
     open_repo_and_store(

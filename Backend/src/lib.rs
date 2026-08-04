@@ -35,6 +35,7 @@ mod settings;
 mod state;
 mod tauri_commands;
 mod themes;
+mod urlparse;
 mod utilities;
 mod validate;
 mod workarounds;

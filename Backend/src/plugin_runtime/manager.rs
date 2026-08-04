@@ -401,6 +401,53 @@ impl PluginRuntimeManager {
         }
     }
 
+    /// Resolves a plugin's module runtime spec and verifies it is enabled.
+    ///
+    /// # Parameters
+    /// - `cfg`: App config snapshot used for enabled-state checks.
+    /// - `plugin_id`: Plugin identifier.
+    /// - `allowed_workspace_root`: Optional workspace root for host capability confinement.
+    ///
+    /// # Returns
+    /// - `Ok(ModuleRuntimeSpec)` resolved and enabled spec.
+    /// - `Err(String)` when the plugin is unknown, disabled, or unresolved.
+    fn resolve_enabled_spec(
+        &self,
+        cfg: &AppConfig,
+        plugin_id: &str,
+        allowed_workspace_root: Option<PathBuf>,
+    ) -> Result<ModuleRuntimeSpec, String> {
+        let spec = self.resolve_module_runtime_spec(plugin_id, allowed_workspace_root)?;
+        if !cfg.is_plugin_enabled(&spec.plugin_id, spec.default_enabled) {
+            return Err(format!("plugin `{}` is disabled", spec.plugin_id));
+        }
+        Ok(spec)
+    }
+
+    /// Returns the running runtime for a resolved plugin spec.
+    ///
+    /// # Parameters
+    /// - `spec`: Resolved module runtime spec for the plugin.
+    ///
+    /// # Returns
+    /// - `Ok(Arc<dyn PluginRuntimeInstance>)` running runtime instance.
+    /// - `Err(String)` when the plugin runtime is not running.
+    fn running_runtime(
+        &self,
+        spec: &ModuleRuntimeSpec,
+    ) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
+        self.processes
+            .lock()
+            .get(&spec.key)
+            .map(|p| Arc::clone(&p.runtime))
+            .ok_or_else(|| {
+                format!(
+                    "plugin `{}` is not running; enable the plugin to start its runtime",
+                    spec.plugin_id
+                )
+            })
+    }
+
     /// Returns the persistent runtime instance for a plugin workspace.
     ///
     /// # Parameters
@@ -417,20 +464,8 @@ impl PluginRuntimeManager {
         plugin_id: &str,
         allowed_workspace_root: Option<PathBuf>,
     ) -> Result<Arc<dyn PluginRuntimeInstance>, String> {
-        let spec = self.resolve_module_runtime_spec(plugin_id, allowed_workspace_root)?;
-        if !cfg.is_plugin_enabled(&spec.plugin_id, spec.default_enabled) {
-            return Err(format!("plugin `{}` is disabled", spec.plugin_id));
-        }
-        self.processes
-            .lock()
-            .get(&spec.key)
-            .map(|p| Arc::clone(&p.runtime))
-            .ok_or_else(|| {
-                format!(
-                    "plugin `{}` is not running; enable the plugin to start its runtime",
-                    spec.plugin_id
-                )
-            })
+        let spec = self.resolve_enabled_spec(cfg, plugin_id, allowed_workspace_root)?;
+        self.running_runtime(&spec)
     }
 
     /// Returns the already-running Node runtime for a VCS backend plugin.
@@ -439,26 +474,12 @@ impl PluginRuntimeManager {
         cfg: &AppConfig,
         plugin_id: &str,
     ) -> Result<Arc<NodePluginRuntimeInstance>, String> {
-        let spec = self.resolve_module_runtime_spec(plugin_id, None)?;
-        if !cfg.is_plugin_enabled(&spec.plugin_id, spec.default_enabled) {
-            return Err(format!("plugin `{}` is disabled", spec.plugin_id));
-        }
+        let spec = self.resolve_enabled_spec(cfg, plugin_id, None)?;
         if !spec.spawn.is_vcs_backend {
             return Err(format!("plugin `{}` is not a VCS backend", spec.plugin_id));
         }
 
-        let runtime = self
-            .processes
-            .lock()
-            .get(&spec.key)
-            .map(|p| Arc::clone(&p.runtime))
-            .ok_or_else(|| {
-                format!(
-                    "plugin `{}` is not running; enable the plugin to start its runtime",
-                    spec.plugin_id
-                )
-            })?;
-
+        let runtime = self.running_runtime(&spec)?;
         let runtime: Arc<dyn std::any::Any + Send + Sync> = runtime;
         Arc::downcast::<NodePluginRuntimeInstance>(runtime)
             .map_err(|_| format!("plugin `{}` is not using a Node runtime", spec.plugin_id))
@@ -480,10 +501,7 @@ impl PluginRuntimeManager {
         plugin_id: &str,
         workspace_root: PathBuf,
     ) -> Result<SpawnConfig, String> {
-        let spec = self.resolve_module_runtime_spec(plugin_id, Some(workspace_root))?;
-        if !cfg.is_plugin_enabled(&spec.plugin_id, spec.default_enabled) {
-            return Err(format!("plugin `{}` is disabled", spec.plugin_id));
-        }
+        let spec = self.resolve_enabled_spec(cfg, plugin_id, Some(workspace_root))?;
         if !spec.spawn.is_vcs_backend {
             return Err(format!("plugin `{}` is not a VCS backend", spec.plugin_id));
         }

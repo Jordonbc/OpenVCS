@@ -10,6 +10,7 @@ use crate::plugin_runtime::runtime_select::create_node_runtime_instance;
 use crate::plugin_runtime::settings_store;
 use crate::plugin_runtime::{PluginRuntimeManager, vcs_proxy::PluginVcsProxy};
 use crate::settings::AppConfig;
+use crate::utilities::inner::recover_poisoned;
 use log::{debug, error, info, trace, warn};
 use std::collections::BTreeMap;
 #[cfg(test)]
@@ -54,7 +55,7 @@ fn cached_backends() -> Option<Vec<PluginBackendDescriptor>> {
 
     backend_cache()
         .read()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .unwrap_or_else(recover_poisoned)
         .clone()
 }
 
@@ -64,7 +65,7 @@ pub(crate) fn store_backends(backends: Vec<PluginBackendDescriptor>) {
         TEST_BACKEND_CACHE.with(|tls| *tls.borrow_mut() = Some(backends.clone()));
         let mut ids = test_backend_ids()
             .write()
-            .unwrap_or_else(|p| p.into_inner());
+            .unwrap_or_else(recover_poisoned);
         for b in &backends {
             if b.plugin_id.starts_with("test.") {
                 ids.insert(b.backend_id.as_ref().to_string());
@@ -74,7 +75,7 @@ pub(crate) fn store_backends(backends: Vec<PluginBackendDescriptor>) {
 
     *backend_cache()
         .write()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(backends);
+        .unwrap_or_else(recover_poisoned) = Some(backends);
 }
 
 /// Clears cached VCS backend discovery results.
@@ -84,7 +85,7 @@ pub fn invalidate_plugin_vcs_backend_cache() {
 
     *backend_cache()
         .write()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+        .unwrap_or_else(recover_poisoned) = None;
 }
 
 /// Returns plugin-scoped open config for a VCS backend plugin.
@@ -240,7 +241,7 @@ pub fn has_plugin_vcs_backend(backend_id: &BackendId) -> bool {
     #[cfg(test)]
     if test_backend_ids()
         .read()
-        .unwrap_or_else(|p| p.into_inner())
+        .unwrap_or_else(recover_poisoned)
         .contains(backend_id.as_ref())
     {
         return true;

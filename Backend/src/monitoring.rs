@@ -9,6 +9,7 @@ use sentry::protocol::{Breadcrumb, Event, Exception, Frame, Map, Stacktrace, Val
 use serde::Deserialize;
 
 use crate::settings::AppConfig;
+use crate::utilities::inner::recover_poisoned;
 
 /// Environment variable containing the backend Sentry DSN.
 const BACKEND_SENTRY_DSN_ENV: &str = "OPENVCS_SENTRY_DSN";
@@ -134,7 +135,7 @@ pub fn sync_backend_monitoring(cfg: &AppConfig) {
         Ok(guard) => guard,
         Err(poisoned) => {
             log::warn!("monitoring: recovering from poisoned backend monitoring mutex");
-            poisoned.into_inner()
+            recover_poisoned(poisoned)
         }
     };
     *active_guard = build_backend_monitoring_guard(cfg);

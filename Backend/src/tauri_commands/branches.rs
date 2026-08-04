@@ -12,76 +12,11 @@ use crate::plugin_runtime::settings_store;
 use crate::plugin_vcs_backends;
 use crate::settings::DEFAULT_MERGE_TEMPLATE;
 use crate::state::AppState;
+use crate::urlparse::{repo_name_from_origin, repo_username_from_origin};
 
 use super::{current_repo_or_err, default_remote_name, run_repo_task};
 
-/// Extracts repository owner/user segment from remote URL.
-///
-/// # Parameters
-/// - `url`: Remote URL.
-///
-/// # Returns
-/// - `Some(String)` owner segment.
-/// - `None` when not parseable.
-fn repo_username_from_origin(url: &str) -> Option<String> {
-    let u = url.trim();
-    if u.is_empty() {
-        return None;
-    }
 
-    // https://host/owner/repo(.git)
-    if let Some(rest) = u
-        .strip_prefix("https://")
-        .or_else(|| u.strip_prefix("http://"))
-    {
-        let path = rest.split_once('/').map(|x| x.1).unwrap_or("");
-        let mut seg = path.split('/').filter(|s| !s.is_empty());
-        let owner = seg.next()?;
-        return Some(owner.to_string());
-    }
-
-    // git@host:owner/repo(.git)
-    if let Some(rest) = u.split_once(':').map(|x| x.1) {
-        let mut seg = rest.split('/').filter(|s| !s.is_empty());
-        let owner = seg.next()?;
-        return Some(owner.to_string());
-    }
-
-    None
-}
-
-/// Extracts repository name segment from remote URL.
-///
-/// # Parameters
-/// - `url`: Remote URL.
-///
-/// # Returns
-/// - `Some(String)` repository name.
-/// - `None` when not parseable.
-fn repo_name_from_origin(url: &str) -> Option<String> {
-    let u = url.trim();
-    if u.is_empty() {
-        return None;
-    }
-
-    // https://host/owner/repo(.git)
-    if let Some(rest) = u
-        .strip_prefix("https://")
-        .or_else(|| u.strip_prefix("http://"))
-    {
-        let path = rest.split_once('/').map(|x| x.1).unwrap_or("");
-        let last = path.split('/').rfind(|s| !s.is_empty())?;
-        return Some(last.strip_suffix(".git").unwrap_or(last).to_string());
-    }
-
-    // git@host:owner/repo(.git)
-    if let Some(rest) = u.split_once(':').map(|x| x.1) {
-        let last = rest.split('/').rfind(|s| !s.is_empty())?;
-        return Some(last.strip_suffix(".git").unwrap_or(last).to_string());
-    }
-
-    None
-}
 
 /// Resolves repo owner/name metadata for merge-message templates from the
 /// default remote: the current branch's upstream remote when resolvable,

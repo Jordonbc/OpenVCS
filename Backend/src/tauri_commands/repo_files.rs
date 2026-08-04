@@ -99,7 +99,7 @@ pub async fn vcs_add_to_ignore_paths(
 
     let repo = current_repo_or_err(&state)?;
     run_repo_task("vcs_add_to_ignore_paths", repo, move |repo| {
-        let workdir = repo.inner().workdir();
+        let workdir = repo.workdir();
         // BLOCKED-CROSS-REPO VCS-18: `.gitignore` filename literal is Git-specific
         // (functional part of vcs_add_to_gitignore_paths). Generic ignore-file name
         // blocked until SDK/Git-plugin define a generic ignore op.
@@ -167,7 +167,7 @@ pub fn open_repo_file<R: Runtime>(
         .ok_or_else(|| "No repository selected".to_string())?;
 
     let rel = safe_relative_path(&path)?;
-    let abs = repo.inner().workdir().join(rel);
+    let abs = repo.workdir().join(rel);
     if !abs.exists() {
         return Err(format!("Path does not exist: {}", abs.display()));
     }
@@ -368,7 +368,7 @@ pub fn read_repo_file_text(state: State<'_, AppState>, path: String) -> Result<S
         .current_repo()
         .ok_or_else(|| "No repository selected".to_string())?;
     let rel = safe_relative_path(&path)?;
-    let abs = repo.inner().workdir().join(rel);
+    let abs = repo.workdir().join(rel);
     if !abs.exists() {
         return Err(format!("Path does not exist: {}", abs.display()));
     }
@@ -394,7 +394,7 @@ pub fn read_repo_file_meta(
         .current_repo()
         .ok_or_else(|| "No repository selected".to_string())?;
     let rel = safe_relative_path(&path)?;
-    let abs = repo.inner().workdir().join(rel);
+    let abs = repo.workdir().join(rel);
     if !abs.exists() {
         return Err(format!("Path does not exist: {}", abs.display()));
     }

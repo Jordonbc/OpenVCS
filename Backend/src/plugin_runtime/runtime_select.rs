@@ -26,6 +26,25 @@ pub fn is_node_module(path: &Path) -> bool {
     matches!(ext.as_str(), "js" | "mjs" | "cjs")
 }
 
+/// Ensures a module path is a supported Node.js entry file.
+///
+/// # Parameters
+/// - `path`: Candidate entry file path.
+///
+/// # Returns
+/// - `Ok(())` when the path is a Node.js module.
+/// - `Err(String)` when the path is not a Node.js module.
+fn ensure_node_module(path: &Path) -> Result<(), String> {
+    if is_node_module(path) {
+        Ok(())
+    } else {
+        Err(format!(
+            "plugin runtime: '{}' must be a .js/.mjs/.cjs Node entrypoint",
+            path.display()
+        ))
+    }
+}
+
 /// Selects and creates a runtime instance for a plugin module.
 #[cfg_attr(test, allow(dead_code))]
 pub fn create_runtime_instance(
@@ -37,12 +56,7 @@ pub fn create_runtime_instance(
         spawn.exec_path.display()
     );
 
-    if !is_node_module(&spawn.exec_path) {
-        return Err(format!(
-            "plugin runtime: '{}' must be a .js/.mjs/.cjs Node entrypoint",
-            spawn.exec_path.display()
-        ));
-    }
+    ensure_node_module(&spawn.exec_path)?;
 
     let runtime: Arc<dyn crate::plugin_runtime::instance::PluginRuntimeInstance> =
         create_node_runtime_instance(spawn)?;
@@ -53,12 +67,7 @@ pub fn create_runtime_instance(
 pub fn create_node_runtime_instance(
     spawn: SpawnConfig,
 ) -> Result<Arc<NodePluginRuntimeInstance>, String> {
-    if !is_node_module(&spawn.exec_path) {
-        return Err(format!(
-            "plugin runtime: '{}' must be a .js/.mjs/.cjs Node entrypoint",
-            spawn.exec_path.display()
-        ));
-    }
+    ensure_node_module(&spawn.exec_path)?;
     Ok(Arc::new(NodePluginRuntimeInstance::new(spawn)))
 }
 

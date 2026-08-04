@@ -70,5 +70,14 @@ fn wraps_backend_handle() {
     let repo_dir = tempfile::tempdir().expect("create temp dir").keep();
     let repo = Repo::new(Arc::new(DummyVcs::new(repo_dir.clone())));
     assert_eq!(repo.id().to_string(), "dummy");
-    assert_eq!(repo.inner().workdir(), repo_dir.as_path());
+    assert_eq!(repo.workdir(), repo_dir.as_path());
+}
+
+#[test]
+/// Verifies the workdir accessor forwards to the underlying backend.
+fn workdir_matches_inner() {
+    let repo_dir = tempfile::tempdir().expect("create temp dir").keep();
+    let repo = Repo::new(Arc::new(DummyVcs::new(repo_dir.clone())));
+    assert_eq!(repo.workdir(), repo_dir.as_path());
+    assert_eq!(repo.workdir(), repo.inner().workdir());
 }

@@ -48,6 +48,26 @@ fn home_dir_for_paths() -> Option<PathBuf> {
 
     dirs::home_dir()
 }
+/// Resolves a path under the user's home directory, honoring the test override.
+///
+/// # Parameters
+/// - `label`: Caller label used in error logging.
+/// - `parts`: Path components joined under the home directory.
+///
+/// # Returns
+/// - `Ok(PathBuf)` home-relative path.
+/// - `Err(String)` when home directory cannot be resolved.
+fn home_relative_path(label: &str, parts: &[&str]) -> Result<PathBuf, String> {
+    let home = home_dir_for_paths().ok_or_else(|| {
+        error!("{label}: could not determine home directory",);
+        "Could not determine home directory".to_string()
+    })?;
+    let mut path = home;
+    for part in parts {
+        path = path.join(part);
+    }
+    Ok(path)
+}
 
 /// Returns `~/.ssh/known_hosts` path.
 ///
@@ -55,11 +75,7 @@ fn home_dir_for_paths() -> Option<PathBuf> {
 /// - `Ok(PathBuf)` known-hosts path.
 /// - `Err(String)` when home directory cannot be resolved.
 fn known_hosts_path() -> Result<PathBuf, String> {
-    let home = home_dir_for_paths().ok_or_else(|| {
-        error!("known_hosts_path: could not determine home directory",);
-        "Could not determine home directory".to_string()
-    })?;
-    let path = home.join(".ssh").join("known_hosts");
+    let path = home_relative_path("known_hosts_path", &[".ssh", "known_hosts"])?;
     trace!("known_hosts_path: {}", path.display());
     Ok(path)
 }
@@ -70,11 +86,7 @@ fn known_hosts_path() -> Result<PathBuf, String> {
 /// - `Ok(PathBuf)` ssh directory path.
 /// - `Err(String)` when home directory cannot be resolved.
 fn ssh_dir_path() -> Result<PathBuf, String> {
-    let home = home_dir_for_paths().ok_or_else(|| {
-        error!("ssh_dir_path: could not determine home directory",);
-        "Could not determine home directory".to_string()
-    })?;
-    let path = home.join(".ssh");
+    let path = home_relative_path("ssh_dir_path", &[".ssh"])?;
     trace!("ssh_dir_path: {}", path.display());
     Ok(path)
 }
@@ -85,11 +97,7 @@ fn ssh_dir_path() -> Result<PathBuf, String> {
 /// - `Ok(PathBuf)` created/existing ssh directory path.
 /// - `Err(String)` on resolution or create failure.
 fn ensure_ssh_dir() -> Result<PathBuf, String> {
-    let home = home_dir_for_paths().ok_or_else(|| {
-        error!("ensure_ssh_dir: could not determine home directory",);
-        "Could not determine home directory".to_string()
-    })?;
-    let dir = home.join(".ssh");
+    let dir = home_relative_path("ensure_ssh_dir", &[".ssh"])?;
     fs::create_dir_all(&dir).map_err(|e| {
         error!("ensure_ssh_dir: failed to create {}: {}", dir.display(), e);
         format!("Failed to create ~/.ssh: {e}")

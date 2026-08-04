@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Thin wrapper around an opened backend repository handle.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::core::{BackendId, Vcs};
@@ -39,8 +40,15 @@ impl Repo {
     pub fn id(&self) -> BackendId {
         self.inner.id()
     }
-}
 
+    /// Returns the repository working tree path.
+    ///
+    /// # Returns
+    /// - The working tree directory reported by the underlying VCS backend.
+    pub fn workdir(&self) -> &Path {
+        self.inner.workdir()
+    }
+}
 #[cfg(test)]
 mod tests {
     include!("../tests/modules/repo.rs");

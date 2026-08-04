@@ -17,3 +17,16 @@ fn gather_about_info_populates_expected_metadata() {
     assert_eq!(about.repository, option_env!("CARGO_PKG_REPOSITORY").unwrap_or(""));
     assert_eq!(about.authors, option_env!("CARGO_PKG_AUTHORS").unwrap_or(""));
 }
+
+#[test]
+/// Confirms poisoned-lock recovery returns the held value.
+fn recover_poisoned_recovers_value_from_poisoned_lock() {
+    let mutex = std::sync::Mutex::new(7u32);
+    // Poison the mutex by panicking while holding its guard.
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _guard = mutex.lock().expect("lock");
+        panic!("simulate lock holder panic");
+    }));
+    let poisoned = mutex.lock().expect_err("mutex should be poisoned");
+    assert_eq!(*recover_poisoned(poisoned), 7);
+}

@@ -231,7 +231,7 @@ pub async fn vcs_launch_merge_tool(state: State<'_, AppState>, path: String) -> 
     let path_for_log = path.clone();
 
     let result = run_repo_task("vcs_launch_merge_tool", repo, move |repo| {
-        let repo_root = repo.inner().workdir().to_path_buf();
+        let repo_root = repo.workdir().to_path_buf();
         let rel = PathBuf::from(&path);
         let abs = if rel.is_absolute() {
             rel.clone()

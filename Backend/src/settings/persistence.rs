@@ -83,6 +83,26 @@ impl AppConfig {
                 .any(|id| id.trim().eq_ignore_ascii_case(&plugin_id))
     }
 
+    /// Deduplicates a list of strings after trimming and normalizing each entry.
+    ///
+    /// Empty entries are dropped and only the first occurrence of each normalized
+    /// value is kept, preserving source order.
+    ///
+    /// # Parameters
+    /// - `items`: Raw string list to normalize.
+    /// - `normalize`: Per-entry normalization applied after trimming.
+    ///
+    /// # Returns
+    /// - Deduplicated normalized list.
+    fn dedup_normalized(items: &[String], normalize: impl Fn(&str) -> String) -> Vec<String> {
+        let mut seen = std::collections::HashSet::new();
+        items
+            .iter()
+            .map(|s| normalize(s.trim()))
+            .filter(|s| !s.is_empty())
+            .filter(|s| seen.insert(s.clone()))
+            .collect()
+    }
 
     /// Clamp and normalize values so hand edits can't break the app.
     ///
@@ -114,40 +134,11 @@ impl AppConfig {
         // Performance
 
         // Plugin source list
-        {
-            let mut seen = std::collections::HashSet::new();
-            self.plugin = self
-                .plugin
-                .iter()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .filter(|s| seen.insert(s.clone()))
-                .collect();
-        }
+        self.plugin = Self::dedup_normalized(&self.plugin, str::to_string);
 
         // Plugins
-        {
-            let mut seen = std::collections::HashSet::new();
-            self.plugins.disabled = self
-                .plugins
-                .disabled
-                .iter()
-                .map(|s| s.trim().to_ascii_lowercase())
-                .filter(|s| !s.is_empty())
-                .filter(|s| seen.insert(s.clone()))
-                .collect();
-        }
-        {
-            let mut seen = std::collections::HashSet::new();
-            self.plugins.enabled = self
-                .plugins
-                .enabled
-                .iter()
-                .map(|s| s.trim().to_ascii_lowercase())
-                .filter(|s| !s.is_empty())
-                .filter(|s| seen.insert(s.clone()))
-                .collect();
-        }
+        self.plugins.disabled = Self::dedup_normalized(&self.plugins.disabled, str::to_ascii_lowercase);
+        self.plugins.enabled = Self::dedup_normalized(&self.plugins.enabled, str::to_ascii_lowercase);
         // If a plugin is in both lists, treat it as disabled.
         if !self.plugins.disabled.is_empty() && !self.plugins.enabled.is_empty() {
             let disabled: std::collections::HashSet<&str> =

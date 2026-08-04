@@ -2,6 +2,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use serde::{Deserialize, Serialize};
 
+/// Recovers the value held by a poisoned standard-library lock.
+///
+/// When a thread panics while holding a `std::sync` mutex or read/write
+/// lock, the lock becomes poisoned and subsequent acquire attempts return a
+/// [`std::sync::PoisonError`] wrapping the underlying value. This helper
+/// discards the poison marker and returns the value so the application can
+/// keep operating.
+///
+/// # Parameters
+/// - `poisoned`: Poison error produced when a thread panicked while holding
+///   the lock.
+///
+/// # Returns
+/// - The lock's underlying value with the poison marker discarded.
+pub fn recover_poisoned<T>(poisoned: std::sync::PoisonError<T>) -> T {
+    poisoned.into_inner()
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct AboutInfo {
     pub name: String,

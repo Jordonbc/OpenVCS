@@ -12,54 +12,8 @@ use super::{
     run_repo_task,
 };
 
-/// Extracts host name from common Git remote URL formats.
-///
-/// # Parameters
-/// - `url`: Remote URL.
-///
-/// # Returns
-/// - `Some(String)` host when parsed.
-/// - `None` otherwise.
-fn host_from_remote_url(url: &str) -> Option<String> {
-    let u = url.trim();
-    if u.is_empty() {
-        return None;
-    }
+use crate::urlparse::host_from_remote_url;
 
-    // git@host:owner/repo(.git)
-    if let Some(at) = u.find('@') {
-        let rest = &u[at + 1..];
-        if let Some((host, _path)) = rest.split_once(':') {
-            let host = host.trim();
-            if !host.is_empty() {
-                return Some(host.to_string());
-            }
-        }
-    }
-
-    // ssh://user@host/owner/repo(.git)
-    if let Some(rest) = u.strip_prefix("ssh://") {
-        let rest = rest.trim_start_matches('/');
-        let after_user = rest.split('@').nth(1).unwrap_or(rest);
-        let host = after_user.split('/').next().unwrap_or("").trim();
-        if !host.is_empty() {
-            return Some(host.to_string());
-        }
-    }
-
-    // https://host/owner/repo(.git)
-    if let Some(rest) = u
-        .strip_prefix("https://")
-        .or_else(|| u.strip_prefix("http://"))
-    {
-        let host = rest.split('/').next().unwrap_or("").trim();
-        if !host.is_empty() {
-            return Some(host.to_string());
-        }
-    }
-
-    None
-}
 
 // BLOCKED-CROSS-REPO VCS-19: error-phrase heuristics cannot be replaced with
 // structured plugin errors until the cross-repo error contract lands; do not
