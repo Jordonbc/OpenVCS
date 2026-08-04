@@ -1,11 +1,10 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-use std::collections::HashSet;
 
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 use tauri::State;
 
-use crate::core::models::{BranchItem, BranchKind};
+use crate::core::models::BranchItem;
 use crate::core::{BackendId, Vcs};
 
 use crate::plugin_runtime::settings_store;
@@ -15,8 +14,6 @@ use crate::state::AppState;
 use crate::urlparse::{repo_name_from_origin, repo_username_from_origin};
 
 use super::{current_repo_or_err, default_remote_name, run_repo_task};
-
-
 
 /// Resolves repo owner/name metadata for merge-message templates from the
 /// default remote: the current branch's upstream remote when resolvable,
@@ -110,7 +107,7 @@ pub async fn vcs_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchI
         let vcs = repo.inner();
         debug!("list_branches: workdir={}", vcs.workdir().display());
 
-        let mut items = vcs.branches().map_err(|e| {
+        let items = vcs.branches().map_err(|e| {
             error!("list_branches: branches() failed: {e:?}");
             e.to_string()
         })?;
@@ -120,78 +117,7 @@ pub async fn vcs_list_branches(state: State<'_, AppState>) -> Result<Vec<BranchI
             e.to_string()
         })?;
 
-        /// Infers branch kind from full ref prefix.
-        ///
-        /// # Parameters
-        /// - `full_ref`: Full ref name.
-        ///
-        /// # Returns
-        /// - Inferred branch kind.
-        fn infer_kind(full_ref: &str) -> BranchKind {
-            if let Some(rest) = full_ref.strip_prefix("refs/heads/") {
-                let _ = rest;
-                BranchKind::Local
-            } else if let Some(rest) = full_ref.strip_prefix("refs/remotes/") {
-                if let Some((remote, _name)) = rest.split_once('/') {
-                    return BranchKind::Remote {
-                        remote: remote.to_string(),
-                    };
-                }
-                BranchKind::Remote {
-                    remote: String::from("unknown"),
-                }
-            } else {
-                BranchKind::Unknown
-            }
-        }
-
-        let current_name = current_local.as_deref();
-        let mut seen: HashSet<String> = HashSet::new();
-        let mut out: Vec<BranchItem> = Vec::with_capacity(items.len());
-
-        for mut it in items.drain(..) {
-            it.name = it.name.trim().to_string();
-            it.full_ref = it.full_ref.trim().to_string();
-
-            if it.name.is_empty() || it.full_ref.is_empty() {
-                warn!(
-                    "list_branches: dropping branch with empty name/full_ref: {:?}",
-                    it
-                );
-                continue;
-            }
-
-            if matches!(it.kind, BranchKind::Unknown) {
-                it.kind = infer_kind(&it.full_ref);
-            }
-
-            it.current = match (&it.kind, current_name) {
-                (BranchKind::Local, Some(curr)) => it.name == *curr,
-                _ => false,
-            };
-
-            if !seen.insert(it.full_ref.clone()) {
-                debug!("list_branches: dedup duplicate ref {}", it.full_ref);
-                continue;
-            }
-
-            out.push(it);
-        }
-
-        out.sort_by(|a, b| {
-            let bucket = |x: &BranchItem| {
-                if x.current {
-                    0
-                } else {
-                    match x.kind {
-                        BranchKind::Local => 1,
-                        BranchKind::Remote { .. } => 2,
-                        BranchKind::Unknown => 3,
-                    }
-                }
-            };
-            bucket(a).cmp(&bucket(b)).then_with(|| a.name.cmp(&b.name))
-        });
+        let out = super::snapshot::normalize_branches(items, current_local.as_deref());
 
         debug!(
             "list_branches: current_local={:?}, returned={}",

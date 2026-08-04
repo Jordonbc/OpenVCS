@@ -168,7 +168,7 @@ fn build_repo_snapshot_revision(parts: &SnapshotRevisionParts<'_>) -> String {
     )
 }
 
-fn infer_kind(full_ref: &str) -> BranchKind {
+pub(crate) fn infer_kind(full_ref: &str) -> BranchKind {
     if full_ref.starts_with("refs/heads/") {
         BranchKind::Local
     } else if let Some(rest) = full_ref.strip_prefix("refs/remotes/") {
@@ -186,7 +186,10 @@ fn infer_kind(full_ref: &str) -> BranchKind {
     }
 }
 
-fn normalize_branches(mut items: Vec<BranchItem>, current_local: Option<&str>) -> Vec<BranchItem> {
+pub(crate) fn normalize_branches(
+    mut items: Vec<BranchItem>,
+    current_local: Option<&str>,
+) -> Vec<BranchItem> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut out: Vec<BranchItem> = Vec::with_capacity(items.len());
 
@@ -195,6 +198,10 @@ fn normalize_branches(mut items: Vec<BranchItem>, current_local: Option<&str>) -
         it.full_ref = it.full_ref.trim().to_string();
 
         if it.name.is_empty() || it.full_ref.is_empty() {
+            warn!(
+                "normalize_branches: dropping branch with empty name/full_ref: {:?}",
+                it
+            );
             continue;
         }
 
@@ -206,6 +213,7 @@ fn normalize_branches(mut items: Vec<BranchItem>, current_local: Option<&str>) -
             matches!((&it.kind, current_local), (BranchKind::Local, Some(curr)) if it.name == curr);
 
         if !seen.insert(it.full_ref.clone()) {
+            debug!("normalize_branches: dedup duplicate ref {}", it.full_ref);
             continue;
         }
 
