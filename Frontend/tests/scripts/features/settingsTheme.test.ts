@@ -32,6 +32,11 @@ vi.mock('@scripts/themes', () => ({
     DEFAULT_LIGHT_THEME_ID: 'default-light',
     getAvailableThemes: vi.fn(),
     refreshAvailableThemes: vi.fn(),
+    normalizeAppearance: (value: unknown) => {
+        const raw = String(value ?? '').trim().toLowerCase();
+        if (raw === 'light' || raw === 'dark' || raw === 'both') return raw;
+        return null;
+    },
 }));
 
 // ---------------------------------------------------------------------------

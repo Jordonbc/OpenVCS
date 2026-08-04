@@ -3,6 +3,7 @@
 // src/scripts/features/repoSwitchDrawer.ts
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
+import { escapeHtml } from '../lib/dom';
 import { hydrate, openModal, closeModal } from '../ui/modals';
 
 type Recent = { path: string; name?: string; backend?: string };
@@ -61,13 +62,6 @@ function positionDrawer() {
     drawerDialog.style.top = `${top}px`;
 }
 
-function escapeHTML(value: string): string {
-    return value
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
 
 function filteredRecents(): Recent[] {
     const term = (filterInput?.value || '').trim().toLowerCase();
@@ -90,9 +84,9 @@ function renderRecents() {
     recentList.innerHTML = items
         .map((item) => {
             const base = item.name || item.path.split(/[\\/]/).pop() || item.path;
-            const label = escapeHTML(base);
-            const escapedPath = escapeHTML(item.path);
-            const backendAttr = item.backend ? ` data-backend="${escapeHTML(item.backend)}"` : "";
+            const label = escapeHtml(base);
+            const escapedPath = escapeHtml(item.path);
+            const backendAttr = item.backend ? ` data-backend="${escapeHtml(item.backend)}"` : "";
             return `
                 <li data-path="${escapedPath}"${backendAttr} tabindex="0" role="button" aria-label="Open ${label}">
                     <span class="repo-icon" aria-hidden="true">▣</span>

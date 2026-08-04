@@ -3,11 +3,11 @@
 /**
  * Query a single element by CSS selector.
  * @param sel - CSS selector string
- * @param root - Root element to search within (defaults to document)
+ * @param root - Root node to search within (defaults to document; null-safe)
  * @returns First matching element or null
  */
-export const qs = <T extends Element = Element>(sel: string, root: Document | Element = document): T | null =>
-    root.querySelector(sel) as T | null;
+export const qs = <T extends Element = Element>(sel: string, root: ParentNode | null = document): T | null =>
+    root?.querySelector(sel) as T | null;
 
 /**
  * Query all elements matching a CSS selector.
@@ -46,8 +46,11 @@ export const setChecked = (el: HTMLInputElement | null | undefined, on: boolean)
  * @returns HTML-escaped string
  */
 export const escapeHtml = (s: any) => String(s)
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
 /**
  * Add an event listener to a target.
@@ -64,3 +67,10 @@ export const on = <K extends keyof DocumentEventMap>(target: Document | Element 
  * @returns Kebab-case string
  */
 export const toKebab = (v: unknown) => String(v ?? '').toLowerCase().replace(/_/g, '-');
+
+/**
+ * Escape a value for use inside a double-quoted CSS attribute selector.
+ * @param value - Raw attribute value
+ * @returns Value safe to embed in `[attr="..."]` selectors
+ */
+export const escapeCssAttribute = (value: string) => value.replace(/([\"\\])/g, '\\$1');

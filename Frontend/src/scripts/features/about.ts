@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // src/scripts/features/about.ts
 import { openModal } from "@scripts/ui/modals";
+import { qs } from "../lib/dom";
 import { TAURI } from "../lib/tauri";
 import { notify } from "../lib/notify";
 
-function q<T extends HTMLElement>(sel: string, root: ParentNode): T | null {
-    return root.querySelector(sel) as T | null;
-}
 
 /** Sets an element's text content and hides it when the value is empty. */
 function setOptionalText(element: HTMLElement | null, value: string): void {
@@ -45,13 +43,13 @@ export async function openAbout(): Promise<void> {
         }
             | null;
 
-        const aboutLogo     = q<HTMLImageElement>("#about-logo", modal);
-        const aboutVersion  = q<HTMLElement>("#about-version", modal);
-        const aboutBuild    = q<HTMLElement>("#about-build", modal);
-        const aboutAuthor   = q<HTMLElement>("#about-author", modal);
-        const aboutHome     = q<HTMLAnchorElement>("#about-home", modal);
-        const aboutRepo     = q<HTMLAnchorElement>("#about-repo", modal);
-        const aboutLicenses = q<HTMLAnchorElement>("#about-licenses", modal);
+        const aboutLogo     = qs<HTMLImageElement>("#about-logo", modal);
+        const aboutVersion  = qs<HTMLElement>("#about-version", modal);
+        const aboutBuild    = qs<HTMLElement>("#about-build", modal);
+        const aboutAuthor   = qs<HTMLElement>("#about-author", modal);
+        const aboutHome     = qs<HTMLAnchorElement>("#about-home", modal);
+        const aboutRepo     = qs<HTMLAnchorElement>("#about-repo", modal);
+        const aboutLicenses = qs<HTMLAnchorElement>("#about-licenses", modal);
         const authors = info?.authors
             ?.split(":")
             .map((author) => author.trim())

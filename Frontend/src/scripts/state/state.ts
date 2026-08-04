@@ -114,20 +114,28 @@ export function resolveVcsActionLabel(actionKey: string, fallback: string): stri
 }
 
 /**
+ * Shared display metadata (label + CSS class token) for file status codes.
+ * Single source of truth for status labels and status-dot classes across
+ * the changes list, history view, and stash confirmation.
+ */
+const STATUS_INFO: Record<string, { label: string; cls: string }> = {
+    'A': { label: 'Added', cls: 'add' },
+    '?': { label: 'Untracked', cls: 'untracked' },
+    'R': { label: 'Renamed', cls: 'ren' },
+    'C': { label: 'Copied', cls: 'cpy' },
+    'T': { label: 'Type change', cls: 'type' },
+    'S': { label: 'Submodule', cls: 'submodule' },
+    'M': { label: 'Modified', cls: 'mod' },
+    'D': { label: 'Deleted', cls: 'del' },
+};
+
+/**
  * Get display label for a file status code.
  * @param s - Status code character
  * @returns Human-readable status label
  */
 export const statusLabel = (s: string) =>
-    isConflictStatus(s) ? 'Conflicted' :
-    s === 'A' ? 'Added' :
-        s === '?' ? 'Untracked' :
-            s === 'R' ? 'Renamed' :
-                s === 'C' ? 'Copied' :
-                    s === 'T' ? 'Type change' :
-                        s === 'S' ? 'Submodule' :
-        s === 'M' ? 'Modified' :
-            s === 'D' ? 'Deleted' : 'Changed';
+    isConflictStatus(s) ? 'Conflicted' : (STATUS_INFO[s]?.label ?? 'Changed');
 
 /**
  * Get CSS class token for a file status code.
@@ -135,15 +143,24 @@ export const statusLabel = (s: string) =>
  * @returns CSS class suffix used by status badges
  */
 export const statusClass = (s: string) =>
-    isConflictStatus(s) ? 'conflict' :
-    s === 'A' ? 'add' :
-        s === '?' ? 'untracked' :
-            s === 'R' ? 'ren' :
-                s === 'C' ? 'cpy' :
-                    s === 'T' ? 'type' :
-                        s === 'S' ? 'submodule' :
-                            s === 'M' ? 'mod' :
-                                s === 'D' ? 'del' : 'mod';
+    isConflictStatus(s) ? 'conflict' : (STATUS_INFO[s]?.cls ?? 'mod');
+
+/**
+ * Friendly labels for stash-specific status codes layered on the shared map.
+ */
+const STASH_STATUS_LABELS: Record<string, string> = {
+    '??': STATUS_INFO['?'].label,
+    '!': 'Ignored',
+    '!!': 'Ignored',
+};
+
+/**
+ * Friendly status label for stash confirmation rows, adding stash-specific
+ * codes on top of the shared status map.
+ * @param code - Status code character
+ * @returns Human-readable status label
+ */
+export const friendlyStatus = (code: string) => STASH_STATUS_LABELS[code] ?? statusLabel(code);
 
 /**
  * Disables implicit select-all behavior.

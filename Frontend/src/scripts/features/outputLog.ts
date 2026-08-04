@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
+import { escapeHtml } from '../lib/dom';
 import { initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from '../lib/scrollbars';
 
 type OutputLevel = 'info' | 'warn' | 'error';
@@ -24,9 +25,6 @@ function levelFrom(entry: OutputLogEntry): OutputLevel {
   return 'info';
 }
 
-function escapeHtml(s: string) {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as any)[c] || c);
-}
 
 function renderRow(entry: OutputLogEntry) {
   const lvl = levelFrom(entry);

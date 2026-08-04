@@ -1,5 +1,6 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+import { escapeCssAttribute } from '../../lib/dom';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { confirmBool } from '../../lib/confirm';
 import { notify } from '../../lib/notify';
@@ -35,7 +36,7 @@ export function onFileClick(e: MouseEvent, file: FileStatus, index: number, visi
         if (on) state.diffSelectedFiles.add(file.path);
         else state.diffSelectedFiles.delete(file.path);
         if (listEl) {
-            const sel = `li.row[data-path="${(file.path || '').replace(/([\"\\])/g, '\\$1')}"]`;
+            const sel = `li.row[data-path="${escapeCssAttribute(file.path || '')}"]`;
             const row = listEl.querySelector<HTMLElement>(sel);
             if (row) row.classList.toggle('diffsel', on);
         }
@@ -51,7 +52,7 @@ export function onFileClick(e: MouseEvent, file: FileStatus, index: number, visi
         toggleFilePick(file.path, on);
         updateSelectAllState(visible);
         if (listEl) {
-            const sel = `li.row[data-path="${(file.path || '').replace(/([\"\\])/g, '\\$1')}"]`;
+            const sel = `li.row[data-path="${escapeCssAttribute(file.path || '')}"]`;
             const row = listEl.querySelector<HTMLElement>(sel);
             if (row) {
                 row.classList.toggle('picked', on);
@@ -151,7 +152,7 @@ export function applySelect(path: string, on: boolean, rowEl: HTMLElement | null
     if (mode === 'commit') {
         if (on) state.selectedFiles.add(path); else state.selectedFiles.delete(path);
         if (rowEl) rowEl.classList.toggle('picked', on);
-        const selector = `li.row[data-path="${path.replace(/([\"\\])/g, '\\$1')}"] input.pick`;
+        const selector = `li.row[data-path="${escapeCssAttribute(path)}"] input.pick`;
         const cb = listEl?.querySelector<HTMLInputElement>(selector) || null;
         if (cb) { cb.checked = on; (cb as any).indeterminate = false; }
     } else {
@@ -177,7 +178,7 @@ export function updateDragRange(visible: FileStatus[]) {
         state.diffSelectedFiles = next;
         if (list) {
             visible.forEach((v) => {
-                const row = list.querySelector<HTMLElement>(`li.row[data-path="${(v.path || '').replace(/([\"\\])/g, '\\$1')}"]`);
+                const row = list.querySelector<HTMLElement>(`li.row[data-path="${escapeCssAttribute(v.path || '')}"]`);
                 if (row) row.classList.toggle('diffsel', state.diffSelectedFiles.has(v.path));
             });
         }
@@ -189,9 +190,9 @@ export function updateDragRange(visible: FileStatus[]) {
             const on = inRange ? dragState.dragTargetState : dragState.dragPrePicked.has(p);
             if (on) next.add(p); else next.delete(p);
             if (list) {
-                const row = list.querySelector<HTMLElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"]`);
+                const row = list.querySelector<HTMLElement>(`li.row[data-path="${escapeCssAttribute(p || '')}"]`);
                 if (row) row.classList.toggle('picked', on);
-                const cb = list.querySelector<HTMLInputElement>(`li.row[data-path="${(p || '').replace(/([\"\\])/g, '\\$1')}"] input.pick`);
+                const cb = list.querySelector<HTMLInputElement>(`li.row[data-path="${escapeCssAttribute(p || '')}"] input.pick`);
                 if (cb) { cb.checked = on; (cb as any).indeterminate = false; }
             }
             if (state.currentFile && p === state.currentFile) {

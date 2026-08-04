@@ -3,6 +3,7 @@
 // src/scripts/features/commandSheet.ts
 import { TAURI } from "../lib/tauri";
 import { notify } from "../lib/notify";
+import { qs } from "../lib/dom";
 import { openModal, closeModal, hydrate } from "../ui/modals";
 import { ModalController } from "../lib/modalController";
 
@@ -35,12 +36,9 @@ let defaultBackendId = '';
 let seg: HTMLElement | null = null;
 let segIndicator: HTMLElement | null = null;
 
-function el<T extends HTMLElement>(sel: string, r: ParentNode = document): T | null {
-    return r.querySelector(sel) as T | null;
-}
 
 function setDisabled(id: string, on: boolean) {
-    const b = el<HTMLButtonElement>("#" + id, root || document);
+    const b = qs<HTMLButtonElement>("#" + id, root || document);
     if (b) b.disabled = on;
 }
 
@@ -153,14 +151,14 @@ export const commandSheetController = new ModalController<void>("command-modal",
 
     segIndicator = ensureIndicator();
 
-    cloneUrl = el<HTMLInputElement>("#clone-url", root);
-    clonePath = el<HTMLInputElement>("#clone-path", root);
-    doCloneBtn = el<HTMLButtonElement>("#do-clone", root);
-    cloneBackend = el<HTMLSelectElement>("#clone-backend", root);
+    cloneUrl = qs<HTMLInputElement>("#clone-url", root);
+    clonePath = qs<HTMLInputElement>("#clone-path", root);
+    doCloneBtn = qs<HTMLButtonElement>("#do-clone", root);
+    cloneBackend = qs<HTMLSelectElement>("#clone-backend", root);
 
-    addPath = el<HTMLInputElement>("#add-path", root);
-    addBackend = el<HTMLSelectElement>("#add-backend", root);
-    doAddBtn = el<HTMLButtonElement>("#do-add", root);
+    addPath = qs<HTMLInputElement>("#add-path", root);
+    addBackend = qs<HTMLSelectElement>("#add-backend", root);
+    doAddBtn = qs<HTMLButtonElement>("#do-add", root);
 
     // Tab switching (click)
     tabs.forEach((btn) => {
@@ -194,7 +192,7 @@ export const commandSheetController = new ModalController<void>("command-modal",
     addPath?.addEventListener("input", validateAdd);
 
     // Browse buttons
-    el<HTMLButtonElement>("#browse-clone", root)?.addEventListener("click", async () => {
+    qs<HTMLButtonElement>("#browse-clone", root)?.addEventListener("click", async () => {
         try {
             const dir = await TAURI.invoke<string>("browse_directory", { purpose: "clone_dest" });
             if (dir && clonePath) {
@@ -204,7 +202,7 @@ export const commandSheetController = new ModalController<void>("command-modal",
         } catch {}
     });
 
-    el<HTMLButtonElement>("#browse-add", root)?.addEventListener("click", async () => {
+    qs<HTMLButtonElement>("#browse-add", root)?.addEventListener("click", async () => {
         try {
             const dir = await TAURI.invoke<string>("browse_directory", { purpose: "add_repo" });
             if (dir && addPath) {

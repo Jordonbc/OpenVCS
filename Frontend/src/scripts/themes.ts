@@ -49,7 +49,7 @@ function defaultThemeIdForMode(mode: 'system' | 'light' | 'dark'): string {
 }
 
 /** Normalizes theme appearance metadata from external sources. */
-function normalizeAppearance(value: unknown): 'light' | 'dark' | 'both' | null {
+export function normalizeAppearance(value: unknown): 'light' | 'dark' | 'both' | null {
     const raw = String(value ?? '').trim().toLowerCase();
     if (raw === 'light' || raw === 'dark' || raw === 'both') return raw;
     return null;

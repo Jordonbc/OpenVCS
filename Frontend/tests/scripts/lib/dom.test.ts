@@ -67,9 +67,11 @@ describe('dom utils', () => {
     // no crash means success
   })
 
-  it('escapeHtml escapes & and <', () => {
-    // implementation escapes & and < but not '>'
-    expect(escapeHtml('<&>')).toBe('&lt;&amp;>')
+  it('escapeHtml escapes HTML special characters', () => {
+    // consolidated helper escapes & < > and quotes
+    expect(escapeHtml('<&>')).toBe('&lt;&amp;&gt;')
+    expect(escapeHtml('"')).toBe('&quot;')
+    expect(escapeHtml("'")).toBe('&#39;')
   })
 
   it('escapeHtml handles non-string values', () => {

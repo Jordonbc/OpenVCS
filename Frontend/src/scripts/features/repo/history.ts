@@ -1,6 +1,7 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { escapeHtml } from '../../lib/dom';
+import { copyText } from '../../lib/clipboard';
 import { buildCtxMenu, CtxItem } from '../../lib/menu';
 import { TAURI } from '../../lib/tauri';
 import { confirmBool } from '../../lib/confirm';
@@ -30,10 +31,7 @@ async function openCommitActionsMenu(commit: any, x: number, y: number, opts?: C
     const items: CtxItem[] = [];
     items.push({
         label: 'Copy hash', action: async () => {
-            try {
-                await navigator.clipboard.writeText(commit?.id || '');
-                notify('Hash copied');
-            } catch { /* ignore */ }
+            await copyText(commit?.id || '', { success: 'Hash copied' });
         },
     });
 
@@ -287,10 +285,7 @@ export async function selectHistory(commit: any, index: number) {
                     const items: CtxItem[] = [];
                     items.push({
                         label: 'Copy path', action: async () => {
-                            try {
-                                await navigator.clipboard.writeText(file?.path || '');
-                                notify('Path copied');
-                            } catch { /* ignore */ }
+                            await copyText(file?.path || '', { success: 'Path copied' });
                         },
                     });
 

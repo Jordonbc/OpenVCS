@@ -3,6 +3,7 @@
 // src/scripts/features/sshKeys.ts
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
+import { copyText } from '../lib/clipboard';
 import { ModalController } from '../lib/modalController';
 
 type SshCommandOutput = { code: number; stdout: string; stderr: string };
@@ -19,14 +20,6 @@ function fmtAgentStatus(out: SshCommandOutput | null | undefined): string {
   return msg || `ssh-add exited with code ${out.code}`;
 }
 
-async function copyToClipboard(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    notify('Copied to clipboard');
-  } catch {
-    notify('Unable to copy to clipboard');
-  }
-}
 
 /** Marks the currently selected key path inside the modal. */
 function setSelected(modal: HTMLElement, path: string) {
@@ -97,7 +90,7 @@ export const sshKeysController = new ModalController<SshKeysState>('ssh-keys-mod
     refreshBtn?.addEventListener('click', () => void refreshKeys(modal));
     copyBtn?.addEventListener('click', () => {
       if (!selectedPath) { notify('Select a key first'); return; }
-      void copyToClipboard(`ssh-add "${selectedPath.replace(/[\\"]/g, (ch) => '\\' + ch)}"`);
+      void copyText(`ssh-add "${selectedPath.replace(/[\\"]/g, (ch) => '\\' + ch)}"`, { success: 'Copied to clipboard', failure: 'Unable to copy to clipboard' });
     });
     addBtn?.addEventListener('click', async () => {
       if (!selectedPath) { notify('Select a key first'); return; }

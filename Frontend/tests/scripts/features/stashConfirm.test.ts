@@ -17,7 +17,13 @@ vi.mock('@scripts/state/state', () => ({
   state,
   statusClass: vi.fn((code: string) => `status-${code || 'none'}`),
   statusLabel: vi.fn((code: string) => `label-${code}`),
-}));
+  friendlyStatus: vi.fn((code: string) =>
+    code === '??' ? 'Untracked' :
+    (code === '!' || code === '!!') ? 'Ignored' :
+    code === 'R' ? 'Renamed' :
+    code === 'C' ? 'Copied' :
+    `label-${code}`),
+}))
 
 /** Mounts the stash confirmation modal used by the feature wiring. */
 function mountStashConfirmModal() {

@@ -4,7 +4,7 @@
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
 import { escapeHtml } from '../lib/dom';
-import { state, statusClass, statusLabel } from '../state/state';
+import { state, statusClass, friendlyStatus } from '../state/state';
 import { closeModal } from '../ui/modals';
 import { ModalController } from '../lib/modalController';
 
@@ -38,13 +38,6 @@ function getFiles() {
   }));
 }
 
-const friendlyStatus = (code: string) => {
-  if (code === '??') return 'Untracked';
-  if (code === '!' || code === '!!') return 'Ignored';
-  if (code === 'R') return 'Renamed';
-  if (code === 'C') return 'Copied';
-  return statusLabel(code);
-};
 
 /** Renders the pending file list and count into the modal. */
 function refreshFiles(modal: HTMLElement): void {

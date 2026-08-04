@@ -4,6 +4,7 @@
 import {
     DEFAULT_LIGHT_THEME_ID,
     getAvailableThemes,
+    normalizeAppearance,
     refreshAvailableThemes,
 } from '../themes';
 import type { ThemeSummary } from '../types';
@@ -16,12 +17,6 @@ export function applyAnimationPreference(enabled: boolean | undefined | null): v
     document.documentElement.dataset.animations = enabled === false ? 'off' : 'on';
 }
 
-/** Normalizes an appearance value to 'light' | 'dark' | 'both' or null. */
-function normalizeAppearance(value: unknown): 'light' | 'dark' | 'both' | null {
-    const raw = String(value ?? '').trim().toLowerCase();
-    if (raw === 'light' || raw === 'dark' || raw === 'both') return raw;
-    return null;
-}
 
 /** Resolves a theme ID to 'light' | 'dark' using appearance metadata or the system color scheme. */
 export function modeForTheme(themeId: string): 'light' | 'dark' {
