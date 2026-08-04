@@ -291,6 +291,23 @@ function resolveThemePackAttrId(summary: ThemeSummary | null | undefined, themeI
     return rawId;
 }
 
+/** Applies the given theme assets to the document for the requested mode. */
+function applyThemeAssets(
+    themeId: string,
+    packId: string,
+    styles: string | null,
+    markup: ThemePayload['markup'] | null,
+    scripts: string[],
+    mode: 'system' | 'light' | 'dark',
+): void {
+    activeThemeId = themeId;
+    activeThemePackId = packId;
+    activeStyles = styles;
+    activeMarkup = markup;
+    activeScripts = scripts;
+    applyModeStyles(mode);
+}
+
 /** Returns the current list of available theme summaries. */
 export function getAvailableThemes(): ThemeSummary[] {
     return [...availableThemes];
@@ -396,23 +413,21 @@ export async function selectThemePack(
 
     const targetId = target.trim().toLowerCase();
     if (targetId === DEFAULT_LIGHT_THEME_ID || targetId === DEFAULT_DARK_THEME_ID) {
-        activeThemeId = target;
-        activeThemePackId = activeThemeId;
-        activeStyles = null;
-        activeMarkup = null;
-        activeScripts = [];
-        applyModeStyles(desiredMode);
+        applyThemeAssets(target, target, null, null, [], desiredMode);
         return;
     }
 
     const registered = getRegisteredThemePayload(target);
     if (registered) {
-        activeThemeId = String(registered.summary?.id || target);
-        activeThemePackId = resolveThemePackAttrId(registered.summary, activeThemeId);
-        activeStyles = typeof registered.styles === 'string' ? registered.styles : null;
-        activeMarkup = registered.markup ?? null;
-        activeScripts = Array.isArray(registered.scripts) ? registered.scripts : [];
-        applyModeStyles(desiredMode);
+        const registeredId = String(registered.summary?.id || target);
+        applyThemeAssets(
+            registeredId,
+            resolveThemePackAttrId(registered.summary, registeredId),
+            typeof registered.styles === 'string' ? registered.styles : null,
+            registered.markup ?? null,
+            Array.isArray(registered.scripts) ? registered.scripts : [],
+            desiredMode,
+        );
         return;
     }
 
@@ -421,20 +436,19 @@ export async function selectThemePack(
         if (!payload || typeof payload !== 'object') {
             throw new Error('Invalid theme payload');
         }
-        activeThemeId = String(payload.summary?.id || target);
-        activeThemePackId = resolveThemePackAttrId(payload.summary, activeThemeId);
-        activeStyles = typeof payload.styles === 'string' ? payload.styles : null;
-        activeMarkup = payload.markup ?? null;
-        activeScripts = Array.isArray(payload.scripts) ? payload.scripts : [];
-        applyModeStyles(desiredMode);
+        const payloadId = String(payload.summary?.id || target);
+        applyThemeAssets(
+            payloadId,
+            resolveThemePackAttrId(payload.summary, payloadId),
+            typeof payload.styles === 'string' ? payload.styles : null,
+            payload.markup ?? null,
+            Array.isArray(payload.scripts) ? payload.scripts : [],
+            desiredMode,
+        );
     } catch (error) {
         console.warn('load_theme failed', error);
-        activeThemeId = defaultThemeIdForMode(desiredMode);
-        activeThemePackId = activeThemeId;
-        activeStyles = null;
-        activeMarkup = null;
-        activeScripts = [];
-        applyModeStyles(desiredMode);
+        const fallbackId = defaultThemeIdForMode(desiredMode);
+        applyThemeAssets(fallbackId, fallbackId, null, null, [], desiredMode);
         if (!opts.silent) {
             notify('Theme failed to load. Reverted to the default theme.');
         }
