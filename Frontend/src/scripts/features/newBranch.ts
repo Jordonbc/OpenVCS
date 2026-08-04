@@ -6,6 +6,7 @@ import { notify } from "../lib/notify";
 import { state } from "../state/state";
 import { closeModal } from "../ui/modals";
 import { runHook } from "../plugins";
+import { ModalController } from "../lib/modalController";
 
 function fixBranchName(raw: string): string {
     // Keep the user's input intact; only trim for creation.
@@ -57,10 +58,9 @@ function loadCheckoutDefault(modal: HTMLElement) {
     checkoutEl.checked = true;
 }
 
-export function wireNewBranch() {
-    const modal = document.getElementById('new-branch-modal') as HTMLElement | null;
-    if (!modal || (modal as any).__wired) return;
-    (modal as any).__wired = true;
+/** Owns the new-branch modal lifecycle: wires event handlers once. */
+export const newBranchController = new ModalController<void>("new-branch-modal", {
+    wire: (modal) => {
 
     const nameInput  = modal.querySelector<HTMLInputElement>('#new-branch-name');
     const nameHint   = modal.querySelector<HTMLElement>('#new-branch-name-hint');
@@ -150,4 +150,10 @@ export function wireNewBranch() {
     nameInput?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); createBranch(); }
     });
+    },
+});
+
+/** Wires the new-branch modal once. No-op after the first call. */
+export function wireNewBranch(): void {
+    newBranchController.initOnce();
 }

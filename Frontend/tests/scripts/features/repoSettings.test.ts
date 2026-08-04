@@ -90,7 +90,7 @@ describe('wireRepoSettings (initialisation)', () => {
         return import('@scripts/features/repoSettings');
     }
 
-    it('wires the __wired flag and does not re-wire', async () => {
+    it('wires once and does not re-wire', async () => {
         mountModal();
         const { wireRepoSettings } = await load();
         await wireRepoSettings();

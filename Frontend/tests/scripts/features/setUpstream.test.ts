@@ -55,14 +55,13 @@ afterEach(() => {
 });
 
 describe('wireSetUpstream', () => {
-  it('sets __wired and skips on second call', async () => {
-    const { wireSetUpstream } = await import('@scripts/features/setUpstream');
-    const modal = document.getElementById('set-upstream-modal') as any;
-    expect(modal.__wired).toBeUndefined();
+  it('wires once and skips on second call', async () => {
+    const { wireSetUpstream, setUpstreamController } = await import('@scripts/features/setUpstream');
+    expect(setUpstreamController.isWired).toBe(false);
     wireSetUpstream();
-    expect(modal.__wired).toBe(true);
+    expect(setUpstreamController.isWired).toBe(true);
     wireSetUpstream();
-    expect(modal.__wired).toBe(true);
+    expect(setUpstreamController.isWired).toBe(true);
   });
 
   it('does nothing when modal is missing', async () => {
@@ -203,55 +202,45 @@ describe('wireSetUpstream', () => {
 
 describe('setInitial', () => {
   it('selects the actual upstream even when not alphabetically first', async () => {
-    const { wireSetUpstream } = await import('@scripts/features/setUpstream');
-    wireSetUpstream();
-    const modal = document.getElementById('set-upstream-modal') as any;
+    const { setUpstreamController } = await import('@scripts/features/setUpstream');
 
-    modal.setInitial('main', ['origin/z', 'upstream/main', 'origin/a'], 'upstream/main');
+    setUpstreamController.open({ branch: 'main', upstreams: ['origin/z', 'upstream/main', 'origin/a'], currentUpstream: 'upstream/main' });
 
     const selectEl = document.getElementById('set-upstream-select') as HTMLSelectElement;
     expect(selectEl.value).toBe('upstream/main');
   });
 
   it('falls back to the first remote when the actual upstream is missing', async () => {
-    const { wireSetUpstream } = await import('@scripts/features/setUpstream');
-    wireSetUpstream();
-    const modal = document.getElementById('set-upstream-modal') as any;
+    const { setUpstreamController } = await import('@scripts/features/setUpstream');
 
-    modal.setInitial('main', ['origin/develop', 'upstream/main', 'origin/feature'], 'origin/missing');
+    setUpstreamController.open({ branch: 'main', upstreams: ['origin/develop', 'upstream/main', 'origin/feature'], currentUpstream: 'origin/missing' });
 
     const selectEl = document.getElementById('set-upstream-select') as HTMLSelectElement;
     expect(selectEl.value).toBe('origin/develop');
   });
 
   it('falls back to the first remote when no upstream is provided', async () => {
-    const { wireSetUpstream } = await import('@scripts/features/setUpstream');
-    wireSetUpstream();
-    const modal = document.getElementById('set-upstream-modal') as any;
+    const { setUpstreamController } = await import('@scripts/features/setUpstream');
 
-    modal.setInitial('main', ['origin/develop', 'origin/feature']);
+    setUpstreamController.open({ branch: 'main', upstreams: ['origin/develop', 'origin/feature'] });
 
     const selectEl = document.getElementById('set-upstream-select') as HTMLSelectElement;
     expect(selectEl.value).toBe('origin/develop');
   });
 
   it('handles empty upstreams list with empty preferred', async () => {
-    const { wireSetUpstream } = await import('@scripts/features/setUpstream');
-    wireSetUpstream();
-    const modal = document.getElementById('set-upstream-modal') as any;
+    const { setUpstreamController } = await import('@scripts/features/setUpstream');
 
-    modal.setInitial('main', [], 'origin/main');
+    setUpstreamController.open({ branch: 'main', upstreams: [], currentUpstream: 'origin/main' });
 
     const selectEl = document.getElementById('set-upstream-select') as HTMLSelectElement;
     expect(selectEl.value).toBe('');
   });
 
   it('sets branch input value', async () => {
-    const { wireSetUpstream } = await import('@scripts/features/setUpstream');
-    wireSetUpstream();
-    const modal = document.getElementById('set-upstream-modal') as any;
+    const { setUpstreamController } = await import('@scripts/features/setUpstream');
 
-    modal.setInitial('feature-x', ['origin/feature-x']);
+    setUpstreamController.open({ branch: 'feature-x', upstreams: ['origin/feature-x'] });
 
     const branchEl = document.getElementById('set-upstream-branch') as HTMLInputElement;
     expect(branchEl.value).toBe('feature-x');
@@ -260,11 +249,9 @@ describe('setInitial', () => {
   });
 
   it('sorts upstreams alphabetically', async () => {
-    const { wireSetUpstream } = await import('@scripts/features/setUpstream');
-    wireSetUpstream();
-    const modal = document.getElementById('set-upstream-modal') as any;
+    const { setUpstreamController } = await import('@scripts/features/setUpstream');
 
-    modal.setInitial('main', ['origin/z', 'origin/a', 'origin/m']);
+    setUpstreamController.open({ branch: 'main', upstreams: ['origin/z', 'origin/a', 'origin/m'] });
 
     const selectEl = document.getElementById('set-upstream-select') as HTMLSelectElement;
     const options = Array.from(selectEl.options).map((o) => o.value).filter(Boolean);
@@ -272,24 +259,20 @@ describe('setInitial', () => {
   });
 
   it('focuses select element', async () => {
-    const { wireSetUpstream } = await import('@scripts/features/setUpstream');
-    wireSetUpstream();
-    const modal = document.getElementById('set-upstream-modal') as any;
+    const { setUpstreamController } = await import('@scripts/features/setUpstream');
     const selectEl = document.getElementById('set-upstream-select') as HTMLSelectElement;
     const focusSpy = vi.spyOn(selectEl, 'focus');
 
-    modal.setInitial('main', ['origin/main']);
+    setUpstreamController.open({ branch: 'main', upstreams: ['origin/main'] });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(focusSpy).toHaveBeenCalled();
   });
 
   it('handles missing branchEl gracefully', async () => {
-    const { wireSetUpstream } = await import('@scripts/features/setUpstream');
-    wireSetUpstream();
+    const { setUpstreamController } = await import('@scripts/features/setUpstream');
     document.getElementById('set-upstream-branch')?.remove();
-    const modal = document.getElementById('set-upstream-modal') as any;
-    expect(() => modal.setInitial('main', ['origin/main'])).not.toThrow();
+    expect(() => setUpstreamController.open({ branch: 'main', upstreams: ['origin/main'] })).not.toThrow();
   });
 });
 

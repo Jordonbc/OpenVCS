@@ -1,14 +1,20 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+// src/scripts/features/sshAuth.ts
 import { TAURI } from '../lib/tauri';
 import { notify } from '../lib/notify';
-import { openModal, closeModal } from '../ui/modals';
+import { closeModal } from '../ui/modals';
 import { openRepoSettings } from './repoSettings';
 import { openSshKeysModal } from './sshKeys';
+import { ModalController } from '../lib/modalController';
 
 type AuthPrompt = { host: string; remote: string; url: string; message?: string };
 
+// One-time subscription guard for the backend auth-prompt event.
 let wired = false;
+
+/** The prompt currently shown in the SSH auth modal. */
+let current: AuthPrompt | null = null;
 
 /** Parsed parts of an SSH remote URL. */
 type RemoteParts = { user: string | null; host: string; path: string };
@@ -65,67 +71,59 @@ function sshToHttps(url: string): string | null {
   return `https://${parts.host}/${parts.path}`;
 }
 
-function wireAuthModal() {
-  const modal = document.getElementById('ssh-auth-modal') as HTMLElement | null;
-  if (!modal || (modal as any).__wired) return;
-  (modal as any).__wired = true;
+/** Owns the SSH auth modal lifecycle: wires once, fills the prompt per event. */
+export const sshAuthController = new ModalController<AuthPrompt>('ssh-auth-modal', {
+  wire: (modal) => {
+    const httpsBtn = modal.querySelector<HTMLButtonElement>('#ssh-auth-switch-https');
 
-  const hostEl = modal.querySelector('#ssh-auth-host') as HTMLElement | null;
-  const remoteEl = modal.querySelector('#ssh-auth-remote') as HTMLElement | null;
-  const urlEl = modal.querySelector('#ssh-auth-url') as HTMLElement | null;
-  const msgEl = modal.querySelector('#ssh-auth-msg') as HTMLElement | null;
-  const okBtn = modal.querySelector('#ssh-auth-ok') as HTMLButtonElement | null;
-  const remotesBtn = modal.querySelector('#ssh-auth-open-remotes') as HTMLButtonElement | null;
-  const keysBtn = modal.querySelector('#ssh-auth-ssh-keys') as HTMLButtonElement | null;
-  const httpsBtn = modal.querySelector('#ssh-auth-switch-https') as HTMLButtonElement | null;
-
-  let current: AuthPrompt | null = null;
-
-  (modal as any).__fill = (p: AuthPrompt) => {
+    modal.querySelector<HTMLButtonElement>('#ssh-auth-ok')?.addEventListener('click', () => closeModal('ssh-auth-modal'));
+    modal.querySelector<HTMLButtonElement>('#ssh-auth-open-remotes')?.addEventListener('click', () => {
+      closeModal('ssh-auth-modal');
+      openRepoSettings();
+    });
+    modal.querySelector<HTMLButtonElement>('#ssh-auth-ssh-keys')?.addEventListener('click', () => {
+      closeModal('ssh-auth-modal');
+      openSshKeysModal();
+    });
+    httpsBtn?.addEventListener('click', async () => {
+      if (!current) return;
+      const https = sshToHttps(current.url);
+      if (!https) return;
+      httpsBtn.disabled = true;
+      try {
+        await TAURI.invoke('vcs_set_remote_url', { name: current.remote, url: https });
+        notify(`Remote '${current.remote}' set to HTTPS`);
+        closeModal('ssh-auth-modal');
+      } catch (e) {
+        notify(`Failed to update remote: ${String(e || '')}`.trim());
+      } finally {
+        httpsBtn.disabled = false;
+      }
+    });
+  },
+  apply: (p, modal) => {
     current = p;
+    const hostEl = modal.querySelector<HTMLElement>('#ssh-auth-host');
+    const remoteEl = modal.querySelector<HTMLElement>('#ssh-auth-remote');
+    const urlEl = modal.querySelector<HTMLElement>('#ssh-auth-url');
+    const msgEl = modal.querySelector<HTMLElement>('#ssh-auth-msg');
+    const httpsBtn = modal.querySelector<HTMLButtonElement>('#ssh-auth-switch-https');
     if (hostEl) hostEl.textContent = p.host || '';
     if (remoteEl) remoteEl.textContent = p.remote || '';
     if (urlEl) urlEl.textContent = p.url || '';
     if (msgEl) msgEl.textContent = p.message || '';
     const canConvert = !!sshToHttps(p.url);
     if (httpsBtn) httpsBtn.disabled = !canConvert;
-  };
+  },
+});
 
-  okBtn?.addEventListener('click', () => closeModal('ssh-auth-modal'));
-  remotesBtn?.addEventListener('click', () => {
-    closeModal('ssh-auth-modal');
-    openRepoSettings();
-  });
-  keysBtn?.addEventListener('click', () => {
-    closeModal('ssh-auth-modal');
-    openSshKeysModal();
-  });
-  httpsBtn?.addEventListener('click', async () => {
-    if (!current) return;
-    const https = sshToHttps(current.url);
-    if (!https) return;
-    httpsBtn.disabled = true;
-    try {
-      await TAURI.invoke('vcs_set_remote_url', { name: current.remote, url: https });
-      notify(`Remote '${current.remote}' set to HTTPS`);
-      closeModal('ssh-auth-modal');
-    } catch (e) {
-      notify(`Failed to update remote: ${String(e || '')}`.trim());
-    } finally {
-      httpsBtn.disabled = false;
-    }
-  });
-}
-
-export function initSshAuthPrompt() {
+/** Subscribes to backend SSH auth prompts once and opens the modal on demand. */
+export function initSshAuthPrompt(): void {
   if (wired) return;
   wired = true;
 
   TAURI.listen?.('ui:ssh-auth', (ev: any) => {
     const p = (ev?.payload || {}) as AuthPrompt;
-    openModal('ssh-auth-modal');
-    wireAuthModal();
-    const modal = document.getElementById('ssh-auth-modal') as any;
-    modal?.__fill?.(p);
+    sshAuthController.open(p);
   });
 }

@@ -476,14 +476,16 @@ describe('closeWithAnimation existing timer', () => {
     openModal('m1');
 
     const modal = document.getElementById('m1') as HTMLElement;
-    // Simulate a pending close timer
-    (modal as any).__animatedCloseTimer = 1;
-
-    // Clicking backdrop while timer is pending should clear it and restart
     const backdrop = document.querySelector('.backdrop') as HTMLElement;
+
+    // First click starts the close animation and schedules a pending timer
     backdrop.click();
-    expect((modal as any).__animatedCloseTimer).not.toBe(1);
     expect(modal.classList.contains('is-closing')).toBe(true);
+
+    // Clicking backdrop again while the timer is pending clears and restarts it
+    backdrop.click();
+    expect(modal.classList.contains('is-closing')).toBe(true);
+
     vi.advanceTimersByTime(200);
     expect(modal.getAttribute('aria-hidden')).toBe('true');
     window.matchMedia = origMM;
@@ -595,7 +597,7 @@ describe('openModal clears close animation timer', () => {
   beforeEach(() => { vi.resetModules(); mountRoot(); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('clears __animatedCloseTimer when reopening during animation', async () => {
+  it('clears the pending close timer when reopening during animation', async () => {
     vi.useFakeTimers();
     window.matchMedia = vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })) as any;
     const { openModal } = await import('@scripts/ui/modals');
@@ -603,10 +605,15 @@ describe('openModal clears close animation timer', () => {
     openModal('m1');
 
     const modal = document.getElementById('m1') as HTMLElement;
-    (modal as any).__animatedCloseTimer = 12345;
+    (document.querySelector('.backdrop') as HTMLElement).click();
+    expect(modal.classList.contains('is-closing')).toBe(true);
 
     openModal('m1');
-    expect((modal as any).__animatedCloseTimer).toBeUndefined();
+    expect(modal.getAttribute('aria-hidden')).toBe('false');
+    expect(modal.classList.contains('is-closing')).toBe(false);
+
+    // The pending timer must have been cleared: advancing time keeps it open
+    vi.advanceTimersByTime(500);
     expect(modal.getAttribute('aria-hidden')).toBe('false');
     vi.useRealTimers();
   });
@@ -749,11 +756,17 @@ describe('closeAllModals with existing timers', () => {
     openModal('m1');
 
     const modal = document.getElementById('m1') as HTMLElement;
-    (modal as any).__animatedCloseTimer = 12345;
+    (document.querySelector('.backdrop') as HTMLElement).click();
+    expect(modal.classList.contains('is-closing')).toBe(true);
 
     closeAllModals();
     expect(modal.getAttribute('aria-hidden')).toBe('true');
     expect(modal.classList.contains('is-closing')).toBe(false);
     expect(document.body.style.overflow).toBe('');
+
+    // Pending timer was cleared: advancing time does not re-open or throw
+    expect(() => vi.advanceTimersByTime(300)).not.toThrow();
+    expect(modal.getAttribute('aria-hidden')).toBe('true');
+    vi.useRealTimers();
   });
 });

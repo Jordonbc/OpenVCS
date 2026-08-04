@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@scripts/ui/modals', () => ({ openModal: vi.fn(), closeModal: vi.fn() }));
+vi.mock('@scripts/ui/modals', () => ({ openModal: vi.fn(), closeModal: vi.fn(), hydrate: vi.fn() }));
 vi.mock('@scripts/features/repoSettings', () => ({ openRepoSettings: vi.fn() }));
 vi.mock('@scripts/features/sshKeys', () => ({ openSshKeysModal: vi.fn() }));
 vi.mock('@scripts/lib/notify', () => ({ notify: vi.fn() }));
@@ -329,12 +329,11 @@ describe('wireAuthModal guard branches', () => {
     expect(() => listenHandler?.({ payload: { host: 'ex.com', remote: 'origin', url: 'git@ex.com:repo' } })).not.toThrow();
   });
 
-  it('skips re-wiring when __wired is already set', async () => {
-    const { initSshAuthPrompt } = await import('@scripts/features/sshAuth');
+  it('wires the modal only once and re-fills on later prompts', async () => {
+    const { initSshAuthPrompt, sshAuthController } = await import('@scripts/features/sshAuth');
     initSshAuthPrompt();
     listenHandler?.({ payload: { host: 'github.com', remote: 'origin', url: 'git@github.com:user/repo' } });
-    const modal = document.getElementById('ssh-auth-modal') as any;
-    expect(modal.__wired).toBe(true);
+    expect(sshAuthController.isWired).toBe(true);
     listenHandler?.({ payload: { host: 'gitlab.com', remote: 'upstream', url: 'git@gitlab.com:org/proj' } });
     expect(document.getElementById('ssh-auth-host')!.textContent).toBe('gitlab.com');
   });

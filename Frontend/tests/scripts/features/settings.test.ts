@@ -418,12 +418,11 @@ describe('wireSettings (initialisation)', () => {
         return import('@scripts/features/settings');
     }
 
-    it('sets __wired flag and prevents re-wiring', async () => {
+    it('wires once and prevents re-wiring', async () => {
         mountSettingsModal();
-        const { wireSettings } = await load();
+        const { wireSettings, settingsModalController } = await load();
         wireSettings();
-        const modal = document.getElementById('settings-modal')!;
-        expect((modal as any).__wired).toBe(true);
+        expect(settingsModalController.isWired).toBe(true);
         wireSettings();
         expect(mockApplyPluginSettingsSections).toHaveBeenCalledTimes(1);
     });

@@ -37,14 +37,13 @@ afterEach(() => {
 });
 
 describe('wireDeleteBranchConfirm', () => {
-  it('sets __wired and skips on second call', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    const modal = document.getElementById('delete-branch-modal') as any;
-    expect(modal.__wired).toBeUndefined();
+  it('wires once and skips on second call', async () => {
+    const { wireDeleteBranchConfirm, deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    expect(deleteBranchController.isWired).toBe(false);
     wireDeleteBranchConfirm();
-    expect(modal.__wired).toBe(true);
+    expect(deleteBranchController.isWired).toBe(true);
     wireDeleteBranchConfirm();
-    expect(modal.__wired).toBe(true);
+    expect(deleteBranchController.isWired).toBe(true);
   });
 
   it('does nothing when modal is missing', async () => {
@@ -56,11 +55,8 @@ describe('wireDeleteBranchConfirm', () => {
 
 describe('setContent', () => {
   it('sets content for force delete', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-
-    modal.setContent({
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({
       name: 'stale-branch',
       force: true,
       hint: 'This is permanent.',
@@ -85,11 +81,8 @@ describe('setContent', () => {
   });
 
   it('sets content for normal delete', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-
-    modal.setContent({
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({
       name: 'feature-branch',
       force: false,
     });
@@ -108,43 +101,32 @@ describe('setContent', () => {
   });
 
   it('handles empty name with fallback dash', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-
-    modal.setContent({ name: '' });
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({ name: '' });
     const nameEl = document.getElementById('delete-branch-name') as HTMLElement;
     expect(nameEl.textContent).toBe('—');
   });
 
   it('uses default message when not provided for force', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-
-    modal.setContent({ name: 'branch', force: true });
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({ name: 'branch', force: true });
     const messageEl = document.getElementById('delete-branch-message') as HTMLElement;
     expect(messageEl.textContent).toBe('Force deleting permanently removes the local branch.');
   });
 
   it('uses default message when not provided for normal', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-
-    modal.setContent({ name: 'branch', force: false });
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({ name: 'branch', force: false });
     const messageEl = document.getElementById('delete-branch-message') as HTMLElement;
     expect(messageEl.textContent).toBe('Deleting permanently removes the local branch.');
   });
 
   it('focuses cancel button after setContent', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
     const cancelBtn = document.getElementById('delete-branch-cancel-btn') as HTMLButtonElement;
     const focusSpy = vi.spyOn(cancelBtn, 'focus');
 
-    modal.setContent({ name: 'test' });
+    deleteBranchController.open({ name: 'test' });
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(focusSpy).toHaveBeenCalled();
@@ -173,83 +155,63 @@ describe('wireDeleteBranchConfirm - missing element edge cases', () => {
   });
 
   it('handles missing titleEl in setContent', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
     document.getElementById('delete-branch-title')?.remove();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    expect(() => modal.setContent({ name: 'test', force: true })).not.toThrow();
+    expect(() => deleteBranchController.open({ name: 'test', force: true })).not.toThrow();
   });
 
   it('handles missing hintEl in setContent', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
     document.getElementById('delete-branch-hint')?.remove();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    expect(() => modal.setContent({ name: 'test' })).not.toThrow();
+    expect(() => deleteBranchController.open({ name: 'test' })).not.toThrow();
   });
 
   it('handles missing messageEl in setContent', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
     document.getElementById('delete-branch-message')?.remove();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    expect(() => modal.setContent({ name: 'test' })).not.toThrow();
+    expect(() => deleteBranchController.open({ name: 'test' })).not.toThrow();
   });
 
   it('handles missing nameEl in setContent', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
     document.getElementById('delete-branch-name')?.remove();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    expect(() => modal.setContent({ name: 'test' })).not.toThrow();
+    expect(() => deleteBranchController.open({ name: 'test' })).not.toThrow();
   });
 
   it('handles missing dangerEl in setContent', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
     document.getElementById('delete-branch-danger')?.remove();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    expect(() => modal.setContent({ name: 'test', force: true })).not.toThrow();
+    expect(() => deleteBranchController.open({ name: 'test', force: true })).not.toThrow();
   });
 
   it('handles missing confirmBtn in setContent', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
     document.getElementById('delete-branch-confirm-btn')?.remove();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    expect(() => modal.setContent({ name: 'test' })).not.toThrow();
+    expect(() => deleteBranchController.open({ name: 'test' })).not.toThrow();
   });
 
   it('handles undefined opts in setContent', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    expect(() => modal.setContent(undefined as any)).not.toThrow();
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    expect(() => deleteBranchController.open(undefined as any)).not.toThrow();
   });
 
   it('sets nameEl fallback when name is undefined', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    modal.setContent({ name: undefined as any });
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({ name: undefined as any });
     const nameEl = document.getElementById('delete-branch-name') as HTMLElement;
     expect(nameEl.textContent).toBe('—');
   });
 
   it('uses default message for force when message is empty string', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    modal.setContent({ name: 'test', force: true, message: '' });
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({ name: 'test', force: true, message: '' });
     const messageEl = document.getElementById('delete-branch-message') as HTMLElement;
     expect(messageEl.textContent).toBe('Force deleting permanently removes the local branch.');
   });
 
   it('uses default message for normal when message is empty string', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    modal.setContent({ name: 'test', force: false, message: '' });
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({ name: 'test', force: false, message: '' });
     const messageEl = document.getElementById('delete-branch-message') as HTMLElement;
     expect(messageEl.textContent).toBe('Deleting permanently removes the local branch.');
   });
@@ -331,46 +293,36 @@ describe('confirmDeleteBranch', () => {
 
 describe('setContent - uncovered lines 61-63 (hint, message)', () => {
   it('uses default hint when opts.hint is empty string (line 61)', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    modal.setContent({ name: 'test', hint: '', force: true });
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({ name: 'test', hint: '', force: true });
     const hintEl = document.getElementById('delete-branch-hint') as HTMLElement;
     expect(hintEl.textContent).toBe('This cannot be undone.');
   });
 
   it('passes whitespace hint as-is (|| does not trim)', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    modal.setContent({ name: 'test', hint: '   ' });
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({ name: 'test', hint: '   ' });
     const hintEl = document.getElementById('delete-branch-hint') as HTMLElement;
     expect(hintEl.textContent).toBe('   ');
   });
 
   it('sets default force-message when opts.message is empty string (force=true)', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    modal.setContent({ name: 'test', force: true, message: '' });
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({ name: 'test', force: true, message: '' });
     const messageEl = document.getElementById('delete-branch-message') as HTMLElement;
     expect(messageEl.textContent).toBe('Force deleting permanently removes the local branch.');
   });
 
   it('sets default message when opts.message is empty string (force=false)', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    modal.setContent({ name: 'test', force: false, message: '' });
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({ name: 'test', force: false, message: '' });
     const messageEl = document.getElementById('delete-branch-message') as HTMLElement;
     expect(messageEl.textContent).toBe('Deleting permanently removes the local branch.');
   });
 
   it('passes whitespace message as-is (|| does not trim)', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    modal.setContent({ name: 'test', message: '   ' });
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({ name: 'test', message: '   ' });
     const messageEl = document.getElementById('delete-branch-message') as HTMLElement;
     expect(messageEl.textContent).toBe('   ');
   });
@@ -378,40 +330,34 @@ describe('setContent - uncovered lines 61-63 (hint, message)', () => {
 
 describe('setContent - uncovered lines 70-73 (dangerEl, confirmBtn)', () => {
   it('toggles dangerEl hidden state from force to non-force (line 71)', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
     const dangerEl = document.getElementById('delete-branch-danger') as HTMLElement;
 
-    modal.setContent({ name: 'test', force: true });
+    deleteBranchController.open({ name: 'test', force: true });
     expect(dangerEl.hidden).toBe(false);
 
-    modal.setContent({ name: 'test', force: false });
+    deleteBranchController.open({ name: 'test', force: false });
     expect(dangerEl.hidden).toBe(true);
   });
 
   it('transitions confirmBtn from force to normal (lines 73-76)', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
     const confirmBtn = document.getElementById('delete-branch-confirm-btn') as HTMLButtonElement;
 
-    modal.setContent({ name: 'test', force: true });
+    deleteBranchController.open({ name: 'test', force: true });
     expect(confirmBtn.textContent).toBe('Force delete');
     expect(confirmBtn.classList.contains('danger')).toBe(true);
     expect(confirmBtn.classList.contains('primary')).toBe(false);
 
-    modal.setContent({ name: 'test', force: false });
+    deleteBranchController.open({ name: 'test', force: false });
     expect(confirmBtn.textContent).toBe('Delete');
     expect(confirmBtn.classList.contains('danger')).toBe(false);
     expect(confirmBtn.classList.contains('primary')).toBe(true);
   });
 
   it('handles whitespace-only name (falls to em-dash)', async () => {
-    const { wireDeleteBranchConfirm } = await import('@scripts/features/deleteBranchConfirm');
-    wireDeleteBranchConfirm();
-    const modal = document.getElementById('delete-branch-modal') as any;
-    modal.setContent({ name: '   ' });
+    const { deleteBranchController } = await import('@scripts/features/deleteBranchConfirm');
+    deleteBranchController.open({ name: '   ' });
     const nameEl = document.getElementById('delete-branch-name') as HTMLElement;
     expect(nameEl.textContent).toBe('—');
   });

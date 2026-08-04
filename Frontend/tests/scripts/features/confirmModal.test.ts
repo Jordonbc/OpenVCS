@@ -33,13 +33,11 @@ afterEach(() => {
 
 describe('wireConfirmModal', () => {
   it('wires the modal and does not re-wire', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
+    const { wireConfirmModal, confirmModalController } = await import('@scripts/features/confirmModal');
     wireConfirmModal();
     // Second call should be idempotent
     wireConfirmModal();
-    // If it re-wired, the __wired flag would have caused issues
-    const modal = document.getElementById('confirm-modal') as any;
-    expect(modal.__wired).toBe(true);
+    expect(confirmModalController.isWired).toBe(true);
   });
 
   it('does nothing when modal is missing', async () => {
@@ -71,10 +69,8 @@ describe('wireConfirmModal', () => {
 
 describe('setContent', () => {
   it('sets default values when options are minimal', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
-    const modal = document.getElementById('confirm-modal') as any;
-    modal.setContent({ message: 'Test message' });
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
+    confirmModalController.open({ message: 'Test message' });
 
     expect(document.getElementById('confirm-modal-title')?.textContent).toBe('Confirm action');
     expect(document.getElementById('confirm-modal-hint')?.textContent).toBe('This cannot be undone.');
@@ -84,10 +80,8 @@ describe('setContent', () => {
   });
 
   it('applies custom options including danger style', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
-    const modal = document.getElementById('confirm-modal') as any;
-    modal.setContent({
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
+    confirmModalController.open({
       title: 'Delete file?',
       message: 'Are you sure?',
       hint: 'File will be permanently deleted.',
@@ -106,108 +100,84 @@ describe('setContent', () => {
   });
 
   it('sets primary class when not danger', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
-    const modal = document.getElementById('confirm-modal') as any;
-    modal.setContent({ message: 'Test', danger: false });
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
+    confirmModalController.open({ message: 'Test', danger: false });
     const confirmBtn = document.getElementById('confirm-modal-confirm-btn') as HTMLButtonElement;
     expect(confirmBtn.classList.contains('primary')).toBe(true);
     expect(confirmBtn.classList.contains('danger')).toBe(false);
   });
 
   it('trims whitespace from title and hint, defaults when empty', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
-    const modal = document.getElementById('confirm-modal') as any;
-    modal.setContent({ message: 'Test', title: '   ', hint: '   ' });
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
+    confirmModalController.open({ message: 'Test', title: '   ', hint: '   ' });
     expect(document.getElementById('confirm-modal-title')?.textContent).toBe('Confirm action');
     expect(document.getElementById('confirm-modal-hint')?.textContent).toBe('This cannot be undone.');
   });
 
   it('focuses the cancel button', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
-    const modal = document.getElementById('confirm-modal') as any;
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
     const cancelBtn = document.getElementById('confirm-modal-cancel-btn') as HTMLButtonElement;
     const focusSpy = vi.spyOn(cancelBtn, 'focus');
-    modal.setContent({ message: 'Test' });
+    confirmModalController.open({ message: 'Test' });
     await new Promise((r) => setTimeout(r, 0));
     expect(focusSpy).toHaveBeenCalled();
   });
 
   it('handles missing title element gracefully', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
     document.getElementById('confirm-modal-title')?.remove();
-    const modal = document.getElementById('confirm-modal') as any;
-    expect(() => modal.setContent({ message: 'Test', title: 'Custom' })).not.toThrow();
+    expect(() => confirmModalController.open({ message: 'Test', title: 'Custom' })).not.toThrow();
   });
 
   it('handles missing hint element gracefully', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
     document.getElementById('confirm-modal-hint')?.remove();
-    const modal = document.getElementById('confirm-modal') as any;
-    expect(() => modal.setContent({ message: 'Test', hint: 'Hint' })).not.toThrow();
+    expect(() => confirmModalController.open({ message: 'Test', hint: 'Hint' })).not.toThrow();
   });
 
   it('handles missing message element gracefully', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
     document.getElementById('confirm-modal-message')?.remove();
-    const modal = document.getElementById('confirm-modal') as any;
-    expect(() => modal.setContent({ message: 'Msg' })).not.toThrow();
+    expect(() => confirmModalController.open({ message: 'Msg' })).not.toThrow();
   });
 
   it('handles missing cancel button gracefully', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
     document.getElementById('confirm-modal-cancel-btn')?.remove();
-    const modal = document.getElementById('confirm-modal') as any;
-    expect(() => modal.setContent({ message: 'Test' })).not.toThrow();
+    expect(() => confirmModalController.open({ message: 'Test' })).not.toThrow();
   });
 });
 
 describe('setContent additional edge cases', () => {
   it('falls back to default cancelLabel when cancelLabel is whitespace only', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
-    const modal = document.getElementById('confirm-modal') as any;
-    modal.setContent({ message: 'Test', cancelLabel: '   ' });
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
+    confirmModalController.open({ message: 'Test', cancelLabel: '   ' });
     expect(document.getElementById('confirm-modal-cancel-btn')?.textContent).toBe('Cancel');
   });
 
   it('trims surrounding whitespace from cancelLabel', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
-    const modal = document.getElementById('confirm-modal') as any;
-    modal.setContent({ message: 'Test', cancelLabel: '  No  ' });
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
+    confirmModalController.open({ message: 'Test', cancelLabel: '  No  ' });
     expect(document.getElementById('confirm-modal-cancel-btn')?.textContent).toBe('No');
   });
 
   it('handles missing confirm button gracefully in setContent', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
     document.getElementById('confirm-modal-confirm-btn')?.remove();
-    const modal = document.getElementById('confirm-modal') as any;
-    expect(() => modal.setContent({ message: 'Test', danger: true })).not.toThrow();
+    expect(() => confirmModalController.open({ message: 'Test', danger: true })).not.toThrow();
   });
 
   it('handles missing title, hint, and message simultaneously', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
     document.getElementById('confirm-modal-title')?.remove();
     document.getElementById('confirm-modal-hint')?.remove();
     document.getElementById('confirm-modal-message')?.remove();
-    const modal = document.getElementById('confirm-modal') as any;
-    expect(() => modal.setContent({ message: 'M' })).not.toThrow();
+    expect(() => confirmModalController.open({ message: 'M' })).not.toThrow();
   });
 
   it('uses default confirmLabel when trimmed confirmLabel is empty', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
-    const modal = document.getElementById('confirm-modal') as any;
-    modal.setContent({ message: 'Test', confirmLabel: '   ' });
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
+    confirmModalController.open({ message: 'Test', confirmLabel: '   ' });
     expect(document.getElementById('confirm-modal-confirm-btn')?.textContent).toBe('Confirm');
   });
 });
@@ -219,15 +189,6 @@ describe('confirm button handler', () => {
     wireConfirmModal();
     const confirmBtn = document.getElementById('confirm-modal-confirm-btn') as HTMLButtonElement;
 
-    // Simulate pending resolve
-    let resolved = false;
-    const modal = document.getElementById('confirm-modal') as any;
-    modal.setContent({ message: 'Test' });
-    (window as any).__pendingResolve = (ok: boolean) => {
-      resolved = ok;
-    };
-
-    // Store resolve in pendingResolve via confirmWithModal
     const { confirmWithModal } = await import('@scripts/features/confirmModal');
     const promise = confirmWithModal({ message: 'Test' });
 
@@ -244,8 +205,7 @@ describe('modal:closed handler', () => {
   it('resolves false when modal closed event fires', async () => {
     const { wireConfirmModal, confirmWithModal } = await import('@scripts/features/confirmModal');
     wireConfirmModal();
-    const modal = document.getElementById('confirm-modal') as any;
-    modal.setContent({ message: 'Test' });
+    const modal = document.getElementById('confirm-modal') as HTMLElement;
 
     const promise = confirmWithModal({ message: 'Test' });
     modal.dispatchEvent(new Event('modal:closed'));
@@ -279,15 +239,10 @@ describe('confirmWithModal', () => {
 
 describe('cancel button click handler', () => {
   it('wires cancel click to close modal', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
+    const { wireConfirmModal, confirmWithModal } = await import('@scripts/features/confirmModal');
     wireConfirmModal();
+    const modal = document.getElementById('confirm-modal') as HTMLElement;
 
-    // cancel button has no explicit handler -- it triggers modal:closed via backdrop or data-close
-    // The modal:closed event is what resolves false
-    const modal = document.getElementById('confirm-modal') as any;
-    modal.setContent({ message: 'Test' });
-
-    const { confirmWithModal } = await import('@scripts/features/confirmModal');
     const promise = confirmWithModal({ message: 'Test' });
 
     // Simulate what happens when modal is closed
@@ -298,7 +253,7 @@ describe('cancel button click handler', () => {
   });
 });
 
-describe('confirmModal wiring edge cases (lines 59-63)', () => {
+describe('confirmModal wiring edge cases', () => {
   it('wires without confirm button (null branch of confirmBtn?. listener)', async () => {
     document.body.innerHTML = `
       <div id="confirm-modal" aria-hidden="true">
@@ -308,10 +263,9 @@ describe('confirmModal wiring edge cases (lines 59-63)', () => {
         <button id="confirm-modal-cancel-btn">Cancel</button>
       </div>
     `;
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
+    const { wireConfirmModal, confirmModalController } = await import('@scripts/features/confirmModal');
     expect(() => wireConfirmModal()).not.toThrow();
-    const modal = document.getElementById('confirm-modal') as any;
-    expect(modal.__wired).toBe(true);
+    expect(confirmModalController.isWired).toBe(true);
   });
 
   it('wires without cancel button', async () => {
@@ -337,25 +291,21 @@ describe('confirmModal wiring edge cases (lines 59-63)', () => {
   });
 
   it('transitions danger class from true to false in setContent', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
-    const modal = document.getElementById('confirm-modal') as any;
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
     const confirmBtn = document.getElementById('confirm-modal-confirm-btn') as HTMLButtonElement;
 
-    modal.setContent({ message: 'First', danger: true });
+    confirmModalController.open({ message: 'First', danger: true });
     expect(confirmBtn.classList.contains('danger')).toBe(true);
     expect(confirmBtn.classList.contains('primary')).toBe(false);
 
-    modal.setContent({ message: 'Second', danger: false });
+    confirmModalController.open({ message: 'Second', danger: false });
     expect(confirmBtn.classList.contains('danger')).toBe(false);
     expect(confirmBtn.classList.contains('primary')).toBe(true);
   });
 
   it('handles empty message string in setContent', async () => {
-    const { wireConfirmModal } = await import('@scripts/features/confirmModal');
-    wireConfirmModal();
-    const modal = document.getElementById('confirm-modal') as any;
-    modal.setContent({ message: '' });
+    const { confirmModalController } = await import('@scripts/features/confirmModal');
+    confirmModalController.open({ message: '' });
     const messageEl = document.getElementById('confirm-modal-message') as HTMLElement;
     expect(messageEl.textContent).toBe('');
   });

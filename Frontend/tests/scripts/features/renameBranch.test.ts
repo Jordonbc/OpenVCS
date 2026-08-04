@@ -44,14 +44,13 @@ afterEach(() => {
 });
 
 describe('wireRenameBranch', () => {
-  it('sets __wired and skips on second call', async () => {
-    const { wireRenameBranch } = await import('@scripts/features/renameBranch');
-    const modal = document.getElementById('rename-branch-modal') as any;
-    expect(modal.__wired).toBeUndefined();
+  it('wires once and skips on second call', async () => {
+    const { wireRenameBranch, renameBranchController } = await import('@scripts/features/renameBranch');
+    expect(renameBranchController.isWired).toBe(false);
     wireRenameBranch();
-    expect(modal.__wired).toBe(true);
+    expect(renameBranchController.isWired).toBe(true);
     wireRenameBranch();
-    expect(modal.__wired).toBe(true);
+    expect(renameBranchController.isWired).toBe(true);
   });
 
   it('does nothing when modal is missing', async () => {
@@ -228,13 +227,12 @@ describe('wireRenameBranch', () => {
 
 describe('setInitial', () => {
   it('sets old branch name and fills inputs', async () => {
-    const { wireRenameBranch } = await import('@scripts/features/renameBranch');
-    wireRenameBranch();
-    const modal = document.getElementById('rename-branch-modal') as any;
+    const { renameBranchController } = await import('@scripts/features/renameBranch');
+    const modal = document.getElementById('rename-branch-modal') as HTMLElement;
     const currentEl = document.getElementById('rename-branch-current') as HTMLInputElement;
     const nameEl = document.getElementById('rename-branch-name') as HTMLInputElement;
 
-    modal.setInitial('feature-branch');
+    renameBranchController.open({ oldName: 'feature-branch' });
 
     expect(modal.dataset.oldBranch).toBe('feature-branch');
     expect(currentEl.value).toBe('feature-branch');
@@ -242,14 +240,12 @@ describe('setInitial', () => {
   });
 
   it('focuses and selects name input', async () => {
-    const { wireRenameBranch } = await import('@scripts/features/renameBranch');
-    wireRenameBranch();
-    const modal = document.getElementById('rename-branch-modal') as any;
+    const { renameBranchController } = await import('@scripts/features/renameBranch');
     const nameEl = document.getElementById('rename-branch-name') as HTMLInputElement;
     const focusSpy = vi.spyOn(nameEl, 'focus');
     const selectSpy = vi.spyOn(nameEl, 'select');
 
-    modal.setInitial('feature-branch');
+    renameBranchController.open({ oldName: 'feature-branch' });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(focusSpy).toHaveBeenCalled();
@@ -339,20 +335,18 @@ describe('wireRenameBranch - validation edge cases', () => {
 
 describe('setInitial edge cases', () => {
   it('handles missing currentEl', async () => {
-    const { wireRenameBranch } = await import('@scripts/features/renameBranch');
-    wireRenameBranch();
+    const { renameBranchController } = await import('@scripts/features/renameBranch');
     document.getElementById('rename-branch-current')?.remove();
-    const modal = document.getElementById('rename-branch-modal') as any;
-    expect(() => modal.setInitial('feature-branch')).not.toThrow();
+    const modal = document.getElementById('rename-branch-modal') as HTMLElement;
+    expect(() => renameBranchController.open({ oldName: 'feature-branch' })).not.toThrow();
     expect(modal.dataset.oldBranch).toBe('feature-branch');
   });
 
   it('handles missing nameEl', async () => {
-    const { wireRenameBranch } = await import('@scripts/features/renameBranch');
-    wireRenameBranch();
+    const { renameBranchController } = await import('@scripts/features/renameBranch');
     document.getElementById('rename-branch-name')?.remove();
-    const modal = document.getElementById('rename-branch-modal') as any;
-    expect(() => modal.setInitial('feature-branch')).not.toThrow();
+    const modal = document.getElementById('rename-branch-modal') as HTMLElement;
+    expect(() => renameBranchController.open({ oldName: 'feature-branch' })).not.toThrow();
     expect(modal.dataset.oldBranch).toBe('feature-branch');
   });
 });

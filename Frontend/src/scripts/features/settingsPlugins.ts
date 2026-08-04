@@ -13,6 +13,9 @@ import { modeForTheme, rebuildThemePackOptions } from './settingsTheme';
 import { renderPluginMenus, activateSection } from './settingsPluginUI';
 import { parsePluginQuery, pluginSearchScore } from './settingsPluginSearch';
 
+/** Tracks panes whose context-menu wiring has already been installed. */
+const pluginPaneWired = new WeakSet<HTMLElement>();
+
 /** Loads plugin data and renders the full plugins management panel into the settings modal. */
 export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSettings): Promise<void> {
     const pane = modal.querySelector<HTMLElement>('#plugins-pane');
@@ -501,8 +504,8 @@ export async function loadPluginsIntoForm(modal: HTMLElement, cfg: GlobalSetting
         })();
     };
 
-    if (!(pane as any).__wired) {
-        (pane as any).__wired = true;
+    if (!pluginPaneWired.has(pane)) {
+        pluginPaneWired.add(pane);
 
         const viewportPadding = 8;
         const contextMenu = document.createElement('div');

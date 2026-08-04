@@ -3,16 +3,16 @@
 import { TAURI } from '../lib/tauri';
 import { openModal, closeModal } from '../ui/modals';
 import { notify } from '../lib/notify';
+import { ModalController } from '../lib/modalController';
 import type { RepoSettings } from '../types';
 
 export function openRepoSettings(){ openModal('repo-settings-modal'); }
 
 type RemoteRow = { nameInput: HTMLInputElement; urlInput: HTMLInputElement; removeBtn: HTMLButtonElement };
 
-export async function wireRepoSettings() {
-    const modal = document.getElementById('repo-settings-modal') as HTMLElement | null;
-    if (!modal || (modal as any).__wired) return;
-    (modal as any).__wired = true;
+/** Owns the repo-settings modal lifecycle: wires handlers and loads settings once. */
+export const repoSettingsController = new ModalController<void>('repo-settings-modal', {
+    wire: async (modal) => {
 
     const nameInput  = modal.querySelector('#user-name') as HTMLInputElement | null;
     const emailInput = modal.querySelector('#user-email') as HTMLInputElement | null;
@@ -132,4 +132,10 @@ export async function wireRepoSettings() {
             notify('Failed to save repository settings');
         }
     });
+    },
+});
+
+/** Wires the repo-settings modal once. No-op after the first call. */
+export async function wireRepoSettings() {
+    repoSettingsController.initOnce();
 }

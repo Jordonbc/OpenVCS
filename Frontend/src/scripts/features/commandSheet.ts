@@ -4,6 +4,7 @@
 import { TAURI } from "../lib/tauri";
 import { notify } from "../lib/notify";
 import { openModal, closeModal, hydrate } from "../ui/modals";
+import { ModalController } from "../lib/modalController";
 
 /** Available command-sheet tabs. */
 type Which = "clone" | "add";
@@ -136,14 +137,11 @@ export function closeSheet() {
     closeModal("command-modal");
 }
 
-/** Wires command-sheet controls and action handlers once. */
-export function bindCommandSheet() {
-    // Inject the fragment if not already present
-    hydrate("command-modal");
+/** Owns the command-sheet modal lifecycle: wires event handlers once. */
+export const commandSheetController = new ModalController<void>("command-modal", {
+  wire: (modal) => {
+    root = modal;
 
-    root = document.getElementById("command-modal");
-    if (!root || (root as any).__wired) return;
-    (root as any).__wired = true;
 
     // Resolve elements inside the modal
     seg = root.querySelector(".sheet-head .seg") as HTMLElement | null;
@@ -257,8 +255,14 @@ export function bindCommandSheet() {
     });
     mo.observe(root, { attributes: true, attributeFilter: ["aria-hidden", "class"] });
 
-    // First alignment
-    requestAnimationFrame(positionIndicator);
+  },
+});
+
+/** Wires command-sheet controls and action handlers once. */
+export function bindCommandSheet() {
+    // Inject the fragment if not already present
+    hydrate("command-modal");
+    commandSheetController.initOnce();
 }
 
 /** Fetches available VCS backends and populates both selectors. */

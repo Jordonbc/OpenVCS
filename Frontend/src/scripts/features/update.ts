@@ -3,6 +3,7 @@
 import { TAURI } from '../lib/tauri';
 import { openModal } from '../ui/modals';
 import { notify } from '../lib/notify';
+import { ModalController } from '../lib/modalController';
 
 interface UpdateStatus {
   available: boolean;
@@ -114,11 +115,9 @@ function ensureUpdateProgressListener() {
   });
 }
 
-/** Wires the update modal button and progress listeners. */
-export function wireUpdate() {
-  const modal = document.getElementById('update-modal') as HTMLElement | null;
-  if (!modal || (modal as any).__wired) return;
-  (modal as any).__wired = true;
+/** Owns the update modal lifecycle: wires the install button and progress listeners once. */
+export const updateController = new ModalController<void>('update-modal', {
+  wire: (modal) => {
 
   ensureUpdateProgressListener();
   setUpdateInstallPhase('idle');
@@ -136,6 +135,12 @@ export function wireUpdate() {
       notify('Update failed');
     }
   });
+  },
+});
+
+/** Wires the update modal button and progress listeners. */
+export function wireUpdate() {
+  updateController.initOnce();
 }
 
 /** Opens the update modal with the latest version metadata. */

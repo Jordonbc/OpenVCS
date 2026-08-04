@@ -144,18 +144,15 @@ describe('openStashConfirm', () => {
 
 describe('wireStashConfirm', () => {
   it('wires modal only once', async () => {
-    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
-    const modal = document.getElementById('stash-confirm-modal') as any;
+    const { wireStashConfirm, stashController } = await import('@scripts/features/stashConfirm');
     wireStashConfirm();
     wireStashConfirm();
-    expect(modal.__wired).toBe(true);
+    expect(stashController.isWired).toBe(true);
   });
 
   it('sets message and focuses input', async () => {
-    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
-    wireStashConfirm();
-    const modal = document.getElementById('stash-confirm-modal') as any;
-    modal.setMessage('Custom message');
+    const { stashController } = await import('@scripts/features/stashConfirm');
+    stashController.open({ defaultMessage: 'Custom message' });
     const input = document.getElementById('stash-message') as HTMLInputElement;
     expect(input.value).toBe('Custom message');
     await new Promise((r) => setTimeout(r, 0));
@@ -163,10 +160,8 @@ describe('wireStashConfirm', () => {
   });
 
   it('refreshes files and updates counts', async () => {
-    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
-    wireStashConfirm();
-    const modal = document.getElementById('stash-confirm-modal') as any;
-    modal.refreshFiles();
+    const { stashController } = await import('@scripts/features/stashConfirm');
+    stashController.open({});
     const countEl = document.getElementById('stash-file-count') as HTMLElement;
     expect(countEl.textContent).toBe('2 files');
   });
@@ -210,13 +205,11 @@ describe('app:status-updated event', () => {
 
 describe('refreshFiles integration', () => {
   it('shows empty state when no files are available', async () => {
-    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
-    wireStashConfirm();
+    const { stashController } = await import('@scripts/features/stashConfirm');
     const { state } = await import('@scripts/state/state');
     state.files = [];
 
-    const modal = document.getElementById('stash-confirm-modal') as any;
-    modal.refreshFiles();
+    stashController.open({});
 
     const emptyEl = document.getElementById('stash-empty') as HTMLElement;
     expect(emptyEl.hidden).toBe(false);
@@ -225,13 +218,11 @@ describe('refreshFiles integration', () => {
   });
 
   it('shows single file count for one file', async () => {
-    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
-    wireStashConfirm();
+    const { stashController } = await import('@scripts/features/stashConfirm');
     const { state } = await import('@scripts/state/state');
     state.files = [{ path: 'only.txt', status: 'M' }];
 
-    const modal = document.getElementById('stash-confirm-modal') as any;
-    modal.refreshFiles();
+    stashController.open({});
 
     const countEl = document.getElementById('stash-file-count') as HTMLElement;
     expect(countEl.textContent).toBe('1 file');
@@ -244,14 +235,13 @@ describe('refreshFiles integration', () => {
 
 describe('friendlyStatus edge codes', () => {
   it('renders R and C status codes in file list', async () => {
-    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
-    wireStashConfirm();
+    const { stashController } = await import('@scripts/features/stashConfirm');
     const { state } = await import('@scripts/state/state');
     state.files = [
       { path: 'renamed.txt', status: 'R' },
       { path: 'copied.txt', status: 'C' },
     ];
-    (document.getElementById('stash-confirm-modal') as any).refreshFiles();
+    stashController.open({});
 
     const listEl = document.getElementById('stash-file-list') as HTMLElement;
     expect(listEl.innerHTML).toContain('Renamed');
@@ -259,26 +249,24 @@ describe('friendlyStatus edge codes', () => {
   });
 
   it('renders ignored status code', async () => {
-    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
-    wireStashConfirm();
+    const { stashController } = await import('@scripts/features/stashConfirm');
     const { state } = await import('@scripts/state/state');
     state.files = [
       { path: 'ignored.log', status: '!' },
     ];
-    (document.getElementById('stash-confirm-modal') as any).refreshFiles();
+    stashController.open({});
 
     const listEl = document.getElementById('stash-file-list') as HTMLElement;
     expect(listEl.innerHTML).toContain('Ignored');
   });
 
   it('renders untracked status code', async () => {
-    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
-    wireStashConfirm();
+    const { stashController } = await import('@scripts/features/stashConfirm');
     const { state } = await import('@scripts/state/state');
     state.files = [
       { path: 'new.txt', status: '??' },
     ];
-    (document.getElementById('stash-confirm-modal') as any).refreshFiles();
+    stashController.open({});
 
     const listEl = document.getElementById('stash-file-list') as HTMLElement;
     expect(listEl.innerHTML).toContain('Untracked');
@@ -362,10 +350,8 @@ describe('runStash edge cases', () => {
     `;
     (window as any).__TAURI__.core.invoke = vi.fn(async () => null);
 
-    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
-    wireStashConfirm();
-    const modal = document.getElementById('stash-confirm-modal') as any;
-    modal.refreshFiles();
+    const { stashController } = await import('@scripts/features/stashConfirm');
+    stashController.open({});
 
     const confirmBtn = document.getElementById('stash-confirm-btn') as HTMLButtonElement;
     expect(confirmBtn.disabled).toBe(false);
@@ -447,14 +433,18 @@ describe('openStashConfirm with missing modal', () => {
 
 describe('wireStashConfirm multiple wiring', () => {
   it('calling wireStashConfirm twice runs wiring only once', async () => {
-    const { wireStashConfirm } = await import('@scripts/features/stashConfirm');
-    const modal = document.getElementById('stash-confirm-modal') as any;
+    const { wireStashConfirm, stashController } = await import('@scripts/features/stashConfirm');
+    const invoke = vi.fn();
+    (window as any).__TAURI__.core.invoke = invoke;
 
     wireStashConfirm();
-    expect(modal.__wired).toBe(true);
-
-    const firstRefresh = modal.refreshFiles;
+    expect(stashController.isWired).toBe(true);
     wireStashConfirm();
-    expect(modal.refreshFiles).toBe(firstRefresh);
+    expect(stashController.isWired).toBe(true);
+
+    // A single click must trigger a single stash push (no duplicated handlers)
+    (document.getElementById('stash-confirm-btn') as HTMLButtonElement).click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 });

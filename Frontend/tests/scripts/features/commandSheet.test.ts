@@ -372,11 +372,10 @@ describe('setDisabled, ensureIndicator, positionIndicator coverage', () => {
     bindCommandSheet();
   });
 
-  it('sets __wired flag and skips re-wiring on second call', async () => {
-    const { bindCommandSheet } = await import('@scripts/features/commandSheet');
+  it('wires once and skips re-wiring on second call', async () => {
+    const { bindCommandSheet, commandSheetController } = await import('@scripts/features/commandSheet');
     bindCommandSheet();
-    const root = document.getElementById('command-modal') as any;
-    expect(root.__wired).toBe(true);
+    expect(commandSheetController.isWired).toBe(true);
     expect(() => bindCommandSheet()).not.toThrow();
   });
 

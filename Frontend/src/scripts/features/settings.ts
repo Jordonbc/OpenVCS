@@ -4,6 +4,7 @@
 import { TAURI } from '../lib/tauri';
 import { syncFrontendMonitoring } from '../lib/monitoring';
 import { openModal, closeModal } from '../ui/modals';
+import { ModalController } from '../lib/modalController';
 import { toKebab } from '../lib/dom';
 import { notify } from '../lib/notify';
 import { setTheme, applyCommitSummaryRestriction, applyGpuAccelerationPreference } from '../ui/layout';
@@ -303,10 +304,8 @@ export async function loadSettingsIntoForm(root?: HTMLElement) {
 // ---------------------------------------------------------------------------
 
 /** Wires all event handlers on the settings modal. Called once after the modal markup is injected. */
-export function wireSettings() {
-    const modal = document.getElementById('settings-modal') as HTMLElement | null;
-    if (!modal || (modal as any).__wired) return;
-    (modal as any).__wired = true;
+export const settingsModalController = new ModalController<void>("settings-modal", {
+  wire: (modal) => {
 
     applyPluginSettingsSections(modal);
 
@@ -558,6 +557,11 @@ export function wireSettings() {
             notify('Defaults restored');
         } catch (e) { console.error('Failed to restore defaults:', e); notify('Failed to restore defaults'); }
     });
-
     // Settings are loaded by `openSettings()` on open.
+  },
+});
+
+/** Wires all event handlers on the settings modal. Called once after the modal markup is injected. */
+export function wireSettings() {
+    settingsModalController.initOnce();
 }

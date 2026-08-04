@@ -27,6 +27,7 @@ vi.mock('@scripts/lib/notify', () => ({
 vi.mock('@scripts/ui/modals', () => ({
   openModal: mockOpenModal,
   closeModal: mockCloseModal,
+  hydrate: vi.fn(),
 }));
 
 vi.mock('@scripts/features/repo/hydrate', () => ({
@@ -136,21 +137,23 @@ describe('initSshHostkeyPrompt', () => {
     });
   });
 
-  it('does not re-wire modal if already wired', async () => {
+  it('wires the modal once across repeated events', async () => {
     mountModal();
-    const modal = document.getElementById('ssh-hostkey-modal') as any;
-    modal.__wired = true;
+    mockInvoke.mockResolvedValue(undefined);
 
-    const { initSshHostkeyPrompt } = await import('@scripts/features/sshHostkey');
+    const { initSshHostkeyPrompt, sshHostkeyController } = await import('@scripts/features/sshHostkey');
     initSshHostkeyPrompt();
     triggerSshHostkeyEvent({ host: 'example.com' });
+    expect(sshHostkeyController.isWired).toBe(true);
+    triggerSshHostkeyEvent({ host: 'other.example' });
+    expect(document.getElementById('ssh-hostkey-host')!.textContent).toBe('other.example');
   });
 
   it('does nothing when modal element is missing', async () => {
     const { initSshHostkeyPrompt } = await import('@scripts/features/sshHostkey');
     initSshHostkeyPrompt();
-    triggerSshHostkeyEvent({ host: 'example.com' });
-    expect(mockOpenModal).toHaveBeenCalledWith('ssh-hostkey-modal');
+    expect(() => triggerSshHostkeyEvent({ host: 'example.com' })).not.toThrow();
+    expect(mockOpenModal).not.toHaveBeenCalled();
   });
 
   it('accept is no-op when current is null', async () => {
@@ -210,17 +213,16 @@ describe('initSshHostkeyPrompt', () => {
     });
   });
 
-  it('does not re-wire modal if already wired via __wired', async () => {
+  it('does not re-wire on subsequent events', async () => {
     mountModal();
-    const modal = document.getElementById('ssh-hostkey-modal') as any;
-    modal.__wired = true;
-
-    const spy = vi.spyOn(modal, 'querySelector');
-    const { initSshHostkeyPrompt } = await import('@scripts/features/sshHostkey');
+    const { initSshHostkeyPrompt, sshHostkeyController } = await import('@scripts/features/sshHostkey');
     initSshHostkeyPrompt();
     triggerSshHostkeyEvent({ host: 'example.com' });
-    expect(mockOpenModal).toHaveBeenCalledWith('ssh-hostkey-modal');
-    spy.mockRestore();
+    triggerSshHostkeyEvent({ host: 'other.example' });
+    expect(sshHostkeyController.isWired).toBe(true);
+    (document.getElementById('ssh-hostkey-deny') as HTMLButtonElement).click();
+    expect(mockCloseModal).toHaveBeenCalledTimes(1);
+    expect(mockCloseModal).toHaveBeenCalledWith('ssh-hostkey-modal');
   });
 
   it('populates host and message for missing buttons modal', async () => {

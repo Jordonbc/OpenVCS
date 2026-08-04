@@ -62,14 +62,13 @@ afterEach(() => {
 });
 
 describe('wireCherryPick', () => {
-  it('sets __wired and skips on second call', async () => {
-    const { wireCherryPick } = await import('@scripts/features/cherryPick');
-    const modal = document.getElementById('cherry-pick-modal') as any;
-    expect(modal.__wired).toBeUndefined();
+  it('wires once and skips on second call', async () => {
+    const { wireCherryPick, cherryPickController } = await import('@scripts/features/cherryPick');
+    expect(cherryPickController.isWired).toBe(false);
     wireCherryPick();
-    expect(modal.__wired).toBe(true);
+    expect(cherryPickController.isWired).toBe(true);
     wireCherryPick();
-    expect(modal.__wired).toBe(true);
+    expect(cherryPickController.isWired).toBe(true);
   });
 
   it('does nothing when modal is missing', async () => {
@@ -203,14 +202,13 @@ describe('wireCherryPick', () => {
   });
 
   it('setInitial fills commit info and branch options', async () => {
-    const { wireCherryPick } = await import('@scripts/features/cherryPick');
-    wireCherryPick();
-    const modal = document.getElementById('cherry-pick-modal') as any;
-    modal.setInitial(
-      { id: 'abc123def456', msg: 'Fix critical bug' },
-      ['main', 'feature', 'develop'],
-      'feature',
-    );
+    const { cherryPickController } = await import('@scripts/features/cherryPick');
+    const modal = document.getElementById('cherry-pick-modal') as HTMLElement;
+    cherryPickController.open({
+      commit: { id: 'abc123def456', msg: 'Fix critical bug' },
+      branches: ['main', 'feature', 'develop'],
+      currentBranch: 'feature',
+    });
 
     const commitEl = document.getElementById('cherry-pick-commit') as HTMLInputElement;
     expect(commitEl.value).toBe('abc123d — Fix critical bug');
@@ -223,38 +221,33 @@ describe('wireCherryPick', () => {
   });
 
   it('setInitial prefers currentBranch over first option', async () => {
-    const { wireCherryPick } = await import('@scripts/features/cherryPick');
-    wireCherryPick();
-    const modal = document.getElementById('cherry-pick-modal') as any;
-    modal.setInitial(
-      { id: 'abc', msg: '' },
-      ['develop', 'main', 'feature'],
-      'develop',
-    );
+    const { cherryPickController } = await import('@scripts/features/cherryPick');
+    cherryPickController.open({
+      commit: { id: 'abc', msg: '' },
+      branches: ['develop', 'main', 'feature'],
+      currentBranch: 'develop',
+    });
 
     const branchEl = document.getElementById('cherry-pick-branch') as HTMLSelectElement;
     expect(branchEl.value).toBe('develop');
   });
 
   it('setInitial falls back to first option when currentBranch not in list', async () => {
-    const { wireCherryPick } = await import('@scripts/features/cherryPick');
-    wireCherryPick();
-    const modal = document.getElementById('cherry-pick-modal') as any;
-    modal.setInitial(
-      { id: 'abc', msg: '' },
-      ['develop', 'main', 'feature'],
-      'nonexistent',
-    );
+    const { cherryPickController } = await import('@scripts/features/cherryPick');
+    cherryPickController.open({
+      commit: { id: 'abc', msg: '' },
+      branches: ['develop', 'main', 'feature'],
+      currentBranch: 'nonexistent',
+    });
 
     const branchEl = document.getElementById('cherry-pick-branch') as HTMLSelectElement;
     expect(branchEl.value).toBe('develop');
   });
 
   it('setInitial handles empty commit ID and msg', async () => {
-    const { wireCherryPick } = await import('@scripts/features/cherryPick');
-    wireCherryPick();
-    const modal = document.getElementById('cherry-pick-modal') as any;
-    modal.setInitial({}, ['main'], '');
+    const { cherryPickController } = await import('@scripts/features/cherryPick');
+    const modal = document.getElementById('cherry-pick-modal') as HTMLElement;
+    cherryPickController.open({ commit: {}, branches: ['main'], currentBranch: '' });
 
     const commitEl = document.getElementById('cherry-pick-commit') as HTMLInputElement;
     expect(commitEl.value).toBe('');
@@ -262,21 +255,17 @@ describe('wireCherryPick', () => {
   });
 
   it('setInitial handles missing branchEl', async () => {
-    const { wireCherryPick } = await import('@scripts/features/cherryPick');
-    wireCherryPick();
+    const { cherryPickController } = await import('@scripts/features/cherryPick');
     document.getElementById('cherry-pick-branch')?.remove();
-    const modal = document.getElementById('cherry-pick-modal') as any;
-    expect(() => modal.setInitial({ id: 'abc' }, ['main'], 'main')).not.toThrow();
+    expect(() => cherryPickController.open({ commit: { id: 'abc' }, branches: ['main'], currentBranch: 'main' })).not.toThrow();
   });
 
   it('setInitial focuses branch select', async () => {
-    const { wireCherryPick } = await import('@scripts/features/cherryPick');
-    wireCherryPick();
-    const modal = document.getElementById('cherry-pick-modal') as any;
+    const { cherryPickController } = await import('@scripts/features/cherryPick');
     const branchEl = document.getElementById('cherry-pick-branch') as HTMLSelectElement;
     const focusSpy = vi.spyOn(branchEl, 'focus');
 
-    modal.setInitial({ id: 'abc' }, ['main'], 'main');
+    cherryPickController.open({ commit: { id: 'abc' }, branches: ['main'], currentBranch: 'main' });
     await flushPromises();
 
     expect(focusSpy).toHaveBeenCalled();
@@ -363,10 +352,8 @@ describe('wireCherryPick setInitial edge cases', () => {
   });
 
   it('handles empty branches array with no currentBranch', async () => {
-    const { wireCherryPick } = await import('@scripts/features/cherryPick');
-    wireCherryPick();
-    const modal = document.getElementById('cherry-pick-modal') as any;
-    modal.setInitial({ id: 'abc' }, [], '');
+    const { cherryPickController } = await import('@scripts/features/cherryPick');
+    cherryPickController.open({ commit: { id: 'abc' }, branches: [], currentBranch: '' });
 
     const branchEl = document.getElementById('cherry-pick-branch') as HTMLSelectElement;
     expect(branchEl.value).toBe('');
@@ -376,17 +363,13 @@ describe('wireCherryPick setInitial edge cases', () => {
 
   it('handles missing commitEl gracefully', async () => {
     document.getElementById('cherry-pick-commit')?.remove();
-    const { wireCherryPick } = await import('@scripts/features/cherryPick');
-    wireCherryPick();
-    const modal = document.getElementById('cherry-pick-modal') as any;
-    expect(() => modal.setInitial({ id: 'abc', msg: 'test' }, ['main'], 'main')).not.toThrow();
+    const { cherryPickController } = await import('@scripts/features/cherryPick');
+    expect(() => cherryPickController.open({ commit: { id: 'abc', msg: 'test' }, branches: ['main'], currentBranch: 'main' })).not.toThrow();
   });
 
   it('handles commit with no id and no msg', async () => {
-    const { wireCherryPick } = await import('@scripts/features/cherryPick');
-    wireCherryPick();
-    const modal = document.getElementById('cherry-pick-modal') as any;
-    modal.setInitial({ id: '', msg: '' }, ['main'], 'main');
+    const { cherryPickController } = await import('@scripts/features/cherryPick');
+    cherryPickController.open({ commit: { id: '', msg: '' }, branches: ['main'], currentBranch: 'main' });
     const commitEl = document.getElementById('cherry-pick-commit') as HTMLInputElement;
     expect(commitEl.value).toBe('');
   });

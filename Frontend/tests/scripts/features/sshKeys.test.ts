@@ -10,17 +10,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mockInvoke = vi.fn();
 const mockNotify = vi.fn();
 const mockOpenModal = vi.fn();
+const mockHydrate = vi.fn();
 
 vi.mock('@scripts/lib/tauri', () => ({
     TAURI: { invoke: mockInvoke },
 }));
-
 vi.mock('@scripts/lib/notify', () => ({
     notify: mockNotify,
 }));
-
 vi.mock('@scripts/ui/modals', () => ({
     openModal: mockOpenModal,
+    hydrate: mockHydrate,
 }));
 
 // ---------------------------------------------------------------------------
@@ -41,10 +41,6 @@ function mountModal() {
     `;
 }
 
-function getModal(): HTMLElement {
-    return document.getElementById('ssh-keys-modal')!;
-}
-
 function agentResult(code: number, opts: { stdout?: string; stderr?: string } = {}): unknown {
     return { code, stdout: opts.stdout ?? '', stderr: opts.stderr ?? '' };
 }
@@ -62,6 +58,7 @@ beforeEach(() => {
     mockInvoke.mockReset();
     mockNotify.mockReset();
     mockOpenModal.mockReset();
+    mockHydrate.mockReset();
     mountModal();
 });
 
@@ -84,11 +81,8 @@ describe('wireSshKeys (agent status formatting)', () => {
             .mockResolvedValueOnce(null)
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const statusEl = document.getElementById('ssh-keys-agent-status') as HTMLPreElement;
@@ -101,11 +95,8 @@ describe('wireSshKeys (agent status formatting)', () => {
             .mockResolvedValueOnce(agentResult(0, { stdout: '4096 SHA256:abc...' }))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const statusEl = document.getElementById('ssh-keys-agent-status') as HTMLPreElement;
@@ -118,11 +109,8 @@ describe('wireSshKeys (agent status formatting)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const statusEl = document.getElementById('ssh-keys-agent-status') as HTMLPreElement;
@@ -135,11 +123,8 @@ describe('wireSshKeys (agent status formatting)', () => {
             .mockResolvedValueOnce(agentResult(1))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const statusEl = document.getElementById('ssh-keys-agent-status') as HTMLPreElement;
@@ -152,11 +137,8 @@ describe('wireSshKeys (agent status formatting)', () => {
             .mockResolvedValueOnce(agentResult(1, { stderr: 'error detail' }))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const statusEl = document.getElementById('ssh-keys-agent-status') as HTMLPreElement;
@@ -169,11 +151,8 @@ describe('wireSshKeys (agent status formatting)', () => {
             .mockResolvedValueOnce(agentResult(2))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const statusEl = document.getElementById('ssh-keys-agent-status') as HTMLPreElement;
@@ -186,11 +165,8 @@ describe('wireSshKeys (agent status formatting)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([keyCandidate('/home/.ssh/id_rsa', 'id_rsa'), keyCandidate('/home/.ssh/id_ed25519', 'id_ed25519')]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const listEl = document.getElementById('ssh-keys-list') as HTMLElement;
@@ -206,11 +182,8 @@ describe('wireSshKeys (agent status formatting)', () => {
     it('handles refresh failure gracefully', async () => {
         mockInvoke.mockRejectedValue(new Error('ssh error'));
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const statusEl = document.getElementById('ssh-keys-agent-status') as HTMLPreElement;
@@ -225,11 +198,8 @@ describe('wireSshKeys (agent status formatting)', () => {
             .mockResolvedValueOnce([keyCandidate('/home/.ssh/id_rsa', 'id_rsa')]);
         (navigator as any).clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
         await vi.waitFor(() => expect(document.getElementById('ssh-keys-list')!.children.length).toBe(1));
 
         (document.getElementById('ssh-keys-copy') as HTMLButtonElement).click();
@@ -244,11 +214,8 @@ describe('wireSshKeys (agent status formatting)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
         await vi.waitFor(() => expect(mockInvoke).toHaveBeenCalled());
 
         (document.getElementById('ssh-keys-copy') as HTMLButtonElement).click();
@@ -263,11 +230,8 @@ describe('wireSshKeys (agent status formatting)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
         await vi.waitFor(() => expect(document.getElementById('ssh-keys-list')!.children.length).toBe(1));
 
         (document.getElementById('ssh-keys-add') as HTMLButtonElement).click();
@@ -282,11 +246,8 @@ describe('wireSshKeys (agent status formatting)', () => {
             .mockResolvedValueOnce(agentResult(42, { stderr: 'something broke' }))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const statusEl = document.getElementById('ssh-keys-agent-status') as HTMLPreElement;
@@ -299,11 +260,8 @@ describe('wireSshKeys (agent status formatting)', () => {
             .mockResolvedValueOnce(agentResult(42))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const statusEl = document.getElementById('ssh-keys-agent-status') as HTMLPreElement;
@@ -315,11 +273,8 @@ describe('wireSshKeys (agent status formatting)', () => {
         mockInvoke
             .mockRejectedValue(new Error('Connection refused'));
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const statusEl = document.getElementById('ssh-keys-agent-status') as HTMLPreElement;
@@ -344,11 +299,8 @@ describe('wireSshKeys (key list and selection)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([keyCandidate('/home/user/.ssh/id_rsa', 'id_rsa')]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const listEl = document.getElementById('ssh-keys-list')!;
@@ -366,11 +318,8 @@ describe('wireSshKeys (key list and selection)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         const noneEl = document.getElementById('ssh-keys-none')!;
         expect(noneEl.style.display).toBe('');
@@ -381,11 +330,8 @@ describe('wireSshKeys (key list and selection)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([keyCandidate('/home/user/.ssh/id_ed25519', 'id_ed25519')]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const noneEl = document.getElementById('ssh-keys-none')!;
@@ -401,11 +347,8 @@ describe('wireSshKeys (key list and selection)', () => {
                 keyCandidate('/home/user/.ssh/id_ed25519', 'id_ed25519'),
             ]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const listEl = document.getElementById('ssh-keys-list')!;
@@ -425,14 +368,10 @@ describe('wireSshKeys (key list and selection)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         const refreshBtn = document.getElementById('ssh-keys-refresh') as HTMLButtonElement;
-
-        const modal = getModal() as any;
-        await modal.__open();
-
         await vi.waitFor(() => {
             expect(refreshBtn.disabled).toBe(false);
         });
@@ -461,11 +400,8 @@ describe('wireSshKeys (copy to clipboard)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         const copyBtn = document.getElementById('ssh-keys-copy') as HTMLButtonElement;
         copyBtn.click();
@@ -485,11 +421,8 @@ describe('wireSshKeys (copy to clipboard)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([keyCandidate('/home/user/.ssh/id_rsa', 'id_rsa')]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open('/home/user/.ssh/id_rsa');
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal('/home/user/.ssh/id_rsa');
 
         const copyBtn = document.getElementById('ssh-keys-copy') as HTMLButtonElement;
         copyBtn.click();
@@ -514,11 +447,8 @@ describe('wireSshKeys (copy to clipboard)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([keyCandidate('/home/user/.ssh/id_rsa', 'id_rsa')]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open('/home/user/.ssh/id_rsa');
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal('/home/user/.ssh/id_rsa');
 
         const copyBtn = document.getElementById('ssh-keys-copy') as HTMLButtonElement;
         copyBtn.click();
@@ -540,11 +470,8 @@ describe('wireSshKeys (copy to clipboard)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([keyCandidate('C:\\Users\\"test"\\id_rsa', 'id_rsa')]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open('C:\\Users\\"test"\\id_rsa');
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal('C:\\Users\\"test"\\id_rsa');
 
         const copyBtn = document.getElementById('ssh-keys-copy') as HTMLButtonElement;
         copyBtn.click();
@@ -580,11 +507,8 @@ describe('wireSshKeys (add key)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
         const addBtn = await waitForAddEnabled();
 
         addBtn.click();
@@ -601,11 +525,8 @@ describe('wireSshKeys (add key)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open('/home/user/.ssh/id_rsa');
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal('/home/user/.ssh/id_rsa');
         const addBtn = await waitForAddEnabled();
 
         addBtn.click();
@@ -622,11 +543,8 @@ describe('wireSshKeys (add key)', () => {
             .mockResolvedValueOnce([keyCandidate('/home/user/.ssh/id_rsa', 'id_rsa')])
             .mockResolvedValueOnce(agentResult(1, { stderr: 'ssh_askpass_exec: no such file' }));
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open('/home/user/.ssh/id_rsa');
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal('/home/user/.ssh/id_rsa');
         const addBtn = await waitForAddEnabled();
 
         addBtn.click();
@@ -644,11 +562,8 @@ describe('wireSshKeys (add key)', () => {
             .mockResolvedValueOnce([keyCandidate('/home/user/.ssh/id_rsa', 'id_rsa')])
             .mockResolvedValueOnce(agentResult(1, { stderr: 'some other error' }));
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open('/home/user/.ssh/id_rsa');
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal('/home/user/.ssh/id_rsa');
         const addBtn = await waitForAddEnabled();
 
         addBtn.click();
@@ -664,11 +579,8 @@ describe('wireSshKeys (add key)', () => {
             .mockResolvedValueOnce([keyCandidate('/home/user/.ssh/id_rsa', 'id_rsa')])
             .mockRejectedValueOnce(new Error('runtime error'));
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open('/home/user/.ssh/id_rsa');
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal('/home/user/.ssh/id_rsa');
         const addBtn = await waitForAddEnabled();
 
         addBtn.click();
@@ -680,7 +592,7 @@ describe('wireSshKeys (add key)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// wireSshKeys – wiring idempotency and modal __wired guard
+// wireSshKeys – wiring idempotency
 // ---------------------------------------------------------------------------
 
 describe('wireSshKeys (idempotency)', () => {
@@ -688,17 +600,16 @@ describe('wireSshKeys (idempotency)', () => {
         return import('@scripts/features/sshKeys');
     }
 
-    it('does not re-wire if modal.__wired is already set', async () => {
+    it('does not re-wire on repeated calls', async () => {
         mockInvoke
             .mockResolvedValue(agentResult(0))
             .mockResolvedValue([]);
 
-        const { wireSshKeys } = await loadSut();
+        const { wireSshKeys, sshKeysController } = await loadSut();
         wireSshKeys();
         wireSshKeys();
 
-        const modal = getModal() as any;
-        expect(typeof modal.__open).toBe('function');
+        expect(sshKeysController.isWired).toBe(true);
     });
 
     it('does nothing when modal element is missing', async () => {
@@ -769,11 +680,8 @@ describe('wireSshKeys (add key exit code edge cases)', () => {
             .mockResolvedValueOnce([keyCandidate('/home/user/.ssh/id_rsa', 'id_rsa')])
             .mockResolvedValueOnce(agentResult(3));
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open('/home/user/.ssh/id_rsa');
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal('/home/user/.ssh/id_rsa');
         const addBtn = await waitForAddEnabled();
 
         addBtn.click();
@@ -789,11 +697,8 @@ describe('wireSshKeys (add key exit code edge cases)', () => {
             .mockResolvedValueOnce([keyCandidate('/home/user/.ssh/id_rsa', 'id_rsa')])
             .mockResolvedValueOnce(agentResult(3, { stdout: 'keysize mismatch' }));
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open('/home/user/.ssh/id_rsa');
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal('/home/user/.ssh/id_rsa');
         const addBtn = await waitForAddEnabled();
 
         addBtn.click();
@@ -828,11 +733,8 @@ describe('wireSshKeys (refresh with missing elements)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([keyCandidate('/home/user/.ssh/id_rsa', 'id_rsa')]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open('/home/user/.ssh/id_rsa');
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal('/home/user/.ssh/id_rsa');
 
         await vi.waitFor(() => {
             const listEl = document.getElementById('ssh-keys-list')!;
@@ -855,11 +757,8 @@ describe('wireSshKeys (refresh with missing elements)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
-        await modal.__open();
+        const { openSshKeysModal } = await loadSut();
+        await openSshKeysModal();
 
         await vi.waitFor(() => {
             const statusEl = document.getElementById('ssh-keys-agent-status') as HTMLPreElement;
@@ -882,12 +781,9 @@ describe('wireSshKeys (refresh with missing elements)', () => {
             .mockResolvedValueOnce(agentResult(0))
             .mockResolvedValueOnce([]);
 
-        const { wireSshKeys } = await loadSut();
-        wireSshKeys();
-
-        const modal = getModal() as any;
+        const { openSshKeysModal } = await loadSut();
         // Should not throw despite missing status element
-        expect(() => modal.__open()).not.toThrow();
+        expect(() => openSshKeysModal()).not.toThrow();
     });
 });
 
@@ -907,7 +803,7 @@ describe('openSshKeysModal (wired guard)', () => {
 
         const { openSshKeysModal } = await loadSut();
         openSshKeysModal();
-        // Second call should not re-wire (wired=true) and not throw
+        // Second call should not re-wire and not throw
         expect(() => openSshKeysModal()).not.toThrow();
     });
 

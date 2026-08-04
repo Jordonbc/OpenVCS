@@ -6,32 +6,21 @@ import { initOverlayScrollbarsFor, refreshOverlayScrollbarsFor } from "../lib/sc
 import settingsHtml from "@modals/settings.html?raw";
 import cmdHtml from "@modals/commandSheet.html?raw";
 import aboutHtml from "@modals/about.html?raw";
-import { wireSettings } from "../features/settings";
 import repoSettingsHtml from "@modals/repo-settings.html?raw";
-import { wireRepoSettings } from "../features/repoSettings";
 import sshHostkeyHtml from "@modals/ssh-hostkey.html?raw";
 import sshAuthHtml from "@modals/ssh-auth.html?raw";
 import sshKeysHtml from "@modals/ssh-keys.html?raw";
 import newBranchHtml from "@modals/new-branch.html?raw";
-import { wireNewBranch } from "../features/newBranch";
 import renameBranchHtml from "@modals/rename-branch.html?raw";
-import { wireRenameBranch } from "../features/renameBranch";
 import cherryPickHtml from "@modals/cherry-pick.html?raw";
-import { wireCherryPick } from "../features/cherryPick";
 import deleteBranchHtml from "@modals/delete-branch.html?raw";
 import confirmHtml from "@modals/confirm.html?raw";
-import { wireConfirmModal } from "../features/confirmModal";
-import { wireDeleteBranchConfirm } from "../features/deleteBranchConfirm";
 import setUpstreamHtml from "@modals/set-upstream.html?raw";
-import { wireSetUpstream } from "../features/setUpstream";
 import updateHtml from "@modals/update.html?raw";
-import { wireUpdate } from "../features/update";
 import stashConfirmHtml from "@modals/stash-confirm.html?raw";
-import { wireStashConfirm } from "../features/stashConfirm";
 import mergeHtml from "@modals/merge.html?raw";
 import mergeStrategyHtml from "@modals/merge-strategy.html?raw";
 import conflictsSummaryHtml from "@modals/conflicts-summary.html?raw";
-import { wireSshKeys } from "../features/sshKeys";
 import repoSwitchDrawerHtml from "@modals/repoSwitchDrawer.html?raw";
 import errorHtml from "@modals/error.html?raw";
 
@@ -64,6 +53,11 @@ const loaded = new Set<string>();
 function getRoot(): HTMLElement | null {
     return qs<HTMLElement>('#modals-root');
 }
+
+// Per-element close-animation timer and click-to-close wiring (typed
+// replacements for the former ad-hoc per-element animation flags).
+const closeAnimationTimers = new WeakMap<HTMLElement, number>();
+const closeClickWired = new WeakSet<HTMLElement>();
 
 // scroll lock counter (supports multiple modals)
 let openCount = 0;
@@ -98,15 +92,15 @@ function closeWithAnimation(id: string, el: HTMLElement) {
         closeModal(id);
         return;
     }
-    const existing = (el as any).__animatedCloseTimer as number | undefined;
+    const existing = closeAnimationTimers.get(el);
     if (existing) window.clearTimeout(existing);
     el.classList.add("is-closing");
     const delay = id === "repo-switch-drawer" ? 130 : 140;
-    (el as any).__animatedCloseTimer = window.setTimeout(() => {
+    closeAnimationTimers.set(el, window.setTimeout(() => {
         el.classList.remove("is-closing");
+        closeAnimationTimers.delete(el);
         closeModal(id);
-        (el as any).__animatedCloseTimer = undefined;
-    }, delay);
+    }, delay));
 }
 
 export function hydrate(id: string): void {
@@ -128,23 +122,31 @@ export function hydrate(id: string): void {
     root.insertAdjacentHTML("beforeend", html);
     loaded.add(id);
 
-    if (id === "settings-modal") wireSettings();
-    if (id === "repo-settings-modal") wireRepoSettings();
-    if (id === "ssh-hostkey-modal") {
-        // wiring is done by the listener in the sshHostkey feature
-    }
-    if (id === "ssh-keys-modal") wireSshKeys();
-    if (id === "new-branch-modal") wireNewBranch();
-    if (id === "rename-branch-modal") wireRenameBranch();
-    if (id === "cherry-pick-modal") wireCherryPick();
-    if (id === "confirm-modal") wireConfirmModal();
-    if (id === "delete-branch-modal") wireDeleteBranchConfirm();
-    if (id === "set-upstream-modal") wireSetUpstream();
-    if (id === "update-modal") wireUpdate();
-    if (id === "stash-confirm-modal") wireStashConfirm();
-
+    void wireModalFragment(id);
     const inserted = document.getElementById(id);
     if (inserted) initOverlayScrollbarsFor(inserted);
+}
+
+/**
+ * Wires the feature event handlers for a lazily-hydrated modal fragment.
+ * Loaded dynamically so feature modules never create an import cycle with the
+ * modal shell they depend on.
+ */
+async function wireModalFragment(id: string): Promise<void> {
+    switch (id) {
+        case "settings-modal": (await import("../features/settings")).wireSettings(); break;
+        case "repo-settings-modal": (await import("../features/repoSettings")).wireRepoSettings(); break;
+        // ssh-hostkey-modal: wiring is done by the listener in the sshHostkey feature
+        case "ssh-keys-modal": (await import("../features/sshKeys")).wireSshKeys(); break;
+        case "new-branch-modal": (await import("../features/newBranch")).wireNewBranch(); break;
+        case "rename-branch-modal": (await import("../features/renameBranch")).wireRenameBranch(); break;
+        case "cherry-pick-modal": (await import("../features/cherryPick")).wireCherryPick(); break;
+        case "confirm-modal": (await import("../features/confirmModal")).wireConfirmModal(); break;
+        case "delete-branch-modal": (await import("../features/deleteBranchConfirm")).wireDeleteBranchConfirm(); break;
+        case "set-upstream-modal": (await import("../features/setUpstream")).wireSetUpstream(); break;
+        case "update-modal": (await import("../features/update")).wireUpdate(); break;
+        case "stash-confirm-modal": (await import("../features/stashConfirm")).wireStashConfirm(); break;
+    }
 }
 
 export function openModal(id: string): void {
@@ -156,24 +158,24 @@ export function openModal(id: string): void {
 
     if (!el.hasAttribute("aria-hidden")) el.setAttribute("aria-hidden", "true");
     el.classList.remove("is-closing");
-    const existing = (el as any).__animatedCloseTimer as number | undefined;
+    const existing = closeAnimationTimers.get(el);
     if (existing) {
         window.clearTimeout(existing);
-        (el as any).__animatedCloseTimer = undefined;
+        closeAnimationTimers.delete(el);
     }
     const wasHidden = setModalHidden(el, false);
     if (wasHidden) lockScroll();
     refreshOverlayScrollbarsFor(el);
 
     // Click-to-close once
-    if (!(el as any).__closeWired) {
+    if (!closeClickWired.has(el)) {
         el.addEventListener("click", (evt) => {
             const t = evt.target as HTMLElement;
             const isBackdrop = t.classList?.contains("backdrop");
             const wantsClose = isBackdrop || !!t.closest("[data-close]");
             if (wantsClose) closeWithAnimation(id, el);
         });
-        (el as any).__closeWired = true;
+        closeClickWired.add(el);
     }
 }
 
@@ -191,10 +193,10 @@ export function closeAllModals(): void {
         document.querySelectorAll<HTMLElement>(".modal[aria-hidden='false']")
     );
     for (const el of openModals) {
-        const existing = (el as any).__animatedCloseTimer as number | undefined;
+        const existing = closeAnimationTimers.get(el);
         if (existing) {
             window.clearTimeout(existing);
-            (el as any).__animatedCloseTimer = undefined;
+            closeAnimationTimers.delete(el);
         }
         el.classList.remove("is-closing");
         setModalHidden(el, true);
