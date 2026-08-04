@@ -1,12 +1,13 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tauri::{AppHandle, Emitter, Manager, Runtime, State, async_runtime};
 
 use crate::core::models::VcsEvent;
-use crate::core::{OnEvent, Vcs};
+use crate::core::{BackendId, OnEvent, Vcs};
 use crate::output_log::{OutputLevel, OutputLogEntry};
 use crate::plugin_vcs_backends;
 use crate::repo::Repo;
@@ -97,6 +98,52 @@ fn begin_repo_task() -> RepoTaskBusyGuard {
 /// Converts a backend task label and error into a consistent user-facing message.
 fn format_task_failure(label: &'static str, error: &str) -> String {
     format!("{label} task failed: {error}")
+}
+
+/// Opens a repository through a plugin backend and installs it into shared state.
+///
+/// Runs the blocking backend open on the thread pool, maps join failures with
+/// `task_label`, and stores the resulting repository via
+/// [`AppState::set_current_repo`].
+///
+/// # Parameters
+/// - `state`: Shared application state.
+/// - `path`: Repository working-tree path.
+/// - `backend_id`: Backend identifier to open through.
+/// - `task_label`: Label used to prefix join (task) failure messages.
+/// - `map_open_error`: Formats the stringified backend open error for the caller.
+///
+/// # Returns
+/// - `Ok(())` when the repository is open and stored.
+/// - `Err(String)` when the blocking task or the backend open fails.
+pub(crate) async fn open_repo_and_store<F>(
+    state: &AppState,
+    path: &Path,
+    backend_id: BackendId,
+    task_label: &'static str,
+    map_open_error: F,
+) -> Result<(), String>
+where
+    F: FnOnce(&str) -> String,
+{
+    let open_path = path.to_path_buf();
+    let cfg = state.config();
+    let runtime_manager = state.plugin_runtime();
+    let handle = async_runtime::spawn_blocking(move || {
+        plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
+            runtime_manager.as_ref(),
+            &cfg,
+            backend_id,
+            Path::new(&open_path),
+        )
+    })
+    .await
+    .map_err(|error| format_task_failure(task_label, &error.to_string()))?
+    .map_err(|error| map_open_error(&error.to_string()))?;
+
+    let repo = Arc::new(Repo::new(handle));
+    state.set_current_repo(repo);
+    Ok(())
 }
 
 /// Converts a VCS event into the output-log level and message sent to the UI.

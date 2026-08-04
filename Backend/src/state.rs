@@ -179,11 +179,7 @@ impl AppState {
                 backend_id: backend_id.clone(),
             },
         );
-        let limit = self.config.read().ux.recents_limit as usize;
-        let max_items = if limit == 0 { MAX_RECENTS } else { limit };
-        if r.len() > max_items {
-            r.truncate(max_items);
-        }
+        self.apply_recents_limit(&mut r);
 
         debug!(
             "AppState: recents -> [{}]",
@@ -197,6 +193,21 @@ impl AppState {
         if let Err(e) = save_recents_to_disk(&r.clone()) {
             // clone small vec
             log::warn!("AppState: failed to persist recents: {}", e);
+        }
+    }
+
+    /// Applies the configured recents cap to an MRU list in place.
+    ///
+    /// # Parameters
+    /// - `recents`: Recent-entries list to truncate.
+    ///
+    /// # Returns
+    /// - `()`.
+    fn apply_recents_limit(&self, recents: &mut Vec<RecentEntry>) {
+        let limit = self.config.read().ux.recents_limit as usize;
+        let max_items = if limit == 0 { MAX_RECENTS } else { limit };
+        if recents.len() > max_items {
+            recents.truncate(max_items);
         }
     }
 
@@ -348,12 +359,8 @@ impl AppState {
     /// # Returns
     /// - `()`.
     fn enforce_recents_limit_and_persist(&self) {
-        let limit = self.config.read().ux.recents_limit as usize;
-        let max_items = if limit == 0 { MAX_RECENTS } else { limit };
         let mut r = self.recents.write();
-        if r.len() > max_items {
-            r.truncate(max_items);
-        }
+        self.apply_recents_limit(&mut r);
         if let Err(e) = save_recents_to_disk(&r.clone()) {
             log::warn!(
                 "AppState: failed to persist recents after settings change: {}",

@@ -4,7 +4,8 @@ use log::warn;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fs, path::Path};
 
-use crate::plugins;
+use crate::plugin_manifest::{ManifestIdentity, read_manifest_file};
+use crate::plugins::{self, clean_opt};
 
 const MANIFEST_NAME: &str = "theme.json";
 
@@ -91,6 +92,15 @@ struct RawThemeManifest {
     scripts: Vec<String>,
 }
 
+impl ManifestIdentity for RawThemeManifest {
+    fn manifest_id(&self) -> &str {
+        &self.id
+    }
+    fn manifest_name(&self) -> &str {
+        &self.name
+    }
+}
+
 #[derive(Debug, Default, Deserialize)]
 struct RawThemeMarkup {
     #[serde(default, deserialize_with = "string_or_vec")]
@@ -175,24 +185,6 @@ where
     }
 
     deserializer.deserialize_any(StringOrVecVisitor)
-}
-
-/// Normalizes an optional string by trimming and dropping empties.
-///
-/// # Parameters
-/// - `value`: Optional string.
-///
-/// # Returns
-/// - Trimmed non-empty value or `None`.
-fn clean_opt(value: Option<String>) -> Option<String> {
-    value.and_then(|v| {
-        let trimmed = v.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    })
 }
 
 /// Normalizes appearance mode values to `light|dark|both`.
@@ -286,7 +278,7 @@ pub fn list_themes() -> Vec<ThemeSummary> {
     seen.insert(DEFAULT_THEME_ID.to_string());
 
     for theme_dir in plugins::plugin_theme_dirs() {
-        match read_manifest_from_directory(&theme_dir.path) {
+        match read_theme_manifest(&theme_dir.path) {
             Ok(manifest) => {
                 let theme_id = manifest.id.trim();
                 if theme_id.is_empty() {
@@ -353,7 +345,7 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
     }
 
     for theme_dir in plugins::plugin_theme_dirs() {
-        match read_manifest_from_directory(&theme_dir.path) {
+        match read_theme_manifest(&theme_dir.path) {
             Ok(manifest) => {
                 let theme_id = manifest.id.trim();
                 let namespaced_id = namespaced_plugin_theme_id(&theme_dir.plugin_id, theme_id);
@@ -365,7 +357,6 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
                         Some(theme_dir.plugin_id.clone()),
                     );
                 }
-
             }
             Err(err) => warn!(
                 "themes: failed to read {}: {}",
@@ -378,7 +369,7 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
     Err(format!("theme `{}` not found", requested))
 }
 
-/// Reads and validates a theme manifest from a directory.
+/// Reads and validates a theme manifest from a theme directory.
 ///
 /// # Parameters
 /// - `path`: Theme directory path.
@@ -386,30 +377,11 @@ pub fn load_theme(id: &str) -> Result<ThemePayload, String> {
 /// # Returns
 /// - `Ok(RawThemeManifest)` parsed manifest.
 /// - `Err(String)` when file is missing/invalid.
-fn read_manifest_from_directory(path: &Path) -> Result<RawThemeManifest, String> {
-    let manifest_path = path.join(MANIFEST_NAME);
-    let text = match fs::read_to_string(&manifest_path) {
-        Ok(text) => text,
-        Err(err) => {
-            if err.kind() == std::io::ErrorKind::NotFound {
-                return Err(format!(
-                    "theme {} is missing {MANIFEST_NAME}",
-                    path.display()
-                ));
-            }
-            return Err(format!("read {}: {}", manifest_path.display(), err));
-        }
-    };
-
-    let manifest: RawThemeManifest = serde_json::from_str(&text)
-        .map_err(|err| format!("parse manifest in {}: {}", path.display(), err))?;
-    if manifest.id.trim().is_empty() {
-        return Err(format!("theme {} has an empty id", path.display()));
-    }
-    if manifest.name.trim().is_empty() {
-        return Err(format!("theme {} has an empty name", path.display()));
-    }
-    Ok(manifest)
+fn read_theme_manifest(path: &Path) -> Result<RawThemeManifest, String> {
+    read_manifest_file(path, MANIFEST_NAME, "theme", |text| {
+        serde_json::from_str(text)
+            .map_err(|err| format!("parse manifest in {}: {err}", path.display()))
+    })
 }
 
 /// Builds a complete theme payload from manifest and on-disk assets.

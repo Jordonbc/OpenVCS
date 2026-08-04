@@ -3,7 +3,7 @@
 //! Filesystem-backed installed plugin store.
 
 use crate::logging::LogTimer;
-use crate::plugin_manifest::has_package_manifest;
+use crate::plugin_manifest::{has_package_manifest, read_openvcs_manifest_from_dir};
 use crate::plugin_paths::{built_in_plugin_dirs, ensure_dir, plugins_dir};
 use log::{info, trace, warn};
 use std::collections::{BTreeMap, HashSet};
@@ -13,10 +13,10 @@ use std::path::{Path, PathBuf};
 use super::types::{
     ApprovalState, CurrentPointer, INVALID_PLUGIN_ID, InstalledPlugin, InstalledPluginComponents,
     InstalledPluginIndex, InstalledPluginSourceMetadata, InstalledPluginVersion, MODULE,
-    ModuleComponent, ModuleVcsBackend, VcsBackendProvide, acquire_plugin_store_write_lock,
-    built_in_plugin_ids, copy_directory_recursive, derive_install_version, normalize_capabilities,
-    normalize_exec, normalize_plugin_id, now_unix_ms, platform_exec_name,
-    read_manifest_from_plugin_dir, read_plugin_source_metadata, sha256_hex_directory,
+    ModuleComponent, ModuleVcsBackend, PluginManifest, VcsBackendProvide,
+    acquire_plugin_store_write_lock, built_in_plugin_ids, copy_directory_recursive,
+    derive_install_version, normalize_capabilities, normalize_exec, normalize_plugin_id,
+    now_unix_ms, platform_exec_name, read_plugin_source_metadata, sha256_hex_directory,
     validate_entrypoint, write_plugin_source_metadata,
 };
 
@@ -49,7 +49,7 @@ impl PluginBundleStore {
         auto_approve: bool,
     ) -> Result<InstalledPlugin, String> {
         let _timer = LogTimer::new(MODULE, "install_prepared_plugin_dir");
-        let manifest = read_manifest_from_plugin_dir(source_dir)?;
+        let manifest = read_openvcs_manifest_from_dir::<PluginManifest>(source_dir)?;
         if manifest.functions.is_some() {
             return Err(
                 "manifest uses unsupported field 'functions'; use module.exec only".to_string(),
@@ -362,7 +362,7 @@ impl PluginBundleStore {
         let Some(version_dir) = self.get_current_dir(plugin_id)? else {
             return Ok(None);
         };
-        let manifest = read_manifest_from_plugin_dir(&version_dir)?;
+        let manifest = read_openvcs_manifest_from_dir::<PluginManifest>(&version_dir)?;
         if manifest.functions.is_some() {
             return Err(
                 "manifest uses unsupported field 'functions'; use module.exec only".to_string(),

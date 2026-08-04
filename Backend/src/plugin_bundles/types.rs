@@ -11,6 +11,8 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
+use crate::plugin_manifest::{ManifestIdentity, PackageJsonTop, read_openvcs_manifest_from_dir};
+
 pub(crate) const MODULE: &str = "plugin_bundles";
 pub(crate) const INVALID_PLUGIN_ID: &str = "plugin id is empty";
 /// File name used for plugin source metadata.
@@ -139,6 +141,20 @@ pub struct PluginManifest {
     pub module: Option<PluginManifestModule>,
     #[serde(default)]
     pub functions: Option<serde_json::Value>,
+}
+
+impl ManifestIdentity for PluginManifest {
+    fn manifest_id(&self) -> &str {
+        &self.id
+    }
+    fn manifest_name(&self) -> &str {
+        self.name.as_deref().unwrap_or("")
+    }
+    fn apply_package_json_fallbacks(&mut self, top: &PackageJsonTop) {
+        if self.version.is_none() {
+            self.version = top.version.clone();
+        }
+    }
 }
 
 /// Installed VCS backend metadata resolved from a plugin module.
@@ -296,21 +312,6 @@ pub(crate) fn write_plugin_source_metadata(
         .map_err(|e| format!("write {}: {e}", metadata_path.display()))
 }
 
-/// Reads a plugin manifest from a prepared plugin directory, falling back to top-level
-/// package.json fields when the `openvcs` block omits them.
-pub(crate) fn read_manifest_from_plugin_dir(plugin_dir: &Path) -> Result<PluginManifest, String> {
-    let mut manifest: PluginManifest = crate::plugin_manifest::read_openvcs_manifest(plugin_dir)?;
-
-    // Fall back to top-level version when openvcs.version is absent.
-    if manifest.version.is_none()
-        && let Ok(top) = crate::plugin_manifest::read_package_json_top(plugin_dir)
-    {
-        manifest.version = top.version;
-    }
-
-    Ok(manifest)
-}
-
 /// Chooses an install version string from manifest version or content hash.
 pub(crate) fn derive_install_version(manifest: &PluginManifest, bundle_sha256: &str) -> String {
     manifest
@@ -402,7 +403,7 @@ pub fn built_in_plugin_ids() -> &'static HashSet<String> {
 fn read_built_in_plugin_ids() -> HashSet<String> {
     let mut out = HashSet::new();
     for plugin_dir in crate::plugin_paths::built_in_plugin_dirs() {
-        let manifest = match read_manifest_from_plugin_dir(&plugin_dir) {
+        let manifest = match read_openvcs_manifest_from_dir::<PluginManifest>(&plugin_dir) {
             Ok(manifest) => manifest,
             Err(err) => {
                 warn!(

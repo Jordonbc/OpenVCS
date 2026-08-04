@@ -3,7 +3,7 @@
 
 use super::{
     clean_opt, clean_tags, discover_theme_dirs, encode_base64, icon_mime_for_path,
-    manifest_to_summary, percent_encode_uri_component, read_manifest_from_directory,
+    manifest_to_summary, percent_encode_uri_component, resolve_plugin_manifest,
     resolve_plugin_dir, PluginOrigin, RawPluginManifest,
 };
 use std::fs;
@@ -70,14 +70,14 @@ fn rejects_empty_manifest_fields() {
         r#"{"openvcs":{"id":"","name":"Demo"}}"#,
     )
     .expect("write invalid package manifest");
-    assert!(read_manifest_from_directory(dir.path()).is_err());
+    assert!(resolve_plugin_manifest(dir.path()).is_err());
 
     fs::write(
         dir.path().join("package.json"),
         r#"{"openvcs":{"id":"demo","name":""}}"#,
     )
     .expect("write invalid package manifest");
-    assert!(read_manifest_from_directory(dir.path()).is_err());
+    assert!(resolve_plugin_manifest(dir.path()).is_err());
 }
 
 #[test]

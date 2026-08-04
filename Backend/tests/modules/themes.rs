@@ -1,11 +1,11 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use super::*;
+use crate::plugins::clean_opt;
 use serde::Deserialize;
 use serde_json::json;
 use std::{fs, path::Path};
 use tempfile::tempdir;
-
 #[derive(Debug, Deserialize)]
 struct StringOrVecHarness {
     #[serde(deserialize_with = "string_or_vec")]
@@ -67,7 +67,7 @@ fn string_or_vec_accepts_string_or_sequence() {
 fn manifest_reading_reports_missing_manifest() {
     let dir = tempdir().expect("create temp dir");
 
-    let err = read_manifest_from_directory(dir.path()).expect_err("missing manifest");
+    let err = read_theme_manifest(dir.path()).expect_err("missing manifest");
 
     assert!(err.contains("missing theme.json"));
 }
@@ -100,7 +100,7 @@ fn build_theme_payload_from_directory_loads_assets() {
     write_file(dir.path().join("body.html"), "<div id=\"theme\"></div>\n");
     write_file(dir.path().join("script.js"), "console.log('theme');\n");
 
-    let manifest = read_manifest_from_directory(dir.path()).expect("read manifest");
+    let manifest = read_theme_manifest(dir.path()).expect("read manifest");
     let payload = build_theme_payload_from_directory(
         dir.path(),
         manifest,
@@ -139,7 +139,7 @@ fn build_theme_payload_from_directory_keeps_builtin_ids() {
     );
     write_file(dir.path().join("base.css"), "body { color: green; }\n");
 
-    let manifest = read_manifest_from_directory(dir.path()).expect("read manifest");
+    let manifest = read_theme_manifest(dir.path()).expect("read manifest");
     let payload = build_theme_payload_from_directory(
         dir.path(),
         manifest,

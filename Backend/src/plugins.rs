@@ -3,7 +3,10 @@
 use crate::plugin_bundles::{
     InstalledPluginSourceMetadata, PluginBundleStore, read_plugin_source_metadata,
 };
-use crate::plugin_manifest::{has_package_manifest, read_openvcs_manifest, read_package_json_top};
+use crate::plugin_manifest::{
+    ManifestIdentity, PackageJsonTop, has_package_manifest, read_openvcs_manifest_from_dir,
+    validate_manifest_identity,
+};
 use crate::plugin_paths::{ensure_dir, plugins_dir};
 use log::{debug, warn};
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
@@ -110,7 +113,7 @@ fn is_false(v: &bool) -> bool {
 ///
 /// # Returns
 /// - Trimmed non-empty string or `None`.
-fn clean_opt(value: Option<String>) -> Option<String> {
+pub(crate) fn clean_opt(value: Option<String>) -> Option<String> {
     value.and_then(|v| {
         let trimmed = v.trim();
         if trimmed.is_empty() {
@@ -248,7 +251,7 @@ impl PluginCache {
                         if !path.is_dir() {
                             continue;
                         }
-                        if let Ok((resolved, manifest)) = read_manifest_from_directory(&path) {
+                        if let Ok((resolved, manifest)) = resolve_plugin_manifest(&path) {
                             let norm = manifest.id.trim().to_ascii_lowercase();
                             if !seen.insert(norm.clone()) {
                                 continue;
@@ -398,38 +401,39 @@ fn resolve_plugin_dir(path: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Reads and validates plugin manifest from a directory.
+impl ManifestIdentity for RawPluginManifest {
+    fn manifest_id(&self) -> &str {
+        &self.id
+    }
+    fn manifest_name(&self) -> &str {
+        &self.name
+    }
+    fn apply_package_json_fallbacks(&mut self, top: &PackageJsonTop) {
+        if self.description.is_none() {
+            self.description = top.description.clone();
+        }
+        if self.version.is_none() {
+            self.version = top.version.clone();
+        }
+        if self.author.is_none() {
+            self.author = top.author.clone();
+        }
+    }
+}
+
+/// Resolves a plugin directory and reads its manifest, validating identity.
 ///
 /// # Parameters
-/// - `path`: Plugin directory.
+/// - `path`: Candidate plugin directory (flat or versioned layout).
 ///
 /// # Returns
 /// - `Ok((PathBuf, RawPluginManifest))` resolved directory and manifest.
 /// - `Err(String)` when missing or invalid.
-fn read_manifest_from_directory(path: &Path) -> Result<(PathBuf, RawPluginManifest), String> {
+fn resolve_plugin_manifest(path: &Path) -> Result<(PathBuf, RawPluginManifest), String> {
     let resolved = resolve_plugin_dir(path).unwrap_or_else(|| path.to_path_buf());
-    let mut manifest: RawPluginManifest = read_openvcs_manifest(&resolved)
+    let manifest = read_openvcs_manifest_from_dir::<RawPluginManifest>(&resolved)
         .map_err(|err| format!("parse plugin manifest in {}: {}", resolved.display(), err))?;
-
-    // Fall back to top-level package.json fields when the openvcs block omits them.
-    if let Ok(top) = read_package_json_top(&resolved) {
-        if manifest.description.is_none() {
-            manifest.description = top.description;
-        }
-        if manifest.version.is_none() {
-            manifest.version = top.version;
-        }
-        if manifest.author.is_none() {
-            manifest.author = top.author;
-        }
-    }
-
-    if manifest.id.trim().is_empty() {
-        return Err(format!("plugin {} has an empty id", resolved.display()));
-    }
-    if manifest.name.trim().is_empty() {
-        return Err(format!("plugin {} has an empty name", resolved.display()));
-    }
+    validate_manifest_identity(&manifest, &resolved, "plugin")?;
     Ok((resolved, manifest))
 }
 
@@ -777,7 +781,7 @@ pub fn plugin_theme_dirs() -> Vec<PluginThemeDir> {
             if !plugin_dir.is_dir() {
                 continue;
             }
-            let (resolved, manifest) = match read_manifest_from_directory(&plugin_dir) {
+            let (resolved, manifest) = match resolve_plugin_manifest(&plugin_dir) {
                 Ok(m) => m,
                 Err(_) => continue,
             };

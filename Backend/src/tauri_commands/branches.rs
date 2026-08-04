@@ -10,11 +10,10 @@ use crate::core::{BackendId, Vcs};
 
 use crate::plugin_runtime::settings_store;
 use crate::plugin_vcs_backends;
+use crate::settings::DEFAULT_MERGE_TEMPLATE;
 use crate::state::AppState;
 
 use super::{current_repo_or_err, default_remote_name, run_repo_task};
-
-const DEFAULT_MERGE_TEMPLATE: &str = "Merged branch '{branch:source}' into '{branch:target}'";
 
 /// Extracts repository owner/user segment from remote URL.
 ///

@@ -7,6 +7,11 @@ use serde::{Deserialize, Serialize};
 /// Ships-with default backend, overridable by config.
 pub const DEFAULT_BACKEND_ID: &str = "git";
 
+/// Default merge-commit message template used when no override is set.
+///
+/// Supported placeholders: {branch:source}, {branch:target}, {repo:name}, {repo:username}
+pub const DEFAULT_MERGE_TEMPLATE: &str = "Merged branch '{branch:source}' into '{branch:target}'";
+
 /// Serde helper default for `true`.
 ///
 /// # Returns
@@ -165,8 +170,7 @@ impl Default for Vcs {
             fetch_on_focus: true,
             allow_hooks: HookPolicy::Ask,
             respect_core_autocrlf: true,
-            merge_commit_message_template: "Merged branch '{branch:source}' into '{branch:target}'"
-                .into(),
+            merge_commit_message_template: DEFAULT_MERGE_TEMPLATE.to_string(),
         }
     }
 }

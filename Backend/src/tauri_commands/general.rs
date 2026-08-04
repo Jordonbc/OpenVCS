@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use log::{info, warn};
 use tauri::{Emitter, Manager, Runtime, State, Window, async_runtime};
@@ -11,13 +10,12 @@ use tauri_plugin_updater::UpdaterExt;
 
 use crate::core::BackendId;
 use crate::plugin_vcs_backends;
-use crate::repo::Repo;
 use crate::state::AppState;
 use crate::utilities::utilities;
 use crate::validate;
 
 use super::progress_bridge;
-use super::shared::repo_task_active;
+use super::shared::{open_repo_and_store, repo_task_active};
 
 const WIKI_URL: &str = "https://github.com/jordonbc/OpenVCS/wiki";
 
@@ -192,33 +190,17 @@ pub async fn add_repo_internal<R: Runtime>(
         return Err(m);
     }
 
-    let open_path = path.clone();
     let backend_label = backend_id.as_ref().to_string();
-    let backend_id_for_task = backend_id.clone();
-    let cfg = state.config();
-    let runtime_manager = state.plugin_runtime();
-    let handle = async_runtime::spawn_blocking(move || {
-        plugin_vcs_backends::open_repo_via_plugin_vcs_backend(
-            runtime_manager.as_ref(),
-            &cfg,
-            backend_id_for_task,
-            Path::new(&open_path),
-        )
-    })
-    .await
-    .map_err(|e| format!("add_repo task failed: {e}"))?
-    .map_err(|e| {
-        let m = format!("Failed to open repo with backend `{backend_label}`: {e}");
+    open_repo_and_store(&state, Path::new(&path), backend_id, "add_repo", |error| {
+        let m = format!("Failed to open repo with backend `{backend_label}`: {error}");
         warn!("{m}");
         m
-    })?;
-
-    let repo = Arc::new(Repo::new(handle));
-    state.set_current_repo(repo);
+    })
+    .await?;
 
     let payload = RepoSelectedPayload {
         path: path.clone(),
-        backend: backend_id.as_ref().to_owned(),
+        backend: backend_label.clone(),
     };
     if let Err(e) = window.app_handle().emit("repo:selected", &payload) {
         warn!("add_repo: failed to emit repo:selected: {}", e);
@@ -226,7 +208,7 @@ pub async fn add_repo_internal<R: Runtime>(
 
     info!(
         "add_repo: repository opened and stored (backend = {})",
-        backend_id
+        backend_label
     );
     Ok(())
 }

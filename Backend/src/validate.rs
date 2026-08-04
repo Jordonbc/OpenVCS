@@ -136,12 +136,6 @@ pub fn validate_clone_input(url: String, dest: String) -> Validation {
             reason: Some("Destination must be an absolute path".into()),
         };
     }
-    if !looks_like_path(&dest) {
-        return Validation {
-            ok: false,
-            reason: Some("Destination must be an absolute path".into()),
-        };
-    }
     let (norm, exists, is_dir) = normalize_and_probe(&dest);
     if !exists {
         // Allow non-existent parent? Keep strict: require parent exists.
