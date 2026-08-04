@@ -27,6 +27,7 @@ const mockApplyCommitSummaryRestriction = vi.fn();
 const mockApplyGpuAccelerationPreference = vi.fn();
 const mockSelectThemePack = vi.fn();
 const mockGetActiveThemeId = vi.fn(() => 'default-light');
+const mockReapplyThemeFromSettings = vi.fn();
 const mockApplyAnimationPreference = vi.fn();
 const mockModeForTheme = vi.fn(() => 'light' as const);
 const mockRebuildThemePackOptions = vi.fn();
@@ -84,6 +85,7 @@ vi.mock('@scripts/themes', () => ({
     DEFAULT_DARK_THEME_ID: 'default-dark',
     DEFAULT_THEME_ID: 'default',
     getActiveThemeId: mockGetActiveThemeId,
+    reapplyThemeFromSettings: mockReapplyThemeFromSettings,
     selectThemePack: mockSelectThemePack,
 }));
 vi.mock('@scripts/plugins', () => ({
@@ -155,6 +157,7 @@ beforeEach(() => {
     mockApplyGpuAccelerationPreference.mockReset();
     mockSelectThemePack.mockReset();
     mockGetActiveThemeId.mockReturnValue('default-light');
+    mockReapplyThemeFromSettings.mockReset();
     mockApplyAnimationPreference.mockReset();
     mockModeForTheme.mockReturnValue('light');
     mockRebuildThemePackOptions.mockReset();

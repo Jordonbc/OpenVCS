@@ -3,7 +3,8 @@
 import { TAURI } from './lib/tauri';
 import { notify } from './lib/notify';
 import { getRegisteredThemePayload, getRegisteredThemeSummaries } from './plugins';
-import type { ThemePayload, ThemeSummary } from './types';
+import { setTheme } from './ui/layout';
+import type { GlobalSettings, ThemePayload, ThemeSummary } from './types';
 
 export const DEFAULT_THEME_ID = 'default';
 export const DEFAULT_LIGHT_THEME_ID = 'default-light';
@@ -459,4 +460,20 @@ export async function selectThemePack(
 /** Reapplies active theme assets for a new appearance mode. */
 export function setAppearanceMode(mode: 'system' | 'light' | 'dark') {
     applyModeStyles(mode);
+}
+
+/**
+ * Reapplies the persisted theme (mode + pack) from a settings snapshot.
+ * Shared by the settings save handler so theme application stays in one place.
+ * @param general - The `general` section of the saved global settings
+ */
+export async function reapplyThemeFromSettings(general: GlobalSettings['general'] | undefined): Promise<void> {
+    const theme = (general?.theme || 'system') as 'system' | 'light' | 'dark';
+    const pack = String(general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
+    setTheme(theme);
+    try {
+        await selectThemePack(pack, { silent: true, mode: theme });
+    } catch {
+        // ignore: selectThemePack already falls back to the default theme
+    }
 }

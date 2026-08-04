@@ -11,6 +11,7 @@ import { setTheme, applyCommitSummaryRestriction, applyGpuAccelerationPreference
 import {
     DEFAULT_LIGHT_THEME_ID,
     getActiveThemeId,
+    reapplyThemeFromSettings,
     selectThemePack,
 } from '../themes';
 import { invokePluginAction, applyPluginSettingsSections } from '../plugins';
@@ -244,10 +245,7 @@ export const settingsModalController = new ModalController<void>("settings-modal
 
             modal.dataset.currentCfg = JSON.stringify(next);
 
-            const theme = (next.general?.theme || 'system') as 'system' | 'light' | 'dark';
-            const pack = String(next.general?.theme_pack || DEFAULT_LIGHT_THEME_ID);
-            setTheme(theme);
-            try { await selectThemePack(pack, { silent: true, mode: theme }); } catch {}
+            await reapplyThemeFromSettings(next.general);
             try {
                 applyAppearanceCssVars({
                     tabWidth: next?.diff?.tab_width,

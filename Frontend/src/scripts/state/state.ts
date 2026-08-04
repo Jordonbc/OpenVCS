@@ -46,13 +46,21 @@ export type HunkNodeRefs = {
     lineCheckboxes: Record<number, HTMLInputElement>;
 };
 
-/** Global application state. */
-export const state = {
+// ---------------------------------------------------------------------------
+// Internal state slices.
+//
+// The exported `state` facade below is the single public surface consumed by
+// feature modules and tests. The slices group the god-object fields by
+// concern (repository data, selection/diff state, UI preferences) without
+// changing the public shape.
+// ---------------------------------------------------------------------------
+
+/** Repository snapshot and branch metadata mirrored from the backend. */
+const repoState = {
     /** Latest repository snapshot mirrored from Rust. */
     repoSnapshotCache: null as RepoSnapshotCache | null,
     hasRepo: false,                 // backend truth (set after open/clone/add)
     branch: '' as string,           // current branch name
-    branchLabel: '' as string,      // display label (e.g. Detached (abc1234))
     branches: [] as Branch[],       // list of branches
     files: [] as FileStatus[],      // working tree status
     commits: [] as CommitItem[],    // recent commits
@@ -64,13 +72,13 @@ export const state = {
     branchOnRemote: false as boolean, // current branch has a tracking reference on a remote
     currentUpstream: null as string | null, // resolved upstream ref for the current branch
     aheadIds: new Set<string>() as Set<string>, // IDs of commits ahead of upstream
-    conflictStatuses: new Set<string>() as Set<string>,
-    mergeInProgress: false as boolean,
-    seenConflicts: new Set<string>() as Set<string>,
+};
+
+/** Diff/selection state for the current file and the multi-file picker. */
+const selectionState = {
     defaultSelectAll: true as boolean, // by default select all files/hunks until user toggles
     selectionImplicitAll: true as boolean, // true when select-all was auto-applied (no manual picks yet)
     diffDirty: true as boolean,
-    // Selection state
     selectedFiles: new Set<string>(),
     currentFile: '' as string,
     currentDiff: [] as string[],
@@ -83,8 +91,25 @@ export const state = {
     diffSelectedFiles: new Set<string>(), // files included in multi-file diff viewer
     currentDiffMeta: null as DiffMeta | null,
     currentDiffHunkNodes: new Map<number, HunkNodeRefs>(),
-    // Optional: track the current repo path if you want to show it anywhere
-    // repoPath: '' as string,
+};
+
+/** UI-only preferences and transient flags. */
+const uiPrefs = {
+    branchLabel: '' as string,      // display label (e.g. Detached (abc1234))
+    mergeInProgress: false as boolean,
+    conflictStatuses: new Set<string>() as Set<string>,
+    seenConflicts: new Set<string>() as Set<string>,
+};
+
+/**
+ * Global application state facade.
+ * Single public surface: exposes the exact same fields as before by merging
+ * the internal slices. Feature modules and tests keep reading `state.*`.
+ */
+export const state = {
+    ...repoState,
+    ...selectionState,
+    ...uiPrefs,
 };
 
 /** True iff a repository is selected. Always boolean. */

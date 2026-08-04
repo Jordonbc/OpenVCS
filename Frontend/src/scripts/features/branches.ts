@@ -3,7 +3,6 @@
 // src/scripts/features/branches.ts
 import { qs } from '../lib/dom';
 import { TAURI } from '../lib/tauri';
-import { confirmBool } from '../lib/confirm';
 import { notify } from '../lib/notify';
 import { refreshAll } from '../lib/async';
 import { refreshOverlayScrollbarsFor } from '../lib/scrollbars';
@@ -13,11 +12,8 @@ import { openRenameBranch } from './renameBranch';
 import { openSetUpstream } from './setUpstream';
 import { confirmDeleteBranch } from './deleteBranchConfirm';
 import { buildCtxMenu, CtxItem } from '../lib/menu';
-import { promptMergeStrategy } from './mergeStrategy';
-import { renderList, hydrateStatus } from './repo';
-import { setTab } from '../ui/layout';
-import type { ConflictDetails, FileStatus } from '../types';
-import { openConflictsSummary } from './conflicts';
+import { mergeBranchWithStrategy } from './mergeStrategy';
+import { renderList } from './repo';
 import { getPluginContextMenuItems, runHook, runPluginAction } from '../plugins';
 
 type BranchKind = { type?: string; remote?: string };
@@ -212,46 +208,7 @@ export function bindBranchUI() {
         items.push({ label: 'Checkout', action: async () => {
             await checkoutBranch(name);
         }});
-        items.push({ label: 'Merge into current…', action: async () => {
-            if (name === cur) { notify('Cannot merge a branch into itself'); return; }
-            const strategies = await TAURI.invoke<string[]>('vcs_merge_strategies').catch(() => []);
-            const hasAdvanced = strategies.some(s => s === 'squash' || s === 'rebase');
-            const strategy = hasAdvanced ? await promptMergeStrategy(name, cur, strategies) : (await confirmBool(`Merge '${name}' into '${cur}'?`) ? 'merge' : null);
-            if (!strategy) return;
-
-            const statusEl = document.getElementById('status');
-            const setBusy = (msg: string) => {
-                if (statusEl) { statusEl.textContent = msg; statusEl.classList.add('busy'); }
-            };
-            const clearBusy = () => {
-                if (statusEl) statusEl.classList.remove('busy');
-            };
-
-            try {
-                setBusy('Merging…');
-                await TAURI.invoke('vcs_merge_branch', { name, strategy });
-                clearBusy();
-                notify(`Merged branch '${name}' into '${cur}'`);
-                await refreshAll([renderList, loadBranches]);
-            } catch (e) {
-                clearBusy();
-                const msg = String(e || '');
-                const looksLikeConflict =
-                    /CONFLICT/i.test(msg) ||
-                    /Automatic merge failed/i.test(msg) ||
-                    /fix conflicts and then commit/i.test(msg);
-
-                if (looksLikeConflict) {
-                    notify('Merge conflict detected');
-                    await hydrateStatus();
-                    setTab('changes');
-                    await openConflictsSummary((state.files || []) as FileStatus[]);
-                    return;
-                }
-
-                notify(`Merge failed${msg ? `: ${msg}` : ''}`);
-            }
-        }});
+        items.push({ label: 'Merge into current…', action: () => mergeBranchWithStrategy(name, cur, () => refreshAll([renderList, loadBranches])) });
         if (kind !== 'remote') {
             items.push({ label: '---' });
             items.push({ label: 'Set upstream…', action: async () => {
