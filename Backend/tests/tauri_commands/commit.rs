@@ -11,10 +11,10 @@ use crate::plugin_vcs_backends::{self, PluginBackendDescriptor};
 use crate::repo::Repo;
 use crate::settings;
 use crate::state::AppState;
-use tauri::ipc::InvokeResponseBody;
-use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
-use tauri::webview::InvokeRequest;
 use tauri::WebviewWindowBuilder;
+use tauri::ipc::InvokeResponseBody;
+use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
+use tauri::webview::InvokeRequest;
 
 // ── Pure function tests ──
 
@@ -107,6 +107,7 @@ struct TestVcs {
     checkout_branch_fail: Mutex<bool>,
     cherry_pick_fail: Mutex<bool>,
     revert_commit_fail: Mutex<bool>,
+    trace: Mutex<Vec<String>>,
 }
 
 impl TestVcs {
@@ -121,11 +122,16 @@ impl TestVcs {
             checkout_branch_fail: Mutex::new(false),
             cherry_pick_fail: Mutex::new(false),
             revert_commit_fail: Mutex::new(false),
+            trace: Mutex::new(Vec::new()),
         }
     }
 
     fn unsupported<T>(&self) -> Result<T, VcsError> {
         Err(VcsError::Unsupported(self.id.clone()))
+    }
+
+    fn trace_op(&self, op: &str) {
+        self.trace.lock().unwrap().push(op.to_string());
     }
 }
 
@@ -162,7 +168,12 @@ impl Vcs for TestVcs {
     fn remove_remote(&self, _name: &str) -> Result<(), VcsError> {
         self.unsupported()
     }
-    fn fetch(&self, _remote: &str, _refspec: &str, _on: Option<models::OnEvent>) -> Result<(), VcsError> {
+    fn fetch(
+        &self,
+        _remote: &str,
+        _refspec: &str,
+        _on: Option<models::OnEvent>,
+    ) -> Result<(), VcsError> {
         self.unsupported()
     }
     fn push(
@@ -188,18 +199,15 @@ impl Vcs for TestVcs {
         _email: &str,
         _paths: &[PathBuf],
     ) -> Result<String, VcsError> {
+        self.trace_op("commit");
         self.commit_result
             .lock()
             .unwrap()
             .clone()
             .ok_or_else(|| VcsError::Unsupported(self.id.clone()))
     }
-    fn commit_index(
-        &self,
-        _message: &str,
-        _name: &str,
-        _email: &str,
-    ) -> Result<String, VcsError> {
+    fn commit_index(&self, _message: &str, _name: &str, _email: &str) -> Result<String, VcsError> {
+        self.trace_op("commit_index");
         self.commit_result
             .lock()
             .unwrap()
@@ -209,10 +217,7 @@ impl Vcs for TestVcs {
     fn status_payload(&self) -> Result<models::StatusPayload, VcsError> {
         self.unsupported()
     }
-    fn log_commits(
-        &self,
-        _query: &models::LogQuery,
-    ) -> Result<Vec<models::CommitItem>, VcsError> {
+    fn log_commits(&self, _query: &models::LogQuery) -> Result<Vec<models::CommitItem>, VcsError> {
         self.unsupported()
     }
     fn diff_file(&self, _path: &Path) -> Result<models::DiffFileResult, VcsError> {
@@ -222,22 +227,22 @@ impl Vcs for TestVcs {
         self.unsupported()
     }
     fn stage_patch(&self, _patch: &str) -> Result<(), VcsError> {
+        self.trace_op("stage_patch");
         if *self.stage_patch_fail.lock().unwrap() {
             Err(VcsError::Unsupported(self.id.clone()))
         } else {
             Ok(())
         }
     }
-    fn stage_selections(
-        &self,
-        _selections: &[models::HunkSelection],
-    ) -> Result<(), VcsError> {
+    fn stage_selections(&self, _selections: &[models::HunkSelection]) -> Result<(), VcsError> {
+        self.trace_op("stage_selections");
         if *self.stage_sel_fail.lock().unwrap() {
             return Err(VcsError::Unsupported(self.id.clone()));
         }
         Ok(())
     }
     fn stage_paths(&self, _paths: &[PathBuf]) -> Result<(), VcsError> {
+        self.trace_op("stage_paths");
         Ok(())
     }
     fn discard_paths(&self, _paths: &[PathBuf]) -> Result<(), VcsError> {
@@ -256,6 +261,7 @@ impl Vcs for TestVcs {
         self.unsupported()
     }
     fn get_identity(&self) -> Result<Option<(String, String)>, VcsError> {
+        self.trace_op("identity");
         Ok(self.identity.lock().unwrap().clone())
     }
     fn set_identity_local(&self, _name: &str, _email: &str) -> Result<(), VcsError> {
@@ -423,7 +429,11 @@ fn commit_patch_and_files_fails_without_repo() {
         "files": [],
     }));
     let res = invoke_cmd(&wv, "commit_patch_and_files", body);
-    assert!(res.is_err(), "commit_patch_and_files needs a repo: {:?}", res);
+    assert!(
+        res.is_err(),
+        "commit_patch_and_files needs a repo: {:?}",
+        res
+    );
 }
 
 #[test]

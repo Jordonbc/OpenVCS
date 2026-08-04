@@ -98,7 +98,11 @@ fn commit_selected_fails_with_unsupported_commit_index() {
         "files": ["src/lib.rs"],
     }));
     let res = invoke_cmd(&wv, "commit_selected", body);
-    assert!(res.is_err(), "unsupported commit_index should fail: {:?}", res);
+    assert!(
+        res.is_err(),
+        "unsupported commit_index should fail: {:?}",
+        res
+    );
 }
 
 #[test]
@@ -151,7 +155,11 @@ fn commit_patch_fails_when_stage_patch_fails() {
         "patch": "@@ -1 +1 @@\n-old\n+new\n",
     }));
     let res = invoke_cmd(&wv, "commit_patch", body);
-    assert!(res.is_err(), "stage_patch failure should propagate: {:?}", res);
+    assert!(
+        res.is_err(),
+        "stage_patch failure should propagate: {:?}",
+        res
+    );
 }
 
 #[test]
@@ -246,7 +254,11 @@ fn commit_patch_and_files_fails_when_stage_patch_fails() {
         "stagePaths": [],
     }));
     let res = invoke_cmd(&wv, "commit_patch_and_files", body);
-    assert!(res.is_err(), "stage_patch failure should propagate: {:?}", res);
+    assert!(
+        res.is_err(),
+        "stage_patch failure should propagate: {:?}",
+        res
+    );
 }
 
 #[test]
@@ -589,4 +601,250 @@ fn vcs_revert_commit_succeeds_with_valid_input() {
     }));
     let res = invoke_cmd(&wv, "vcs_revert_commit", body);
     assert!(res.is_ok(), "revert should succeed: {:?}", res);
+}
+
+// ── Operation-trace tests ──
+// Each test drives a command with populated inputs, asserts the exact
+// VCS operation sequence recorded by the mock, and then proves the first
+// failing operation in that sequence surfaces its own error (ordering is
+// per-command, not a global precedence).
+
+const NO_IDENTITY_ERROR: &str = "No VCS commit identity configured for this repository; \
+set user.name and user.email in the repository settings";
+
+fn invoke_error_string(res: Result<InvokeResponseBody, serde_json::Value>) -> String {
+    res.expect_err("expected command failure")
+        .as_str()
+        .expect("error payload is a string")
+        .to_string()
+}
+
+#[test]
+fn commit_changes_trace_identity_then_commit() {
+    register_test_backend("test-vcs");
+    let (app, vcs) = build_app_with_repo();
+    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
+    *vcs.commit_result.lock().unwrap() = Some("oid-1".into());
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "direct commit",
+        "description": "body text",
+    }));
+    let res = invoke_cmd(&wv, "commit_changes", body);
+    assert!(res.is_ok(), "commit_changes should succeed: {:?}", res);
+    assert_eq!(
+        *vcs.trace.lock().unwrap(),
+        vec!["identity", "commit"],
+        "direct commit runs identity then commit"
+    );
+
+    // First failing operation surfaces its error: identity precedes commit.
+    vcs.trace.lock().unwrap().clear();
+    *vcs.identity.lock().unwrap() = None;
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "direct commit",
+        "description": "",
+    }));
+    let res = invoke_cmd(&wv, "commit_changes", body);
+    assert_eq!(
+        invoke_error_string(res),
+        NO_IDENTITY_ERROR,
+        "identity failure surfaces even though commit_result is set"
+    );
+    assert_eq!(
+        *vcs.trace.lock().unwrap(),
+        vec!["identity"],
+        "commit is never reached when identity fails"
+    );
+}
+
+#[test]
+fn commit_selected_trace_identity_then_stage_paths_then_commit() {
+    register_test_backend("test-vcs");
+    let (app, vcs) = build_app_with_repo();
+    *vcs.identity.lock().unwrap() = Some(("User".into(), "u@t.com".into()));
+    *vcs.commit_result.lock().unwrap() = Some("oid-2".into());
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "selected commit",
+        "description": "",
+        "files": ["a.rs", "b.rs"],
+    }));
+    let res = invoke_cmd(&wv, "commit_selected", body);
+    assert!(res.is_ok(), "commit_selected should succeed: {:?}", res);
+    assert_eq!(
+        *vcs.trace.lock().unwrap(),
+        vec!["identity", "stage_paths", "commit_index"],
+        "selected commit runs identity before stage_paths"
+    );
+
+    // First failing operation surfaces its error: identity precedes paths.
+    vcs.trace.lock().unwrap().clear();
+    *vcs.identity.lock().unwrap() = None;
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "selected commit",
+        "description": "",
+        "files": ["a.rs"],
+    }));
+    let res = invoke_cmd(&wv, "commit_selected", body);
+    assert_eq!(
+        invoke_error_string(res),
+        NO_IDENTITY_ERROR,
+        "identity precedes stage_paths: its error surfaces first"
+    );
+    assert_eq!(*vcs.trace.lock().unwrap(), vec!["identity"]);
+}
+
+#[test]
+fn commit_patch_trace_stage_patch_then_identity_then_commit() {
+    register_test_backend("test-vcs");
+    let (app, vcs) = build_app_with_repo();
+    *vcs.identity.lock().unwrap() = Some(("User".into(), "u@t.com".into()));
+    *vcs.commit_result.lock().unwrap() = Some("oid-3".into());
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "patch commit",
+        "description": "via patch",
+        "patch": "@@ -1 +1 @@\n-old\n+new\n",
+    }));
+    let res = invoke_cmd(&wv, "commit_patch", body);
+    assert!(res.is_ok(), "commit_patch should succeed: {:?}", res);
+    assert_eq!(
+        *vcs.trace.lock().unwrap(),
+        vec!["stage_patch", "identity", "commit_index"],
+        "patch commit stages before resolving identity"
+    );
+
+    // First failing operation surfaces its error: staging precedes identity.
+    vcs.trace.lock().unwrap().clear();
+    *vcs.stage_patch_fail.lock().unwrap() = true;
+    *vcs.identity.lock().unwrap() = None;
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "patch commit",
+        "description": "",
+        "patch": "@@ -1 +1 @@\n-old\n+new\n",
+    }));
+    let res = invoke_cmd(&wv, "commit_patch", body);
+    let err = invoke_error_string(res);
+    assert_eq!(
+        err, "unsupported backend: test-vcs",
+        "stage_patch error surfaces even though identity is also missing"
+    );
+    assert_eq!(
+        *vcs.trace.lock().unwrap(),
+        vec!["stage_patch"],
+        "identity is never reached when stage_patch fails"
+    );
+}
+
+#[test]
+fn commit_patch_and_files_trace_stage_patch_then_identity_then_stage_paths_then_commit() {
+    register_test_backend("test-vcs");
+    let (app, vcs) = build_app_with_repo();
+    *vcs.identity.lock().unwrap() = Some(("User".into(), "u@t.com".into()));
+    *vcs.commit_result.lock().unwrap() = Some("oid-4".into());
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "combo commit",
+        "description": "",
+        "patch": "@@ diff",
+        "files": [],
+        "stagePaths": ["src/a.rs", "src/b.rs"],
+    }));
+    let res = invoke_cmd(&wv, "commit_patch_and_files", body);
+    assert!(
+        res.is_ok(),
+        "commit_patch_and_files should succeed: {:?}",
+        res
+    );
+    assert_eq!(
+        *vcs.trace.lock().unwrap(),
+        vec!["stage_patch", "identity", "stage_paths", "commit_index"],
+        "patch-and-files runs stage_patch, identity, then stage_paths"
+    );
+
+    // First failing operation surfaces its error: stage_patch precedes identity.
+    vcs.trace.lock().unwrap().clear();
+    *vcs.stage_patch_fail.lock().unwrap() = true;
+    *vcs.identity.lock().unwrap() = None;
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "combo commit",
+        "description": "",
+        "patch": "@@ diff",
+        "files": [],
+        "stagePaths": ["src/a.rs"],
+    }));
+    let res = invoke_cmd(&wv, "commit_patch_and_files", body);
+    let err = invoke_error_string(res);
+    assert_eq!(
+        err, "unsupported backend: test-vcs",
+        "stage_patch error surfaces before identity"
+    );
+    assert_eq!(
+        *vcs.trace.lock().unwrap(),
+        vec!["stage_patch"],
+        "identity is never reached when stage_patch fails"
+    );
+}
+
+#[test]
+fn commit_selection_trace_stage_selections_then_identity_then_stage_paths_then_commit() {
+    register_test_backend("test-vcs");
+    let (app, vcs) = build_app_with_repo();
+    *vcs.identity.lock().unwrap() = Some(("Test User".into(), "test@example.com".into()));
+    *vcs.commit_result.lock().unwrap() = Some("oid-5".into());
+    let wv = test_webview(&app);
+
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "selection commit",
+        "description": "",
+        "selections": [{
+            "path": "partial.rs",
+            "whole_hunks": [0],
+            "partial_hunks": {}
+        }],
+        "stagePaths": ["full.rs"],
+    }));
+    let res = invoke_cmd(&wv, "commit_selection", body);
+    assert!(res.is_ok(), "commit_selection should succeed: {:?}", res);
+    assert_eq!(
+        *vcs.trace.lock().unwrap(),
+        vec![
+            "stage_selections",
+            "identity",
+            "stage_paths",
+            "commit_index"
+        ],
+        "selection commit stages selections before identity and paths"
+    );
+
+    // First failing operation surfaces its error: stage_selections precedes identity.
+    vcs.trace.lock().unwrap().clear();
+    *vcs.stage_sel_fail.lock().unwrap() = true;
+    *vcs.identity.lock().unwrap() = None;
+    let body = tauri::ipc::InvokeBody::Json(serde_json::json!({
+        "summary": "selection commit",
+        "description": "",
+        "selections": [{
+            "path": "broken.rs",
+            "whole_hunks": [0],
+            "partial_hunks": {}
+        }],
+        "stagePaths": ["full.rs"],
+    }));
+    let res = invoke_cmd(&wv, "commit_selection", body);
+    let err = invoke_error_string(res);
+    assert_eq!(
+        err, "unsupported backend: test-vcs",
+        "stage_selections error surfaces before identity"
+    );
+    assert_eq!(
+        *vcs.trace.lock().unwrap(),
+        vec!["stage_selections"],
+        "identity is never reached when stage_selections fails"
+    );
 }

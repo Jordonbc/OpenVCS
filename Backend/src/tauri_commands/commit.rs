@@ -1,10 +1,12 @@
 // Copyright © 2025-2026 OpenVCS Contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use log::{error, info};
 use tauri::{Manager, Runtime, State, Window, async_runtime};
 
+use crate::core::OnEvent;
 use crate::core::models::{HunkSelection, VcsEvent};
 use crate::repo::Repo;
 use crate::state::AppState;
@@ -49,6 +51,52 @@ fn commit_identity(repo: &Repo) -> Result<(String, String), String> {
         })
 }
 
+/// Runs the shared commit command lifecycle on a blocking task.
+///
+/// Resolves the current repository, builds the commit message from the
+/// summary/description, and executes the command-specific `run` steps on a
+/// blocking worker with progress events bridged to the UI. `join_error` maps
+/// a blocking-task join failure into the command-specific error context.
+///
+/// # Parameters
+/// - `window`: Calling window handle for progress events.
+/// - `state`: Shared application state.
+/// - `summary`: Commit summary line.
+/// - `description`: Optional commit body text.
+/// - `run`: Command-specific staging/commit steps executed in order; receives
+///   the repository, the progress bridge callback, and the built message.
+/// - `join_error`: Maps a blocking-task join failure to the command error.
+///
+/// # Returns
+/// - `Ok(String)` created commit id.
+/// - `Err(String)` when no repo is selected or the command steps fail.
+async fn commit_runner<R: Runtime, F, J>(
+    window: Window<R>,
+    state: State<'_, AppState>,
+    summary: String,
+    description: String,
+    run: F,
+    join_error: J,
+) -> Result<String, String>
+where
+    F: FnOnce(Arc<Repo>, OnEvent, String) -> Result<String, String> + Send + 'static,
+    J: FnOnce(String) -> String + Send,
+{
+    let repo = state
+        .current_repo()
+        .ok_or_else(|| "No repository selected".to_string())?;
+    let repo = repo.clone();
+    let app = window.app_handle().clone();
+    let message = build_commit_message(&summary, &description);
+
+    async_runtime::spawn_blocking(move || {
+        let on = progress_bridge(app);
+        run(repo, on, message)
+    })
+    .await
+    .map_err(|e| join_error(e.to_string()))?
+}
+
 #[tauri::command]
 /// Commits all staged/working-tree changes using summary + optional description.
 ///
@@ -69,46 +117,43 @@ pub async fn commit_changes<R: Runtime>(
 ) -> Result<String, String> {
     info!("commit_changes called (summary: \"{}\")", summary);
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let repo = repo.clone();
-    let app = window.app_handle().clone();
+    commit_runner(
+        window,
+        state,
+        summary,
+        description,
+        move |repo, on, message| {
+            on(VcsEvent::Info {
+                msg: "Staging changes…".into(),
+            });
+            info!("Staging changes for commit");
 
-    let message = build_commit_message(&summary, &description);
+            let (name, email) = commit_identity(repo.as_ref())?;
+            info!("Using identity: {} <{}>", name, email);
 
-    async_runtime::spawn_blocking(move || {
-        let on = progress_bridge(app);
-        on(VcsEvent::Info {
-            msg: "Staging changes…".into(),
-        });
-        info!("Staging changes for commit");
+            on(VcsEvent::Info {
+                msg: "Writing commit…".into(),
+            });
+            let oid = repo
+                .inner()
+                .commit(&message, &name, &email, &[])
+                .map_err(|e| {
+                    error!("Commit failed: {e}");
+                    e.to_string()
+                })?;
+            info!("Commit created successfully: {oid}");
 
-        let (name, email) = commit_identity(repo.as_ref())?;
-        info!("Using identity: {} <{}>", name, email);
-
-        on(VcsEvent::Info {
-            msg: "Writing commit…".into(),
-        });
-        let oid = repo
-            .inner()
-            .commit(&message, &name, &email, &[])
-            .map_err(|e| {
-                error!("Commit failed: {e}");
-                e.to_string()
-            })?;
-        info!("Commit created successfully: {oid}");
-
-        on(VcsEvent::Info {
-            msg: "Commit created.".into(),
-        });
-        Ok(oid)
-    })
+            on(VcsEvent::Info {
+                msg: "Commit created.".into(),
+            });
+            Ok(oid)
+        },
+        |e| {
+            error!("commit_changes task join error: {e}");
+            format!("commit task failed: {e}")
+        },
+    )
     .await
-    .map_err(|e| {
-        error!("commit_changes task join error: {e}");
-        format!("commit task failed: {e}")
-    })?
 }
 
 #[tauri::command]
@@ -133,42 +178,39 @@ pub async fn commit_selected<R: Runtime>(
 ) -> Result<String, String> {
     info!("commit_selected called ({} file(s))", files.len());
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let repo = repo.clone();
-    let app = window.app_handle().clone();
+    commit_runner(
+        window,
+        state,
+        summary,
+        description,
+        move |repo, on, message| {
+            let (name, email) = commit_identity(repo.as_ref())?;
 
-    let message = build_commit_message(&summary, &description);
+            let paths: Vec<PathBuf> = files.into_iter().map(PathBuf::from).collect();
 
-    async_runtime::spawn_blocking(move || {
-        let on = progress_bridge(app);
-        let (name, email) = commit_identity(repo.as_ref())?;
-
-        let paths: Vec<PathBuf> = files.into_iter().map(PathBuf::from).collect();
-
-        on(VcsEvent::Info {
-            msg: "Staging selected files…".into(),
-        });
-        repo.inner().stage_paths(&paths).map_err(|e| {
-            error!("stage_paths failed: {e}");
-            e.to_string()
-        })?;
-
-        on(VcsEvent::Info {
-            msg: "Writing commit…".into(),
-        });
-        let oid = repo
-            .inner()
-            .commit_index(&message, &name, &email)
-            .map_err(|e| {
-                error!("Commit (selected) failed: {e}");
+            on(VcsEvent::Info {
+                msg: "Staging selected files…".into(),
+            });
+            repo.inner().stage_paths(&paths).map_err(|e| {
+                error!("stage_paths failed: {e}");
                 e.to_string()
             })?;
-        Ok(oid)
-    })
+
+            on(VcsEvent::Info {
+                msg: "Writing commit…".into(),
+            });
+            let oid = repo
+                .inner()
+                .commit_index(&message, &name, &email)
+                .map_err(|e| {
+                    error!("Commit (selected) failed: {e}");
+                    e.to_string()
+                })?;
+            Ok(oid)
+        },
+        |e| format!("commit_selected task failed: {e}"),
+    )
     .await
-    .map_err(|e| format!("commit_selected task failed: {e}"))?
 }
 
 #[tauri::command]
@@ -192,41 +234,39 @@ pub async fn commit_patch<R: Runtime>(
     patch: String,
 ) -> Result<String, String> {
     info!("commit_patch called (patch size: {} bytes)", patch.len());
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let repo = repo.clone();
-    let app = window.app_handle().clone();
 
-    let message = build_commit_message(&summary, &description);
+    commit_runner(
+        window,
+        state,
+        summary,
+        description,
+        move |repo, on, message| {
+            on(VcsEvent::Info {
+                msg: "Staging selected hunks…".into(),
+            });
 
-    async_runtime::spawn_blocking(move || {
-        let on = progress_bridge(app);
-        on(VcsEvent::Info {
-            msg: "Staging selected hunks…".into(),
-        });
-
-        repo.inner().stage_patch(&patch).map_err(|e| {
-            error!("stage_patch failed: {e}");
-            e.to_string()
-        })?;
-
-        let (name, email) = commit_identity(repo.as_ref())?;
-
-        on(VcsEvent::Info {
-            msg: "Committing staged hunks…".into(),
-        });
-        let oid = repo
-            .inner()
-            .commit_index(&message, &name, &email)
-            .map_err(|e| {
-                error!("commit_index failed: {e}");
+            repo.inner().stage_patch(&patch).map_err(|e| {
+                error!("stage_patch failed: {e}");
                 e.to_string()
             })?;
-        Ok(oid)
-    })
+
+            let (name, email) = commit_identity(repo.as_ref())?;
+
+            on(VcsEvent::Info {
+                msg: "Committing staged hunks…".into(),
+            });
+            let oid = repo
+                .inner()
+                .commit_index(&message, &name, &email)
+                .map_err(|e| {
+                    error!("commit_index failed: {e}");
+                    e.to_string()
+                })?;
+            Ok(oid)
+        },
+        |e| format!("commit_patch task failed: {e}"),
+    )
     .await
-    .map_err(|e| format!("commit_patch task failed: {e}"))?
 }
 
 #[tauri::command]
@@ -259,58 +299,56 @@ pub async fn commit_patch_and_files<R: Runtime>(
         files.len(),
         stage_paths.len()
     );
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let repo = repo.clone();
-    let app = window.app_handle().clone();
 
-    let message = build_commit_message(&summary, &description);
-
-    async_runtime::spawn_blocking(move || {
-        let on = progress_bridge(app);
-        on(VcsEvent::Info {
-            msg: "Staging selected hunks…".into(),
-        });
-
-        if !patch.trim().is_empty() {
-            repo.inner().stage_patch(&patch).map_err(|e| {
-                error!("stage_patch failed: {e}");
-                e.to_string()
-            })?;
-        }
-
-        let (name, email) = commit_identity(repo.as_ref())?;
-
-        on(VcsEvent::Info {
-            msg: "Writing commit…".into(),
-        });
-        let stage_paths: Vec<PathBuf> = stage_paths.iter().map(PathBuf::from).collect();
-        if !stage_paths.is_empty() {
+    commit_runner(
+        window,
+        state,
+        summary,
+        description,
+        move |repo, on, message| {
             on(VcsEvent::Info {
-                msg: "Staging selected files…".into(),
+                msg: "Staging selected hunks…".into(),
             });
-            repo.inner().stage_paths(&stage_paths).map_err(|e| {
-                error!("stage_paths failed: {e}");
-                e.to_string()
-            })?;
-        }
-        let has_selection = has_commit_selection(&patch, files.len(), stage_paths.len());
-        if !has_selection {
-            return Err("No commit paths provided".into());
-        }
 
-        let oid = repo
-            .inner()
-            .commit_index(&message, &name, &email)
-            .map_err(|e| e.to_string())?;
-        on(VcsEvent::Info {
-            msg: "Commit complete".into(),
-        });
-        Ok(oid)
-    })
+            if !patch.trim().is_empty() {
+                repo.inner().stage_patch(&patch).map_err(|e| {
+                    error!("stage_patch failed: {e}");
+                    e.to_string()
+                })?;
+            }
+
+            let (name, email) = commit_identity(repo.as_ref())?;
+
+            on(VcsEvent::Info {
+                msg: "Writing commit…".into(),
+            });
+            let stage_paths: Vec<PathBuf> = stage_paths.iter().map(PathBuf::from).collect();
+            if !stage_paths.is_empty() {
+                on(VcsEvent::Info {
+                    msg: "Staging selected files…".into(),
+                });
+                repo.inner().stage_paths(&stage_paths).map_err(|e| {
+                    error!("stage_paths failed: {e}");
+                    e.to_string()
+                })?;
+            }
+            let has_selection = has_commit_selection(&patch, files.len(), stage_paths.len());
+            if !has_selection {
+                return Err("No commit paths provided".into());
+            }
+
+            let oid = repo
+                .inner()
+                .commit_index(&message, &name, &email)
+                .map_err(|e| e.to_string())?;
+            on(VcsEvent::Info {
+                msg: "Commit complete".into(),
+            });
+            Ok(oid)
+        },
+        |e| format!("commit_patch_and_files task failed: {e}"),
+    )
     .await
-    .map_err(|e| format!("commit_patch_and_files task failed: {e}"))?
 }
 
 #[tauri::command]
@@ -332,58 +370,55 @@ pub async fn commit_selection<R: Runtime>(
         stage_paths.len(),
     );
 
-    let repo = state
-        .current_repo()
-        .ok_or_else(|| "No repository selected".to_string())?;
-    let repo = repo.clone();
-    let app = window.app_handle().clone();
-
-    let message = build_commit_message(&summary, &description);
-
-    async_runtime::spawn_blocking(move || {
-        let on = progress_bridge(app);
-        on(VcsEvent::Info {
-            msg: "Staging selected hunks…".into(),
-        });
-
-        if !selections.is_empty() {
-            repo.inner().stage_selections(&selections).map_err(|e| {
-                error!("stage_selections failed: {e}");
-                e.to_string()
-            })?;
-        }
-
-        let (name, email) = commit_identity(repo.as_ref())?;
-
-        let stage_paths: Vec<PathBuf> = stage_paths.iter().map(PathBuf::from).collect();
-        if !stage_paths.is_empty() {
+    commit_runner(
+        window,
+        state,
+        summary,
+        description,
+        move |repo, on, message| {
             on(VcsEvent::Info {
-                msg: "Staging selected files…".into(),
+                msg: "Staging selected hunks…".into(),
             });
-            repo.inner().stage_paths(&stage_paths).map_err(|e| {
-                error!("stage_paths failed: {e}");
-                e.to_string()
-            })?;
-        }
 
-        if selections.is_empty() && stage_paths.is_empty() {
-            return Err("No commit paths provided".into());
-        }
+            if !selections.is_empty() {
+                repo.inner().stage_selections(&selections).map_err(|e| {
+                    error!("stage_selections failed: {e}");
+                    e.to_string()
+                })?;
+            }
 
-        on(VcsEvent::Info {
-            msg: "Writing commit…".into(),
-        });
-        let oid = repo
-            .inner()
-            .commit_index(&message, &name, &email)
-            .map_err(|e| e.to_string())?;
-        on(VcsEvent::Info {
-            msg: "Commit complete".into(),
-        });
-        Ok(oid)
-    })
+            let (name, email) = commit_identity(repo.as_ref())?;
+
+            let stage_paths: Vec<PathBuf> = stage_paths.iter().map(PathBuf::from).collect();
+            if !stage_paths.is_empty() {
+                on(VcsEvent::Info {
+                    msg: "Staging selected files…".into(),
+                });
+                repo.inner().stage_paths(&stage_paths).map_err(|e| {
+                    error!("stage_paths failed: {e}");
+                    e.to_string()
+                })?;
+            }
+
+            if selections.is_empty() && stage_paths.is_empty() {
+                return Err("No commit paths provided".into());
+            }
+
+            on(VcsEvent::Info {
+                msg: "Writing commit…".into(),
+            });
+            let oid = repo
+                .inner()
+                .commit_index(&message, &name, &email)
+                .map_err(|e| e.to_string())?;
+            on(VcsEvent::Info {
+                msg: "Commit complete".into(),
+            });
+            Ok(oid)
+        },
+        |e| format!("commit_selection task failed: {e}"),
+    )
     .await
-    .map_err(|e| format!("commit_selection task failed: {e}"))?
 }
 
 #[tauri::command]
