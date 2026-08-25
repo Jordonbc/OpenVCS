@@ -53,7 +53,7 @@ shlex = "2.0"
 sha2 = "0.11"
 hex = "0.4"
 os_pipe = "1.2"
-base64 = "0.22"
+base64 = "0.23"
 thiserror = "2"
 tempfile = "3"
 
